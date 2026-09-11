@@ -1,0 +1,50 @@
+name: everplain
+services:
+  api:
+    image: everplain-api:${EVERPLAIN_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: ops/api.Dockerfile
+    env_file:
+      - ${EVERPLAIN_ENV_FILE:-./backend/.env}
+    environment:
+      EVERPLAIN_DATABASE_URL: sqlite:////data/everplain.db
+      EVERPLAIN_RETRIEVAL_INDEX_PATH: /data/everplain-retrieval.db
+      EVERPLAIN_SESSION_COOKIE_NAME: everplain_session
+    ports:
+      - "127.0.0.1:8297:8297"
+    volumes:
+      - data:/data
+      - backups:/backups
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8297/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+  web:
+    image: everplain-web:${EVERPLAIN_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: ops/web.Dockerfile
+    ports:
+      - "127.0.0.1:5196:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+volumes:
+  data:
+    name: everplain-data
+  backups:
+    name: everplain-backups
