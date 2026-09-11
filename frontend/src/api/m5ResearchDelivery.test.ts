@@ -18,6 +18,7 @@ vi.mock('./generated', () => generated)
 vi.mock('./client', () => ({ apiClient: { adapter: 'test' } }))
 
 import {
+  exportM5ResearchDocument,
   loadM5ResearchDelivery,
   saveM5ResearchDocument,
   serializeM5ResearchExport,
@@ -237,5 +238,40 @@ describe('M5 research delivery adapter', () => {
       mediaType: 'application/json;charset=utf-8',
       content: JSON.stringify(exported.manifest, null, 2),
     })
+  })
+
+  it('exports a personal document without a theory plan or disciplinary audit fields', async () => {
+    generated.exportResearchDocument.mockReturnValue(ok({
+      document_id: 'document-personal',
+      task_id: 'task-7',
+      theory_plan_id: null,
+      version: 1,
+      knowledge_release_id: 'everplain-personal-v1',
+      filename: 'notes.md',
+      markdown: '# 阅读笔记',
+      manifest: {
+        schema_version: 'everplain-document-v1',
+        document_identity: { document_id: 'document-personal', version: 1 },
+        document_versions: [{ version: 1 }],
+        formal_document: { title: '阅读笔记', sections: [] },
+        formatting: { template_id: 'research-report' },
+        citation_audit: [],
+      },
+    }))
+
+    const exported = await exportM5ResearchDocument({ documentId: 'document-personal' })
+
+    expect(exported.theoryPlanId).toBeNull()
+    expect(exported.manifest.schema_version).toBe('everplain-document-v1')
+    expect(exported.manifest.formal_document.title).toBe('阅读笔记')
+    expect(exported.manifest.document_versions).toEqual([{ version: 1 }])
+    expect(exported.manifest.agent_proposals).toEqual([])
+    expect(exported.manifest.evidence).toEqual([])
+    expect(exported.manifest.theory_assignments).toEqual([])
+    expect(exported.manifest.theory_candidates).toEqual([])
+    expect(exported.manifest.theory_decisions).toEqual([])
+    expect(exported.manifest.theory_relations).toEqual([])
+    expect(JSON.parse(serializeM5ResearchExport(exported, 'json').content).schema_version)
+      .toBe('everplain-document-v1')
   })
 })

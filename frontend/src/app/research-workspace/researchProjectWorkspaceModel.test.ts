@@ -72,7 +72,7 @@ describe('research project workspace routes', () => {
 
     expect(readResearchWorkspaceResumePath('task-1', storage)).toBe(path)
     expect(readResearchWorkspaceResumePath('task-2', storage)).toBeNull()
-    values.set('qunxue.research-workspace.resume.v1:task-1', '/research/task-2/workspace/map')
+    values.set('everplain.research-workspace.resume.v1:task-1', '/research/task-2/workspace/map')
     expect(readResearchWorkspaceResumePath('task-1', storage)).toBeNull()
   })
 })

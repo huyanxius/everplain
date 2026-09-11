@@ -26,7 +26,7 @@ describe('ResearchPromptCarousel', () => {
     expect(container.querySelector('[data-copy-phase]')).toHaveAttribute('data-copy-phase', 'exiting')
 
     act(() => vi.advanceTimersByTime(460))
-    expect(screen.getByRole('button', { name: '为什么同一课堂里有人总是沉默？' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '比较这两份产品方案的关键差异' })).toBeVisible()
   })
 
   it('lets the user try a rotating preset and moves to the next topic after one cycle', () => {
@@ -36,14 +36,14 @@ describe('ResearchPromptCarousel', () => {
 
     act(() => vi.advanceTimersByTime(5_000))
     act(() => vi.advanceTimersByTime(460))
-    const firstTopic = screen.getByRole('button', { name: '为什么同一课堂里有人总是沉默？' })
+    const firstTopic = screen.getByRole('button', { name: '比较这两份产品方案的关键差异' })
     fireEvent.click(firstTopic)
-    expect(onSelect).toHaveBeenCalledWith('为什么同一课堂里有人总是沉默？')
+    expect(onSelect).toHaveBeenCalledWith('比较这两份产品方案的关键差异')
 
     act(() => vi.advanceTimersByTime(3_740))
     act(() => vi.advanceTimersByTime(460))
 
-    expect(screen.getByRole('button', { name: '为什么短视频越刷越难停下来？' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '从这些访谈中整理用户需求' })).toBeVisible()
   })
 
   it('shows twenty distinct presets before the carousel repeats', () => {
@@ -65,9 +65,9 @@ describe('ResearchPromptCarousel', () => {
     }
 
     expect(new Set(seen).size).toBe(20)
-    expect(seen.at(-1)).toBe('为什么技术进步没有减少所有人的负担？')
+    expect(seen.at(-1)).toBe('沿着上次的研究继续推进')
 
     moveToNextPreset()
-    expect(screen.getByRole('button', { name: '为什么同一课堂里有人总是沉默？' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '比较这两份产品方案的关键差异' })).toBeVisible()
   })
 })

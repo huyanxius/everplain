@@ -1,5 +1,5 @@
 import { StrictMode } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseMultipartRequest } from '../../test/multipart'
@@ -266,7 +266,9 @@ describe('NewResearchWorkspacePage', () => {
       new File(['第一份访谈'], '社区访谈.txt', { type: 'text/plain' }),
       new File(['第二份访谈'], '补充访谈.md', { type: 'text/markdown' }),
     ]
-    fireEvent.change(screen.getByLabelText('从材料开始研究'), { target: { files } })
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('从材料开始研究'), { target: { files } })
+    })
 
     await waitFor(() => expect(screen.getByLabelText('当前测试路径')).toHaveTextContent(
       `/research/new?task_id=${taskId}`,
@@ -666,7 +668,9 @@ describe('NewResearchWorkspacePage', () => {
     const firstWorkspace = await screen.findByRole('region', { name: '新建研究工作区' })
     const textbox = within(firstWorkspace).getByRole('textbox', { name: '和 Agent 讨论你的研究' })
     fireEvent.change(textbox, { target: { value: question } })
-    fireEvent.submit(textbox.closest('form') as HTMLFormElement)
+    await act(async () => {
+      fireEvent.submit(textbox.closest('form') as HTMLFormElement)
+    })
     await within(firstWorkspace).findByRole('button', { name: '停止生成' })
 
     await waitFor(() => expect(screen.getByLabelText('当前测试路径')).toHaveTextContent('/research/new?conversation_id=conversation-research-new'))
@@ -675,7 +679,9 @@ describe('NewResearchWorkspacePage', () => {
     renderPage('/research/new?conversation_id=conversation-research-new')
     const resume = await screen.findByRole('button', { name: '继续研究' })
     expect(turnRequests).toBe(1)
-    fireEvent.click(resume)
+    await act(async () => {
+      fireEvent.click(resume)
+    })
 
     expect(await screen.findByText(conversation.turns[0].assistant.content)).toBeVisible()
     expect(turnRequests).toBe(2)
@@ -1153,13 +1159,13 @@ describe('NewResearchWorkspacePage', () => {
 
     fireEvent.keyDown(separator, { key: 'ArrowRight' })
     expect(separator).toHaveAttribute('aria-valuenow', '476')
-    expect(window.localStorage.getItem('qunxue.research.agent-panel-width')).toBe('476')
+    expect(window.localStorage.getItem('everplain.research.agent-panel-width')).toBe('476')
 
     fireEvent.mouseDown(separator, { button: 0, clientX: 524 })
     fireEvent.mouseMove(window, { clientX: 460 })
     expect(separator).toHaveAttribute('aria-valuenow', '540')
     fireEvent.mouseUp(window)
-    expect(window.localStorage.getItem('qunxue.research.agent-panel-width')).toBe('540')
+    expect(window.localStorage.getItem('everplain.research.agent-panel-width')).toBe('540')
   })
 
   it('turns a selected question node into an explicit follow-up prompt', async () => {

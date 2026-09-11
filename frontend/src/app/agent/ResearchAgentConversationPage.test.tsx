@@ -150,6 +150,40 @@ function LocationProbe() {
 }
 
 describe('ResearchAgentConversationPage', () => {
+  it('renders personal library citation markers as numbered source chips and groups them under knowledge', async () => {
+    const citation: AgentCitation = {
+      citation_id: 'known-library-citation', label: '产品研究.pdf', kind: 'research_material',
+      source_kind: 'research_material', knowledge_base_id: 'library-owned', material_id: 'document-owned',
+      segment_id: 'segment-owned', excerpt: '已有资料支持这一结论。', locator: { page: 3 },
+    }
+    const conversation = conversationFixture({
+      id: 'conversation-library-citation', citations: [citation],
+      answer: '结论来自资料【material:document-owned:segment-owned】。未知引用【material:document-owned:missing】。',
+    })
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = urlFor(input)
+      if (url.pathname === `/api/agent/conversations/${conversation.conversation_id}`) return json(conversation)
+      return json({ items: [] })
+    }))
+    renderPage('user-agent', `/agent?conversation_id=${conversation.conversation_id}`)
+
+    const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
+    const source = within(agent).getByRole('button', { name: '查看来源 1：产品研究.pdf' })
+    expect(source).toHaveTextContent('[1]')
+    expect(agent).not.toHaveTextContent('material:document-owned')
+    expect(within(agent).getByRole('status', { name: '本轮证据来源' })).toHaveTextContent('知识库资料 1')
+    expect(within(agent).getByRole('status', { name: '本轮证据来源' })).not.toHaveTextContent('你的研究材料')
+    fireEvent.click(source)
+
+    const panel = await screen.findByRole('region', { name: '研究面板' })
+    const library = within(panel).getByRole('group', { name: '知识库' })
+    expect(library).toHaveTextContent('产品研究.pdf')
+    expect(library).toHaveTextContent('知识库资料')
+    expect(within(panel).getByRole('group', { name: '用户文件' })).not.toHaveTextContent('产品研究.pdf')
+    fireEvent.click(within(library).getByRole('button', { name: /产品研究.pdf/ }))
+    expect(await screen.findByRole('link', { name: '打开资料原文' })).toHaveAttribute('href', '/library?kb_id=library-owned&document_id=document-owned&segment_id=segment-owned')
+  })
+
   it('opens standalone history from the mobile entry', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [] })))
     renderPage()
@@ -165,7 +199,7 @@ describe('ResearchAgentConversationPage', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [] })))
     renderPage()
 
-    const agent = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     const intro = within(agent).getByRole('dialog', { name: '深入研究介绍' })
     expect(within(intro).getByRole('heading', { name: '深入研究' })).toBeVisible()
     expect(within(intro).getByText('让 Agent 多轮检索知识库与网页，整理出一份带证据的研究结果。')).toBeVisible()
@@ -179,7 +213,7 @@ describe('ResearchAgentConversationPage', () => {
 
     cleanup()
     renderPage('user-agent-second')
-    const secondAgent = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const secondAgent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     expect(within(secondAgent).getByRole('dialog', { name: '深入研究介绍' })).toBeVisible()
     await vi.advanceTimersByTimeAsync(5000)
     expect(within(secondAgent).queryByRole('dialog', { name: '深入研究介绍' })).not.toBeInTheDocument()
@@ -189,7 +223,7 @@ describe('ResearchAgentConversationPage', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [] })))
     renderPage()
 
-    const agent = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     const addButton = within(agent).getByRole('button', { name: '添加研究材料' })
     fireEvent.click(addButton)
 
@@ -207,7 +241,7 @@ describe('ResearchAgentConversationPage', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [] })))
     renderPage()
 
-    const agent = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     const modeButton = within(agent).getByRole('button', { name: '选择 Agent 模式' })
     expect(modeButton).toHaveTextContent('标准')
 
@@ -216,7 +250,7 @@ describe('ResearchAgentConversationPage', () => {
     fireEvent.click(within(menu).getByRole('menuitemradio', { name: /深入研究/ }))
 
     expect(modeButton).toHaveTextContent('深入研究')
-    const composer = within(agent).getByRole('textbox', { name: '问社会学 Agent' }).closest('.research-agent-composer')
+    const composer = within(agent).getByRole('textbox', { name: '问 Everplain' }).closest('.research-agent-composer')
     expect(composer).toHaveClass('is-awaiting-first-message')
     expect(within(agent).queryByRole('menu', { name: '选择 Agent 模式' })).not.toBeInTheDocument()
 
@@ -225,7 +259,7 @@ describe('ResearchAgentConversationPage', () => {
     expect(within(agent).queryByRole('menu', { name: '选择 Agent 模式' })).not.toBeInTheDocument()
     expect(modeButton).toHaveFocus()
 
-    const input = within(agent).getByRole('textbox', { name: '问社会学 Agent' })
+    const input = within(agent).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(input, { target: { value: '比较为何持续发生？' } })
     fireEvent.submit(input.closest('form') as HTMLFormElement)
     await waitFor(() => expect(composer).not.toHaveClass('is-awaiting-first-message'))
@@ -252,10 +286,10 @@ describe('ResearchAgentConversationPage', () => {
     }))
     renderPage()
 
-    const agent = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     fireEvent.click(within(agent).getByRole('button', { name: '选择 Agent 模式' }))
     fireEvent.click(within(agent).getByRole('menuitemradio', { name: /深入研究/ }))
-    const input = within(agent).getByRole('textbox', { name: '问社会学 Agent' })
+    const input = within(agent).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(input, { target: { value: completed.turns[0].user.content } })
     fireEvent.submit(input.closest('form') as HTMLFormElement)
 
@@ -285,10 +319,10 @@ describe('ResearchAgentConversationPage', () => {
     }))
     renderPage()
 
-    const agent = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     fireEvent.click(within(agent).getByRole('button', { name: '选择 Agent 模式' }))
     fireEvent.click(within(agent).getByRole('menuitemradio', { name: /深入研究/ }))
-    const input = within(agent).getByRole('textbox', { name: '问社会学 Agent' })
+    const input = within(agent).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(input, { target: { value: '研究社区互助的变化。' } })
     fireEvent.submit(input.closest('form') as HTMLFormElement)
 
@@ -314,14 +348,14 @@ describe('ResearchAgentConversationPage', () => {
     vi.stubGlobal('fetch', fetch)
     renderPage()
 
-    const agent = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     const webSearchButton = within(agent).getByRole('button', { name: '联网搜索' })
     expect(webSearchButton).toHaveAttribute('aria-pressed', 'true')
     expect(webSearchButton).toHaveTextContent('联网已开启')
-    fireEvent.change(within(agent).getByRole('textbox', { name: '问社会学 Agent' }), {
+    fireEvent.change(within(agent).getByRole('textbox', { name: '问 Everplain' }), {
       target: { value: '查找近期青年就业政策。' },
     })
-    fireEvent.submit(within(agent).getByRole('textbox', { name: '问社会学 Agent' }).closest('form') as HTMLFormElement)
+    fireEvent.submit(within(agent).getByRole('textbox', { name: '问 Everplain' }).closest('form') as HTMLFormElement)
 
     await waitFor(() => expect(fetch.mock.calls.some(([input]) => urlFor(input).pathname === '/api/agent/turns')).toBe(true))
     const turnCall = fetch.mock.calls.find(([input]) => urlFor(input).pathname === '/api/agent/turns')
@@ -441,7 +475,7 @@ describe('ResearchAgentConversationPage', () => {
         conversationId={conversation.conversation_id} taskId="uploaded-file-task" />
     </MemoryRouter>)
     await screen.findByRole('region', { name: '研究结论' })
-    const input = screen.getByRole('textbox', { name: '问社会学 Agent' })
+    const input = screen.getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(input, { target: { value: '根据之前的调研继续梳理。' } })
     fireEvent.submit(input.closest('form') as HTMLFormElement)
     await waitFor(() => expect(requests).toHaveLength(1))
@@ -582,7 +616,7 @@ describe('ResearchAgentConversationPage', () => {
     expect(within(agent).getByText(initial.turns[0].assistant.content)).toBeVisible()
     expect(screen.getByLabelText('当前测试路径')).toHaveTextContent('/research/task-1/match?view=document')
 
-    const textbox = within(agent).getByRole('textbox', { name: '问社会学 Agent' })
+    const textbox = within(agent).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(textbox, { target: { value: '请补充这一节的反例。' } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
@@ -631,7 +665,7 @@ describe('ResearchAgentConversationPage', () => {
     embedded.unmount()
 
     renderPage()
-    const standalone = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const standalone = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     expect(within(standalone).queryByRole('button', { name: '研究材料' })).not.toBeInTheDocument()
   })
 
@@ -679,7 +713,7 @@ describe('ResearchAgentConversationPage', () => {
     fireEvent.click(within(picker).getByRole('button', { name: '完成' }))
 
     expect(within(agent).getByText('社区访谈.docx')).toBeVisible()
-    const input = within(agent).getByRole('textbox', { name: '问社会学 Agent' })
+    const input = within(agent).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(input, { target: { value: '只根据这份访谈总结。' } })
     fireEvent.submit(input.closest('form') as HTMLFormElement)
 
@@ -832,7 +866,7 @@ describe('ResearchAgentConversationPage', () => {
     }))
     renderPage('user-agent', `/agent?conversation_id=${conversation.conversation_id}`)
 
-    const agent = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     expect(within(agent).getByRole('status', { name: '本轮证据来源' })).toHaveTextContent('公开网页')
     fireEvent.click(within(agent).getByRole('button', { name: '查看证据：高校毕业生就业政策' }))
     const sources = await screen.findByRole('region', { name: '研究面板' })
@@ -863,7 +897,7 @@ describe('ResearchAgentConversationPage', () => {
     )
 
     const agent = await screen.findByRole('complementary', { name: '研究 Agent 对话栏' })
-    expect(within(agent).getByRole('status', { name: '本轮证据来源' })).toHaveTextContent('本轮引用 · 群学知识库 1 · 你的研究材料 1')
+    expect(within(agent).getByRole('status', { name: '本轮证据来源' })).toHaveTextContent('本轮引用 · 知识库资料 1 · 你的研究材料 1')
   })
 
   it('keeps a deleted material citation as a tombstone without opening source text', async () => {
@@ -1044,7 +1078,7 @@ describe('ResearchAgentConversationPage', () => {
       )
 
       const agent = await screen.findByRole('complementary', { name: '研究 Agent 对话栏' })
-      const textbox = within(agent).getByRole('textbox', { name: '问社会学 Agent' })
+      const textbox = within(agent).getByRole('textbox', { name: '问 Everplain' })
       fireEvent.change(textbox, { target: { value: '请依据我的访谈回答。' } })
       fireEvent.submit(textbox.closest('form') as HTMLFormElement)
       expect(await within(agent).findByText(leakedAnswer)).toBeVisible()
@@ -1086,11 +1120,11 @@ describe('ResearchAgentConversationPage', () => {
 
     renderEnglishPage('user-agent', `/agent?conversation_id=${conversation.conversation_id}`)
 
-    const region = await screen.findByRole('region', { name: 'Sociology Agent conversation' })
+    const region = await screen.findByRole('region', { name: 'Everplain conversation' })
     expect(within(region).getByRole('button', { name: 'Copy answer' })).toBeVisible()
     expect(within(region).getByRole('button', { name: 'Regenerate' })).toBeVisible()
     expect(within(region).getByText(/Knowledge base not searched/)).toBeVisible()
-    expect(within(region).getByRole('textbox', { name: 'Ask the Sociology Agent' })).toBeVisible()
+    expect(within(region).getByRole('textbox', { name: 'Ask Everplain' })).toBeVisible()
   })
 
   it('keeps the empty Agent focused on starting a conversation', async () => {
@@ -1099,9 +1133,9 @@ describe('ResearchAgentConversationPage', () => {
     )))
     renderPage()
 
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     expect(within(region).queryByRole('navigation', { name: '研究入口' })).not.toBeInTheDocument()
-    expect(within(region).getByRole('textbox', { name: '问社会学 Agent' })).toBeVisible()
+    expect(within(region).getByRole('textbox', { name: '问 Everplain' })).toBeVisible()
   })
 
   it('renders a persisted model proposal as a pinned handoff to New Research', async () => {
@@ -1148,7 +1182,7 @@ describe('ResearchAgentConversationPage', () => {
     }))
     renderPage('user-agent', `/agent?conversation_id=${conversation.conversation_id}`)
 
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     const handoff = await within(region).findByRole('region', { name: '研究建议' })
     expect(within(handoff).getByText('社区成员流动正在改变邻里互助')).toBeVisible()
     expect(within(handoff).getByRole('button', { name: '去新建研究' })).toBeEnabled()
@@ -1186,7 +1220,7 @@ describe('ResearchAgentConversationPage', () => {
     }))
     renderPage('user-agent', `/agent?conversation_id=${conversation.conversation_id}`)
 
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     expect(region).not.toHaveTextContent('未审核')
     const knowledgeCard = await within(region).findByRole('region', { name: '知识库建议' })
     const graphCard = within(region).getByRole('region', { name: '知识图谱建议' })
@@ -1242,8 +1276,8 @@ describe('ResearchAgentConversationPage', () => {
     )))
     renderPage()
 
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
-    const textbox = within(region).getByRole('textbox', { name: '问社会学 Agent' })
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
+    const textbox = within(region).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(textbox, { target: { value: '把这个现象继续形成研究。' } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
@@ -1294,7 +1328,7 @@ describe('ResearchAgentConversationPage', () => {
       `/agent?conversation_id=${conversation.conversation_id}&knowledge_release_id=release-query-newer`,
     )
 
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     const citationButtons = await within(region).findAllByRole('button', { name: `查看证据：${citation.label}` })
     fireEvent.click(citationButtons[0])
     let sources = await screen.findByRole('region', { name: '研究面板' })
@@ -1349,14 +1383,14 @@ describe('ResearchAgentConversationPage', () => {
     )))
     renderPage()
 
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     expect(region.querySelector('[data-research-agent-bot]')).toBeInTheDocument()
-    const textbox = within(region).getByRole('textbox', { name: '问社会学 Agent' })
+    const textbox = within(region).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(textbox, { target: { value: conversation.title } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
     await waitFor(() => expect(startViewTransition).toHaveBeenCalledTimes(1))
-    const assistantMark = await within(region).findByLabelText('群学 Agent')
+    const assistantMark = await within(region).findByLabelText('Everplain')
     expect(assistantMark.querySelector('[data-research-agent-bot]')).toBeInTheDocument()
   })
 
@@ -1376,8 +1410,8 @@ describe('ResearchAgentConversationPage', () => {
     }))
     renderPage()
 
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
-    const textbox = within(region).getByRole('textbox', { name: '问社会学 Agent' })
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
+    const textbox = within(region).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(textbox, { target: { value: conversation.title } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
@@ -1397,17 +1431,17 @@ describe('ResearchAgentConversationPage', () => {
     )))
     const draft = '这是账号 A 还没有发送的田野笔记'
     const firstPage = renderPage('user-a')
-    const firstTextbox = await screen.findByRole('textbox', { name: '问社会学 Agent' })
+    const firstTextbox = await screen.findByRole('textbox', { name: '问 Everplain' })
     expect(firstTextbox).toHaveAttribute('maxlength', '12000')
     fireEvent.change(firstTextbox, { target: { value: draft } })
     firstPage.unmount()
 
     const restoredPage = renderPage('user-a')
-    expect(await screen.findByRole('textbox', { name: '问社会学 Agent' })).toHaveValue(draft)
+    expect(await screen.findByRole('textbox', { name: '问 Everplain' })).toHaveValue(draft)
     restoredPage.unmount()
 
     renderPage('user-b')
-    expect(await screen.findByRole('textbox', { name: '问社会学 Agent' })).toHaveValue('')
+    expect(await screen.findByRole('textbox', { name: '问 Everplain' })).toHaveValue('')
   })
 
   it('automatically resumes a disconnected turn with the original idempotency key', async () => {
@@ -1432,8 +1466,8 @@ describe('ResearchAgentConversationPage', () => {
     }))
     renderPage()
 
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
-    const textbox = within(region).getByRole('textbox', { name: '问社会学 Agent' })
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
+    const textbox = within(region).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(textbox, { target: { value: question } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
@@ -1472,8 +1506,8 @@ describe('ResearchAgentConversationPage', () => {
 
     try {
       renderPage()
-      const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
-      const textbox = within(region).getByRole('textbox', { name: '问社会学 Agent' })
+      const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
+      const textbox = within(region).getByRole('textbox', { name: '问 Everplain' })
       fireEvent.change(textbox, { target: { value: first.title } })
       fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
@@ -1531,8 +1565,8 @@ describe('ResearchAgentConversationPage', () => {
     }))
     renderPage()
 
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
-    const textbox = within(region).getByRole('textbox', { name: '问社会学 Agent' })
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
+    const textbox = within(region).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(textbox, { target: { value: late.title } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
     expect(await within(region).findByRole('button', { name: '停止生成' })).toBeVisible()
@@ -1568,8 +1602,8 @@ describe('ResearchAgentConversationPage', () => {
       return json({}, 404)
     }))
     renderPage()
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
-    const textbox = within(region).getByRole('textbox', { name: '问社会学 Agent' })
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
+    const textbox = within(region).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(textbox, { target: { value: conversation.title } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
     expect(await within(region).findByText('先检索。', { selector: '.new-research__markdown p' })).toBeVisible()
@@ -1611,8 +1645,8 @@ describe('ResearchAgentConversationPage', () => {
     }))
     renderPage()
 
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
-    const textbox = within(region).getByRole('textbox', { name: '问社会学 Agent' })
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
+    const textbox = within(region).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(textbox, { target: { value: conversation.title } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
@@ -1654,8 +1688,8 @@ describe('ResearchAgentConversationPage', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const first = renderPage('user-stop')
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
-    const textbox = within(region).getByRole('textbox', { name: '问社会学 Agent' })
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
+    const textbox = within(region).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(textbox, { target: { value: '研究青年孤独。' } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
@@ -1677,7 +1711,7 @@ describe('ResearchAgentConversationPage', () => {
     first.unmount()
 
     renderPage('user-stop', '/agent?conversation_id=conversation-stop')
-    const restored = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const restored = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     expect(within(restored).getByText('已经形成一段可保留的回答。')).toBeVisible()
     expect(within(restored).getByText('本轮已停止，已保留生成内容和 1 个已完成步骤。')).toBeVisible()
     const restoredTools = within(restored).getByRole('button', { name: /工具调用已中断/ })
@@ -1702,9 +1736,9 @@ describe('ResearchAgentConversationPage', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const page = renderPage('user-leave')
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
-    fireEvent.change(within(region).getByRole('textbox', { name: '问社会学 Agent' }), { target: { value: '继续调查社区照护。' } })
-    fireEvent.submit(within(region).getByRole('textbox', { name: '问社会学 Agent' }).closest('form') as HTMLFormElement)
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
+    fireEvent.change(within(region).getByRole('textbox', { name: '问 Everplain' }), { target: { value: '继续调查社区照护。' } })
+    fireEvent.submit(within(region).getByRole('textbox', { name: '问 Everplain' }).closest('form') as HTMLFormElement)
     expect(await within(region).findByText('尚未完成的研究内容。')).toBeVisible()
 
     page.unmount()
@@ -1745,10 +1779,10 @@ describe('ResearchAgentConversationPage', () => {
     }))
     renderPage('user-deep-stop')
 
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     fireEvent.click(within(region).getByRole('button', { name: '选择 Agent 模式' }))
     fireEvent.click(within(region).getByRole('menuitemradio', { name: /深入研究/ }))
-    const textbox = within(region).getByRole('textbox', { name: '问社会学 Agent' })
+    const textbox = within(region).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(textbox, { target: { value: '研究青年孤独。' } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
@@ -1774,8 +1808,8 @@ describe('ResearchAgentConversationPage', () => {
     }))
     renderPage()
 
-    const region = await screen.findByRole('region', { name: '社会学 Agent 对话' })
-    const textbox = within(region).getByRole('textbox', { name: '问社会学 Agent' })
+    const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
+    const textbox = within(region).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(textbox, { target: { value: conversation.title } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
@@ -1788,13 +1822,13 @@ describe('ResearchAgentConversationPage', () => {
 it('opens the native file chooser from the standalone composer without navigating', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => json({ items: [] })))
   renderPage()
-  await screen.findByRole('region', { name: '社会学 Agent 对话' })
+  await screen.findByRole('region', { name: 'Everplain Agent 对话' })
   const chooser = document.querySelector<HTMLInputElement>('input[type="file"]')!
   const click = vi.spyOn(chooser, 'click')
   fireEvent.click(screen.getByRole('button', { name: '添加研究材料' }))
   fireEvent.click(screen.getByRole('menuitem', { name: '上传文件' }))
   expect(click).toHaveBeenCalledOnce()
-  expect(screen.getByRole('textbox', { name: '问社会学 Agent' })).toBeVisible()
+  expect(screen.getByRole('textbox', { name: '问 Everplain' })).toBeVisible()
 })
 
 it('starts a project conversation from the standalone Agent folder button', async () => {
@@ -1813,7 +1847,7 @@ it('starts a project conversation from the standalone Agent folder button', asyn
   renderPage()
   fireEvent.click(await screen.findByRole('button', { name: '在社区研究中新建对话' }))
   expect(screen.getByRole('button', { name: '对话所属项目' })).toHaveTextContent('社区研究')
-  const input = screen.getByRole('textbox', { name: '问社会学 Agent' })
+  const input = screen.getByRole('textbox', { name: '问 Everplain' })
   await waitFor(() => expect(input).toHaveFocus())
   fireEvent.change(input, { target: { value: '讨论社区互助' } })
   fireEvent.submit(input.closest('form')!)
@@ -1827,7 +1861,7 @@ it('keeps an unsent draft when the composer switches between project and indepen
     : { items: [] })))
   renderPage()
   await screen.findByRole('button', { name: '在社区研究中新建对话' })
-  const input = screen.getByRole('textbox', { name: '问社会学 Agent' })
+  const input = screen.getByRole('textbox', { name: '问 Everplain' })
   fireEvent.change(input, { target: { value: '保留这段未发送的问题' } })
   const projectSelect = screen.getByRole('button', { name: '对话所属项目' })
   fireEvent.click(projectSelect)
@@ -1898,16 +1932,16 @@ describe('conversation lifecycle recovery', () => {
       return id === 'a' || id === 'b' ? json(conversationFixture({ id })) : json({ items: [] })
     }))
     const first = renderPage('owner', '/agent?conversation_id=a')
-    const input = await screen.findByRole('textbox', { name: '问社会学 Agent' })
+    const input = await screen.findByRole('textbox', { name: '问 Everplain' })
     await waitFor(() => expect(input).not.toBeDisabled())
     fireEvent.change(input, { target: { value: '只属于 A 的草稿' } })
     first.unmount()
     const other = renderPage('owner', '/agent?conversation_id=b')
-    expect(await screen.findByRole('textbox', { name: '问社会学 Agent' })).toHaveValue('')
+    expect(await screen.findByRole('textbox', { name: '问 Everplain' })).toHaveValue('')
     other.unmount()
     window.sessionStorage.clear()
     renderPage('owner', '/agent?conversation_id=a')
-    expect(await screen.findByRole('textbox', { name: '问社会学 Agent' })).toHaveValue('只属于 A 的草稿')
+    expect(await screen.findByRole('textbox', { name: '问 Everplain' })).toHaveValue('只属于 A 的草稿')
   })
 
   it('keeps an unfinished turn paused on return and resumes its original request', async () => {
@@ -1925,7 +1959,7 @@ describe('conversation lifecycle recovery', () => {
       return json({ items: [] })
     }))
     const first = renderPage('owner')
-    const input = await screen.findByRole('textbox', { name: '问社会学 Agent' })
+    const input = await screen.findByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(input, { target: { value: '原始研究问题' } })
     fireEvent.submit(input.closest('form') as HTMLFormElement)
     expect(await screen.findByText('离开前的部分答案')).toBeVisible()
@@ -1952,7 +1986,7 @@ describe('conversation lifecycle recovery', () => {
       return json({ items: [] })
     }))
     renderPage('owner')
-    const input = await screen.findByRole('textbox', { name: '问社会学 Agent' })
+    const input = await screen.findByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(input, { target: { value: '关闭页面测试' } })
     fireEvent.submit(input.closest('form') as HTMLFormElement)
     expect(await screen.findByText('正在生成的文本')).toBeVisible()
@@ -2005,7 +2039,7 @@ it('waits for stop confirmation and retries a rejected pause before allowing con
     return json({ items: [] })
   }))
   renderPage('owner')
-  const input = await screen.findByRole('textbox', { name: '问社会学 Agent' })
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
   fireEvent.change(input, { target: { value: '等待暂停确认' } })
   fireEvent.submit(input.closest('form') as HTMLFormElement)
   expect(await screen.findByText('暂停确认中的输出')).toBeVisible()
@@ -2033,7 +2067,7 @@ it('cancels a bound conversation when props switch and ignores its late stream',
     return json({ items: [] })
   }))
   const page = render(<MemoryRouter><ResearchAgentConversationPage embedded userId="owner" conversationId="bound-a" /></MemoryRouter>)
-  const input = await screen.findByRole('textbox', { name: '问社会学 Agent' })
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
   await waitFor(() => expect(input).not.toBeDisabled())
   fireEvent.change(input, { target: { value: 'A 的问题' } })
   fireEvent.submit(input.closest('form') as HTMLFormElement)
@@ -2063,7 +2097,7 @@ it('retains an earlier paused answer while a new question is running', async () 
     return json({ items: [] })
   }))
   renderPage('owner')
-  const input = await screen.findByRole('textbox', { name: '问社会学 Agent' })
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
   fireEvent.change(input, { target: { value: '先问的问题' } })
   fireEvent.submit(input.closest('form') as HTMLFormElement)
   expect(await screen.findByText('前一轮已经保存的半段')).toBeVisible()
@@ -2091,4 +2125,19 @@ it('keeps one embedded research panel toggle closed until clicked', async () => 
   expect(toggle).toHaveAttribute('aria-expanded', 'true')
   fireEvent.click(toggle)
   expect(screen.queryByRole('complementary', { name: '研究面板' })).not.toBeInTheDocument()
+})
+
+it('restores a homepage question into the composer without submitting a paid run', async () => {
+  const requests: string[] = []
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    requests.push(url)
+    if (url.includes('/api/agent/conversations')) return json({ items: [] })
+    return json({ items: [], tasks: [] })
+  }))
+  render(<MemoryRouter initialEntries={['/agent?prompt=Compare%20the%20uploaded%20specifications']}>
+    <ResearchAgentConversationPage userId="personal-owner" />
+  </MemoryRouter>)
+  await waitFor(() => expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('Compare the uploaded specifications'))
+  expect(requests.some(url => url.includes('/api/agent/turns'))).toBe(false)
 })
