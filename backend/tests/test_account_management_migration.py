@@ -15,7 +15,7 @@ def test_existing_users_remain_members_with_secondary_model_use_denied(
 ) -> None:
     database_path = tmp_path / "upgrade-account.db"
     database_url = f"sqlite:///{database_path}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     command.upgrade(alembic_config, "20260820_0005")
     user_id = str(uuid4())
     task_id = str(uuid4())

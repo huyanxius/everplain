@@ -519,10 +519,10 @@ def test_environment_configuration_switches_bootstrap_between_base_and_sft(
     ):
         first_url, first_requests = first
         second_url, second_requests = second
-        monkeypatch.setenv("QUNXUE_RUNTIME_MODE", "base")
-        monkeypatch.setenv("QUNXUE_MODEL_BASE_URL", first_url)
-        monkeypatch.setenv("QUNXUE_MODEL_NAME", "base-model")
-        monkeypatch.setenv("QUNXUE_MODEL_API_KEY", "local-bootstrap-test-key")
+        monkeypatch.setenv("EVERPLAIN_RUNTIME_MODE", "base")
+        monkeypatch.setenv("EVERPLAIN_MODEL_BASE_URL", first_url)
+        monkeypatch.setenv("EVERPLAIN_MODEL_NAME", "base-model")
+        monkeypatch.setenv("EVERPLAIN_MODEL_API_KEY", "local-bootstrap-test-key")
         base_settings = Settings(
             _env_file=None,
             database_url=f"sqlite:///{tmp_path / 'base.db'}",
@@ -542,10 +542,10 @@ def test_environment_configuration_switches_bootstrap_between_base_and_sft(
             context=None,
         )
 
-        monkeypatch.setenv("QUNXUE_RUNTIME_MODE", "sft")
-        monkeypatch.setenv("QUNXUE_MODEL_BASE_URL", second_url)
-        monkeypatch.setenv("QUNXUE_MODEL_NAME", "sft-model")
-        monkeypatch.setenv("QUNXUE_MODEL_SFT_RESOURCE_ID", "local-lora-test-id")
+        monkeypatch.setenv("EVERPLAIN_RUNTIME_MODE", "sft")
+        monkeypatch.setenv("EVERPLAIN_MODEL_BASE_URL", second_url)
+        monkeypatch.setenv("EVERPLAIN_MODEL_NAME", "sft-model")
+        monkeypatch.setenv("EVERPLAIN_MODEL_SFT_RESOURCE_ID", "local-lora-test-id")
         sft_settings = Settings(
             _env_file=None,
             database_url=f"sqlite:///{tmp_path / 'sft.db'}",

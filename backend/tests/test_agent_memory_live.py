@@ -15,13 +15,14 @@ from qunxue_api.bootstrap import _model_endpoints_from_settings
 from qunxue_api.settings import Settings
 
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("QUNXUE_MEMORY_LIVE_ENV_FILE"), reason="requires explicit live model config"
+    not os.environ.get("EVERPLAIN_MEMORY_LIVE_ENV_FILE"),
+    reason="requires explicit live model config",
 )
 
 
 @pytest.fixture
 def live_model():
-    settings = Settings(_env_file=os.environ["QUNXUE_MEMORY_LIVE_ENV_FILE"])
+    settings = Settings(_env_file=os.environ["EVERPLAIN_MEMORY_LIVE_ENV_FILE"])
     endpoint = _model_endpoints_from_settings(settings)[0]
     return endpoint, dict(
         base_url=endpoint.base_url,

@@ -36,7 +36,7 @@ def test_create_app_installs_account_routes_when_admin_secret_is_configured(
     alembic_config: Config,
 ) -> None:
     database_url = f"sqlite:///{tmp_path / 'account-bootstrap.db'}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     command.upgrade(alembic_config, "head")
     settings = Settings(
         _env_file=None,
@@ -64,7 +64,7 @@ def client(
     alembic_config: Config,
 ) -> Iterator[TestClient]:
     database_url = f"sqlite:///{tmp_path / 'account-test.db'}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     settings = Settings(
         _env_file=None,
         database_url=database_url,
@@ -415,7 +415,7 @@ def test_install_provisions_the_fixed_admin_without_database_or_cli_work(
     alembic_config: Config,
 ) -> None:
     database_url = f"sqlite:///{tmp_path / 'legacy-bootstrap.db'}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     command.upgrade(alembic_config, "20260820_0005")
     password_hasher = Argon2PasswordHasher()
     now = datetime.now(UTC)
@@ -888,7 +888,7 @@ def test_export_excludes_credentials_and_permanent_delete_purges_model_data(
         assert download.headers["content-type"] == "application/json; charset=utf-8"
         assert download.headers["cache-control"] == "no-store"
         assert download.headers["content-disposition"] == (
-            f'attachment; filename="qunxue-account-export-{created.json()["export_id"]}.json"'
+            f'attachment; filename="everplain-account-export-{created.json()["export_id"]}.json"'
         )
         payload = download.json()
         serialized = json.dumps(payload, ensure_ascii=False)

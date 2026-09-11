@@ -469,7 +469,7 @@ def test_delete_preflight_allows_cors_delete_method(client: TestClient) -> None:
     response = client.options(
         "/api/research-tasks/test/materials/test",
         headers={
-            "Origin": "http://localhost:5173",
+            "Origin": "http://localhost:5196",
             "Access-Control-Request-Method": "DELETE",
             "Access-Control-Request-Headers": "Idempotency-Key",
         },

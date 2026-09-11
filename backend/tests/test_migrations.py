@@ -129,7 +129,7 @@ def _database_indexes(
 def test_default_database_url_is_independent_of_working_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("QUNXUE_DATABASE_URL", raising=False)
+    monkeypatch.delenv("EVERPLAIN_DATABASE_URL", raising=False)
     monkeypatch.chdir(BACKEND_ROOT.parent)
     settings_from_repository_root = Settings(_env_file=None)
     monkeypatch.chdir(BACKEND_ROOT)
@@ -145,8 +145,8 @@ def test_backend_env_file_is_independent_of_working_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     dotenv_path = tmp_path / ".env"
-    dotenv_path.write_text("QUNXUE_RUNTIME_MODE=sft\n", encoding="utf-8")
-    monkeypatch.delenv("QUNXUE_RUNTIME_MODE", raising=False)
+    dotenv_path.write_text("EVERPLAIN_RUNTIME_MODE=sft\n", encoding="utf-8")
+    monkeypatch.delenv("EVERPLAIN_RUNTIME_MODE", raising=False)
 
     assert Settings.model_config["env_file"] == BACKEND_ROOT / ".env"
     monkeypatch.setitem(Settings.model_config, "env_file", dotenv_path)
@@ -167,7 +167,7 @@ def test_relative_database_override_is_independent_of_working_directory(
     database_path = tmp_path / "relative-override.db"
     relative_database_path = os.path.relpath(database_path, BACKEND_ROOT)
     monkeypatch.setenv(
-        "QUNXUE_DATABASE_URL",
+        "EVERPLAIN_DATABASE_URL",
         f"sqlite:///{relative_database_path}",
     )
     monkeypatch.chdir(BACKEND_ROOT.parent)
@@ -194,7 +194,7 @@ def test_database_url_override_drives_application_and_alembic(
     alembic_config: Config,
 ) -> None:
     database_url = f"sqlite:///{tmp_path / 'override.db'}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     settings = Settings()
 
     command.upgrade(alembic_config, "head")
@@ -214,7 +214,7 @@ def test_research_task_progress_projection_is_persisted(
     alembic_config: Config,
 ) -> None:
     database_url = f"sqlite:///{tmp_path / 'projection.db'}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     command.upgrade(alembic_config, "head")
 
     database = Database(Settings().database_url)
@@ -242,7 +242,7 @@ def test_research_project_lifecycle_upgrade_preserves_task_conversation_and_mate
     alembic_config: Config,
 ) -> None:
     database_url = f"sqlite:///{tmp_path / 'research-project-lifecycle.db'}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     command.upgrade(alembic_config, "20260831_0001")
 
     database = Database(database_url)
@@ -371,7 +371,7 @@ def test_database_url_override_drives_offline_migrations(
         resolved_urls.append(settings.database_url)
         return settings
 
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     monkeypatch.setattr("qunxue_api.settings.Settings", recording_settings)
     output = StringIO()
     alembic_config.output_buffer = output
@@ -389,7 +389,7 @@ def test_m4_upgrade_converges_duplicate_task_plans_before_adding_uniqueness(
     alembic_config: Config,
 ) -> None:
     database_url = f"sqlite:///{tmp_path / 'm4-upgrade-convergence.db'}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     command.upgrade(alembic_config, "20260820_0005")
 
     database = Database(database_url)
@@ -576,7 +576,7 @@ def test_m4_downgrade_converges_decision_revisions_before_restoring_uniqueness(
     alembic_config: Config,
 ) -> None:
     database_url = f"sqlite:///{tmp_path / 'm4-downgrade-convergence.db'}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     command.upgrade(alembic_config, "20260822_0006")
 
     database = Database(database_url)
@@ -744,7 +744,7 @@ def test_alembic_rejects_in_memory_sqlite(
     monkeypatch: pytest.MonkeyPatch,
     alembic_config: Config,
 ) -> None:
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
 
     with pytest.raises(RuntimeError, match="file-backed SQLite database"):
         command.upgrade(alembic_config, "head")
@@ -806,7 +806,7 @@ def test_alembic_head_matches_orm_metadata(
     alembic_config: Config,
 ) -> None:
     database_url = f"sqlite:///{tmp_path / 'schema-drift.db'}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     command.upgrade(alembic_config, "head")
 
     database = Database(Settings().database_url)
