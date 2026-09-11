@@ -46,9 +46,7 @@ import {
   type SetStateAction,
 } from 'react'
 import { createPortal, flushSync } from 'react-dom'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { remarkProgressParagraphs } from './remarkProgressParagraphs'
+import { AgentAnswerMarkdown } from './AgentAnswerMarkdown'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 
 import {
@@ -79,6 +77,7 @@ import {
   type AgentRunRecovery,
   buildResearchReport,
   collectReferences,
+  citationGroup,
   conclusionDigest,
   createResearchReportDocx,
   displayAgentText,
@@ -119,12 +118,12 @@ import './new-research-workspace.css'
 // research workspaces. Embedded callers provide the research context explicitly;
 // the standalone route remains isolated in the read-only Agent workspace.
 const MAX_AGENT_MESSAGE_LENGTH = 12_000
-const DRAFT_STORAGE_KEY = 'qunxue.agent.composer-draft.v2'
-const PENDING_TURN_STORAGE_KEY = 'qunxue.agent.pending-turn.v2'
-const INTERRUPTED_TURN_STORAGE_KEY = 'qunxue.agent.interrupted-turn.v2'
-const KNOWLEDGE_RELEASE_STORAGE_KEY = 'qunxue.agent.knowledge-releases.v1'
-const AGENT_RUNTIME_STORAGE_KEY = 'qunxue.agent.runtime-modes.v1'
-const DEEP_RESEARCH_INTRO_SESSION_KEY = 'qunxue.agent.deep-research-intro-session.v1'
+const DRAFT_STORAGE_KEY = 'everplain.agent.composer-draft.v2'
+const PENDING_TURN_STORAGE_KEY = 'everplain.agent.pending-turn.v2'
+const INTERRUPTED_TURN_STORAGE_KEY = 'everplain.agent.interrupted-turn.v2'
+const KNOWLEDGE_RELEASE_STORAGE_KEY = 'everplain.agent.knowledge-releases.v1'
+const AGENT_RUNTIME_STORAGE_KEY = 'everplain.agent.runtime-modes.v1'
+const DEEP_RESEARCH_INTRO_SESSION_KEY = 'everplain.agent.deep-research-intro-session.v1'
 const DEEP_RESEARCH_INTRO_TIMEOUT_MS = 10_000
 // 退场动画时长，和 research-agent-conversation.css 里 agent-rail-leave 保持一致。
 const RAIL_EXIT_MS = 220
@@ -926,12 +925,10 @@ function citationToRail(citation: AgentCitation, locale: AppLocale): ResearchCit
     id: citation.citation_id,
     title: citation.label,
     kind: citation.kind,
-    subtitle: host ?? `${citationKindLabel(citation.kind, locale)}${materialLocator ? ` · ${materialLocator}` : citation.knowledge_id ? ` · ${citation.knowledge_id}` : ''}`,
+    subtitle: host ?? `${citationGroup(citation) === 'knowledge' ? (locale === 'en-US' ? 'Library material' : '知识库资料') : citationKindLabel(citation.kind, locale)}${materialLocator ? ` · ${materialLocator}` : ''}`,
     excerpt: citation.excerpt,
     knowledgeId: citation.knowledge_id,
-    group: citation.source_kind === 'web'
-      ? 'web'
-      : citation.kind === 'material' || citation.kind === 'research_material' ? 'material' : 'knowledge',
+    group: citationGroup(citation),
     dimension,
   }
 }
@@ -1492,7 +1489,7 @@ function SourcePills({ citations, onSelect }: { citations: AgentCitation[]; onSe
       <span className="new-research__sources-label">{text('依据', 'Evidence')}</span>
       {citations.map((citation, index) => (
         <button type="button" key={citation.citation_id} data-dimension={citationDimension(citation) ?? undefined} onClick={() => onSelect(citation)} aria-label={text(`查看证据：${citation.label}`, `View evidence: ${citation.label}`)}>
-          <b>{index + 1}</b><span>{citation.label}<small>{citation.source_kind === 'shared_material' ? text('课程资料', 'Course material') : citationKindLabel(citation.kind, locale)}</small></span>
+          <b>{index + 1}</b><span>{citation.label}<small>{citationGroup(citation) === 'knowledge' ? text('知识库资料', 'Library material') : citationKindLabel(citation.kind, locale)}</small></span>
         </button>
       ))}
     </div>
@@ -1501,21 +1498,13 @@ function SourcePills({ citations, onSelect }: { citations: AgentCitation[]; onSe
 
 function EvidenceOriginSummary({ citations }: { citations: AgentCitation[] }) {
   const { text } = useAppLocale()
-  const materialCount = citations.filter((citation) => (
-    (citation.kind === 'material' || citation.kind === 'research_material') && citation.source_kind !== 'shared_material'
-  )).length
-  const sharedCount = citations.filter((citation) => citation.source_kind === 'shared_material').length
-  const knowledgeCount = citations.filter((citation) => (
-    Boolean(citation.knowledge_id)
-      && citation.kind !== 'material'
-      && citation.kind !== 'research_material'
-  )).length
-  const webCount = citations.filter((citation) => citation.source_kind === 'web').length
-  if (!materialCount && !sharedCount && !knowledgeCount && !webCount) return null
+  const materialCount = citations.filter((citation) => !citation.deleted && citationGroup(citation) === 'material').length
+  const knowledgeCount = citations.filter((citation) => !citation.deleted && citationGroup(citation) === 'knowledge').length
+  const webCount = citations.filter((citation) => !citation.deleted && citationGroup(citation) === 'web').length
+  if (!materialCount && !knowledgeCount && !webCount) return null
   // 下面紧跟着的就是逐条依据，这里只需要一句话交代来源构成，不必再占一张卡片。
   const parts = [
-    knowledgeCount ? `${text('群学知识库', 'Qunxue knowledge')} ${knowledgeCount}` : null,
-    sharedCount ? `${text('课程资料', 'Course materials')} ${sharedCount}` : null,
+    knowledgeCount ? `${text('知识库资料', 'Knowledge library')} ${knowledgeCount}` : null,
     materialCount ? `${text('你的研究材料', 'Your materials')} ${materialCount}` : null,
     webCount ? `${text('公开网页', 'Public web')} ${webCount}` : null,
   ].filter(Boolean)
@@ -1610,14 +1599,14 @@ function AssistantTurn({
     <article className={`new-research__turn${streaming ? ' is-streaming' : ''}`}>
       <div className="new-research__user-message" data-role="user-message"><span>{question}</span></div>
       <div className="new-research__assistant-message" data-role="assistant-response">
-        <div className="new-research__assistant-label" aria-label={text('群学 Agent', 'Qunxue Agent')}>
+        <div className="new-research__assistant-label" aria-label={text('Everplain', 'Everplain')}>
           <ResearchAgentBot />
         </div>
         {streaming && streamingStatus ? <StreamingRunStatus status={streamingStatus} steps={toolSteps} /> : null}
         <ToolTraceTimeline steps={toolSteps} onOpenActivity={onOpenActivity} />
         {answer ? <div className="new-research__markdown">
-          {progressEnd > 0 ? <ReactMarkdown remarkPlugins={[remarkGfm, remarkProgressParagraphs]}>{displayAgentText(answer.slice(0, progressEnd))}</ReactMarkdown> : null}
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayAgentText(answer.slice(progressEnd))}</ReactMarkdown>
+          {progressEnd > 0 ? <AgentAnswerMarkdown citations={citations} onSelectCitation={(citation) => onSelectCitation(citation, knowledgeReleaseId)} progress>{answer.slice(0, progressEnd)}</AgentAnswerMarkdown> : null}
+          <AgentAnswerMarkdown citations={citations} onSelectCitation={(citation) => onSelectCitation(citation, knowledgeReleaseId)}>{answer.slice(progressEnd)}</AgentAnswerMarkdown>
         </div> : null}
         {!streaming && !answer && !interrupted && !failure ? <p className="new-research__thinking" role="status"><CircleNotchIcon size={14} />{text('Agent 正在组织问题与证据…', 'Agent is organizing the question and evidence…')}</p> : null}
         {interrupted ? (
@@ -2055,6 +2044,17 @@ export function ResearchAgentConversationPage({
   useEffect(() => {
     onStreamingTurnChange?.(streamingTurn)
   }, [onStreamingTurnChange, streamingTurn])
+
+  useEffect(() => {
+    const question = searchParams.get('prompt')
+    if (!question || requestedConversationId) return
+    updateDraft(question)
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete('prompt')
+      return next
+    }, { replace: true })
+  }, [searchParams, requestedConversationId, setSearchParams])
 
   useEffect(() => {
     if (!suggestedPrompt) return
@@ -3105,7 +3105,7 @@ export function ResearchAgentConversationPage({
   }
 
   function openCitation(citation: AgentCitation, knowledgeReleaseId: string | null) {
-    if (citation.source_kind === 'shared_material' && !citation.deleted && onOpenCourseCitation) { onOpenCourseCitation(citation); return }
+    if (citation.knowledge_base_id && citation.material_id && !citation.deleted && onOpenCourseCitation) { onOpenCourseCitation(citation); return }
     const conversationReleaseId = activeConversation?.conversation_id
       ? knowledgeReleaseByConversationId[activeConversation.conversation_id] ?? null
       : null
@@ -3183,18 +3183,18 @@ export function ResearchAgentConversationPage({
     </div>
   ) : selectedCitation ? (
     <div className="new-research__basis">
-      <span>{text('当前证据', 'Current evidence')} · {citationKindLabel(selectedCitation.kind, locale)}</span>
+      <span>{text('当前证据', 'Current evidence')} · {citationGroup(selectedCitation) === 'knowledge' ? text('知识库资料', 'Library material') : citationKindLabel(selectedCitation.kind, locale)}</span>
       <strong>{selectedCitation.label}</strong>
       <p>{selectedCitation.deleted
         ? text('这份研究材料已删除，原文不再可访问。', 'This research material was deleted and its source text is no longer available.')
         : selectedCitation.excerpt || text('本轮 Agent 没有返回可展开的证据摘录。', 'The Agent returned no expandable evidence excerpt for this turn.')}</p>
-      {selectedCitation.source_kind === 'shared_material' && selectedCitation.knowledge_base_id && selectedCitation.material_id ? <Link
+      {!selectedCitation.deleted && selectedCitation.knowledge_base_id && selectedCitation.material_id ? <Link
         className="qx-button"
-        to={`/courses?view=student&kb_id=${encodeURIComponent(selectedCitation.knowledge_base_id)}&document_id=${encodeURIComponent(selectedCitation.material_id)}&segment_id=${encodeURIComponent(selectedCitation.segment_id ?? '')}`}>打开课程原文</Link> : null}
+        to={`/library?kb_id=${encodeURIComponent(selectedCitation.knowledge_base_id)}&document_id=${encodeURIComponent(selectedCitation.material_id)}&segment_id=${encodeURIComponent(selectedCitation.segment_id ?? '')}`}>打开资料原文</Link> : null}
       {selectedMaterialCitation.locator
         ? <p className="new-research__basis-locator">{formatMaterialLocator(selectedMaterialCitation.locator)}</p>
         : null}
-      {selectedCitation.source_kind !== 'shared_material' && (typeof selectedCitation.locator?.task_id === 'string' || taskId || uploadTaskId.current) && selectedMaterialCitation.materialId && !selectedCitation.deleted
+      {citationGroup(selectedCitation) === 'material' && (typeof selectedCitation.locator?.task_id === 'string' || taskId || uploadTaskId.current) && selectedMaterialCitation.materialId && !selectedCitation.deleted
         ? <div className="research-agent-basis-actions">
             <button
               type="button"
@@ -3234,7 +3234,7 @@ export function ResearchAgentConversationPage({
   const conversationSurface = (
         <section
           className={`research-agent-page new-research research-agent-conversation${embedded ? ' research-agent-conversation--embedded new-research__agent-panel is-agent-synced' : ''} ${isEmpty ? 'is-empty' : 'is-conversation'}${landingBackdropPhase === 'leaving' ? ' is-transitioning' : ''}${!embedded && railMounted ? ' is-rail-mounted' : ''}${!embedded && contextOpen ? ' is-rail-open' : ''}`}
-          aria-label={embedded ? text('研究 Agent 对话栏', 'Research Agent conversation panel') : text('社会学 Agent 对话', 'Sociology Agent conversation')}
+          aria-label={embedded ? text('研究 Agent 对话栏', 'Research Agent conversation panel') : text('Everplain Agent 对话', 'Everplain conversation')}
           role={embedded ? 'complementary' : undefined}
           data-runtime-mode={runtimeMode ?? 'unknown'}
         >
@@ -3461,13 +3461,13 @@ export function ResearchAgentConversationPage({
                 ) : null}
                 <textarea
                   ref={composerInputRef}
-                  aria-label={composerAriaLabel ?? text('问社会学 Agent', 'Ask the Sociology Agent')}
+                  aria-label={composerAriaLabel ?? text('问 Everplain', 'Ask Everplain')}
                   disabled={isBusy}
                   maxLength={MAX_AGENT_MESSAGE_LENGTH}
                   value={draft}
                   onChange={(event) => updateDraft(event.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder={text('问一个问题，或描述你正在理解的现象', 'Ask a question or describe a phenomenon you are trying to understand')}
+                  placeholder={text('问一个问题，或描述你想研究的主题', 'Ask a question or describe a phenomenon you are trying to understand')}
                   rows={1}
                 />
                 <input
@@ -3624,7 +3624,7 @@ export function ResearchAgentConversationPage({
                 </div>
                 <button
                   type={canStopGeneration ? 'button' : 'submit'}
-                  aria-label={canStopGeneration ? text('停止生成', 'Stop generating') : isBusy ? text('Agent 正在加载', 'Agent is loading') : text('发送给社会学 Agent', 'Send to the Sociology Agent')}
+                  aria-label={canStopGeneration ? text('停止生成', 'Stop generating') : isBusy ? text('Agent 正在加载', 'Agent is loading') : text('发送给 Everplain', 'Send to Everplain')}
                   className={`research-agent-composer__send${canStopGeneration ? ' is-stop' : ''}`}
                   disabled={isBusy ? !canStopGeneration : !canSubmit}
                   onClick={canStopGeneration ? stopGeneration : undefined}

@@ -69,7 +69,7 @@ function clampAgentWidth(value: number) {
 
 function readAgentWidth(taskId: string) {
   try {
-    const stored = Number(window.localStorage.getItem(`qunxue.research-workspace.agent-width.v1:${taskId}`))
+    const stored = Number(window.localStorage.getItem(`everplain.research-workspace.agent-width.v1:${taskId}`))
     return Number.isFinite(stored) && stored > 0 ? clampAgentWidth(stored) : DEFAULT_AGENT_WIDTH
   } catch {
     return DEFAULT_AGENT_WIDTH
@@ -172,7 +172,7 @@ export function ResearchProjectWorkspacePage({ userId = null }: ResearchProjectW
     resizePointer.current = null
     event.currentTarget.releasePointerCapture?.(event.pointerId)
     try {
-      window.localStorage.setItem(`qunxue.research-workspace.agent-width.v1:${taskId}`, String(agentWidth))
+      window.localStorage.setItem(`everplain.research-workspace.agent-width.v1:${taskId}`, String(agentWidth))
     } catch {
       // The current layout remains usable when storage is unavailable.
     }
@@ -193,7 +193,7 @@ export function ResearchProjectWorkspacePage({ userId = null }: ResearchProjectW
     const width = clampAgentWidth(next)
     setAgentWidth(width)
     try {
-      window.localStorage.setItem(`qunxue.research-workspace.agent-width.v1:${taskId}`, String(width))
+      window.localStorage.setItem(`everplain.research-workspace.agent-width.v1:${taskId}`, String(width))
     } catch {
       // Keyboard resizing remains available for this session.
     }

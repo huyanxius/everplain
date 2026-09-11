@@ -248,7 +248,7 @@ export function ResearchAnalysisPanel({ taskId, refreshKey = 0, embedded = false
     <section className={`qx-analysis${embedded ? ' is-embedded' : ''}`} role="region" aria-label="分析">
       {!embedded ? <header className="qx-analysis__head">
         <span className="qx-eyebrow">质性分析工作台</span>
-        <h2>从原文证据到社会学解释</h2>
+        <h2>从原文证据到分析结论</h2>
         <p className="qx-analysis__summary">
           {snapshot
             ? `${snapshot.annotations.length} 条片段标记 · ${snapshot.codes.length} 个编码 · ${snapshot.memos.length} 条备忘`

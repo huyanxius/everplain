@@ -152,7 +152,7 @@ function MapIdleNote({ actions }: { readonly actions?: ReactNode }) {
       <div className="research-map__idle-content">
         <ResearchAgentBot />
         <div className="research-map__idle-note" aria-label="画布说明">
-          <h1>从一个社会学问题开始</h1>
+          <h1>从一个问题开始</h1>
           <p>对话中形成的研究结构会在这里展开。</p>
           {actions}
         </div>
@@ -296,7 +296,7 @@ export function ResearchMapCanvas({
           minZoom={0.08}
           maxZoom={1.7}
           proOptions={{ hideAttribution: true }}
-          aria-label={projection.nodes.length ? '可缩放、可拖动的社会学论证地图' : '空白研究画布'}
+          aria-label={projection.nodes.length ? '可缩放、可拖动的研究画布' : '空白研究画布'}
         >
           {projection.nodes.length ? <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#d8d6cf" /> : null}
           {projection.nodes.length ? <Controls position="bottom-left" showInteractive={false} /> : null}

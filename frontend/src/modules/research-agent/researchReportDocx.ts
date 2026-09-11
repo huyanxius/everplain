@@ -27,7 +27,7 @@ import {
   type ResearchReport,
 } from './researchReportContent'
 
-// 版式沿用《群学致知作品方案》那份 Word：正文宋体小四、1.5 倍行距、首行缩进两字，
+// 版式沿用《Everplain作品方案》那份 Word：正文宋体小四、1.5 倍行距、首行缩进两字，
 // 标题黑体，西文一律 Times New Roman。数值都是 OOXML 原生单位——字号是半磅，
 // 间距和缩进是 twip（1/20 磅，一个中文字符宽 240）。
 const SERIF_CJK = '宋体'
@@ -231,7 +231,7 @@ function brandMarkRun() {
     data: Uint8Array.from(new TextEncoder().encode(brandMarkSvg)),
     fallback: { type: 'png', data: base64ToBytes(BRAND_MARK_PNG_BASE64) },
     transformation: { width: 30, height: 30 },
-    altText: { name: '群学致知', title: '群学致知', description: '群学致知品牌标志' },
+    altText: { name: 'Everplain', title: 'Everplain', description: 'Everplain品牌标志' },
   })
 }
 
@@ -241,7 +241,7 @@ function letterhead() {
     indent: { firstLine: 0 },
     children: [
       brandMarkRun(),
-      new TextRun({ text: '  群学致知', bold: true, size: 26, font: headingFonts, color: '1B1B18' }),
+      new TextRun({ text: '  Everplain', bold: true, size: 26, font: headingFonts, color: '1B1B18' }),
     ],
   })
 }
@@ -319,9 +319,9 @@ export async function createResearchReportDocx(report: ResearchReport) {
   }
 
   const document = new Document({
-    creator: '群学致知',
+    creator: 'Everplain',
     title: report.title,
-    description: '由群学致知研究 Agent 的对话导出',
+    description: '由Everplain研究 Agent 的对话导出',
     styles: {
       default: {
         document: {

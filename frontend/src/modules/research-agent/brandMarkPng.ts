@@ -1,4 +1,4 @@
-// 群学致知品牌标志的位图副本，由 src/assets/qunxue-brand-mark.svg 按 192×192 光栅化得到。
+// Everplain品牌标志的位图副本，由 src/assets/qunxue-brand-mark.svg 按 192×192 光栅化得到。
 // Word 允许嵌 SVG，但必须同时给一份位图兜底供旧版渲染，所以这里保留两种形态；
 // 改动品牌标志时两个文件要一起更新。
 export const BRAND_MARK_PNG_BASE64 = [
