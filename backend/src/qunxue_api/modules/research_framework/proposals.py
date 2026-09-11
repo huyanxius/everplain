@@ -40,7 +40,7 @@ class ResearchDocumentProposalSnapshot:
     conversation_id: UUID
     agent_run_id: UUID
     task_id: UUID
-    theory_plan_id: UUID
+    theory_plan_id: UUID | None
     knowledge_release_id: str
     title: str
     proposed_sections: tuple[ResearchDocumentSection, ...]
@@ -80,9 +80,7 @@ class ResearchDocumentProposalRepository(Protocol):
         self, document_id: UUID
     ) -> tuple[ResearchDocumentProposalSnapshot, ...]: ...
 
-    def list_for_task(
-        self, task_id: UUID
-    ) -> tuple[ResearchDocumentProposalSnapshot, ...]: ...
+    def list_for_task(self, task_id: UUID) -> tuple[ResearchDocumentProposalSnapshot, ...]: ...
 
     def list_actionable_for_task(
         self, task_id: UUID
@@ -112,7 +110,7 @@ class ResearchDocumentProposalRepository(Protocol):
         *,
         user_id: UUID,
         task_id: UUID,
-        theory_plan_id: UUID,
+        theory_plan_id: UUID | None,
     ) -> ResearchDocumentProposalSnapshot | None: ...
 
     def agent_run_status(self, agent_run_id: UUID) -> str | None: ...
@@ -229,7 +227,7 @@ class ResearchDocumentProposalService:
         conversation_id: UUID,
         agent_run_id: UUID,
         task_id: UUID,
-        theory_plan_id: UUID,
+        theory_plan_id: UUID | None,
         knowledge_release_id: str,
         title: str,
         sections: tuple[ResearchDocumentSection, ...],
@@ -239,7 +237,7 @@ class ResearchDocumentProposalService:
         self._validate_proposed_sections(
             sections,
             release_id=release_id,
-            require_complete=True,
+            require_complete=theory_plan_id is not None,
         )
         self._require_agent_context(
             user_id=user_id,
@@ -266,9 +264,10 @@ class ResearchDocumentProposalService:
             task_id=task_id,
             theory_plan_id=theory_plan_id,
         )
-        if existing is not None and self._repository.agent_run_status(
-            existing.agent_run_id
-        ) in {"failed", "interrupted"}:
+        if existing is not None and self._repository.agent_run_status(existing.agent_run_id) in {
+            "failed",
+            "interrupted",
+        }:
             archived = replace(
                 existing,
                 status=ResearchDocumentProposalStatus.ABORTED,
@@ -390,7 +389,7 @@ class ResearchDocumentProposalService:
             self._validate_proposed_sections(
                 proposal.proposed_sections,
                 release_id=proposal.knowledge_release_id,
-                require_complete=True,
+                require_complete=proposal.theory_plan_id is not None,
             )
             accepted_sections = tuple(
                 replace(section, status=ResearchDocumentSectionStatus.REVIEWED)
@@ -477,7 +476,7 @@ class ResearchDocumentProposalService:
         *,
         user_id: UUID,
         task_id: UUID,
-        theory_plan_id: UUID,
+        theory_plan_id: UUID | None,
         knowledge_release_id: str,
         sections: tuple[ResearchDocumentSection, ...],
     ) -> dict[str, object] | None:
@@ -536,7 +535,11 @@ class ResearchDocumentProposalService:
         for section in sections:
             if not section.content.strip():
                 raise ValueError("proposal section content is required")
-            if any(item.knowledge_release_id != release_id for item in section.evidence_refs):
+            if any(
+                item.source_kind.value == "public_knowledge"
+                and item.knowledge_release_id != release_id
+                for item in section.evidence_refs
+            ):
                 raise ValueError("proposal evidence must use the document knowledge release")
         if not require_complete:
             return

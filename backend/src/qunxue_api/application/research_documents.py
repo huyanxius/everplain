@@ -43,7 +43,7 @@ from qunxue_api.modules.theory_matching import (
 class ResearchDocumentDeliveryExport:
     document_id: UUID
     task_id: UUID
-    theory_plan_id: UUID
+    theory_plan_id: UUID | None
     knowledge_release_id: str
     version: int
     filename: str
@@ -61,9 +61,7 @@ class ResearchDocumentApplication:
         mutations: ResearchDocumentMutationRepository,
         get_theory_plan: Callable[[UUID], ConfirmedTheoryPlanSnapshot | None],
         get_match_run: Callable[[UUID], MatchRunSnapshot | None],
-        list_proposals_for_task: Callable[
-            [UUID], tuple[ResearchDocumentProposalSnapshot, ...]
-        ],
+        list_proposals_for_task: Callable[[UUID], tuple[ResearchDocumentProposalSnapshot, ...]],
         list_actionable_proposals_for_task: Callable[
             [UUID], tuple[ResearchDocumentProposalSnapshot, ...]
         ],
@@ -71,6 +69,7 @@ class ResearchDocumentApplication:
         formal_analysis_handoff: Callable[..., ResearchAnalysisHandoff] | None = None,
         get_method_plan: Callable[[UUID], MethodPlanSnapshot | None] | None = None,
         invalidate_method_plan: Callable[[UUID, str], None] | None = None,
+        validate_personal_evidence: Callable[..., dict[str, object]] | None = None,
     ) -> None:
         self._documents = documents
         self._research_tasks = research_tasks
@@ -78,24 +77,25 @@ class ResearchDocumentApplication:
         self._get_theory_plan = get_theory_plan
         self._get_match_run = get_match_run
         self._list_proposals_for_task = list_proposals_for_task
-        self._list_actionable_proposals_for_task = (
-            list_actionable_proposals_for_task
-        )
+        self._list_actionable_proposals_for_task = list_actionable_proposals_for_task
         self._owns_match_run = owns_match_run
         self._formal_analysis_handoff = formal_analysis_handoff
         self._get_method_plan = get_method_plan
         self._invalidate_method_plan = invalidate_method_plan
+        self._validate_personal_evidence = validate_personal_evidence
 
     def create(
         self,
         *,
         user_id: UUID,
         task: ResearchTask,
-        theory_plan_id: UUID,
+        theory_plan_id: UUID | None,
         title: str,
         sections: tuple[ResearchDocumentSection, ...],
         idempotency_key: str,
     ) -> ResearchDocumentSnapshot:
+        if task.user_id != user_id:
+            raise LookupError(task.task_id)
         receipt = self._mutations.claim(
             user_id=user_id,
             idempotency_key=idempotency_key,
@@ -112,11 +112,11 @@ class ResearchDocumentApplication:
         if replayed is not None:
             return replayed
         with self._mutation_scope(receipt):
-            theory_plan = self._get_theory_plan(theory_plan_id)
-            if theory_plan is None or theory_plan.task_id != task.task_id:
-                raise LookupError(theory_plan_id)
-            if not self._owns_match_run(
-                user_id=user_id, match_run_id=theory_plan.match_run_id
+            theory_plan = self._get_theory_plan(theory_plan_id) if theory_plan_id else None
+            if theory_plan_id is not None and (
+                theory_plan is None
+                or theory_plan.task_id != task.task_id
+                or not self._owns_match_run(user_id=user_id, match_run_id=theory_plan.match_run_id)
             ):
                 raise LookupError(theory_plan_id)
             analysis_handoff = self._current_analysis_handoff(
@@ -126,12 +126,17 @@ class ResearchDocumentApplication:
             self._validate_evidence_refs(
                 sections,
                 theory_plan=theory_plan,
+                user_id=user_id,
                 analysis_handoff=analysis_handoff,
             )
             snapshot = self._documents.create(
                 task_id=task.task_id,
-                theory_plan_id=theory_plan.theory_plan_id,
-                knowledge_release_id=theory_plan.knowledge_release.knowledge_release_id,
+                theory_plan_id=theory_plan_id,
+                knowledge_release_id=(
+                    theory_plan.knowledge_release.knowledge_release_id
+                    if theory_plan
+                    else "everplain-personal-v1"
+                ),
                 title=title,
                 sections=sections,
                 actor="user",
@@ -175,6 +180,11 @@ class ResearchDocumentApplication:
         )
         return self._with_live_analysis_availability(snapshot, user_id=user_id)
 
+    def validate_sources(self, *, user_id: UUID, document_id: UUID) -> None:
+        snapshot = self._get_owned_raw(user_id=user_id, document_id=document_id)
+        if snapshot.theory_plan_id is None:
+            self._validate_evidence_refs(snapshot.sections, theory_plan=None, user_id=user_id)
+
     def list_versions(
         self, *, user_id: UUID, document_id: UUID
     ) -> tuple[ResearchDocumentSnapshot, ...]:
@@ -202,21 +212,22 @@ class ResearchDocumentApplication:
         *,
         user_id: UUID,
         task_id: UUID,
-        theory_plan_id: UUID,
+        theory_plan_id: UUID | None,
         knowledge_release_id: str,
         sections: tuple[ResearchDocumentSection, ...],
     ) -> dict[str, object] | None:
-        theory_plan = self._get_theory_plan(theory_plan_id)
-        if (
+        if self._research_tasks.get(task_id, user_id) is None:
+            raise LookupError(task_id)
+        theory_plan = self._get_theory_plan(theory_plan_id) if theory_plan_id else None
+        if theory_plan_id is not None and (
             theory_plan is None
             or theory_plan.task_id != task_id
             or theory_plan.knowledge_release.knowledge_release_id != knowledge_release_id
-            or not self._owns_match_run(
-                user_id=user_id,
-                match_run_id=theory_plan.match_run_id,
-            )
+            or not self._owns_match_run(user_id=user_id, match_run_id=theory_plan.match_run_id)
         ):
             raise LookupError(theory_plan_id)
+        if theory_plan_id is None and knowledge_release_id != "everplain-personal-v1":
+            raise ValueError("personal documents cannot claim a disciplinary knowledge release")
         analysis_handoff = self._current_analysis_handoff(
             user_id=user_id,
             task_id=task_id,
@@ -224,22 +235,22 @@ class ResearchDocumentApplication:
         self._validate_evidence_refs(
             sections,
             theory_plan=theory_plan,
+            user_id=user_id,
             analysis_handoff=analysis_handoff,
         )
         return analysis_handoff
 
     def get_theory_plan_for_agent(
-        self, *, user_id: UUID, theory_plan_id: UUID
+        self, *, user_id: UUID, theory_plan_id: UUID | None
     ) -> ConfirmedTheoryPlanSnapshot:
         """Return the immutable M4 handoff only after checking task ownership."""
 
         theory_plan = self._required_theory_plan(theory_plan_id)
-        if (
-            self._research_tasks.get(theory_plan.task_id, user_id) is None
-            or not self._owns_match_run(
-                user_id=user_id,
-                match_run_id=theory_plan.match_run_id,
-            )
+        if self._research_tasks.get(
+            theory_plan.task_id, user_id
+        ) is None or not self._owns_match_run(
+            user_id=user_id,
+            match_run_id=theory_plan.match_run_id,
         ):
             raise LookupError(theory_plan_id)
         return theory_plan
@@ -297,6 +308,7 @@ class ResearchDocumentApplication:
             self._validate_evidence_refs(
                 sections,
                 theory_plan=theory_plan,
+                user_id=user_id,
                 analysis_handoff=analysis_handoff,
             )
             snapshot = self._documents.revise(
@@ -440,6 +452,7 @@ class ResearchDocumentApplication:
             self._validate_evidence_refs(
                 current.sections,
                 theory_plan=theory_plan,
+                user_id=user_id,
                 analysis_handoff=analysis_handoff,
             )
             pending_proposal_count = self._pending_proposal_count(current)
@@ -487,6 +500,16 @@ class ResearchDocumentApplication:
             document_id=document_id,
             pending_proposal_count=self._pending_proposal_count(current),
         )
+        if current.theory_plan_id is None:
+            try:
+                self._validate_evidence_refs(current.sections, theory_plan=None, user_id=user_id)
+            except (ValueError, LookupError):
+                return replace(
+                    gate,
+                    ready=False,
+                    blockers=(*gate.blockers, "文稿引用的资料已不可用，请更新来源。"),
+                )
+            return gate
         package_ready = False
         package_blocker = "完整研究成果包暂时无法生成，请重新加载后再试。"
         try:
@@ -503,9 +526,7 @@ class ResearchDocumentApplication:
                 match_run=match_run,
                 proposals=self._document_proposals(current),
                 versions=self._documents.list_versions(document_id),
-                method_plan=self._method_plan_for_export(
-                    current, theory_plan=plan
-                ),
+                method_plan=self._method_plan_for_export(current, theory_plan=plan),
             )
             method_plan = manifest.get("method_plan")
             if (
@@ -522,9 +543,7 @@ class ResearchDocumentApplication:
         return replace(
             gate,
             ready=gate.ready and package_ready,
-            blockers=(
-                gate.blockers if package_ready else (*gate.blockers, package_blocker)
-            ),
+            blockers=(gate.blockers if package_ready else (*gate.blockers, package_blocker)),
             checks=(
                 *gate.checks,
                 ResearchDocumentCompletionCheck(
@@ -546,6 +565,70 @@ class ResearchDocumentApplication:
         requested = self.get(user_id=user_id, document_id=document_id, version=version)
         self._require_current_document(requested, user_id=user_id)
         base = self._documents.export_markdown(document_id=document_id, version=version)
+        if requested.theory_plan_id is None:
+            self._validate_evidence_refs(requested.sections, theory_plan=None, user_id=user_id)
+            export_sections = _sections_payload(requested.sections)
+            for raw, section in zip(export_sections, requested.sections, strict=True):
+                notes = []
+                for evidence in section.evidence_refs:
+                    details = self._validate_personal_evidence(user_id=user_id, evidence=evidence)
+                    title = str(details.get("title") or evidence.source_id).replace("\n", " ")
+                    locator = details.get("locator") or {}
+                    if details.get("url"):
+                        notes.append(f"- [{title}]({details['url']})")
+                    else:
+                        position = "，".join(
+                            f"{label} {locator[key]}"
+                            for key, label in (
+                                ("page", "页"),
+                                ("paragraph", "段"),
+                                ("line_start", "行"),
+                            )
+                            if locator.get(key) is not None
+                        )
+                        notes.append(f"- {title} · {position or evidence.segment_id}")
+                if notes:
+                    raw["content"] += "\n\n来源：\n" + "\n".join(notes)
+            markdown = (
+                f"# {requested.title}\n\n"
+                + "\n\n".join(
+                    f"## {item['title']}\n\n{item['content']}" for item in export_sections
+                )
+                + "\n"
+            )
+            manifest = {
+                "schema_version": "everplain-document-v1",
+                "document_identity": {
+                    "document_id": str(requested.document_id),
+                    "revision_id": str(requested.revision_id),
+                    "version": requested.version,
+                },
+                "formatting": asdict(requested.formatting),
+                "citation_audit": [
+                    {"section_id": section.section_id, **_json_safe(asdict(citation))}
+                    for section in requested.sections
+                    for citation in section.citation_refs
+                ],
+                "formal_document": {
+                    "title": requested.title,
+                    "sections": export_sections,
+                },
+                "document_versions": [
+                    {"version": item.version, "change_summary": item.change_summary}
+                    for item in self._documents.list_versions(document_id)
+                ],
+            }
+            return ResearchDocumentDeliveryExport(
+                document_id=base.document_id,
+                task_id=base.task_id,
+                theory_plan_id=None,
+                knowledge_release_id=base.knowledge_release_id,
+                version=base.version,
+                filename=f"everplain-document-v{base.version}.md",
+                media_type=base.media_type,
+                markdown=markdown,
+                manifest=manifest,
+            )
         plan = self.get_theory_plan_for_agent(
             user_id=user_id,
             theory_plan_id=requested.theory_plan_id,
@@ -700,20 +783,30 @@ class ResearchDocumentApplication:
             raise
 
     def _required_theory_plan(
-        self, theory_plan_id: UUID
-    ) -> ConfirmedTheoryPlanSnapshot:
+        self, theory_plan_id: UUID | None
+    ) -> ConfirmedTheoryPlanSnapshot | None:
+        if theory_plan_id is None:
+            return None
         theory_plan = self._get_theory_plan(theory_plan_id)
         if theory_plan is None:
             raise LookupError(theory_plan_id)
         return theory_plan
 
-    @staticmethod
     def _validate_evidence_refs(
+        self,
         sections: tuple[ResearchDocumentSection, ...],
         *,
-        theory_plan: ConfirmedTheoryPlanSnapshot,
+        theory_plan: ConfirmedTheoryPlanSnapshot | None,
+        user_id: UUID,
         analysis_handoff: dict[str, object] | None = None,
     ) -> None:
+        if theory_plan is None:
+            for section in sections:
+                for evidence in section.evidence_refs:
+                    if self._validate_personal_evidence is None:
+                        raise ValueError("personal source validation is unavailable")
+                    self._validate_personal_evidence(user_id=user_id, evidence=evidence)
+            return
         release_id = theory_plan.knowledge_release.knowledge_release_id
         allowed = {
             (item.evidence_ref_id, item.source.source_id)
@@ -722,25 +815,18 @@ class ResearchDocumentApplication:
         }
         analysis_annotations = {
             str(item.get("annotation_id")): item
-            for item in (
-                analysis_handoff.get("annotations", []) if analysis_handoff else []
-            )
+            for item in (analysis_handoff.get("annotations", []) if analysis_handoff else [])
             if isinstance(item, dict) and item.get("annotation_id")
         }
         unavailable = {
             str(item)
             for item in (
-                analysis_handoff.get("unavailable_annotation_ids", [])
-                if analysis_handoff
-                else []
+                analysis_handoff.get("unavailable_annotation_ids", []) if analysis_handoff else []
             )
         }
         for section in sections:
             for evidence in section.evidence_refs:
-                if (
-                    evidence.source_kind
-                    is ResearchDocumentEvidenceSourceKind.PUBLIC_KNOWLEDGE
-                ):
+                if evidence.source_kind is ResearchDocumentEvidenceSourceKind.PUBLIC_KNOWLEDGE:
                     if evidence.knowledge_release_id != release_id:
                         raise ValueError("evidence must use the confirmed knowledge release")
                     if (evidence.evidence_ref_id, evidence.source_id) not in allowed:
@@ -763,8 +849,7 @@ class ResearchDocumentApplication:
                     or annotation.get("parse_id") != str(evidence.parse_id)
                     or annotation.get("segment_id") != evidence.segment_id
                     or annotation.get("locator") != evidence.locator
-                    or evidence.evidence_ref_id
-                    != f"analysis-annotation:{annotation_id}"
+                    or evidence.evidence_ref_id != f"analysis-annotation:{annotation_id}"
                     or evidence.source_id != f"material-segment:{evidence.segment_id}"
                 ):
                     raise ValueError("personal material evidence locator does not match analysis")
@@ -786,10 +871,7 @@ def _analysis_handoff_payload(
         values = payload.get(collection)
         if not isinstance(values, list):
             raise ValueError(f"research analysis {collection} must be a list")
-        if any(
-            not isinstance(item, dict) or item.get("status") != "confirmed"
-            for item in values
-        ):
+        if any(not isinstance(item, dict) or item.get("status") != "confirmed" for item in values):
             raise ValueError("research document can only pin confirmed analysis")
     annotations = payload.get("annotations")
     if not isinstance(annotations, list):
@@ -806,9 +888,10 @@ def _analysis_handoff_payload(
     unavailable = payload.get("unavailable_annotation_ids")
     if not isinstance(unavailable, list):
         raise ValueError("research analysis unavailable annotations must be a list")
-    if not any(
-        payload.get(key) for key in ("annotations", "codes", "memos", "comparisons")
-    ) and not unavailable:
+    if (
+        not any(payload.get(key) for key in ("annotations", "codes", "memos", "comparisons"))
+        and not unavailable
+    ):
         return None
     return payload
 
@@ -838,9 +921,7 @@ def _with_analysis_availability(
     if snapshot.analysis_handoff is None or live is None:
         return snapshot
     pinned = deepcopy(snapshot.analysis_handoff)
-    unavailable = {
-        str(item) for item in live.get("unavailable_annotation_ids", [])
-    }
+    unavailable = {str(item) for item in live.get("unavailable_annotation_ids", [])}
     if not unavailable:
         return snapshot
     annotations = pinned.get("annotations")
@@ -877,9 +958,7 @@ def _sections_payload(
                     "annotation_id": (
                         str(evidence.annotation_id) if evidence.annotation_id else None
                     ),
-                    "material_id": (
-                        str(evidence.material_id) if evidence.material_id else None
-                    ),
+                    "material_id": (str(evidence.material_id) if evidence.material_id else None),
                     "parse_id": str(evidence.parse_id) if evidence.parse_id else None,
                     "segment_id": evidence.segment_id,
                     "locator": evidence.locator,
@@ -970,9 +1049,7 @@ def _method_plan_payload(
                 "note": item.note,
                 "blocking": item.blocking,
                 "created_at": item.created_at.isoformat(),
-                "resolved_at": item.resolved_at.isoformat()
-                if item.resolved_at
-                else None,
+                "resolved_at": item.resolved_at.isoformat() if item.resolved_at else None,
             }
             for item in value.reviews
         ],
@@ -984,9 +1061,7 @@ def _method_plan_payload(
         "created_at": value.created_at.isoformat(),
         "restored_from_version": value.restored_from_version,
         "stale_reason": value.stale_reason,
-        "confirmed_at": value.confirmed_at.isoformat()
-        if value.confirmed_at
-        else None,
+        "confirmed_at": value.confirmed_at.isoformat() if value.confirmed_at else None,
     }
 
 
@@ -996,8 +1071,7 @@ def _unavailable_personal_source_ids(
     if analysis_handoff is None:
         return set(), set(), set()
     unavailable_annotation_ids = {
-        str(item)
-        for item in analysis_handoff.get("unavailable_annotation_ids", [])
+        str(item) for item in analysis_handoff.get("unavailable_annotation_ids", [])
     }
     unavailable_source_ids: set[str] = set()
     unavailable_evidence_ref_ids: set[str] = set()
@@ -1013,9 +1087,7 @@ def _unavailable_personal_source_ids(
         parse_id = annotation.get("parse_id")
         segment_id = annotation.get("segment_id")
         if unavailable and material_id and parse_id and segment_id:
-            unavailable_source_ids.add(
-                f"research-material:{material_id}:{parse_id}:{segment_id}"
-            )
+            unavailable_source_ids.add(f"research-material:{material_id}:{parse_id}:{segment_id}")
     comparisons = analysis_handoff.get("comparisons", [])
     if isinstance(comparisons, list):
         for comparison in comparisons:
@@ -1118,9 +1190,7 @@ def _export_manifest(
         unavailable_personal_source_ids,
         unavailable_personal_annotation_ids,
         unavailable_personal_evidence_ref_ids,
-    ) = _unavailable_personal_source_ids(
-        document.analysis_handoff
-    )
+    ) = _unavailable_personal_source_ids(document.analysis_handoff)
     return {
         "schema_version": "research-delivery-v2",
         "document_identity": {
@@ -1207,9 +1277,7 @@ def _export_manifest(
                 "limitations": list(candidate.judgement.limitations),
                 "material_requirements": list(candidate.judgement.material_requirements),
                 "evidence_gaps": list(candidate.judgement.evidence_gaps),
-                "alternative_explanations": list(
-                    candidate.judgement.alternative_explanations
-                ),
+                "alternative_explanations": list(candidate.judgement.alternative_explanations),
                 "evidence_ref_ids": list(candidate.judgement.evidence_ref_ids),
                 "trace_id": str(candidate.trace_id),
                 "request_id": str(candidate.request_id),
@@ -1227,9 +1295,7 @@ def _export_manifest(
                 "reason": decision.reason,
                 "related_source_ids": list(decision.related_source_ids),
                 "revised_applicability": decision.revised_applicability,
-                "related_candidate_ids": [
-                    str(item) for item in decision.related_candidate_ids
-                ],
+                "related_candidate_ids": [str(item) for item in decision.related_candidate_ids],
                 "recorded_at": decision.recorded_at.isoformat(),
             }
             for decision in plan.decisions
@@ -1290,9 +1356,7 @@ def _export_manifest(
                 "model_provider": item.model_provider,
                 "model_name": item.model_name,
                 "research_analysis_content_hash": (
-                    item.analysis_handoff.get("content_hash")
-                    if item.analysis_handoff
-                    else None
+                    item.analysis_handoff.get("content_hash") if item.analysis_handoff else None
                 ),
                 "created_at": item.created_at.isoformat(),
                 "decided_at": item.decided_at.isoformat() if item.decided_at else None,
@@ -1309,13 +1373,9 @@ def _export_manifest(
                 "actor": item.actor,
                 "restored_from_version": item.restored_from_version,
                 "created_at": item.created_at.isoformat(),
-                "confirmed_at": (
-                    item.confirmed_at.isoformat() if item.confirmed_at else None
-                ),
+                "confirmed_at": (item.confirmed_at.isoformat() if item.confirmed_at else None),
                 "research_analysis_content_hash": (
-                    item.analysis_handoff.get("content_hash")
-                    if item.analysis_handoff
-                    else None
+                    item.analysis_handoff.get("content_hash") if item.analysis_handoff else None
                 ),
             }
             for item in versions
@@ -1329,16 +1389,12 @@ def _export_manifest(
             "title": document.title,
             "status": document.status.value,
             "sections": _sections_payload(document.sections),
-            "confirmed_at": (
-                document.confirmed_at.isoformat() if document.confirmed_at else None
-            ),
+            "confirmed_at": (document.confirmed_at.isoformat() if document.confirmed_at else None),
         },
     }
 
 
-def _export_markdown(
-    *, base: ResearchDocumentMarkdownExport, manifest: dict[str, object]
-) -> str:
+def _export_markdown(*, base: ResearchDocumentMarkdownExport, manifest: dict[str, object]) -> str:
     phenomenon = manifest["phenomenon"]
     release = manifest["knowledge_release"]
     model = manifest["model"]
@@ -1416,8 +1472,7 @@ def _export_markdown(
                 str(title) for title in item["candidate_titles"] if title is not None
             )
             lines.append(
-                f"- {titles or '候选理论'} · {item['relation_kind']}："
-                f"{item['explanation']}"
+                f"- {titles or '候选理论'} · {item['relation_kind']}：{item['explanation']}"
             )
     lines.extend(["### 证据与引用", ""])
     for item in evidence:
@@ -1428,8 +1483,7 @@ def _export_markdown(
         if isinstance(source, dict):
             authors = "、".join(source["authors_or_institution"])
             source_label = (
-                f"{source['title']} "
-                f"({authors or '作者未载'}, {source['year'] or '年份未载'})"
+                f"{source['title']} ({authors or '作者未载'}, {source['year'] or '年份未载'})"
             )
         excerpt = (
             "来源已删除（已保留引用定位，不包含原文）"
@@ -1447,21 +1501,15 @@ def _export_markdown(
         )
     lines.extend(["", "### 个人材料分析依据", ""])
     if isinstance(research_analysis, dict):
-        lines.append(
-            f"- 分析版本：{research_analysis.get('content_hash') or '未记录'}"
-        )
+        lines.append(f"- 分析版本：{research_analysis.get('content_hash') or '未记录'}")
         lines.append(
             "- 已确认编码 / 备忘 / 案例比较："
             f"{len(research_analysis.get('codes', []))} / "
             f"{len(research_analysis.get('memos', []))} / "
             f"{len(research_analysis.get('comparisons', []))}"
         )
-        unavailable_count = len(
-            research_analysis.get("unavailable_annotation_ids", [])
-        )
-        lines.append(
-            f"- 已删除来源墓碑：{unavailable_count} 处（不包含原文）"
-        )
+        unavailable_count = len(research_analysis.get("unavailable_annotation_ids", []))
+        lines.append(f"- 已删除来源墓碑：{unavailable_count} 处（不包含原文）")
     else:
         lines.append("- 本版未纳入已确认的个人材料分析。")
     lines.extend(["", "## 正式研究方法计划", ""])
@@ -1483,7 +1531,7 @@ def _export_markdown(
         evidence_ids = method_plan.get("evidence_ref_ids")
         if isinstance(evidence_ids, list):
             lines.append(
-                f"- 共用证据引用：{ '、'.join(str(item) for item in evidence_ids) or '未记录'}"
+                f"- 共用证据引用：{'、'.join(str(item) for item in evidence_ids) or '未记录'}"
             )
         constraints = (
             ("材料约束", method_plan.get("material_constraints")),
