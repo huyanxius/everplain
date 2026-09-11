@@ -18,6 +18,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from qunxue_api.account_extension import install_account_management
 from qunxue_api.adapters.email import ResendEmailProvider
+from qunxue_api.adapters.empty_catalog import EmptyKnowledgeCatalog
 from qunxue_api.adapters.model import (
     BuiltInCaseCatalog,
     ModelEndpoint,
@@ -62,7 +63,6 @@ from qunxue_api.adapters.sqlite.agent_memory_repository import SqliteMemoryRepos
 from qunxue_api.adapters.sqlite.billing_repository import SqliteCreditRepository
 from qunxue_api.adapters.sqlite.database import Database
 from qunxue_api.adapters.sqlite.identity_repository import SqliteIdentityRepository
-from qunxue_api.adapters.sqlite.knowledge_catalog import SqliteKnowledgeCatalog
 from qunxue_api.adapters.sqlite.material_vector_cache import SqliteMaterialVectorCache
 from qunxue_api.adapters.sqlite.memory_learning_repository import SqliteMemoryLearningRepository
 from qunxue_api.adapters.sqlite.phenomenon_repository import SqlitePhenomenonRepository
@@ -114,13 +114,9 @@ from qunxue_api.adapters.transcription import (
 )
 from qunxue_api.api.contracts.common import ErrorCode, ErrorDetail, ErrorResponse
 from qunxue_api.api.routes.agent import router as agent_router
-from qunxue_api.api.routes.frameworks import router as frameworks_router
 from qunxue_api.api.routes.health import router as health_router
-from qunxue_api.api.routes.knowledge import router as knowledge_router
-from qunxue_api.api.routes.matching import router as matching_router
 from qunxue_api.api.routes.memories import MemoryValidationError
 from qunxue_api.api.routes.memories import router as memories_router
-from qunxue_api.api.routes.phenomena import example_router as phenomenon_examples_router
 from qunxue_api.api.routes.phenomena import material_router as material_intakes_router
 from qunxue_api.api.routes.phenomena import router as phenomena_router
 from qunxue_api.api.routes.professional_materials import (
@@ -260,7 +256,7 @@ def create_app(
         probe_task = None
         memory_task = None
         course_task = None
-        if resolved_settings.runtime_mode != "mock":
+        if _effective_model_runtime_mode(resolved_settings) != "mock":
 
             async def organize_courses():
                 while True:
@@ -275,7 +271,9 @@ def create_app(
                         worked = False
                     await asyncio.sleep(0.1 if worked else 3)
 
-            course_task = asyncio.create_task(organize_courses(), name="qunxue-course-processing")
+            course_task = asyncio.create_task(
+                organize_courses(), name="everplain-course-processing"
+            )
         if resolved_settings.memory_learning_enabled and app.state.model_endpoints:
 
             async def learn_memories():
@@ -288,11 +286,11 @@ def create_app(
                         logger.warning("Memory learning scheduler will retry later.")
                     await asyncio.sleep(60)
 
-            memory_task = asyncio.create_task(learn_memories(), name="qunxue-memory-learning")
+            memory_task = asyncio.create_task(learn_memories(), name="everplain-memory-learning")
         if app.state.model_router is not None:
             probe_task = asyncio.create_task(
                 run_model_probe_loop(app),
-                name="qunxue-model-health-probe",
+                name="everplain-model-health-probe",
             )
         app.state.model_probe_task = probe_task
         try:
@@ -343,7 +341,7 @@ def create_app(
     app = FastAPI(
         title=resolved_settings.app_name,
         version="0.1.0",
-        description="群学致知前后端架构基线 API。",
+        description="Everplain personal knowledge and research API.",
         lifespan=lifespan,
     )
     app.add_middleware(
@@ -366,7 +364,7 @@ def create_app(
     app.state.matching_start_lock = Lock()
     app.state.research_start_lock = Lock()
     app.state.database = resolved_database
-    app.state.knowledge_catalog = SqliteKnowledgeCatalog(
+    app.state.knowledge_catalog = EmptyKnowledgeCatalog(
         resolved_database,
         knowledge_root=KNOWLEDGE_ROOT,
     )
@@ -571,7 +569,12 @@ def create_app(
     def shared_knowledge_scope():
         with resolved_database.session() as session:
             yield SharedKnowledgeApplication(
-                SqliteSharedKnowledgeRepository(session), parser=parse_material
+                SqliteSharedKnowledgeRepository(session),
+                parser=parse_material,
+                max_file_bytes=resolved_settings.max_file_bytes,
+                max_storage_bytes=resolved_settings.max_storage_bytes,
+                max_libraries=resolved_settings.max_libraries,
+                max_documents_per_library=resolved_settings.max_documents_per_library,
             )
 
     app.state.shared_knowledge_scope = shared_knowledge_scope
@@ -715,6 +718,62 @@ def create_app(
 
     app.state.research_start_application_scope = research_start_application_scope
 
+    def personal_document_evidence_validator(session):
+        def validate(*, user_id, evidence):
+            from qunxue_api.modules.research_framework import ResearchDocumentEvidenceSourceKind
+
+            if evidence.source_kind is ResearchDocumentEvidenceSourceKind.WEB:
+                from urllib.parse import urlparse
+
+                url = urlparse(evidence.source_id)
+                if url.scheme not in {"https", "http"} or not url.hostname:
+                    raise ValueError("网页引用地址无效。")
+                return {"title": evidence.source_id, "url": evidence.source_id}
+            if evidence.source_kind is ResearchDocumentEvidenceSourceKind.PERSONAL_KNOWLEDGE:
+                owned = SqliteSharedKnowledgeRepository(session).owned_document(
+                    user_id, evidence.material_id
+                )
+                if owned is None:
+                    raise ValueError("引用的知识库资料已删除或不可访问。")
+                _, document = owned
+                segment = next(
+                    (
+                        item
+                        for item in document.segments
+                        if item["segment_id"] == evidence.segment_id
+                    ),
+                    None,
+                )
+                if (
+                    segment is None
+                    or document.parse_id != evidence.parse_id
+                    or segment["locator"] != evidence.locator
+                    or evidence.source_id != f"material:{document.id}:{evidence.segment_id}"
+                ):
+                    raise ValueError("知识库引用与原文位置不一致。")
+                return {"title": document.filename, "locator": segment["locator"]}
+            if evidence.source_kind is ResearchDocumentEvidenceSourceKind.RESEARCH_MATERIAL:
+                repository = SqliteResearchMaterialRepository(session)
+                material = repository.get_owned(evidence.material_id, user_id=user_id)
+                if material is None:
+                    raise ValueError("引用的项目附件已删除或不可访问。")
+                segment = repository.get_segment(
+                    evidence.material_id,
+                    evidence.parse_id,
+                    evidence.segment_id,
+                    user_id=user_id,
+                    task_id=material.task_id,
+                )
+                if segment is None or segment.locator != evidence.locator:
+                    raise ValueError("项目附件引用与原文位置不一致。")
+                return {
+                    "title": material.display_name or material.original_filename,
+                    "locator": segment.locator,
+                }
+            raise ValueError("个人文稿不能引用学科公共库。")
+
+        return validate
+
     @contextmanager
     def research_document_application_scope() -> Iterator[ResearchDocumentApplication]:
         with resolved_database.session() as session:
@@ -725,6 +784,7 @@ def create_app(
             proposals = SqliteResearchDocumentProposalRepository(session)
             analysis_application = build_research_analysis_application(session)
             yield ResearchDocumentApplication(
+                validate_personal_evidence=personal_document_evidence_validator(session),
                 documents=ResearchDocumentService(
                     repository=SqliteResearchDocumentRepository(session)
                 ),
@@ -761,6 +821,7 @@ def create_app(
             proposal_repository = SqliteResearchDocumentProposalRepository(session)
             analysis_application = build_research_analysis_application(session)
             document_application = ResearchDocumentApplication(
+                validate_personal_evidence=personal_document_evidence_validator(session),
                 documents=documents,
                 research_tasks=SqliteResearchTaskRepository(session),
                 mutations=SqliteResearchDocumentMutationRepository(session),
@@ -859,6 +920,7 @@ def create_app(
                 research_start=research_start_application,
             )
             document_application = ResearchDocumentApplication(
+                validate_personal_evidence=personal_document_evidence_validator(session),
                 documents=document_service,
                 research_tasks=task_repository,
                 mutations=SqliteResearchDocumentMutationRepository(session),
@@ -892,7 +954,8 @@ def create_app(
                 agent_endpoints = app.state.model_endpoints
                 if not agent_endpoints:
                     raise ValueError(
-                        "QUNXUE_MODEL_BASE_URL and QUNXUE_MODEL_NAME are required for Agent runtime"
+                        "EVERPLAIN_MODEL_BASE_URL and EVERPLAIN_MODEL_NAME "
+                        "are required for Agent runtime"
                     )
                 primary_endpoint = agent_endpoints[0]
                 runner = PydanticAIKnowledgeRunner(
@@ -912,7 +975,12 @@ def create_app(
                 yield DisciplinaryAgentApplication(
                     shared_references=SharedKnowledgeReferences(
                         SharedKnowledgeApplication(
-                            SqliteSharedKnowledgeRepository(session), parser=parse_material
+                            SqliteSharedKnowledgeRepository(session),
+                            parser=parse_material,
+                            max_file_bytes=resolved_settings.max_file_bytes,
+                            max_storage_bytes=resolved_settings.max_storage_bytes,
+                            max_libraries=resolved_settings.max_libraries,
+                            max_documents_per_library=resolved_settings.max_documents_per_library,
                         ),
                         app.state.knowledge_retriever,
                     ),
@@ -1048,11 +1116,7 @@ def create_app(
     app.include_router(research_cycle_router)
     app.include_router(research_exchange_router)
     app.include_router(phenomena_router)
-    app.include_router(phenomenon_examples_router)
     app.include_router(material_intakes_router)
-    app.include_router(knowledge_router)
-    app.include_router(matching_router)
-    app.include_router(frameworks_router)
     app.include_router(agent_router)
 
     @app.exception_handler(ResearchTaskNotFound)
@@ -1372,8 +1436,8 @@ def _model_provider_from_settings(
         return create_deterministic_mock_provider(catalog=builtin_case_catalog), None, None
     if not endpoints:
         raise ValueError(
-            "QUNXUE_MODEL_BASE_URL (model_base_url) and "
-            "QUNXUE_MODEL_NAME (model_name) are required outside mock mode"
+            "EVERPLAIN_MODEL_BASE_URL (model_base_url) and "
+            "EVERPLAIN_MODEL_NAME (model_name) are required outside mock mode"
         )
 
     providers: tuple[ProbeableModelProvider, ...] = tuple(

@@ -4,7 +4,7 @@ import resend
 
 from qunxue_api.modules.identity import EmailDeliveryUnavailable
 
-logger = logging.getLogger("qunxue.email")
+logger = logging.getLogger("everplain.email")
 
 
 class ResendEmailProvider:
@@ -19,9 +19,9 @@ class ResendEmailProvider:
                 {
                     "from": self._from_email,
                     "to": [email],
-                    "subject": "【群学致知】注册验证码",
+                    "subject": "【Everplain】注册验证码",
                     "html": (
-                        "<p>你正在注册群学致知账号。</p>"
+                        "<p>你正在注册Everplain账号。</p>"
                         f"<p>验证码是 <strong>{code}</strong>，5 分钟内有效。</p>"
                         "<p>如非本人操作，请忽略此邮件。</p>"
                     ),

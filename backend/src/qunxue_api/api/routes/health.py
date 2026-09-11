@@ -1,18 +1,10 @@
-from uuid import uuid4
-
 from fastapi import APIRouter, Request, status
 from fastapi.responses import JSONResponse
 
 from qunxue_api.api.contracts.common import (
-    ErrorCode,
-    ErrorDetail,
     ErrorResponse,
 )
 from qunxue_api.api.contracts.health import HealthResponse
-from qunxue_api.modules.knowledge_catalog import (
-    KnowledgeUsePurpose,
-    RetrievalPipelineUnavailable,
-)
 from qunxue_api.settings import Settings
 
 router = APIRouter(
@@ -32,39 +24,7 @@ def get_health(request: Request) -> HealthResponse | JSONResponse:
     settings: Settings = request.app.state.settings
     request.app.state.database.is_ready()
     descriptor = request.app.state.model_gateway.descriptor
-    release = request.app.state.knowledge_catalog.current_release(
-        purpose=KnowledgeUsePurpose.BROWSE
-    )
     runtime_mode = descriptor.capability_tier
-    if runtime_mode != "mock":
-        try:
-            match_release = request.app.state.knowledge_catalog.current_release(
-                purpose=KnowledgeUsePurpose.MATCH
-            )
-            require_ready_manifest = getattr(
-                request.app.state.knowledge_retriever,
-                "require_ready_manifest",
-                None,
-            )
-            if callable(require_ready_manifest):
-                require_ready_manifest(
-                    knowledge_release_id=match_release.knowledge_release_id,
-                    release_content_hash=match_release.content_hash,
-                )
-        except (LookupError, RetrievalPipelineUnavailable):
-            body = ErrorResponse(
-                error=ErrorDetail(
-                    code=ErrorCode.RETRIEVAL_UNAVAILABLE,
-                    message=(
-                        "当前 MATCH 知识发布没有身份一致的 ready 检索索引。"
-                    ),
-                    trace_id=str(uuid4()),
-                )
-            )
-            return JSONResponse(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                content=body.model_dump(mode="json"),
-            )
     model_router = request.app.state.model_router
     if runtime_mode == "mock":
         model_status = "healthy"
@@ -86,7 +46,7 @@ def get_health(request: Request) -> HealthResponse | JSONResponse:
         persistence="sqlite",
         contract_version=settings.contract_version,
         capability=descriptor.capability_tier,
-        knowledge_release_id=release.knowledge_release_id,
+        knowledge_release_id=None,
         model_status=model_status,
         model_checked_at=getattr(model_provider, "health_checked_at", None),
         release_revision=settings.release_revision,
