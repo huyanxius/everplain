@@ -5,8 +5,10 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    port: 5196,
+    strictPort: true,
     proxy: {
-      '/api': process.env.VITE_API_PROXY_TARGET ?? 'http://127.0.0.1:8000',
+      '/api': process.env.VITE_API_PROXY_TARGET ?? 'http://127.0.0.1:8297',
     },
   },
   test: {

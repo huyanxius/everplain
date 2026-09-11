@@ -1,7 +1,7 @@
 [project]
 name = "qunxue-api"
 version = "0.1.0"
-description = "群学致知 Demo application API"
+description = "Everplain personal knowledge and research API"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -27,6 +27,7 @@ dependencies = [
 ]
 
 [project.scripts]
+everplain-api = "qunxue_api.main:main"
 qunxue-api = "qunxue_api.main:main"
 
 [build-system]
