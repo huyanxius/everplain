@@ -1,30 +1,18 @@
 import { ArrowUp } from '@phosphor-icons/react'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { Link } from 'react-router'
+import { useNavigate } from 'react-router'
 
 import { FoundationAgentShader } from './FoundationAgentShader'
 
 const researchQuestions = [
-  '为什么同一课堂里有人总是沉默？',
-  '为什么短视频越刷越难停下来？',
-  '为什么年轻人越来越害怕求助？',
-  '为什么同一种规则对不同人效果不同？',
-  '为什么社区里的熟人关系正在变淡？',
-  '为什么加班会被理解成敬业？',
-  '为什么算法推荐会让观点越来越相似？',
-  '为什么毕业后同学之间的差距迅速扩大？',
-  '为什么人们明知焦虑仍持续比较？',
-  '为什么公共空间里陌生人很少交谈？',
-  '为什么家庭期待会影响职业选择？',
-  '为什么网络争论很快变成身份对立？',
-  '为什么一些传统在城市里重新流行？',
-  '为什么照护劳动常常被忽视？',
-  '为什么同伴评价会改变自我判断？',
-  '为什么组织中的规则总有例外？',
-  '为什么搬到大城市后反而更孤独？',
-  '为什么某些知识更容易被相信？',
-  '为什么人们会为不公平寻找合理解释？',
-  '为什么技术进步没有减少所有人的负担？',
+  '帮我比较这两份产品方案的差异',
+  '从我的阅读笔记里找到反对意见',
+  '整理这次调研的发现与原文依据',
+  '把这个主题的资料串成研究提纲',
+  '最近的技术变化会影响哪些判断？',
+  '把访谈与产品数据放在一起比较',
+  '这些文档里有哪些相互矛盾的结论？',
+  '帮我把研究结果整理成一份报告',
 ] as const
 
 type CopyPhase = 'entering' | 'resting' | 'exiting'
@@ -43,10 +31,9 @@ function glyphStyle(index: number, count: number) {
   } as CSSProperties
 }
 
-function ResearchQuestionField({ active }: { active: boolean }) {
+function ResearchQuestionField({ active, value, onChange }: { active: boolean; value: string; onChange(value: string): void }) {
   const [questionIndex, setQuestionIndex] = useState(0)
   const [copyPhase, setCopyPhase] = useState<CopyPhase>('entering')
-  const [value, setValue] = useState('')
   const [scrollOffset, setScrollOffset] = useState(0)
 
   useEffect(() => {
@@ -99,12 +86,12 @@ function ResearchQuestionField({ active }: { active: boolean }) {
     <span className="foundation-agent__copy">
       <span className="foundation-agent__question-field" data-copy-mode={copyMode}>
         <input
-          aria-label="输入你的研究困惑"
+          aria-label="输入你的研究问题"
           autoComplete="off"
           maxLength={80}
           onChange={(event) => {
             const nextValue = event.currentTarget.value
-            setValue(nextValue)
+            onChange(nextValue)
             setScrollOffset(nextValue ? event.currentTarget.scrollLeft : 0)
           }}
           onScroll={(event) => setScrollOffset(event.currentTarget.scrollLeft)}
@@ -136,6 +123,8 @@ function ResearchQuestionField({ active }: { active: boolean }) {
 }
 
 export function FoundationAgentReveal() {
+  const navigate = useNavigate()
+  const [question, setQuestion] = useState('')
   const rootRef = useRef<HTMLElement>(null)
   const [effectsActive, setEffectsActive] = useState(true)
   const [pageBackdropActive, setPageBackdropActive] = useState(false)
@@ -234,18 +223,22 @@ export function FoundationAgentReveal() {
   }, [])
 
   return (
-    <section ref={rootRef} className="foundation-agent" aria-label="群学研究 Agent 演示">
+    <section ref={rootRef} className="foundation-agent" aria-label="Everplain 研究入口">
       <div className="foundation-agent__field" data-dynamic aria-hidden="true">
         {effectsActive || pageBackdropActive ? <FoundationAgentShader /> : null}
       </div>
 
       <article className="foundation-agent__dialog">
-        <div className="foundation-agent__composer">
-          <ResearchQuestionField active={effectsActive} />
-          <Link to="/register" aria-label="进入研究 Agent">
+        <form className="foundation-agent__composer" onSubmit={(event) => {
+          event.preventDefault()
+          const prompt = question.trim()
+          navigate(prompt ? `/agent?prompt=${encodeURIComponent(prompt)}` : '/agent')
+        }}>
+          <ResearchQuestionField active={effectsActive} value={question} onChange={setQuestion} />
+          <button type="submit" aria-label="开始研究">
             <ArrowUp weight="bold" aria-hidden="true" />
-          </Link>
-        </div>
+          </button>
+        </form>
       </article>
     </section>
   )

@@ -8,9 +8,9 @@ export function WorkbenchDestinations() {
   const { text } = useAppLocale()
   const destinations = [
     {
-      to: '/knowledge',
+      to: '/library',
       title: text('知识库', 'Knowledge base'),
-      description: text('查找知识条目，回到来源与版本', 'Find knowledge entries and trace them to sources and versions'),
+      description: text('整理自己的资料，随时检索并回到原文', 'Organize your sources, find answers, and trace them back to the original'),
       image: knowledgeLibraryHero,
     },
     {

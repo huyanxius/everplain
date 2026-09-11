@@ -1274,8 +1274,8 @@ export function AccountSettingsPage({
           description={
             modelAuthorizationTarget
               ? text(
-                  '群学致知当前不使用你的数据训练模型。开启仅记录未来可选改进计划的授权；任何实际启用仍会另行告知。',
-                  'Qunxue Zhizhi does not currently train on your data. Enabling this only records consent for a future optional improvement program; you will be notified before any actual use.',
+                  'Everplain 当前不使用你的数据训练模型。开启仅记录未来可选改进计划的授权；任何实际启用仍会另行告知。',
+                  'Everplain does not currently train on your data. Enabling this only records consent for a future optional improvement program; you will be notified before any actual use.',
                 )
               : text(
                   '停止后，未来可选改进计划不再取得你的授权；研究功能所需推理不受影响。',

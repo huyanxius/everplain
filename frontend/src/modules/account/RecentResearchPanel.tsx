@@ -34,7 +34,7 @@ export function ResearchEmptyState({
           <TrayIcon size={21} weight="regular" />
         </span>
         <h2>{text('还没有研究任务', 'No research tasks yet')}</h2>
-        <p>{text('从一个具体的社会现象开始。研究阶段、依据和下一步会保存在这里。', 'Start with a concrete social phenomenon. Stages, evidence, and next steps will be saved here.')}</p>
+        <p>{text('从一个问题或一份资料开始。研究进度、依据和下一步会保存在这里。', 'Start with a question or a document. Stages, evidence, and next steps will be saved here.')}</p>
         <LinkComponent className="primary-action" href="/research/new">
           {text('开始第一项研究', 'Start your first study')}
         </LinkComponent>

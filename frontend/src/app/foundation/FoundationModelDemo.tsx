@@ -1,55 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
+import { useNavigate } from 'react-router'
 
 const questionFlow = [
-  [
-    '为什么同样的制度在不同社区会产生不同结果？',
-    '我已经有一个理论框架，怎样找到真正可证伪的问题？',
-    '访谈材料互相矛盾时，我应该先补哪一种证据？',
-  ],
-  [
-    '为什么熟人网络扩大后，合作意愿反而降低？',
-    '怎样区分身份认同与利益计算的作用？',
-    '现象、机制和规范判断混在一起，应该先拆哪个？',
-  ],
-  [
-    '平台规则改变之后，劳动者为什么仍沿用旧有策略？',
-    '两个概念很相似，怎样判断它们是否属于同一个理论机制？',
-    '我的案例只有一次事件，还能做比较研究吗？',
-  ],
-  [
-    '怎样寻找能够推翻当前解释的反例？',
-    '成员流动是原因，还是关系变化的结果？',
-    '什么材料才能区分社会资本与集体行动的解释？',
-  ],
-  [
-    '一个看似个人的选择，如何放回组织与制度中理解？',
-    '当受访者的说法与实际行为不同时，哪一个才是研究对象？',
-    '理论可以解释所有事，是不是反而说明它无法被验证？',
-  ],
-  [
-    '我应该比较人、时间，还是比较不同场域？',
-    '某种行为减少了，怎样避免直接把它写成价值判断？',
-    '我手里的日志、访谈和政策文本，哪一种先进入分析？',
-  ],
-  [
-    '如果理论候选都能说通，下一步要观察什么？',
-    '如何判断我看到的变化是短期波动，还是结构性转变？',
-    '我能不能从一个已经成熟的结论往回找它忽略的问题？',
-  ],
-  [
-    '两组访谈对同一件事的记忆不同，差异本身能否成为证据？',
-    '怎样把“越来越少”变成能够被观察和比较的变化？',
-    '理论预期与材料相反时，我应该改问题还是改解释？',
-  ],
+  ['这两份方案分别依赖什么假设？', '帮我归纳这些访谈里反复出现的问题。', '这份报告的结论有哪些原文支持？'],
+  ['用我的阅读笔记解释这个概念。', '哪些观点还需要进一步验证？', '把本周的学习整理成可复习的提纲。'],
+  ['比较不同来源对这项技术的判断。', '这几篇文章之间有什么共同观点？', '哪些信息已过时，需要重新核对？'],
+  ['帮我把这些材料组织成研究计划。', '有哪些反对意见值得继续追踪？', '这份文稿还缺少哪一类证据？'],
+  ['从原文找出支持与反对这个判断的内容。', '把这次讨论整理成有依据的决策备忘。', '上次研究留下的问题有哪些新线索？'],
+  ['把我的收藏归纳成几个可以探索的主题。', '这份产品文档与用户反馈有什么差异？', '给我的报告补一份可核查的引用清单。'],
+  ['帮我比较两个方案的适用条件。', '从这些资料中找到下一步要验证的问题。', '把研究结果写成一份清楚的说明。'],
+  ['整理这个主题的发展过程。', '我的笔记中哪些内容可以合并理解？', '回到最初的材料，检查结论是否成立。'],
 ]
-
-function demonstrationReply(input: string) {
-  const characters = Array.from(input)
-  const excerpt = characters.slice(0, 18).join('')
-  const suffix = characters.length > 18 ? '…' : ''
-  return `请再补充：“${excerpt}${suffix}”发生在哪些对象、时间与情境中？`
-}
 
 export function FoundationQuestionFlow() {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -74,10 +36,10 @@ export function FoundationQuestionFlow() {
   return (
     <div
       className={`foundation-question-flow${active ? ' is-active' : ''}`}
-      aria-label="合成社会科学研究提问流"
+      aria-label="研究问题示例"
       ref={rootRef}
     >
-      <p>背景为合成研究提问样本，不是真实用户记录。</p>
+      <p>研究问题示例</p>
       <div aria-hidden="true">
         {questionFlow.map((questions, laneIndex) => (
           <div className={`foundation-question-flow__lane foundation-question-flow__lane--${laneIndex + 1}`} key={questions[0]}>
@@ -101,27 +63,13 @@ export function FoundationQuestionFlow() {
 }
 
 export function FoundationModelDemo() {
+  const navigate = useNavigate()
   const [draft, setDraft] = useState('')
-  const [prompt, setPrompt] = useState('例如：同一社区中的互助为什么逐渐减少？')
-  const [responding, setResponding] = useState(false)
-  const responseTimer = useRef<number | null>(null)
-
-  useEffect(() => () => {
-    if (responseTimer.current !== null) window.clearTimeout(responseTimer.current)
-  }, [])
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const content = draft.trim()
-    if (!content || responding) return
-
-    setDraft('')
-    setResponding(true)
-    responseTimer.current = window.setTimeout(() => {
-      setPrompt(demonstrationReply(content))
-      setResponding(false)
-      responseTimer.current = null
-    }, 620)
+    if (content) navigate(`/agent?prompt=${encodeURIComponent(content)}`)
   }
 
   function submitOnEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -131,24 +79,20 @@ export function FoundationModelDemo() {
   }
 
   return (
-    <div className="foundation-model" role="region" aria-label="学科垂直模型对话演示">
+    <div className="foundation-model" role="region" aria-label="开始你的研究">
       <form className="foundation-model__field foundation-model__field--standalone" onSubmit={submit}>
         <textarea
-          aria-label="输入一个研究现象"
+          aria-label="输入一个研究问题"
           id="foundation-model-prompt"
-          maxLength={240}
+          maxLength={1000}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={submitOnEnter}
-          placeholder={responding ? '正在区分现象、解释与证据…' : prompt}
+          placeholder="例如：比较这两份报告的结论与依据"
           rows={1}
           value={draft}
         />
-        <button
-          aria-label={responding ? '正在整理问题' : '发送'}
-          type="submit"
-          disabled={!draft.trim() || responding}
-        >
-          <span aria-hidden="true">{responding ? '···' : '↑'}</span>
+        <button aria-label="前往研究" type="submit" disabled={!draft.trim()}>
+          <span aria-hidden="true">↑</span>
         </button>
       </form>
     </div>
