@@ -325,9 +325,7 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
     ) -> None:
         """Restore the immutable material scope saved on an Agent run."""
 
-        self._material_scope = (
-            {item.material_id: item.parse_id for item in attachments}
-        )
+        self._material_scope = {item.material_id: item.parse_id for item in attachments}
 
     def _owned_material(self, material_id: UUID, *, user_id: UUID, task_id: UUID):
         get_owned = getattr(self._materials, "get_owned", None)
@@ -436,7 +434,8 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
         self._task_id = task_id
         self._project_context = (
             self._workflow.get_project_state(user_id=user_id, task_id=task_id)
-            if self._workflow is not None and task_id is not None else None
+            if self._workflow is not None and task_id is not None
+            else None
         )
         self._document_id = document_id
         self._section_id = section_id
@@ -792,7 +791,10 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
                 direct = []
                 for material_id, block in small_blocks:
                     item = self.read_research_material_context(
-                        str(material_id), block.segment_id, before=0, after=0,
+                        str(material_id),
+                        block.segment_id,
+                        before=0,
+                        after=0,
                     )
                     if "error" not in item:
                         direct.append({**item, "retrieval_mode": "direct"})
@@ -1071,8 +1073,11 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
                 "parse_id": parse_id,
             }
         target_index = next(
-            (index for index, block in enumerate(parsed.blocks)
-             if segment_id is None or block.segment_id == segment_id),
+            (
+                index
+                for index, block in enumerate(parsed.blocks)
+                if segment_id is None or block.segment_id == segment_id
+            ),
             None,
         )
         if target_index is None:
@@ -1324,12 +1329,22 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
                 "error": "research_document_not_found",
                 "document_id": document_id,
             }
+        validate_sources = getattr(self._documents, "validate_sources", None)
+        if callable(validate_sources):
+            try:
+                validate_sources(user_id=user_id, document_id=parsed_document_id)
+            except (LookupError, ValueError):
+                return {
+                    "error": "research_document_sources_unavailable",
+                    "document_id": document_id,
+                    "message": "文稿引用的资料已删除或不可访问，请先更新来源。",
+                }
         if snapshot.knowledge_release_id != self.release.knowledge_release_id:
             return self._release_mismatch(snapshot.knowledge_release_id)
         return {
             "document_id": str(snapshot.document_id),
             "task_id": str(snapshot.task_id),
-            "theory_plan_id": str(snapshot.theory_plan_id),
+            "theory_plan_id": str(snapshot.theory_plan_id) if snapshot.theory_plan_id else None,
             "knowledge_release_id": snapshot.knowledge_release_id,
             "version": snapshot.version,
             "title": snapshot.title,
@@ -1408,7 +1423,7 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
                     target,
                     content=replacement_content,
                     status=ResearchDocumentSectionStatus.DRAFT,
-                    evidence_refs=(),
+                    evidence_refs=target.evidence_refs if current.theory_plan_id is None else (),
                 ),
                 rationale=rationale,
             )
@@ -1440,12 +1455,14 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
         rationale: str,
     ) -> dict[str, object]:
         user_id, conversation_id, agent_run_id = self._context()
-        if self._task_id is None or self._theory_plan_id is None:
+        if self._task_id is None:
             return {
                 "error": "research_document_context_missing",
-                "message": "创建研究框架需要当前任务与已确认理论方案。",
+                "message": "创建文稿需要当前项目。",
             }
         try:
+            if self._theory_plan_id is None:
+                sections = [self._personal_section_sources(item) for item in sections]
             parsed_sections = tuple(_section_from_payload(item) for item in sections)
             proposal = self._proposals.propose_create(
                 user_id=user_id,
@@ -1471,6 +1488,50 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
             "requires_user_approval": True,
             "knowledge_release_id": proposal.knowledge_release_id,
         }
+
+    def _personal_section_sources(self, payload: dict[str, object]) -> dict[str, object]:
+        citation_ids = list(payload.get("citation_ids", []))
+        citation_ids.extend(
+            str(item.get("evidence_ref_id", ""))
+            for item in payload.get("evidence_refs", [])
+            if isinstance(item, Mapping)
+        )
+        refs = []
+        for citation_id in dict.fromkeys(citation_ids):
+            source = self.evidence.get(citation_id)
+            if source is None:
+                raise ValueError("文稿引用必须来自本轮实际读取的资料。")
+            if source.source_kind == "web":
+                refs.append(
+                    {
+                        "evidence_ref_id": citation_id,
+                        "source_id": source.source_id,
+                        "knowledge_release_id": None,
+                        "source_kind": "web",
+                    }
+                )
+            elif source.source_kind in {
+                "shared_material",
+                "research_material",
+                "personal_material",
+            }:
+                refs.append(
+                    {
+                        "evidence_ref_id": citation_id,
+                        "source_id": citation_id,
+                        "knowledge_release_id": None,
+                        "source_kind": "personal_knowledge"
+                        if source.knowledge_base_id
+                        else "research_material",
+                        "material_id": source.material_id,
+                        "parse_id": source.parse_id,
+                        "segment_id": source.segment_id,
+                        "locator": source.locator,
+                    }
+                )
+            else:
+                raise ValueError("该来源不能作为个人文稿的引用。")
+        return {**payload, "evidence_refs": refs}
 
     def _context(self) -> tuple[UUID, UUID, UUID]:
         if self._user_id is None or self._conversation_id is None or self._agent_run_id is None:
@@ -1620,7 +1681,17 @@ def _section_from_payload(payload: dict[str, object]) -> ResearchDocumentSection
             ResearchDocumentEvidenceRef(
                 evidence_ref_id=str(item["evidence_ref_id"]),
                 source_id=str(item["source_id"]),
-                knowledge_release_id=str(item["knowledge_release_id"]),
+                knowledge_release_id=(
+                    str(item["knowledge_release_id"]) if item.get("knowledge_release_id") else None
+                ),
+                source_kind=item.get("source_kind", "public_knowledge"),
+                annotation_id=UUID(str(item["annotation_id"]))
+                if item.get("annotation_id")
+                else None,
+                material_id=UUID(str(item["material_id"])) if item.get("material_id") else None,
+                parse_id=UUID(str(item["parse_id"])) if item.get("parse_id") else None,
+                segment_id=item.get("segment_id"),
+                locator=item.get("locator"),
             )
             for item in payload.get("evidence_refs", [])
             if isinstance(item, dict)
