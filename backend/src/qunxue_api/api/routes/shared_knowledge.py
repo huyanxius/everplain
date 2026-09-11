@@ -6,15 +6,15 @@ from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 
 from qunxue_api.api.contracts.common import ErrorResponse
 from qunxue_api.api.contracts.shared_knowledge import (
-    CourseProfileResponse,
     CreateSharedKnowledgeRequest,
     JoinSharedKnowledgeRequest,
+    KnowledgeStorageResponse,
     SharedDocumentResponse,
     SharedDocumentSourceResponse,
     SharedKnowledgeJoinResponse,
     SharedKnowledgeListResponse,
     SharedKnowledgeResponse,
-    UpdateCourseProfileRequest,
+    UpdateDocumentKnowledgeRequest,
     UpdateSharedKnowledgeRequest,
 )
 from qunxue_api.api.dependencies import CurrentSessionDependency
@@ -57,9 +57,9 @@ def projection(application, user_id, kb, *, detail=False):
         id=kb.id,
         name=kb.name,
         description=kb.description,
-        sharing_enabled=kb.sharing_enabled,
+        sharing_enabled=False,
         viewer_access="owner" if owner else "reader",
-        share_token=kb.share_token if owner and detail else None,
+        share_token=None,
         ready_document_count=sum(doc.status == "ready" for doc in docs),
         documents=[document_response(doc) for doc in docs] if detail else [],
     )
@@ -73,9 +73,7 @@ def projection(application, user_id, kb, *, detail=False):
 def list_libraries(current: CurrentSessionDependency, application: Application):
     user_id = current.user.user_id
     return SharedKnowledgeListResponse(
-        items=[
-            projection(application, user_id, kb) for kb in application.repository.list_for(user_id)
-        ]
+        items=[projection(application, user_id, kb) for kb in application.libraries(user_id)]
     )
 
 
@@ -180,10 +178,12 @@ def upload_document(
     from fastapi import HTTPException
 
     application.require_manage(current.user.user_id, kb_id)
-    content = file.file.read(25 * 1024 * 1024 + 1)
+    content = file.file.read(application.max_file_bytes + 1)
     file.file.close()
-    if len(content) > 25 * 1024 * 1024:
-        raise HTTPException(413, "单份课程资料不能超过 25 MB。")
+    if len(content) > application.max_file_bytes:
+        raise HTTPException(
+            413, f"单份资料不能超过 {application.max_file_bytes // 1024 // 1024} MB。"
+        )
     return document_response(
         application.upload(
             current.user.user_id,
@@ -232,33 +232,6 @@ def source(
     )
 
 
-@router.get(
-    "/course-profile", operation_id="get_course_profile", response_model=CourseProfileResponse
-)
-def get_course_profile(current: CurrentSessionDependency, application: Application):
-    return CourseProfileResponse(
-        role=application.repository.course_role(current.user.user_id),
-        guide_dismissed=application.repository.course_guide_dismissed(current.user.user_id),
-    )
-
-
-@router.patch(
-    "/course-profile", operation_id="update_course_profile", response_model=CourseProfileResponse
-)
-def update_course_profile(
-    payload: UpdateCourseProfileRequest,
-    current: CurrentSessionDependency,
-    application: Application,
-    _idempotency_key: IdempotencyKey,
-):
-    return CourseProfileResponse(
-        role=application.repository.set_course_role(
-            current.user.user_id, payload.role, payload.guide_dismissed
-        ),
-        guide_dismissed=payload.guide_dismissed,
-    )
-
-
 @router.post(
     "/shared-knowledge-bases/{kb_id}/documents/{document_id}/organize",
     operation_id="organize_shared_document",
@@ -275,3 +248,30 @@ def organize_document(
     application.require_manage(current.user.user_id, kb_id)
     application.source(current.user.user_id, kb_id, document_id)
     return document_response(application.repository.retry_document(document_id))
+
+
+@router.get(
+    "/knowledge-storage",
+    operation_id="get_knowledge_storage",
+    response_model=KnowledgeStorageResponse,
+)
+def knowledge_storage(current: CurrentSessionDependency, application: Application):
+    return KnowledgeStorageResponse(**application.storage(current.user.user_id))
+
+
+@router.put(
+    "/shared-knowledge-bases/{kb_id}/documents/{document_id}/knowledge",
+    operation_id="update_document_knowledge",
+    response_model=SharedDocumentResponse,
+)
+def update_document_knowledge(
+    kb_id: UUID,
+    document_id: UUID,
+    payload: UpdateDocumentKnowledgeRequest,
+    current: CurrentSessionDependency,
+    application: Application,
+    _idempotency_key: IdempotencyKey,
+):
+    return document_response(
+        application.update_knowledge(current.user.user_id, kb_id, document_id, payload.model_dump())
+    )

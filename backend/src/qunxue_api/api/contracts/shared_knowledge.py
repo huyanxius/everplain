@@ -28,17 +28,6 @@ class JoinSharedKnowledgeRequest(BaseModel):
     share_token: str = Field(min_length=20, max_length=128)
 
 
-class CourseProfileResponse(BaseModel):
-    role: Literal["teacher", "student"] | None = None
-    guide_dismissed: bool = False
-
-
-class UpdateCourseProfileRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    role: Literal["teacher", "student"]
-    guide_dismissed: bool = False
-
-
 class CourseTopicResponse(BaseModel):
     title: str
     summary: str
@@ -110,3 +99,35 @@ class SharedDocumentSourceResponse(BaseModel):
     knowledge_base_id: UUID
     knowledge_base_name: str
     segments: list[SharedSourceSegmentResponse]
+
+
+class KnowledgeStorageResponse(BaseModel):
+    used_bytes: int
+    max_bytes: int
+    max_file_bytes: int
+    library_count: int
+    max_libraries: int
+    max_documents_per_library: int
+    max_document_characters: int
+
+
+class UpdateKnowledgeTopic(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: Name
+    summary: str = Field(min_length=1, max_length=4000)
+    segment_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class UpdateKnowledgeRelation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source: Name
+    target: Name
+    label: str = Field(min_length=1, max_length=100)
+    segment_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class UpdateDocumentKnowledgeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    summary: str = Field(min_length=1, max_length=16000)
+    topics: list[UpdateKnowledgeTopic] = Field(min_length=1, max_length=500)
+    relations: list[UpdateKnowledgeRelation] = Field(default_factory=list, max_length=1000)
