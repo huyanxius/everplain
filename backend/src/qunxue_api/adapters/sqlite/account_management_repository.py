@@ -1,3 +1,4 @@
+import base64
 from collections import deque
 from datetime import UTC, datetime
 from typing import Any
@@ -31,6 +32,8 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def _json_safe(value: Any) -> Any:
+    if isinstance(value, bytes):
+        return {"encoding": "base64", "base64": base64.b64encode(value).decode("ascii")}
     if isinstance(value, datetime):
         return _as_utc(value).isoformat()
     if isinstance(value, UUID):
@@ -71,9 +74,7 @@ class SqliteAccountRepository:
         }
 
     def get_password_hash(self, user_id: UUID) -> str | None:
-        return self._db.scalar(
-            select(UserRow.password_hash).where(UserRow.user_id == str(user_id))
-        )
+        return self._db.scalar(select(UserRow.password_hash).where(UserRow.user_id == str(user_id)))
 
     def begin_mutation(
         self,
@@ -310,9 +311,7 @@ class SqliteAccountRepository:
             filters.append(UserRow.role == role)
         if status:
             filters.append(UserRow.status == status)
-        total = int(
-            self._db.scalar(select(func.count()).select_from(UserRow).where(*filters)) or 0
-        )
+        total = int(self._db.scalar(select(func.count()).select_from(UserRow).where(*filters)) or 0)
         rows = self._db.scalars(
             select(UserRow)
             .where(*filters)
@@ -322,8 +321,7 @@ class SqliteAccountRepository:
         ).all()
         protected_user_id = self._provisioned_admin_user_id()
         return [
-            self._directory_user(row, current_user_id, protected_user_id)
-            for row in rows
+            self._directory_user(row, current_user_id, protected_user_id) for row in rows
         ], total
 
     def update_user_role(
@@ -603,10 +601,7 @@ class SqliteAccountRepository:
             user_id=user_id,
             status="deactivated",
             expected_version=int(
-                self._db.scalar(
-                    select(UserRow.version).where(UserRow.user_id == str(user_id))
-                )
-                or 0
+                self._db.scalar(select(UserRow.version).where(UserRow.user_id == str(user_id))) or 0
             ),
             now=now,
             reason=reason,
@@ -626,9 +621,7 @@ class SqliteAccountRepository:
                 delete(ModelInvocationRow).where(ModelInvocationRow.task_id.in_(task_ids))
             )
         self._db.execute(
-            delete(AccountMutationRequestRow).where(
-                AccountMutationRequestRow.actor_key == user_key
-            )
+            delete(AccountMutationRequestRow).where(AccountMutationRequestRow.actor_key == user_key)
         )
         audits = self._db.scalars(
             select(AccountAuditEventRow).where(
@@ -646,6 +639,45 @@ class SqliteAccountRepository:
             audit.details = {"subject_deleted": True, "redacted_at": now.isoformat()}
             audit.ip_address = None
             audit.user_agent = None
+        # Library foreign keys predate account lifecycle support and do not cascade.
+        # Delete links before their owned parents; no other user's files are selected.
+        from qunxue_api.adapters.sqlite.shared_knowledge import (
+            CourseProfileRow,
+            SharedDocumentRow,
+            SharedKnowledgeBaseRow,
+            SharedKnowledgeDocumentRow,
+            SharedKnowledgeSubscriptionRow,
+        )
+
+        owned_libraries = select(SharedKnowledgeBaseRow.id).where(
+            SharedKnowledgeBaseRow.owner_user_id == user_key
+        )
+        owned_documents = select(SharedDocumentRow.id).where(
+            SharedDocumentRow.owner_user_id == user_key
+        )
+        self._db.execute(
+            delete(SharedKnowledgeDocumentRow).where(
+                or_(
+                    SharedKnowledgeDocumentRow.knowledge_base_id.in_(owned_libraries),
+                    SharedKnowledgeDocumentRow.document_id.in_(owned_documents),
+                )
+            )
+        )
+        self._db.execute(
+            delete(SharedKnowledgeSubscriptionRow).where(
+                or_(
+                    SharedKnowledgeSubscriptionRow.user_id == user_key,
+                    SharedKnowledgeSubscriptionRow.knowledge_base_id.in_(owned_libraries),
+                )
+            )
+        )
+        self._db.execute(
+            delete(SharedKnowledgeBaseRow).where(SharedKnowledgeBaseRow.owner_user_id == user_key)
+        )
+        self._db.execute(
+            delete(SharedDocumentRow).where(SharedDocumentRow.owner_user_id == user_key)
+        )
+        self._db.execute(delete(CourseProfileRow).where(CourseProfileRow.user_id == user_key))
         self._db.execute(delete(UserRow).where(UserRow.user_id == user_key))
         self._db.flush()
 
@@ -713,9 +745,11 @@ class SqliteAccountRepository:
         metadata = MetaData()
         metadata.reflect(bind=bind)
         user_table = metadata.tables["users"]
-        user_row = self._db.execute(
-            select(user_table).where(user_table.c.user_id == str(user_id))
-        ).mappings().first()
+        user_row = (
+            self._db.execute(select(user_table).where(user_table.c.user_id == str(user_id)))
+            .mappings()
+            .first()
+        )
         if user_row is None:
             raise RuntimeError("account disappeared while exporting")
 
@@ -730,9 +764,7 @@ class SqliteAccountRepository:
         selected_identities: dict[str, set[tuple[Any, ...]]] = {
             "users": {self._row_identity(user_table, dict(user_row))}
         }
-        queue: deque[tuple[str, list[dict[str, Any]]]] = deque(
-            [("users", [dict(user_row)])]
-        )
+        queue: deque[tuple[str, list[dict[str, Any]]]] = deque([("users", [dict(user_row)])])
         while queue:
             parent_name, parent_rows = queue.popleft()
             for child_name, child in metadata.tables.items():
@@ -744,8 +776,7 @@ class SqliteAccountRepository:
                         continue
                     pairs = list(constraint.elements)
                     parent_values = {
-                        tuple(row[element.column.name] for element in pairs)
-                        for row in parent_rows
+                        tuple(row[element.column.name] for element in pairs) for row in parent_rows
                     }
                     if not parent_values:
                         continue
@@ -790,7 +821,7 @@ class SqliteAccountRepository:
             records[table_name] = [self._sanitize_export_row(row) for row in rows]
         return _json_safe(
             {
-                "format_version": "2026-08-account-export-v1",
+                "format_version": "2026-09-everplain-export-v1",
                 "exported_at": exported_at,
                 "processing_notice": (
                     "模型改进授权仅适用于可选的二次使用；研究功能所需推理记录按产品保留策略导出。"
@@ -814,11 +845,7 @@ class SqliteAccountRepository:
             "token_digest",
             "payload",
         }
-        return {
-            key: _json_safe(value)
-            for key, value in row.items()
-            if key not in forbidden
-        }
+        return {key: _json_safe(value) for key, value in row.items() if key not in forbidden}
 
     @staticmethod
     def _account(user: UserRow, preference: UserPreferenceRow) -> dict[str, object]:
