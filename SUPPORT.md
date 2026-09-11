@@ -1,22 +1,17 @@
-# 支持与排障
+# Everplain 支持与排障
 
-## 先收集这些信息
+报告问题时提供代码版本、访问地址、操作步骤、实际错误，以及失败的最小检查命令。只分享 `/api/health` 的非敏感字段；不要贴 cookie、API key、Authorization header、资料正文或完整模型请求。
 
-报告问题时请提供：
+- **无法登录或刷新后退出**：确认浏览器与 API 的主机名、会话 cookie 和 CORS 一致；生产 secure cookie 需要 HTTPS。
+- **无法注册或收不到验证码**：确认部署者已启用 Resend、验证发信域名并完成真实投递测试；未配置邮件时验证码服务不可用，可使用初始管理员进行受控访问。
+- **研究服务不可用**：检查聊天模型、Embedding、Reranker 和网络检索各自的配置、服务余额及连通性。配置预检通过不表示供应商已连接。
+- **资料仍在处理中或处理失败**：查看文件状态与具体错误，确认格式、大小与配额，修正后重试；不伪装资料已完成解析。
+- **引用资料不可访问**：确认引用属于当前账号且资料未删除或重新解析；失效来源应更新后再使用。
+- **迁移或存储故障**：先停止写入并保留备份，按恢复手册在新卷验证；不要覆盖现用数据库或执行 `down -v`。
 
-- 代码版本或 commit；
-- `GET /api/health` 的非敏感字段（不要贴 cookie、API key 或完整模型响应）；
-- 浏览器地址、操作步骤和实际看到的错误；
-- 是否运行在 `mock`、`base` 或 `sft`；
-- `make check` 中失败的最小命令和完整错误上下文。
+Agent 和文稿能力以实际服务结果与可核对的引用为准。Model Mock、页面正常显示或健康响应不能当作真实研究验收。不要按照历史学科项目文档排查 Everplain。
 
-## 使用边界
-
-`/agent` 当前是界面预览，尚未连接研究模型；新研究页中的 Agent 只有在真实 provider 运行记录、引用链和发布版本同时存在时，才可按真实结果验收。来源审核状态与发布版本需要由使用者核对。当前版本没有教师端，也不会替用户作出理论选择或声称已经形成完整研究框架。理论匹配、研究框架和可追溯导出缺失时，请把页面提供的状态当作未开放，而不是故障结果。
-
-## 入口
-
-- 安装、环境变量、备份和发布前检查：[`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md)
-- 密钥、数据和公网暴露边界：[`docs/SECURITY.md`](docs/SECURITY.md)
-- 新队员开发流程：[`docs/onboarding.md`](docs/onboarding.md)
-- 产品事实与交付边界：[`docs/product/README.md`](docs/product/README.md)
+- [部署、备份和恢复](docs/DISTRIBUTION.md)
+- [安全与隐私](docs/SECURITY.md)
+- [本地开发](docs/onboarding.md)
+- [产品范围](docs/product/README.md)

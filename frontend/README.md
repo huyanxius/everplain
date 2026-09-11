@@ -1,32 +1,16 @@
-# 群学致知 Web
+# Everplain Web
 
-前端按产品任务组织：
-
-```text
-app → module index.ts → generated OpenAPI transport
-```
-
-`socio-match-workspace` 负责研究任务创建、恢复和工作区；`knowledge-explorer` 负责知识浏览。产品模块只能从 `index.ts` 对外开放，页面不得裸调用 `fetch` 或手写后端 DTO。
+React、TypeScript 与 Vite。首页介绍个人知识与研究产品；登录后使用 `/library` 私有资料库、`/agent` 研究对话、研究文稿和账号设置。
 
 ```bash
 npm ci --ignore-scripts
-npm run generate:api
 npm run dev
 ```
 
-开发时 Vite 将 `/api` 代理到 `http://127.0.0.1:8000`。
-
-## 知识库浏览
-
-访问 `http://127.0.0.1:5173/knowledge` 可直接打开知识库浏览页面，也可以从首页进入。首次进入会读取当前可浏览发布，并把 `knowledge_release_id` 写入 URL；目录、搜索和详情随后固定在同一发布版本内。列表显示条目所属维度和完整目录位置，详情显示正文、来源、审核状态与已审核显式关系。
-
-`knowledge-explorer/knowledgeApi.ts` 只通过生成的 OpenAPI SDK 读取真实发布数据，并将 DTO 映射为模块界面模型；页面不调用 `fetch`，也不保留浏览器端 Mock 数据源。正文使用 `react-markdown` 渲染 Markdown，未启用原始 HTML；关系只显示 API 返回且审核状态为 `reviewed` 的记录。带 `return_to` 的详情页仅接受 `/research/` 内的返回路径。
-
-当前发布中的待审核条目或待核验来源会如实标记，不应被理解为已核实的学术结论。图形视图不属于该模块的知识浏览基线。
-
-部署构建产物时，静态服务器需要把 `/knowledge` 等前端路由回退到 `index.html`，否则浏览器直接访问或刷新子路径会返回服务器 404。可以用以下命令验证构建后的直达访问：
+开发入口 `http://localhost:5196`，Vite 将 `/api` 代理到 `http://127.0.0.1:8297`。页面通过模块公共接口和生成的 OpenAPI SDK 调用后端。API 变化时在仓库根目录执行 `make contract`，不直接修改 `src/api/generated/`。
 
 ```bash
 npm run build
-npm run preview
 ```
+
+生产 Nginx 配置由 `ops/nginx.conf` 提供，支持 SPA 子路径刷新、同源 API 代理及 Agent 流式响应。模型和邮件密钥只能保存在服务端，不能放入 `VITE_` 变量或构建产物。详细运行步骤见 [部署手册](../docs/DISTRIBUTION.md)。

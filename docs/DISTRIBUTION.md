@@ -1,86 +1,116 @@
-# 分发与运行边界
+# Everplain 独立部署与恢复
 
-这份文档给第一次拿到仓库的人。它能把当前版本稳定地安装、启动和检查起来，但当前交付仍是单实例本地产品包，不是已经具备公网生产保障的 SaaS。
+仓库提供 FastAPI API、Nginx 静态前端、Compose 和数据库工具。部署目标是单实例、单 API worker。下面的命令由维护者在专用 Everplain 主机或目录执行；不会自动连接或操作其他产品。
 
-## 运行前提
+## 1. 准备配置与镜像
 
-- Python 3.12；
-- Node.js 22.18 或更高版本；
-- `uv`、`npm` 和 GNU Make；
-- 一个可写的本地目录。
-
-复制 [`../.env.example`](../.env.example) 后，只把需要的变量放入 `backend/.env` 或 `frontend/.env.local`。API key 只放在本机环境变量或未纳入版本控制的 `.env` 文件里。
-
-## 从零启动
+需要 Docker Engine、Compose v2、可用磁盘及到模型/检索服务的出站 HTTPS。代码与依赖以同一个提交为单位发布。正式入口需由部署者提供 HTTPS 反向代理。
 
 ```bash
-git clone https://github.com/huyanxius/qunxue.git
-cd qunxue
-make bootstrap
+git clone https://github.com/huyanxius/everplain.git
+cd everplain
+cp backend/.env.example backend/.env
+chmod 600 backend/.env
 ```
 
-启动 API 和 Web（各占一个终端）：
+在私有编辑器中填写 `backend/.env`，不要在终端打印密钥。已有文件时不要重复覆盖。默认容器读取此文件；可用 `EVERPLAIN_ENV_FILE` 指定另一份专用于 Everplain 的环境文件。
 
-```bash
-make dev-api
-make dev-web
-```
-
-浏览器打开 <http://localhost:5173>。API 启动时会先执行 Alembic 迁移；手动启动 API 前也可以运行：
-
-```bash
-cd backend && uv run alembic upgrade head
-```
-
-## 先确认运行状态
-
-```bash
-curl --fail http://127.0.0.1:8000/api/health
-```
-
-健康响应中的 `runtime_mode`、`provider`、`model_version`、`capability`、`persistence` 和 `knowledge_release_id` 是服务配置与当前知识发布的事实来源；独立 Agent 请求还要以该请求的 provider、运行记录和引用版本为准。页面上的对话、检索或知识条目不应被解读为超出这些证据的能力承诺。
-
-| 配置 | 含义 | 可以对外怎么说 |
+| 服务 | 必需配置 | 说明 |
 | --- | --- | --- |
-| `QUNXUE_RUNTIME_MODE=mock` | 模型网关的确定性本地运行器（不代表独立 Agent provider） | 可演示界面和流程；模型网关不是真实模型结果 |
-| `QUNXUE_RUNTIME_MODE=base` | OpenAI-compatible 模型 | 只有健康检查、真实请求和引用链都通过后，才能称为真实模型运行 |
-| `QUNXUE_RUNTIME_MODE=sft` | 带受控资源标识的兼容模型 | 需额外验证资源权限、模型版本和审计记录 |
+| 聊天模型 | `EVERPLAIN_RUNTIME_MODE=base`、`MODEL_BASE_URL`、`MODEL_NAME`、`MODEL_API_KEY` | HTTPS 的 OpenAI-compatible 工具调用模型；三个模型字段均以 `EVERPLAIN_` 开头 |
+| Embedding | `EVERPLAIN_EMBEDDING_BASE_URL`、`EMBEDDING_API_KEY`、`EMBEDDING_MODEL` | 模型固定为 `Pro/BAAI/bge-m3`，同组字段均以 `EVERPLAIN_` 开头 |
+| Reranker | `EVERPLAIN_RERANKER_BASE_URL`、`RERANKER_API_KEY`、`RERANKER_MODEL` | 模型固定为 `Pro/BAAI/bge-reranker-v2-m3`，同组字段均以 `EVERPLAIN_` 开头 |
+| 网络研究 | `EVERPLAIN_WEB_SEARCH_API_KEY` | 默认 Tavily；`EVERPLAIN_WEB_SEARCH_PROFILE=generic`。自定义 provider 还需 HTTPS `EVERPLAIN_WEB_SEARCH_BASE_URL` |
+| 管理员 | `EVERPLAIN_ACCOUNT_INITIAL_ADMIN_EMAIL`、`EVERPLAIN_ACCOUNT_INITIAL_ADMIN_PASSWORD` | 独立邮箱和至少 12 位密码；启动时用于初始化管理员 |
+| 会话 | `EVERPLAIN_SESSION_COOKIE_SECURE=true`、`EVERPLAIN_CORS_ALLOWED_ORIGINS` | 填实际 HTTPS 入口的 JSON 数组；Cookie 名称固定 `everplain_session` |
+| 注册邮件（可选） | `EVERPLAIN_RESEND_API_KEY`、`EVERPLAIN_EMAIL_FROM` | 发件人须属于已在 Resend 验证的域名；未配置时不支持公开验证码注册，可由初始管理员受控使用 |
+| 语音（可选） | `EVERPLAIN_TRANSCRIPTION_BASE_URL`、`TRANSCRIPTION_MODEL`、`TRANSCRIPTION_API_KEY` | 同组字段均以 `EVERPLAIN_` 开头，三个一起配置 |
 
-只要提供非空 `QUNXUE_MODEL_API_KEY`，系统会自动使用默认的 DeepSeek OpenAI-compatible endpoint 和 `deepseek-v4-flash`；可选的 `QUNXUE_MODEL_BASE_URL` 与 `QUNXUE_MODEL_NAME` 用于覆盖默认值。没有模型 key 时，显式 `base` 或 `sft` 仍要求完整模型配置。只提供模型 key 时，理论匹配使用当前 final MATCH 发布中的 release-bound 词法目录检索，不要求额外检索密钥。当前零配置路径由模型网关明确使用确定性 mock；健康接口返回实际装配的 provider、模型和运行模式。
-
-## 数据、备份与升级
-
-默认数据库是 `backend/var/qunxue.db`，适用于单实例、单 worker 的本地或内网使用。当前版本没有提供多 worker 锁协调、自动备份、在线升级、回滚、对象存储或灾备能力。
-
-发布一个内部可复现包前：
-
-1. 停止 API 进程；
-2. 复制数据库文件到受保护的备份目录，并一并保留当前代码版本和环境变量清单（不保存密钥明文）；
-3. 在副本上执行 `make bootstrap` 和迁移；
-4. 运行健康检查与定向浏览器冒烟；
-5. 失败时恢复数据库副本和上一版本代码，不在原文件上试验性回滚。
-
-不要把 SQLite 文件、日志、cookie、API key 或模型响应中的敏感材料提交到仓库或公共制品。
-
-## 发布前最小验收
+已有备用聊天路由时使用 `EVERPLAIN_MODEL_FALLBACKS`，各路由也需要真实 HTTPS 地址、模型和凭据。检索模型与聊天模型分别计费和授权，单有聊天密钥不等于知识库检索可用。所有 `.env.example` 都是模板，不包含可用凭据。
 
 ```bash
-make check
-git status --short
-curl --fail http://127.0.0.1:8000/api/health
+docker compose build
+docker compose run --rm --no-deps --entrypoint python api /app/ops/preflight.py
 ```
 
-浏览器至少走完：注册/登录、刷新后恢复会话、创建研究输入、回到“我的研究”继续、打开知识条目并核对来源版本、断开 API 后看到可恢复的错误状态。`make check` 通过并不等于真实模型、理论匹配、研究框架或导出能力已经交付。
+预检明确拒绝 Mock、不完整模型/检索/网络配置、旧产品环境变量和不安全的生产会话设置。未配置邮件、语音会单独报告；若配置了一部分则拒绝启动。结果仅输出字段名和状态，不输出密钥。`configuration_ready` 表示配置齐全，`provider_connectivity: not_checked` 表示尚未检查服务连通性，不能当成真实模型验收。
 
-## 已知产品边界
+在已安装本地后端依赖时也可以单独校验指定的生产配置：
 
-当前可用的是站点壳、账号与研究恢复、研究输入/现象确认和知识浏览。`/agent` 仍是界面预览；新研究页中的 Agent 也只有在真实 provider 运行记录、引用链和发布版本同时存在时，才能按真实结果验收。M4 理论匹配与用户决定、M5 研究框架、可追溯导出和真实模型全链路仍分别由独立 Issue/PR 交付；占位路由、mock 数据和契约类型不能替代这些能力。
+```bash
+PYTHONPATH=backend/src backend/.venv/bin/python ops/preflight.py --env-file /secure/everplain.env
+```
 
-如果目标是公网生产服务，还需要单独完成反向代理与 TLS、进程托管、受支持的生产数据库、密钥管理、备份监控、速率限制、审计保留和灾备演练。本仓库当前没有把这些能力伪装成已完成。
+镜像使用 `uv sync --frozen --no-dev --no-editable` 和 `npm ci --ignore-scripts` 安装锁定的应用依赖。默认基础镜像使用受维护的版本系列标签；正式发布时应记录并固定基础镜像 digest，以及输出镜像 digest，避免后续同名标签改变。Dockerfile 支持 `PYTHON_IMAGE`、`NODE_IMAGE`、`NGINX_IMAGE` 构建参数以传入核对过的 `image@sha256:...`。未提供 digest 时只保证应用依赖锁定，不声称逐字节可重现。
 
-## 常见故障
+## 2. 运行与入口
 
-- **页面出现 Vite overlay 或找不到模块**：在 `frontend` 目录重新执行 `npm ci`，确认 lockfile 与代码来自同一版本；不要手删依赖来绕过错误。
-- **健康检查仍是 `runtime_mode=mock`**：确认 `QUNXUE_MODEL_API_KEY` 非空并重启 API；健康响应会直接显示实际 provider、模型和运行模式。
-- **浏览器收到 401**：先确认 API 与浏览器使用同一主机名（`localhost` 与 `127.0.0.1` 不要混用），再检查 cookie 和 CORS 配置。
-- **数据库迁移失败**：停止旧进程，备份数据库后执行 `cd backend && uv run alembic upgrade head`，保留完整错误输出。
+```bash
+docker compose up -d
+docker compose ps
+curl --fail http://127.0.0.1:8297/api/health
+curl --fail http://127.0.0.1:5196/healthz
+```
+
+API 启动顺序为配置预检、Alembic 迁移、单 worker Uvicorn。迁移或预检失败时 API 不对外提供服务。Web 等 API 健康后启动。
+
+- Compose 项目名：`everplain`。
+- Web 宿主端口：`127.0.0.1:5196`，容器内 `8080`。
+- API 宿主端口：`127.0.0.1:8297`。
+- 主数据库：`everplain-data` 卷的 `/data/everplain.db`。
+- 派生检索缓存：同卷 `/data/everplain-retrieval.db`。
+- 备份目录：独立 `everplain-backups` 卷的 `/backups`。
+
+宿主机 HTTPS 代理转发到 `127.0.0.1:5196`，保留 Host 并设置 `X-Forwarded-Proto: https`。同源 `/api/` 已转发到 API；Nginx 支持 SPA 子路径与流式响应。外层代理也应关闭流式响应缓冲，设置至少 600 秒的读取超时，并允许所需上传大小。默认应用上传上限 20 MiB，内部 Nginx 请求上限 21 MiB；提高配额时同步调整代理限制。
+
+不要直接把开发 reload 服务暴露公网。生产 secure cookie 在 HTTP 页面不能正常完成会话，这是要求先接 HTTPS 的原因。Everplain 尚无在本次交付中验证过的正式域名、DNS、TLS 或发信域名；不要使用原产品域名代替。
+
+## 3. 发布验收
+
+在目标环境使用专用测试账号，实际走完登录、刷新恢复、创建私有库、上传并完成解析、基于资料进行真实 Agent 研究、打开引用、编辑及导出文稿。再用另一账号确认私有资料不可读取。若启用公开注册，验证真实收信与验证码登录链路；若启用语音，验证实际音频转写。
+
+健康检查只表示进程可响应，配置预检只表示字段齐全。两者都不能代替真实模型、引用、浏览器或邮件验收。公网开放前还需按实际用户规模配置监控、告警、磁盘容量和备份保留策略；当前没有自动支付扣款、跨实例协调或高可用保证。
+
+## 4. 一致备份
+
+主数据库包含账号、会话、研究、资料原始 BLOB、知识内容、文稿与版本。`ops/database.py` 使用 SQLite Online Backup API 获取一致快照，包括已提交到 WAL 的数据；不会用直接复制运行中 `.db` 文件的方式备份。
+
+```bash
+docker compose exec -T api python /app/ops/database.py backup /data/everplain.db /backups/everplain-20260912.sqlite3
+docker compose exec -T api python /app/ops/database.py verify /backups/everplain-20260912.sqlite3
+```
+
+每次使用新的文件名。脚本检查数据库完整性、外键和基本应用表，并输出 schema revision、用户数及 SHA-256；不输出用户内容。目标文件权限为 `0600`，已存在的目标一律拒绝覆盖。
+
+备份卷只是一份本机副本；还应定期复制到访问受限、加密的异地位置，记录对应代码和镜像版本。自动调度、加密、保留清理和恢复演练由部署者配置，当前脚本不擅自执行这些操作。环境密钥单独管理，不混入备份清单或公开文件。
+
+## 5. 恢复与升级
+
+恢复前保留旧镜像和旧卷。恢复脚本只写新目标；切换运行数据库前停止 API 写入，并确保没有另一实例使用同一卷。下面以新的 `everplain-restored` 卷为例：
+
+```bash
+docker compose stop api
+docker run --rm --entrypoint python \
+  -v everplain-backups:/backups:ro \
+  -v everplain-restored:/data \
+  everplain-api:local /app/ops/database.py restore \
+  /backups/everplain-20260912.sqlite3 /data/everplain.db
+```
+
+新卷首次挂载会继承镜像中 `/data` 的权限。使用的镜像标签须替换为备份对应的已保留版本。备份中只有主数据库，派生缓存将在新数据卷中按需重建，不应从旧数据卷复制一个不匹配的缓存。
+
+创建一份恢复覆盖文件，例如私有的 `/secure/everplain-restore.yaml`：
+
+```yaml
+volumes:
+  data:
+    name: everplain-restored
+```
+
+```bash
+docker compose -f compose.yaml -f /secure/everplain-restore.yaml up -d
+```
+
+之后所有管理命令继续带上同一覆盖文件。启动时会按选定镜像执行迁移；升级失败时使用旧镜像和未经升级的旧卷恢复，不在已迁移数据库上试验降级。恢复后重复账号登录、私有库阅读、引用和文稿打开的验收，再决定是否清理旧卷。
+
+禁止用 `docker compose down -v` 作为常规升级或故障处理。当前恢复工具验证数据库结构完整与副本可读，业务级恢复仍需上述实际账号验收。

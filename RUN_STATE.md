@@ -1,27 +1,23 @@
-# RUN_STATE
+# Everplain 交付状态
 
-> 2026-08-09 按最新 `origin/main` 与 GitHub 当前状态核对。本文记录已合并能力和仍未交付的边界，不把冻结契约、占位页面或历史验证记录算作交付。
+本文件描述 Everplain 独立开发分支的范围；是否发布、合并与部署以对应 PR 和实际环境为准。当前仓库为 `https://github.com/huyanxius/everplain`。
 
-## 已合并交付
+## 当前实现
 
-- M1 / [PR #66](https://github.com/huyanxius/qunxue/pull/66)：站点壳、首页与研究/知识双入口。
-- M2 / [PR #58](https://github.com/huyanxius/qunxue/pull/58)：账号注册登录、会话恢复与“我的研究”。
-- M3 / [PR #68](https://github.com/huyanxius/qunxue/pull/68)：直接输入或单份材料、现象候选编辑与确认、进度恢复。
-- M6 / [PR #73](https://github.com/huyanxius/qunxue/pull/73)：真实 Markdown 知识发布、SQLite 持久化，以及列表、搜索、详情与来源浏览；正式路由为 `/knowledge` 和 `/knowledge/:knowledge_id`。
+- Everplain 官网与个人工作区，私有知识库、资料上传、阅读、条目及关系。
+- 研究 Agent、网络检索与个人资料引用，研究文稿编辑、修订审阅及导出。
+- 账号、会话、记忆和配额管理，以及个人数据导出、删除与访问控制。
+- 独立 `EVERPLAIN_` 运行配置、5196/8297 端口与 Everplain 数据库路径。
+- FastAPI/Nginx 镜像定义、独立 Compose 资产、生产配置预检和 SQLite 一致备份/恢复工具。
 
-## 尚未交付
+社会学知识和训练资产不随产品分发。少量历史 fixture 与旧模块名保留用于兼容；旧学科路由测试不属于当前产品契约。后端产品回归范围见 `backend/tests/product-suite.txt`。
 
-- M4 理论匹配与用户决定尚未实现。前端 `/research/:task_id/match` 是占位页；后端 matching 路由只保留冻结契约，确认现象后的业务请求仍返回 501。
-- M5 研究框架尚未实现。前端 `/research/:task_id/framework` 是占位页；后端 frameworks 路由只保留冻结契约并返回 501。
-- 公共类型、OpenAPI 契约、门禁规则或占位路由不构成 M4/M5 交付；本状态也不推进知识关系或图谱能力。
+## 验证口径
 
-## 知识条目口径
+自动测试、构建、真实模型、浏览器与公网部署分别记录，不能互相替代。运维工具已用隔离数据验证 WAL 一致备份、私有 BLOB 恢复、拒绝覆盖及缺项配置拒绝；Compose 配置完成静态解析，后端 wheel 完成离线构建。容器镜像构建与启动仍需在可用 Docker Engine 上执行，不由静态配置验证代替。
 
-- 源文档转换清单：2,864 条，其中 D7 按 `H001`–`H091` 计 91 条。
-- 当前发布与浏览解析：2,860 条；仓库实际具备正文的是 `H001`–`H087`。
-- D7 `H088`–`H091` 缺少正文，发布过程没有补写或伪造这四条内容。
+## 尚需目标环境完成
 
-## 仓库治理
+正式域名、DNS、HTTPS、邮件发信域名验证、真实邮件投递、部署监控和备份保留策略未由仓库自动完成。公开上线前按 [部署手册](docs/DISTRIBUTION.md) 验证真实模型、引用、账号隔离与恢复流程。
 
-- 所有改动走 Issue → 分支 → PR → Review → `main`，这是团队规则。
-- 当前 private 仓库的 `main` 没有 GitHub 原生分支保护；PR-only 不是平台强制。不得把升级套餐、公开仓库或改变可见性当作默认修复。
+当前没有支付或订阅扣款、多实例高可用和经压测证明的容量承诺。不迁移、连接或部署原产品的数据与环境。
