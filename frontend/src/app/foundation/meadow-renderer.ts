@@ -1,4 +1,11 @@
 import * as THREE from 'three'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+import { createLibrary } from './library-model'
+import { createWorldMaterials, randomSequence, terrainHeight } from './world-materials'
 
 export type MeadowRenderer = {
   setProgress: (value: number) => void
@@ -7,250 +14,251 @@ export type MeadowRenderer = {
   dispose: () => void
 }
 
-// The photographs carry material detail; instanced foreground blades supply real
-// perspective and wind. Architecture stays rigid instead of rippling with grass.
-export function createMeadowRenderer(
-  host: HTMLDivElement,
-  sources: { meadow: string; library: string },
-): MeadowRenderer {
+export function createMeadowRenderer(host: HTMLDivElement): MeadowRenderer {
   const compact = window.matchMedia('(max-width: 760px)').matches
-  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: 'low-power' })
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, compact ? 1.25 : 1.5))
-  renderer.autoClear = false
-  renderer.setClearColor(0x000000, 0)
+  const renderer = new THREE.WebGLRenderer({ alpha: false, antialias: true, powerPreference: 'high-performance' })
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, compact ? 1 : 1.25))
+  renderer.toneMapping = THREE.ACESFilmicToneMapping
+  renderer.toneMappingExposure = .94
+  renderer.shadowMap.enabled = true
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  renderer.shadowMap.autoUpdate = false
   const canvas = renderer.domElement
   canvas.setAttribute('aria-hidden', 'true')
   host.append(canvas)
 
-  let disposed = false
-  let motion = true
-  let visible = true
-  let loaded = 0
-  let frame = 0
-  let time = 0
-  let lastTime = 0
-  let width = 1
-  let height = 1
-  let progress = 0
-  let contextLost = false
-  const pointer = new THREE.Vector2()
-  const targetPointer = new THREE.Vector2()
-  const textures: THREE.Texture[] = []
-  const loader = new THREE.TextureLoader()
-  const uniforms = {
-    uMeadow: { value: null as THREE.Texture | null },
-    uLibrary: { value: null as THREE.Texture | null },
-    uSize: { value: new THREE.Vector2(1, 1) },
-    uMeadowSize: { value: new THREE.Vector2(16, 9) },
-    uLibrarySize: { value: new THREE.Vector2(16, 9) },
-    uTime: { value: 0 },
-    uPointer: { value: pointer },
-    uProgress: { value: 0 },
-  }
-  const background = new THREE.Scene()
-  const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
-  const screenGeometry = new THREE.PlaneGeometry(2, 2)
-  const screenMaterial = new THREE.ShaderMaterial({
-    uniforms,
-    depthTest: false,
-    depthWrite: false,
-    vertexShader: `varying vec2 vUv;
-      void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
-    fragmentShader: `
-      uniform sampler2D uMeadow, uLibrary;
-      uniform vec2 uSize, uMeadowSize, uLibrarySize, uPointer;
-      uniform float uTime, uProgress;
-      varying vec2 vUv;
-      vec2 cover(vec2 p, vec2 imageSize) {
-        float screenAspect = uSize.x / uSize.y;
-        float imageAspect = imageSize.x / imageSize.y;
-        return (p - .5) * vec2(min(screenAspect / imageAspect, 1.0), min(imageAspect / screenAspect, 1.0)) + .5;
-      }
-      void main() {
-        float passage = smoothstep(.16, .68, uProgress);
-        float depth = pow(1.0 - vUv.y, 2.0);
-        vec2 parallax = uPointer * vec2(.007, .004) * (.22 + depth);
-        vec2 view = (vUv - .5) / (1.025 + .055 * uProgress) + .5 + parallax;
-        vec2 meadowUv = cover(view, uMeadowSize);
-        float windMask = 1.0 - smoothstep(.15, .58, vUv.y);
-        meadowUv.x += sin(meadowUv.y * 34.0 + meadowUv.x * 8.0 - uTime * .65) * .00075 * windMask;
-        meadowUv.y += sin(meadowUv.x * 26.0 - uTime * .45) * .0003 * windMask;
-        vec3 meadow = texture2D(uMeadow, meadowUv).rgb;
-        vec2 libraryUv = cover(view, uLibrarySize);
-        // On portrait screens favor the shelves, while copy has its own shade.
-        libraryUv.x += (1.0 - min(uSize.x / uSize.y, 1.0)) * .14;
-        vec3 library = texture2D(uLibrary, libraryUv).rgb;
-        vec3 color = mix(meadow, library, passage);
-        float vignette = 1.0 - .25 * pow(length((vUv - .5) * vec2(.9, 1.0)), 1.4);
-        color *= vignette;
-        gl_FragColor = vec4(color, 1.0);
+  const scene = new THREE.Scene()
+  scene.name = 'everplain-spatial-world'
+  scene.background = new THREE.Color('#d5d8cc')
+  scene.fog = new THREE.FogExp2('#d5d8cc', .017)
+  const camera = new THREE.PerspectiveCamera(48, 1, .08, 200)
+  const materials = createWorldMaterials()
+  const environment = new RoomEnvironment()
+  const pmrem = new THREE.PMREMGenerator(renderer)
+  const environmentTarget = pmrem.fromScene(environment, .04)
+  scene.environment = environmentTarget.texture
+  scene.environmentIntensity = .45
+  environment.dispose(); pmrem.dispose()
+  scene.add(new THREE.HemisphereLight('#f0f3e5', '#8c9373', 1.85))
+  const sun = new THREE.DirectionalLight('#fff0ce', 3.1)
+  sun.position.set(-15, 22, 7)
+  sun.target.position.set(5, 0, -16)
+  sun.castShadow = true
+  sun.shadow.mapSize.set(compact ? 1024 : 2048, compact ? 1024 : 2048)
+  Object.assign(sun.shadow.camera, { left: -22, right: 22, top: 22, bottom: -22, near: 1, far: 70 })
+  sun.shadow.bias = -.0003
+  sun.shadow.normalBias = .025
+  scene.add(sun, sun.target)
+
+  const skyMaterial = new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false,
+    vertexShader: 'varying vec3 vPosition; void main(){ vPosition=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+    fragmentShader: `varying vec3 vPosition;
+      float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+      float noise(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.-2.*f); return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+1.),f.x),f.y); }
+      void main(){
+        vec3 d=normalize(vPosition); float h=max(d.y,0.);
+        vec3 color=mix(vec3(.77,.79,.71),vec3(.40,.53,.51),pow(h,.45));
+        float cloud=noise(d.xz/(h+.18)*2.5)*.65+noise(d.xz/(h+.18)*6.)*.35;
+        color=mix(color,vec3(.86,.85,.77),smoothstep(.45,.80,cloud)*.32);
+        gl_FragColor=vec4(color,1.);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
       }`,
   })
-  background.add(new THREE.Mesh(screenGeometry, screenMaterial))
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(145, 32, 16), skyMaterial)
+  sky.name = 'procedural-sky'; scene.add(sky)
+  const groundGeometry = new THREE.PlaneGeometry(230, 230, 160, 160)
+  groundGeometry.rotateX(-Math.PI / 2)
+  const groundPositions = groundGeometry.attributes.position
+  for (let i = 0; i < groundPositions.count; i++) groundPositions.setY(i, terrainHeight(groundPositions.getX(i), groundPositions.getZ(i)))
+  groundGeometry.computeVertexNormals()
+  const ground = new THREE.Mesh(groundGeometry, materials.soil)
+  ground.name = 'sculpted-meadow-terrain'; ground.receiveShadow = true; scene.add(ground)
+  const library = createLibrary(materials)
+  scene.add(library.root)
 
-  const field = new THREE.Scene()
-  const camera = new THREE.PerspectiveCamera(48, 1, .1, 65)
-  camera.position.set(0, 2.8, 7)
-  camera.lookAt(0, 1.65, -9)
-  const bladeGeometry = new THREE.InstancedBufferGeometry()
-  const positions: number[] = []
-  const uvs: number[] = []
-  const indices: number[] = []
-  for (let i = 0; i <= 5; i++) {
-    const t = i / 5
-    positions.push(-(1 - t) * .5, t, 0, (1 - t) * .5, t, 0)
-    uvs.push(0, t, 1, t)
-    if (i < 5) { const n = i * 2; indices.push(n, n + 1, n + 2, n + 1, n + 3, n + 2) }
+  const random = randomSequence(207)
+  const stoneGeometry = new THREE.CylinderGeometry(1, 1.04, .08, 7)
+  const stones = new THREE.InstancedMesh(stoneGeometry, materials.concrete, 18)
+  stones.name = 'stepping-stones'
+  const dummy = new THREE.Object3D()
+  for (let i = 0; i < 18; i++) {
+    const z = 15 - i * 1.30, x = -.478 * z - .3 + Math.sin(i) * .13
+    dummy.position.set(x, terrainHeight(x, z) + .06, z)
+    dummy.rotation.set(0, random() * 6, 0); dummy.scale.set(.46 + random() * .12, 1, .39 + random() * .06)
+    dummy.updateMatrix(); stones.setMatrixAt(i, dummy.matrix)
   }
-  bladeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  bladeGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
-  bladeGeometry.setIndex(indices)
-  const count = compact ? 4500 : 11000
-  const offsets = new Float32Array(count * 3)
-  const shapes = new Float32Array(count * 3)
-  let seed = 83
-  const random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646 }
+  stones.castShadow = true; stones.receiveShadow = true; scene.add(stones)
+
+  const grassGeometry = new THREE.InstancedBufferGeometry()
+  const positions: number[] = [], uvs: number[] = [], indices: number[] = []
+  for (let i = 0; i <= 4; i++) {
+    const h = i / 4
+    positions.push(-(1-h)*.5,h,0,(1-h)*.5,h,0); uvs.push(0,h,1,h)
+    if (i < 4) { const n=i*2; indices.push(n,n+1,n+2,n+1,n+3,n+2) }
+  }
+  grassGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  grassGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  grassGeometry.setIndex(indices)
+  const count = compact ? 20000 : 65000
+  const offsets = new Float32Array(count * 3), shapes = new Float32Array(count * 4)
   for (let i = 0; i < count; i++) {
-    const x = (random() - .5) * 30
-    const z = random() * 23 - 18
-    // A low foreground bank leaves the horizon and library unobscured.
-    offsets.set([x, -.7 + .15 * Math.sin(x * .25 + z * .2), z], i * 3)
-    shapes.set([.018 + random() * .025, .22 + random() * .48, random() * Math.PI], i * 3)
+    let x: number, z: number
+    do {
+      const near = i < count * .74
+      x = (random() - .5) * (near ? 55 : 145) - 8
+      z = random() * (near ? 57 : 130) - (near ? 31 : 100)
+    } while (Math.hypot(x - 7, z + 16) < 9.5 || (z > -8 && z < 17 && Math.abs(x + .478*z + .3) < .64))
+    offsets.set([x, terrainHeight(x, z), z], i * 3)
+    shapes.set([.026 + random() * .043, .28 + random() * .68, random() * Math.PI * 2, random()], i * 4)
   }
-  bladeGeometry.setAttribute('aOffset', new THREE.InstancedBufferAttribute(offsets, 3))
-  bladeGeometry.setAttribute('aShape', new THREE.InstancedBufferAttribute(shapes, 3))
-  bladeGeometry.instanceCount = count
+  grassGeometry.setAttribute('aOffset', new THREE.InstancedBufferAttribute(offsets, 3))
+  grassGeometry.setAttribute('aShape', new THREE.InstancedBufferAttribute(shapes, 4))
+  grassGeometry.instanceCount = count
+  const wind = { value: 0 }
+  const pointer = new THREE.Vector2(), pointerTarget = new THREE.Vector2()
   const grassMaterial = new THREE.ShaderMaterial({
-    uniforms,
+    uniforms: { uTime: wind, uPointer: { value: pointer }, uFog: { value: new THREE.Color('#d5d8cc') } },
     side: THREE.DoubleSide,
-    transparent: true,
-    depthWrite: false,
-    vertexShader: `
-      attribute vec3 aOffset, aShape;
-      uniform float uTime;
-      uniform vec2 uPointer;
-      varying float vHeight, vDepth, vLight;
-      void main() {
-        float h = uv.y;
-        float wave = sin(aOffset.x * .43 + aOffset.z * .31 - uTime * .92);
-        float ripple = sin(aOffset.x * 1.35 - aOffset.z * .5 + uTime * 1.35) * .2;
-        float nearby = exp(-length(aOffset.xz - vec2(uPointer.x * 9.0, 3.0)) * .35);
-        vec3 p = vec3(position.x * aShape.x, position.y * aShape.y, 0.0);
-        p.xz = mat2(cos(aShape.z), -sin(aShape.z), sin(aShape.z), cos(aShape.z)) * p.xz;
-        p.x += h * h * (.14 + wave * .14 + ripple * .08 + nearby * uPointer.x * .18);
-        p.z += h * h * (.08 + wave * .07);
-        p += aOffset;
-        vHeight = h;
-        vLight = .65 + .35 * sin(aShape.z + aOffset.x);
-        vec4 mv = modelViewMatrix * vec4(p, 1.0);
-        vDepth = -mv.z;
-        gl_Position = projectionMatrix * mv;
+    vertexShader: `attribute vec3 aOffset; attribute vec4 aShape;
+      uniform float uTime; uniform vec2 uPointer;
+      varying float vHeight,vDepth,vLight,vVariation;
+      void main(){
+        float h=uv.y; float gust=sin(aOffset.x*.19+aOffset.z*.24-uTime*.75);
+        float flutter=sin(aOffset.x*.8-aOffset.z*.43+uTime*1.9)*.12;
+        vec3 p=vec3(position.x*aShape.x,h*aShape.y,0.);
+        p.xz=mat2(cos(aShape.z),-sin(aShape.z),sin(aShape.z),cos(aShape.z))*p.xz;
+        p.x+=h*h*(.10+gust*.23+flutter+uPointer.x*.07);
+        p.z+=h*h*(.06+gust*.11); p+=aOffset;
+        vec4 mv=modelViewMatrix*vec4(p,1.);
+        vHeight=h; vDepth=-mv.z; vLight=.75+.25*sin(aShape.z); vVariation=aShape.w;
+        gl_Position=projectionMatrix*mv;
       }`,
-    fragmentShader: `
-      uniform float uProgress;
-      varying float vHeight, vDepth, vLight;
-      void main() {
-        vec3 base = vec3(.026, .043, .033);
-        vec3 tip = vec3(.20, .24, .17) * vLight;
-        vec3 color = mix(base, tip, pow(vHeight, 1.6));
-        float alpha = (1.0 - smoothstep(7.0, 24.0, vDepth)) * mix(.88, .32, smoothstep(.16, .68, uProgress));
-        gl_FragColor = vec4(color, alpha);
+    fragmentShader: `uniform vec3 uFog; varying float vHeight,vDepth,vLight,vVariation;
+      void main(){
+        vec3 root=vec3(.047,.065,.022),tip=mix(vec3(.20,.29,.085),vec3(.34,.36,.15),vVariation*.65);
+        vec3 color=mix(root,tip,pow(vHeight,.8))*vLight;
+        float fog=1.-exp(-.000289*vDepth*vDepth);
+        color=mix(color,uFog,fog);
+        gl_FragColor=vec4(color,1.);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
       }`,
   })
-  const grass = new THREE.Mesh(bladeGeometry, grassMaterial)
-  grass.frustumCulled = false
-  field.add(grass)
+  const grass = new THREE.Mesh(grassGeometry, grassMaterial)
+  grass.name = 'wind-driven-grass'; grass.frustumCulled = false; scene.add(grass)
 
+  const flowerCount = compact ? 90 : 240
+  const petals = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 8, 4), materials.linen, flowerCount * 6)
+  const centers = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 8, 4), materials.brass, flowerCount)
+  const stems = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 1, 4), materials.soil, flowerCount)
+  petals.name = 'wildflower-petals'; centers.name = 'wildflower-centers'; stems.name = 'wildflower-stems'
+  for (let i = 0; i < flowerCount; i++) {
+    let x: number, z: number
+    do { x = random() * 45 - 30; z = random() * 40 - 13 }
+    while (Math.hypot(x - 7, z + 16) < 9.5 || Math.abs(x + .478 * z + .3) < .7)
+    const height = .5 + random() * .35, y = terrainHeight(x, z)
+    dummy.rotation.set(0, 0, 0); dummy.position.set(x, y + height / 2, z); dummy.scale.set(.003, height, .003); dummy.updateMatrix(); stems.setMatrixAt(i, dummy.matrix)
+    dummy.position.set(x, y + height, z); dummy.scale.set(.013, .006, .013); dummy.updateMatrix(); centers.setMatrixAt(i, dummy.matrix)
+    for (let petal = 0; petal < 6; petal++) {
+      const angle = petal / 6 * Math.PI * 2
+      dummy.position.set(x + Math.cos(angle) * .027, y + height - .002, z + Math.sin(angle) * .027)
+      dummy.rotation.set(0, -angle, .12); dummy.scale.set(.031, .004, .011); dummy.updateMatrix(); petals.setMatrixAt(i * 6 + petal, dummy.matrix)
+    }
+  }
+  scene.add(petals, centers, stems)
+
+  const composer = new EffectComposer(renderer)
+  const renderPass = new RenderPass(scene, camera)
+  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), .18, .55, 1.6)
+  const output = new OutputPass()
+  composer.addPass(renderPass); composer.addPass(bloom); composer.addPass(output)
+  let disposed = false, motion = true, visible = true, lost = false, frame = 0, time = 0, lastTime = 0, progress = 0, cameraProgress = 0
+  const viewTarget = new THREE.Vector3()
+  const fieldPosition = new THREE.Vector3(-10, 2.65 + terrainHeight(-10, 16), 16)
+  const libraryPosition = new THREE.Vector3(-7.5, 3.4, 5)
+  const deskPosition = new THREE.Vector3(1.1, 2.45, -4.4)
+  const fieldLook = new THREE.Vector3(-31, .9, -12)
+  const libraryLook = new THREE.Vector3(1.4, 2.7, -18)
+  const deskLook = new THREE.Vector3(4.7, 1.75, -9.7)
   function draw(now: number) {
     frame = 0
-    if (disposed || contextLost || !visible || document.hidden || loaded < 2) return
-    const delta = Math.min((now - lastTime) / 1000, .05)
-    lastTime = now
+    if (disposed || lost || !visible || document.hidden) return
+    const delta = Math.min((now - lastTime) / 1000, .05); lastTime = now
     if (motion) time += delta
-    pointer.lerp(motion ? targetPointer : new THREE.Vector2(), .055)
-    uniforms.uTime.value = time
-    uniforms.uProgress.value = progress
-    camera.position.x = pointer.x * .16
-    camera.position.y = 2.8 + pointer.y * .055
-    camera.lookAt(pointer.x * .08, 1.65, -9)
-    renderer.clear()
-    renderer.render(background, ortho)
-    renderer.clearDepth()
-    renderer.render(field, camera)
-    if (motion) requestDraw()
+    pointer.lerp(pointerTarget, .055)
+    wind.value = time
+    cameraProgress += (progress - cameraProgress) * (motion ? .10 : 1)
+    const first = THREE.MathUtils.smoothstep(cameraProgress, .10, .61)
+    const second = THREE.MathUtils.smoothstep(cameraProgress, .64, 1)
+    camera.position.copy(fieldPosition).lerp(libraryPosition, first).lerp(deskPosition, second)
+    viewTarget.copy(fieldLook).lerp(libraryLook, first).lerp(deskLook, second)
+    if (camera.aspect < .85) {
+      camera.position.z += first * 3.5 - second * 1.3
+      viewTarget.x += first * 2.3 - second * 1.2
+    }
+    camera.position.x += pointer.x * (.7 - second * .35)
+    camera.position.y += pointer.y * .20
+    viewTarget.x += pointer.x * .27
+    viewTarget.y += pointer.y * .10
+    camera.lookAt(viewTarget)
+    library.reels.forEach((reel, i) => { reel.rotation.z = -time * (.30 + i * .06) })
+    library.drawer.position.z = .08 + THREE.MathUtils.smoothstep(cameraProgress, .38, .80) * .33
+    composer.render()
+    host.dataset.renderer = 'ready'
+    if (motion) schedule()
   }
-  function requestDraw() {
-    if (!frame && !disposed && !contextLost && visible && !document.hidden) frame = requestAnimationFrame(draw)
-  }
+  function schedule() { if (!frame && !disposed && !lost && visible && !document.hidden) frame = requestAnimationFrame(draw) }
   function resize() {
-    width = host.clientWidth
-    height = host.clientHeight
+    const width = host.clientWidth, height = host.clientHeight
     if (!width || !height) return
     renderer.setSize(width, height)
+    composer.setSize(width, height)
     camera.aspect = width / height
+    camera.fov = width < 700 ? 61 : 48
     camera.updateProjectionMatrix()
-    uniforms.uSize.value.set(width, height)
-    requestDraw()
+    schedule()
   }
-  const sizeObserver = new ResizeObserver(resize)
-  sizeObserver.observe(host)
+  const sizeObserver = new ResizeObserver(resize); sizeObserver.observe(host)
   const visibilityObserver = new IntersectionObserver(([entry]) => {
     visible = entry.isIntersecting
-    if (visible) { lastTime = performance.now(); requestDraw() }
-    else { cancelAnimationFrame(frame); frame = 0 }
-  })
-  visibilityObserver.observe(host)
-  const onVisibility = () => {
-    cancelAnimationFrame(frame); frame = 0
-    lastTime = performance.now()
-    requestDraw()
-  }
-  const onContextLost = (event: Event) => {
-    event.preventDefault()
-    contextLost = true
-    cancelAnimationFrame(frame); frame = 0
-    host.dataset.renderer = 'fallback'
-  }
+    if (!visible) { cancelAnimationFrame(frame); frame = 0 }
+    else { lastTime = performance.now(); schedule() }
+  }); visibilityObserver.observe(host)
+  const onVisibility = () => { cancelAnimationFrame(frame); frame = 0; lastTime = performance.now(); schedule() }
+  const onContextLost = (event: Event) => { event.preventDefault(); lost = true; cancelAnimationFrame(frame); frame = 0; host.dataset.renderer = 'fallback' }
   document.addEventListener('visibilitychange', onVisibility)
   canvas.addEventListener('webglcontextlost', onContextLost)
-  for (const name of ['meadow', 'library'] as const) {
-    const texture = loader.load(sources[name], (loadedTexture) => {
-      if (disposed) { loadedTexture.dispose(); return }
-      const image = loadedTexture.image as HTMLImageElement
-      uniforms[name === 'meadow' ? 'uMeadowSize' : 'uLibrarySize'].value.set(image.width, image.height)
-      loaded++
-      if (loaded === 2) { host.dataset.renderer = 'ready'; requestDraw() }
-    }, undefined, () => { host.dataset.renderer = 'fallback' })
-    // The custom screen shader displays source sRGB directly, without lighting.
-    texture.minFilter = THREE.LinearFilter
-    texture.generateMipmaps = false
-    textures.push(texture)
-    uniforms[name === 'meadow' ? 'uMeadow' : 'uLibrary'].value = texture
-  }
+  renderer.shadowMap.needsUpdate = true
   resize()
   return {
-    setProgress(value) { progress = value; requestDraw() },
-    setPointer(x, y) { targetPointer.set(x, y); if (motion) requestDraw() },
+    setProgress(value) { progress = value; schedule() },
+    setPointer(x, y) { if (motion) { pointerTarget.set(x, y); schedule() } },
     setMotion(enabled) {
       motion = enabled
-      if (!enabled) { pointer.set(0, 0); targetPointer.set(0, 0); cancelAnimationFrame(frame); frame = 0 }
-      lastTime = performance.now()
-      host.dataset.motion = enabled ? 'running' : 'paused'
-      requestDraw()
+      if (!enabled) { pointer.set(0, 0); pointerTarget.set(0, 0); cancelAnimationFrame(frame); frame = 0 }
+      lastTime = performance.now(); host.dataset.motion = enabled ? 'running' : 'paused'; schedule()
     },
     dispose() {
-      disposed = true
-      cancelAnimationFrame(frame)
-      sizeObserver.disconnect()
-      visibilityObserver.disconnect()
+      disposed = true; cancelAnimationFrame(frame)
+      sizeObserver.disconnect(); visibilityObserver.disconnect()
       document.removeEventListener('visibilitychange', onVisibility)
       canvas.removeEventListener('webglcontextlost', onContextLost)
-      textures.forEach((texture) => texture.dispose())
-      screenGeometry.dispose(); screenMaterial.dispose()
-      bladeGeometry.dispose(); grassMaterial.dispose()
-      renderer.dispose()
-      renderer.forceContextLoss()
-      canvas.remove()
+      const geometries = new Set<THREE.BufferGeometry>(), materialSet = new Set<THREE.Material>(), textures = new Set<THREE.Texture>()
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          geometries.add(object.geometry)
+          const list = Array.isArray(object.material) ? object.material : [object.material]
+          list.forEach((material) => materialSet.add(material))
+          if (object instanceof THREE.InstancedMesh) object.dispose()
+        }
+      })
+      Object.values(materials).forEach((material) => materialSet.add(material))
+      materialSet.forEach((material) => { Object.values(material).forEach((value) => { if (value instanceof THREE.Texture) textures.add(value) }); material.dispose() })
+      geometries.forEach((geometry) => geometry.dispose()); textures.forEach((texture) => texture.dispose())
+      sun.shadow.dispose(); environmentTarget.dispose(); bloom.dispose(); output.dispose(); composer.dispose()
+      renderer.dispose(); renderer.forceContextLoss(); canvas.remove()
     },
   }
 }

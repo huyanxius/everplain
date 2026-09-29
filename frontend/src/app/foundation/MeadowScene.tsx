@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { PauseIcon, PlayIcon } from '@phosphor-icons/react'
-import meadow from '../../assets/website/meadow.webp'
-import library from '../../assets/website/library.webp'
 import type { MeadowRenderer } from './meadow-renderer'
 
 export function MeadowScene() {
@@ -23,8 +21,6 @@ export function MeadowScene() {
       frame = 0
       const rect = journey.getBoundingClientRect()
       progress = Math.max(0, Math.min(1, -rect.top / Math.max(1, rect.height - window.innerHeight)))
-      const transition = Math.max(0, Math.min(1, (progress - .16) / .52))
-      element.style.setProperty('--library-opacity', String(transition * transition * (3 - 2 * transition)))
       engine.current?.setProgress(progress)
     }
     const schedule = () => { if (!frame) frame = requestAnimationFrame(update) }
@@ -44,7 +40,7 @@ export function MeadowScene() {
     void import('./meadow-renderer').then(({ createMeadowRenderer }) => {
       if (disposed) return
       try {
-        engine.current = createMeadowRenderer(element, { meadow, library })
+        engine.current = createMeadowRenderer(element)
         engine.current.setMotion(motionRef.current)
         engine.current.setProgress(progress)
       } catch {
@@ -68,7 +64,7 @@ export function MeadowScene() {
 
   return <div className="ep-scene-wrap">
     <div className="ep-scene" ref={host} aria-hidden="true">
-      <div className="ep-scene-fallback"><img src={meadow} alt="" fetchPriority="high" /><img className="ep-library-matte" src={library} alt="" /></div>
+      <div className="ep-scene-fallback" />
     </div>
     <div className="ep-scene-shade" aria-hidden="true" />
     <button className="ep-motion-toggle" type="button" onClick={() => setMotion(!motion)} aria-label={motion ? '暂停场景动效' : '开启场景动效'} aria-pressed={!motion}>
