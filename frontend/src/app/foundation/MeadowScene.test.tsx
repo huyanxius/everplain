@@ -39,11 +39,12 @@ describe('meadow scene lifecycle', () => {
     expect(renderer.setPointer).not.toHaveBeenCalled()
   })
 
-  it('keeps both scene images when WebGL is unavailable', async () => {
+  it('keeps a readable static background when WebGL is unavailable', async () => {
     createRenderer.mockImplementation(() => { throw new Error('WebGL unavailable') })
     const { container } = mountScene()
     await waitFor(() => expect(container.querySelector('.ep-scene')).toHaveAttribute('data-renderer', 'fallback'))
-    expect(container.querySelectorAll('.ep-scene-fallback img')).toHaveLength(2)
+    expect(container.querySelector('.ep-scene-fallback')).not.toBeNull()
+    expect(container.querySelector('img')).toBeNull()
     expect(container.querySelector('canvas')).toBeNull()
   })
 })

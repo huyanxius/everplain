@@ -31,4 +31,17 @@ describe('Everplain product website', () => {
     expect(screen.getByRole('link', { name: '回到我的空间' })).toHaveAttribute('href', '/app')
     expect(screen.queryByRole('link', { name: '登录' })).not.toBeInTheDocument()
   })
+  it('introduces model brands and lets visitors filter the sample knowledge space', () => {
+    render(<MemoryRouter><FoundationPage /></MemoryRouter>)
+    for (const name of ['Claude 标志', 'ChatGPT 标志', 'Gemini 标志']) {
+      expect(screen.getByRole('img', { name })).toBeInTheDocument()
+    }
+    expect(screen.getByRole('heading', { name: /好模型，用得起。.*好想法，尽管聊。/ })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '灵感' }))
+    expect(screen.queryByText('城市记忆与日常生活')).not.toBeInTheDocument()
+    expect(screen.getByText('光落在书架上的那个下午')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '文档' }))
+    expect(screen.getByText('城市记忆与日常生活')).toBeVisible()
+    expect(screen.queryByText('光落在书架上的那个下午')).not.toBeInTheDocument()
+  })
 })
