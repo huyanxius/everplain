@@ -10,6 +10,7 @@ const defaultSourceRoot = path.resolve(path.dirname(scriptPath), '../src')
 export const defaultBoundaryPolicy = Object.freeze({
   moduleDependencies: Object.freeze({
     account: Object.freeze([]),
+    'agent-avatar': Object.freeze([]),
     'knowledge-graph': Object.freeze([]),
     'knowledge-explorer': Object.freeze([]),
     'm4-theory-judgment': Object.freeze([]),

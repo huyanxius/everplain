@@ -1,41 +1,110 @@
-import { ArrowRightIcon, BooksIcon, FileTextIcon, LinkSimpleIcon } from '@phosphor-icons/react'
-import { Link } from 'react-router'
+import { useState } from 'react'
+import { ArrowUpIcon, ArrowUpRightIcon } from '@phosphor-icons/react'
+import { Link, useNavigate } from 'react-router'
 import brandMark from '../../assets/qunxue-brand-mark.svg'
-import './foundation.css'
+import { ActAgent, AgentCrew } from './AgentCrew'
+import { HeroFilm } from './HeroFilm'
+import { CompanionDemo, GatherDemo, LibraryDemo, MemoryDemo, ModelOrbit } from './ProductDemos'
+import './everplain-website.css'
 
+function Composer({ id, authenticated }: { id: string; authenticated: boolean }) {
+  const navigate = useNavigate()
+  const [thought, setThought] = useState('')
+  const start = () => {
+    const prompt = thought.trim()
+    if (!prompt) return
+    const destination = `/agent?${new URLSearchParams({ prompt })}`
+    navigate(authenticated ? destination : `/login?${new URLSearchParams({ redirect: destination })}`)
+  }
+  return <form className="ep-composer" onSubmit={event => { event.preventDefault(); start() }}>
+    <label className="ep-visually-hidden" htmlFor={id}>你的想法</label>
+    <textarea id={id} placeholder="说说你的想法…" value={thought} maxLength={4000} rows={2} onChange={event => setThought(event.target.value)} onKeyDown={event => {
+      if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); start() }
+    }} />
+    <button type="submit" aria-label="开始对话" disabled={!thought.trim()}><ArrowUpIcon size={20} aria-hidden="true" /></button>
+  </form>
+}
+
+/*
+ * 叙事四幕，每幕换一种版式，避免「左文右图」一路重复：
+ * 一、收到一处：没有面板框，零散的东西直接漂在纸面上再汇合；
+ * 二、知识库：居中标题 + 通栏演示；三、你的 AI：左对齐标题 + 对话与记忆并排；
+ * 四、价格与模型：标题在环绕的模型卡中间。
+ * 七个角色先在定位句下面整排亮相，之后每幕标题旁各站一个，左右交替。
+ */
 export function FoundationPage({ authenticated = false }: { authenticated?: boolean }) {
-  return <div className="everplain-public">
-    <header className="everplain-public__header">
-      <Link className="everplain-public__brand" to="/welcome" aria-label="Everplain 首页"><img src={brandMark} alt="" /><span>Everplain</span></Link>
-      <nav aria-label="首页导航"><a href="#features">产品功能</a><Link to="/library">知识库</Link>{authenticated ? <Link to="/app">工作台</Link> : <Link to="/login">登录</Link>}</nav>
+  return <div className="ep-site">
+    <a className="ep-skip" href="#main">跳到正文</a>
+    <header className="ep-header">
+      <Link className="ep-brand" to="/welcome" aria-label="Everplain 首页"><img src={brandMark} alt="" /><span>Everplain</span></Link>
+      <nav aria-label="官网导航"><a href="#gather">收集</a><a href="#library">知识库</a><a href="#your-ai">你的 AI</a><a href="#models">模型与价格</a></nav>
+      <Link className="ep-login" to={authenticated ? '/app' : '/login'}>{authenticated ? '工作台' : '登录'}<ArrowUpRightIcon size={15} aria-hidden="true" /></Link>
     </header>
-    <main>
-      <section className="everplain-intro" aria-labelledby="everplain-intro-title">
-        <div className="everplain-intro__copy"><p className="everplain-eyebrow">KNOWLEDGE, MADE USEFUL.</p>
-          <h1 id="everplain-intro-title">你的个人知识库，<br />也是研究工作台。</h1>
-          <p className="everplain-intro__lede">把文档、笔记与报告收在一起。用自己的资料提问，沿着来源深入研究，把发现写成可以继续编辑的成果。</p>
-          <div className="everplain-intro__actions"><Link className="everplain-start-link" to="/app">开始使用<ArrowRightIcon size={17} aria-hidden="true" /></Link><a href="#features">了解 Everplain</a></div>
-        </div>
-        <section className="everplain-product-map" aria-label="Everplain 工作流程">
-          <header><span>一个工作台，连接整个过程</span><img src={brandMark} alt="" /></header>
-          <ol>
-            <li><span className="everplain-product-map__icon"><BooksIcon size={21} weight="light" /></span><div><strong>归集资料</strong><p>PDF · Word · PPT · Markdown · TXT</p></div><span className="everplain-product-map__step">01</span></li>
-            <li><span className="everplain-product-map__icon"><LinkSimpleIcon size={21} weight="light" /></span><div><strong>连接知识与来源</strong><p>摘要、知识点、关系与原文出处</p></div><span className="everplain-product-map__step">02</span></li>
-            <li><span className="everplain-product-map__icon"><FileTextIcon size={21} weight="light" /></span><div><strong>研究，写成自己的成果</strong><p>提问、核对、编辑与导出</p></div><span className="everplain-product-map__step">03</span></li>
-          </ol>
-          <footer>资料与过程都留在你的账户中，下次继续。</footer>
-        </section>
-      </section>
-      <section className="everplain-features" id="features" aria-labelledby="everplain-features-title">
-        <header><p className="everplain-eyebrow">BUILT AROUND YOUR KNOWLEDGE</p><h2 id="everplain-features-title">从一份资料，到一份有依据的成果。</h2></header>
-        <div className="everplain-features__grid">
-          <article><span>01 / LIBRARY</span><h3>整理私有知识</h3><p>按主题建立知识库，上传资料，整理摘要、知识点与关系。需要回顾时，直接找到相关内容和原文。</p><Link to="/library">建立知识库<ArrowRightIcon size={14} /></Link></article>
-          <article><span>02 / RESEARCH</span><h3>基于来源研究</h3><p>选定知识库后开始提问，检索、比较不同材料，再沿着引用核对出处。围绕同一个问题持续深入。</p><Link to="/agent">开始一项研究<ArrowRightIcon size={14} /></Link></article>
-          <article><span>03 / WRITE</span><h3>留下可编辑的成果</h3><p>在画布中组织观点与证据，将研究内容写成文稿。直接修改、保存与导出，下一次打开仍能继续。</p><Link to="/app">打开工作台<ArrowRightIcon size={14} /></Link></article>
+
+    <main id="main">
+      <section className="ep-hero" aria-labelledby="ep-hero-title">
+        <HeroFilm />
+        <div className="ep-hero-copy">
+          <h1 id="ep-hero-title">Room for your mind.</h1>
+          <p className="ep-hero-chinese">给思绪一处空间。</p>
+          <Composer id="ep-thought" authenticated={authenticated} />
         </div>
       </section>
-      <section className="everplain-private" aria-labelledby="everplain-private-title"><div><p className="everplain-eyebrow">PERSONAL BY DEFAULT</p><h2 id="everplain-private-title">知识库属于你，研究由你决定。</h2></div><p>资料仅对你的账户可见。由你选择本次研究使用哪个知识库，也可以删除不再需要的资料及其索引。回答有来源，整理结果可修改，最终判断留给你。</p></section>
+
+      <section className="ep-statement" aria-labelledby="ep-statement-title">
+        <h2 id="ep-statement-title"><span>你的知识，</span>你的 AI。</h2>
+        <AgentCrew />
+      </section>
+
+      <section className="ep-act ep-act-gather" id="gather" aria-labelledby="ep-gather-title">
+        <ActAgent avatar="cheng" state="work" side="end" />
+        <div className="ep-act-head">
+          <h2 id="ep-gather-title">散落各处的，<br />收到一处。</h2>
+          <p>聊天里的链接、相册里的截图、收藏夹的视频、下载的论文、备忘录里的一句话。随手一存，都在这里，视频会转写，图里的字会被认出来。</p>
+        </div>
+        <GatherDemo />
+      </section>
+
+      <section className="ep-act ep-act-library" id="library" aria-labelledby="ep-library-title">
+        <ActAgent avatar="nian" state="think" side="start" />
+        <h2 id="ep-library-title">一键，建成你的知识库。</h2>
+        <p>收齐之后，一键整理成有主题、有关联、连着原文的知识库。你翻得到，你的 AI 也用得上。</p>
+        <LibraryDemo />
+      </section>
+
+      <section className="ep-act ep-act-ai" id="your-ai" aria-labelledby="ep-ai-title">
+        <ActAgent avatar="heng" state="greet" side="end" />
+        <div className="ep-act-head">
+          <h2 id="ep-ai-title">只属于你的 AI。</h2>
+          <p>它读过你收藏的一切，记得你想过的每一步。说出你还记得的那一点，它就能接上。它有你取的名字，也有你挑的样子。</p>
+        </div>
+        <div className="ep-ai-grid">
+          <CompanionDemo />
+          <MemoryDemo />
+        </div>
+      </section>
+
+      <section className="ep-models" id="models" aria-labelledby="ep-models-title">
+        <ModelOrbit />
+        <div className="ep-models-copy">
+          <h2 id="ep-models-title">用 1% 的成本，<br />和全球最顶尖的模型对话。</h2>
+          <p className="ep-price"><span>低至</span><strong>1%</strong><span>官方 API 价格</span></p>
+          <small>以各模型官方 API 标价为对比基准。</small>
+        </div>
+      </section>
+
+      <section className="ep-closing" aria-labelledby="ep-closing-title">
+        <ActAgent avatar="you" state="greet" side="center" />
+        <h2 id="ep-closing-title">Room for your mind.</h2>
+        <Composer id="ep-thought-closing" authenticated={authenticated} />
+        <Link className="ep-text-link" to="/app">先逛逛当前版本<ArrowUpRightIcon size={16} aria-hidden="true" /></Link>
+      </section>
     </main>
-    <footer className="everplain-public__footer"><span>Everplain</span><p>个人知识库与研究工作台</p><Link to="/app">开始使用 Everplain<ArrowRightIcon size={14} /></Link></footer>
+
+    <footer className="ep-footer">
+      <Link className="ep-brand" to="/welcome"><img src={brandMark} alt="" /><span>Everplain</span></Link>
+      <span>给思绪一处空间。</span>
+      <small>© 2026 Everplain</small>
+    </footer>
   </div>
 }
