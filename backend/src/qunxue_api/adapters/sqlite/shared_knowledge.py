@@ -187,21 +187,63 @@ class SqliteSharedKnowledgeRepository:
         return _kb(row) if row else None
 
     def list_for(self, user_id):
-        subscribed = select(SharedKnowledgeSubscriptionRow.knowledge_base_id).where(
-            SharedKnowledgeSubscriptionRow.user_id == str(user_id)
-        )
         rows = self.session.scalars(
             select(SharedKnowledgeBaseRow)
             .where(
-                (
-                    (SharedKnowledgeBaseRow.owner_user_id == str(user_id))
-                    & SharedKnowledgeBaseRow.deleted_at.is_(None)
-                )
-                | SharedKnowledgeBaseRow.id.in_(subscribed)
+                SharedKnowledgeBaseRow.owner_user_id == str(user_id),
+                SharedKnowledgeBaseRow.deleted_at.is_(None),
             )
             .order_by(SharedKnowledgeBaseRow.updated_at.desc())
         )
         return tuple(_kb(row) for row in rows)
+
+    def owned_document(self, user_id, document_id):
+        row = self.session.execute(
+            select(SharedKnowledgeBaseRow, SharedDocumentRow)
+            .join(
+                SharedKnowledgeDocumentRow,
+                SharedKnowledgeDocumentRow.knowledge_base_id == SharedKnowledgeBaseRow.id,
+            )
+            .join(SharedDocumentRow, SharedDocumentRow.id == SharedKnowledgeDocumentRow.document_id)
+            .where(
+                SharedKnowledgeBaseRow.owner_user_id == str(user_id),
+                SharedKnowledgeBaseRow.deleted_at.is_(None),
+                SharedDocumentRow.owner_user_id == str(user_id),
+                SharedDocumentRow.id == str(document_id),
+                SharedDocumentRow.status == "ready",
+            )
+        ).first()
+        return (_kb(row[0]), _document(row[1])) if row else None
+
+    def quota_guard(self, user_id):
+        from sqlalchemy import text
+
+        # Serialize the final quota check with the write, after parsing has finished.
+        # SQLite begins a deferred transaction on reads; this no-op takes its write lock.
+        self.session.execute(
+            text("UPDATE users SET user_id = user_id WHERE user_id = :user_id"),
+            {"user_id": str(user_id)},
+        )
+
+    def storage_usage(self, user_id):
+        from sqlalchemy import func
+
+        # Only attached documents occupy quota; removed content is purged below.
+        return self.session.scalar(
+            select(func.coalesce(func.sum(SharedDocumentRow.size_bytes), 0)).where(
+                SharedDocumentRow.owner_user_id == str(user_id),
+                SharedDocumentRow.id.in_(select(SharedKnowledgeDocumentRow.document_id)),
+            )
+        )
+
+    def update_knowledge(self, document_id, value):
+        row = self.session.get(SharedDocumentRow, str(document_id))
+        row.knowledge = value
+        row.knowledge_status = "ready"
+        row.knowledge_error = None
+        row.knowledge_checkpoints = {}
+        self.session.flush()
+        return _document(row)
 
     def find_token(self, token):
         row = self.session.scalar(
@@ -252,7 +294,38 @@ class SqliteSharedKnowledgeRepository:
         )
         if document_id:
             stmt = stmt.where(SharedKnowledgeDocumentRow.document_id == str(document_id))
+        removed_ids = list(
+            self.session.scalars(
+                select(SharedKnowledgeDocumentRow.document_id).where(
+                    SharedKnowledgeDocumentRow.knowledge_base_id == str(kb_id)
+                )
+            )
+        )
         self.session.execute(stmt)
+        if document_id:
+            removed_ids = [str(document_id)]
+        # Keep an idempotency tombstone, erase source text, vectors and generated knowledge.
+        # An old retry cannot resurrect a removed file or leave private bytes retained forever.
+        for removed_id in removed_ids:
+            if self.session.scalar(
+                select(SharedKnowledgeDocumentRow.document_id).where(
+                    SharedKnowledgeDocumentRow.document_id == removed_id
+                )
+            ):
+                continue
+            row = self.session.get(SharedDocumentRow, removed_id)
+            if row is not None:
+                row.content = b""
+                row.segments = []
+                row.vectors = {}
+                row.knowledge = None
+                row.knowledge_checkpoints = {}
+                row.knowledge_status = "failed"
+                row.index_status = "failed"
+                row.knowledge_error = "资料已删除。"
+                row.index_error = "资料已删除。"
+                row.job_token = None
+                row.job_started_at = None
 
     def find_upload(self, user_id, key):
         row = self.session.scalar(

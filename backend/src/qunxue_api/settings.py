@@ -10,8 +10,8 @@ from sqlalchemy.engine import make_url
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 KNOWLEDGE_ROOT = BACKEND_ROOT.parent / "knowledge"
-DEFAULT_DATABASE_URL = f"sqlite:///{BACKEND_ROOT / 'var' / 'qunxue.db'}"
-DEFAULT_RETRIEVAL_INDEX_PATH = BACKEND_ROOT / "var" / "retrieval.db"
+DEFAULT_DATABASE_URL = f"sqlite:///{BACKEND_ROOT / 'var' / 'everplain.db'}"
+DEFAULT_RETRIEVAL_INDEX_PATH = BACKEND_ROOT / "var" / "everplain-retrieval.db"
 SILICONFLOW_EMBEDDING_MODEL = "Pro/BAAI/bge-m3"
 SILICONFLOW_RERANKER_MODEL = "Pro/BAAI/bge-reranker-v2-m3"
 DEFAULT_MODEL_BASE_URL = "https://api.deepseek.com"
@@ -103,7 +103,7 @@ def is_sqlite_memory_url(database_url: str) -> bool:
 
 
 class Settings(BaseSettings):
-    app_name: str = "群学致知 API"
+    app_name: str = "Everplain API"
     contract_version: str = "2026-07-foundation"
     release_revision: str = Field(
         default="unreleased",
@@ -117,19 +117,17 @@ class Settings(BaseSettings):
     memory_learning_idle_seconds: int = Field(default=600, ge=60)
     memory_learning_daily_calls: int = Field(default=8, ge=0, le=32)
     memory_learning_daily_tokens: int = Field(default=64000, ge=0, le=256000)
-    session_cookie_name: str = "qunxue_session"
+    session_cookie_name: str = "everplain_session"
     session_ttl_seconds: int = 60 * 60 * 24 * 7
     session_cookie_secure: bool = False
     session_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     account_initial_admin_email: str = ""
     account_initial_admin_password: SecretStr | None = None
     resend_api_key: SecretStr | None = None
-    email_from: str = "群学致知 <noreply@qunxue.qiyuankaiwu.com>"
+    email_from: str = "Everplain <onboarding@resend.dev>"
     cors_allowed_origins: tuple[str, ...] = (
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5178",
-        "http://localhost:5173",
-        "http://localhost:5178",
+        "http://127.0.0.1:5196",
+        "http://localhost:5196",
     )
     model_base_url: str | None = None
     model_api_key: SecretStr | None = None
@@ -144,7 +142,7 @@ class Settings(BaseSettings):
     web_search_provider: Literal["tavily", "custom"] = "tavily"
     web_search_api_key: SecretStr | None = None
     web_search_base_url: str | None = None
-    web_search_profile: Literal["generic", "sociology"] = "sociology"
+    web_search_profile: Literal["generic", "sociology"] = "generic"
     web_search_allowed_domains: tuple[str, ...] = ()
     web_search_timeout_seconds: float = Field(default=12, gt=0)
     model_sft_resource_header: str = "X-LoRA-ID"
@@ -168,8 +166,13 @@ class Settings(BaseSettings):
     retrieval_min_lexical_score: float = Field(default=0.12, ge=0, le=1)
     retrieval_recall_limit: int = Field(default=30, gt=0)
 
+    max_file_bytes: int = Field(default=20 * 1024 * 1024, ge=1024)
+    max_storage_bytes: int = Field(default=500 * 1024 * 1024, ge=1024)
+    max_libraries: int = Field(default=10, ge=1, le=1000)
+    max_documents_per_library: int = Field(default=100, ge=1, le=10000)
+
     model_config = SettingsConfigDict(
-        env_prefix="QUNXUE_",
+        env_prefix="EVERPLAIN_",
         env_file=BACKEND_ROOT / ".env",
         extra="ignore",
         hide_input_in_errors=True,

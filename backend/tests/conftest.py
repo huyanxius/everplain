@@ -17,7 +17,10 @@ from qunxue_api.adapters.sqlite.database import Database
 from qunxue_api.adapters.sqlite.knowledge_catalog import SqliteKnowledgeCatalog
 from qunxue_api.bootstrap import create_app
 from qunxue_api.modules.knowledge_catalog import KnowledgeUsePurpose
-from qunxue_api.settings import KNOWLEDGE_ROOT, Settings
+from qunxue_api.settings import Settings
+
+# Historical domain tests use isolated fixtures; no academic content ships in Everplain.
+KNOWLEDGE_ROOT = Path(__file__).parent / "fixtures" / "legacy-catalog"
 
 
 class _TestReleaseRetriever:
@@ -27,9 +30,7 @@ class _TestReleaseRetriever:
         self._catalog = catalog
 
     def search(self, **kwargs) -> HybridRetrievalResult:
-        profiles = self._catalog.list_match_profiles(
-            release_id=kwargs["knowledge_release_id"]
-        )
+        profiles = self._catalog.list_match_profiles(release_id=kwargs["knowledge_release_id"])
         hits = tuple(
             HybridRetrievalHit(
                 chunk=RetrievalChunk(
@@ -73,7 +74,7 @@ def plain_client(
 ) -> Iterator[TestClient]:
     database_path = tmp_path / "test.db"
     database_url = f"sqlite:///{database_path}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     settings = Settings(
         _env_file=None,
         database_url=database_url,
@@ -112,7 +113,7 @@ def knowledge_database_template(tmp_path_factory: pytest.TempPathFactory) -> Pat
     database_url = f"sqlite:///{template_path}"
     alembic_config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
     with pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+        monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
         command.upgrade(alembic_config, "head")
 
     database = Database(database_url)
@@ -127,8 +128,9 @@ def knowledge_database_template(tmp_path_factory: pytest.TempPathFactory) -> Pat
     )
     preview = catalog.current_release(purpose=KnowledgeUsePurpose.BROWSE)
     bundle_payload = json.loads(
-        (KNOWLEDGE_ROOT / "review-packets" / "first-match-theories.pre-reviewed.json")
-        .read_text(encoding="utf-8")
+        (KNOWLEDGE_ROOT / "review-packets" / "first-match-theories.pre-reviewed.json").read_text(
+            encoding="utf-8"
+        )
     )
     bundle_payload["base_release_id"] = preview.knowledge_release_id
     bundle_path = template_root / "first-match-theories.pre-reviewed.json"
@@ -150,7 +152,7 @@ def client(
     database_path = tmp_path / "test.db"
     copyfile(knowledge_database_template, database_path)
     database_url = f"sqlite:///{database_path}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     settings = Settings(
         _env_file=None,
         database_url=database_url,

@@ -32,9 +32,9 @@ describe('FoundationAgentReveal', () => {
     const question = container.querySelector<HTMLElement>('[data-research-question]')
 
     expect(screen.queryByText('研究 Agent')).not.toBeInTheDocument()
-    expect(question).toHaveTextContent('为什么同一课堂里有人总是沉默？')
+    expect(question).toHaveTextContent('帮我比较这两份产品方案的差异')
     expect(question?.dataset.copyPhase).toBe('entering')
-    expect(question?.querySelectorAll('.foundation-agent__glyph')).toHaveLength(15)
+    expect(question?.querySelectorAll('.foundation-agent__glyph')).toHaveLength(14)
 
     act(() => vi.advanceTimersByTime(959))
     expect(question?.dataset.copyPhase).toBe('entering')
@@ -44,15 +44,15 @@ describe('FoundationAgentReveal', () => {
 
     act(() => vi.advanceTimersByTime(2_780))
     expect(question?.dataset.copyPhase).toBe('exiting')
-    expect(question).toHaveTextContent('为什么同一课堂里有人总是沉默？')
+    expect(question).toHaveTextContent('帮我比较这两份产品方案的差异')
 
     act(() => vi.advanceTimersByTime(459))
     expect(question?.dataset.copyPhase).toBe('exiting')
-    expect(question).toHaveTextContent('为什么同一课堂里有人总是沉默？')
+    expect(question).toHaveTextContent('帮我比较这两份产品方案的差异')
 
     act(() => vi.advanceTimersByTime(1))
 
-    expect(question).toHaveTextContent('为什么短视频越刷越难停下来？')
+    expect(question).toHaveTextContent('从我的阅读笔记里找到反对意见')
     expect(question?.dataset.copyPhase).toBe('entering')
   })
 
@@ -61,20 +61,20 @@ describe('FoundationAgentReveal', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: false }))
 
     const { container } = renderReveal()
-    const input = screen.getByRole('textbox', { name: '输入你的研究困惑' })
+    const input = screen.getByRole('textbox', { name: '输入你的研究问题' })
 
-    fireEvent.change(input, { target: { value: '宿舍里为什么总有人沉默？' } })
+    fireEvent.change(input, { target: { value: '这两份报告有哪些相同观点？' } })
 
     const question = container.querySelector<HTMLElement>('[data-research-question]')
-    expect(input).toHaveValue('宿舍里为什么总有人沉默？')
+    expect(input).toHaveValue('这两份报告有哪些相同观点？')
     expect(question?.dataset.copyMode).toBe('input')
-    expect(question).toHaveTextContent('宿舍里为什么总有人沉默？')
-    expect(question).not.toHaveTextContent('为什么同一课堂里有人总是沉默？')
+    expect(question).toHaveTextContent('这两份报告有哪些相同观点？')
+    expect(question).not.toHaveTextContent('帮我比较这两份产品方案的差异')
 
     fireEvent.scroll(input, { target: { scrollLeft: 96 } })
     expect(question).toHaveStyle({ transform: 'translate3d(-96px, 0, 0)' })
 
     act(() => vi.advanceTimersByTime(8_400))
-    expect(question).toHaveTextContent('宿舍里为什么总有人沉默？')
+    expect(question).toHaveTextContent('这两份报告有哪些相同观点？')
   })
 })

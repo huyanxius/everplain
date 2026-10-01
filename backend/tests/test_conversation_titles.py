@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
@@ -67,7 +67,7 @@ def test_new_conversation_persists_title_for_answers_and_pending_research(kind):
 ])
 def test_planner_emits_title_for_all_decisions(request_type, clarify):
     runner = object.__new__(PydanticAIKnowledgeRunner)
-    runner._planner_agent = SimpleNamespace(run_sync=Mock(return_value=SimpleNamespace(
+    runner._planner_agent = SimpleNamespace(run=AsyncMock(return_value=SimpleNamespace(
         output=DeepResearchDecision(
             request_type=request_type, needs_clarification=clarify,
             title="青年孤独的社会成因", question="研究哪个地区？",
@@ -79,12 +79,12 @@ def test_planner_emits_title_for_all_decisions(request_type, clarify):
         on_event=lambda event: None, on_title=titles.append,
     )
     assert titles == ["青年孤独的社会成因"]
-    assert runner._planner_agent.run_sync.call_count == 1
+    assert runner._planner_agent.run.await_count == 1
 
 
 def test_planner_failure_keeps_existing_title():
     runner = object.__new__(PydanticAIKnowledgeRunner)
-    runner._planner_agent = SimpleNamespace(run_sync=Mock(side_effect=RuntimeError("offline")))
+    runner._planner_agent = SimpleNamespace(run=AsyncMock(side_effect=RuntimeError("offline")))
     titles = []
     runner.prepare_research(
         prompt="你好", conversation=(), tools=Tools(),

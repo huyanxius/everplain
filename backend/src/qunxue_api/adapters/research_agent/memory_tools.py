@@ -37,6 +37,7 @@ class AgentMemoryTools:
         self._conversation_id, self._run_id = conversation_id, run_id
         self._prompt = prompt
         self.can_write = bool(_EXPLICIT_REQUEST.search(prompt))
+        self.user_text_only = False
         self._reads = 0
         self._writes: dict[str, dict] = {}
         with service_scope() as memory:
@@ -60,6 +61,15 @@ class AgentMemoryTools:
     ) -> dict:
         if not self.can_write:
             return {"error": "explicit_request_required"}
+        if (
+            self.user_text_only
+            and action == "remember"
+            and " ".join(content.split()) not in " ".join(self._prompt.split())
+        ):
+            return {
+                "error": "source_derived_memory_disallowed",
+                "message": "知识库原文继续保存在资料中；记忆仅保存你本轮明确输入的偏好或决定。",
+            }
         if scope == "project" and self._task_id is None:
             return {"error": "project_required"}
         task_id = self._task_id if scope == "project" else None

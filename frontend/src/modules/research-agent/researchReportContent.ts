@@ -1,4 +1,5 @@
 import type { AgentCitation, AgentConversation } from './model'
+import { citationGroup, stripCitationMarkers } from './citationPresentation'
 
 // 研究报告直接沿用 Agent 对话本身：一轮问答就是一节，不另外让模型再写一遍。
 // 这个文件只负责把对话整理成排版无关的中间结构，Word 与 PDF 两条导出各自消费它。
@@ -26,11 +27,9 @@ export type ResearchReport = {
   references: ResearchReference[]
 }
 
-const CITATION_MARKER = /\[(?:citation_id:)?(?:knowledge|source):[A-Za-z0-9_.:-]+\]/g
-
-/** 正文里的 `[knowledge:D1:C213]` 是模型给前端的锚点，读者不该看到它。 */
+/** Copy, summaries and exports omit the internal source anchors. */
 export function displayAgentText(value: string) {
-  return value.replace(CITATION_MARKER, '')
+  return stripCitationMarkers(value)
 }
 
 /**
@@ -61,12 +60,6 @@ export function formatElapsed(seconds: number) {
   return `${Math.floor(total / 60)} 分 ${total % 60} 秒`
 }
 
-function citationGroup(citation: AgentCitation): ResearchReferenceGroup {
-  if (citation.source_kind === 'web') return 'web'
-  if (citation.kind === 'material' || citation.kind === 'research_material') return 'material'
-  return 'knowledge'
-}
-
 function citationUrl(citation: AgentCitation) {
   if (citation.source_kind !== 'web' || !citation.source_id) return null
   try {
@@ -79,7 +72,7 @@ function citationUrl(citation: AgentCitation) {
 const groupOrder: ResearchReferenceGroup[] = ['knowledge', 'web', 'material']
 
 export const referenceGroupTitles: Record<ResearchReferenceGroup, string> = {
-  knowledge: '群学知识库',
+  knowledge: '知识库资料',
   web: '公开网页',
   material: '个人研究材料',
 }
@@ -152,5 +145,5 @@ export function buildResearchReport({
 
 export function researchReportFilename(report: ResearchReport, extension: string) {
   const safe = report.title.replace(/[\\/:*?"<>|\n\r]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40) || '研究报告'
-  return `群学致知-${safe}.${extension}`
+  return `Everplain-${safe}.${extension}`
 }

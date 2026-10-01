@@ -1,19 +1,11 @@
-# docs
+# Everplain 文档
 
-工程与产品文档从这里进入。运行状态以代码和测试为准，任务状态以 [GitHub Issues](https://github.com/huyanxius/qunxue/issues) 为准。
+当前产品与运行说明：
 
-## 工程文档
+- [产品范围](product/README.md)
+- [本地开发](onboarding.md)
+- [独立部署、备份和恢复](DISTRIBUTION.md)
+- [安全与隐私](SECURITY.md)
+- [协作规范](../CONTRIBUTING.md)
 
-- [`onboarding.md`](onboarding.md)：新队员安装、启动、冒烟验证和第一次提交。
-- [`ARCHITECTURE.md`](ARCHITECTURE.md)：模块职责、依赖方向、公共入口和改动位置。
-- [`DECISIONS.md`](DECISIONS.md)：工程决策记录。
-- [`engineering/STATUS.md`](engineering/STATUS.md)：当前工程能力、未完成边界与风险。
-- [`../CONTRIBUTING.md`](../CONTRIBUTING.md)：Issue、分支、提交、PR 与 Review 流程。
-
-## 产品文档
-
-产品定位、竞赛约束、证据边界和待决问题见 [`product/README.md`](product/README.md)。进行全局产品分析前，请先完整阅读该目录。
-
-## 模型训练数据
-
-- [`TRAINING_DATASET_PROTOCOL.md`](TRAINING_DATASET_PROTOCOL.md)：训练集母案例、五维形式比例、知识门控、派生任务、审核验收与扩容总协议。
+任务状态以 [Everplain Issues](https://github.com/huyanxius/everplain/issues) 和对应 PR 为准。历史架构、比赛、训练及实验资料保留作为基座演进记录，不是 Everplain 的产品定位、线上地址、部署授权或当前能力承诺。与上述当前说明冲突时，以当前代码、配置和实际验收证据为准；不要按历史文档连接旧产品环境。

@@ -23,7 +23,7 @@ export type ResearchActivity = {
   resultItems?: ResearchActivityResult[]
 }
 
-/** 右栏分段的归属。知识库是本体条目，web 是抓回来的外部网页，material 是用户自己传的研究材料。 */
+/** 右栏分段的归属。knowledge 是个人知识库资料，web 是外部网页，material 是单次研究上传的文件。 */
 export type ResearchCitationGroup = 'knowledge' | 'web' | 'material'
 
 export type ResearchCitation = {
@@ -256,7 +256,7 @@ function SectionsRail({
               title={text('知识库', 'Knowledge base')}
               count={knowledge.length}
               index={0}
-              emptyHint={text('这次回答还没有引用知识库条目。', 'No knowledge entries cited yet.')}
+              emptyHint={text('这次回答还没有引用知识库资料。', 'No library materials cited yet.')}
             >
               <SourcesPanel citations={knowledge} selectedCitationId={selectedCitationId} onSelect={onCitationSelect} numberOf={numberOf} />
             </RailSection>
@@ -324,7 +324,7 @@ export function ResearchContextRail({
       <header className="research-context-rail__header"><div><strong>{tabLabels[tab]}</strong></div><button type="button" aria-label={text('关闭上下文栏', 'Close context panel')} onClick={onClose}><XIcon size={17} /></button></header>
       <div className="research-context-rail__body">
         <section className="research-context-rail__panel" role="region" aria-label={tabLabels[tab]} tabIndex={0}>
-          {tab === 'agent' ? <div className="research-context-rail__agent-note"><span className="research-context-rail__agent-mark">Q</span><strong>{text('群学 Agent', 'Qunxue Agent')}</strong><p>{text('自然语言是入口。需要证据时，我会把本次会话的检索过程和来源放在这里。', 'Natural language is the starting point. When evidence is needed, retrieval activity and sources for this conversation appear here.')}</p></div> : null}
+          {tab === 'agent' ? <div className="research-context-rail__agent-note"><span className="research-context-rail__agent-mark">Q</span><strong>{text('Everplain', 'Everplain')}</strong><p>{text('自然语言是入口。需要证据时，我会把本次会话的检索过程和来源放在这里。', 'Natural language is the starting point. When evidence is needed, retrieval activity and sources for this conversation appear here.')}</p></div> : null}
           {tab === 'activity' ? <ActivityPanel activities={activities} onSelect={onActivitySelect} /> : null}
           {tab === 'sources' ? <SourcesPanel citations={citations} selectedCitationId={selectedCitationId} onSelect={onCitationSelect} /> : null}
           {tab === 'basis' ? <div className="research-context-rail__basis">{basisContent ?? <div className="research-context-rail__empty"><FileTextIcon size={20} /><strong>{text('选择一条来源', 'Select a source')}</strong><p>{text('选择一条来源后，这里会显示它的依据。', 'Select a source to inspect its basis here.')}</p></div>}</div> : null}

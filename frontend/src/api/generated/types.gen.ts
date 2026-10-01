@@ -15,6 +15,189 @@ export type AcceptResearchDocumentProposalRequest = {
 };
 
 /**
+ * AccountAuditEventResponse
+ */
+export type AccountAuditEventResponse = {
+    /**
+     * Action
+     */
+    action: string;
+    /**
+     * Actor Email
+     */
+    actor_email: string | null;
+    /**
+     * Details
+     */
+    details: {
+        [key: string]: unknown;
+    };
+    /**
+     * Event Id
+     */
+    event_id: string;
+    /**
+     * Occurred At
+     */
+    occurred_at: string;
+    /**
+     * Outcome
+     */
+    outcome: 'succeeded' | 'denied' | 'failed';
+    /**
+     * Reason
+     */
+    reason: string | null;
+    /**
+     * Target Email
+     */
+    target_email: string | null;
+};
+
+/**
+ * AccountAuditPageResponse
+ */
+export type AccountAuditPageResponse = {
+    /**
+     * Items
+     */
+    items: Array<AccountAuditEventResponse>;
+    /**
+     * Next Cursor
+     */
+    next_cursor: string | null;
+};
+
+/**
+ * AccountPreferencesResponse
+ */
+export type AccountPreferencesResponse = {
+    /**
+     * Consent Policy Version
+     */
+    consent_policy_version: string;
+    /**
+     * Consent Updated At
+     */
+    consent_updated_at: string | null;
+    /**
+     * Locale
+     */
+    locale: string;
+    /**
+     * Model Improvement Allowed
+     */
+    model_improvement_allowed: boolean;
+    /**
+     * Research Updates Enabled
+     */
+    research_updates_enabled: boolean;
+    /**
+     * Timezone
+     */
+    timezone: string;
+    /**
+     * Version
+     */
+    version: number;
+};
+
+/**
+ * AccountResponse
+ */
+export type AccountResponse = {
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Display Name
+     */
+    display_name: string | null;
+    /**
+     * Email
+     */
+    email: string;
+    /**
+     * Is Protected Admin
+     */
+    is_protected_admin: boolean;
+    /**
+     * Last Login At
+     */
+    last_login_at: string | null;
+    preferences: AccountPreferencesResponse;
+    role: AccountRole;
+    status: AccountStatus;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+    /**
+     * User Id
+     */
+    user_id: string;
+    /**
+     * Version
+     */
+    version: number;
+};
+
+/**
+ * AccountRole
+ */
+export type AccountRole = 'member' | 'admin';
+
+/**
+ * AccountSessionPageResponse
+ */
+export type AccountSessionPageResponse = {
+    /**
+     * Items
+     */
+    items: Array<AccountSessionResponse>;
+};
+
+/**
+ * AccountSessionResponse
+ */
+export type AccountSessionResponse = {
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Current
+     */
+    current: boolean;
+    /**
+     * Device Label
+     */
+    device_label: string;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
+     * Ip Address
+     */
+    ip_address: string | null;
+    /**
+     * Last Seen At
+     */
+    last_seen_at: string;
+    /**
+     * Session Id
+     */
+    session_id: string;
+};
+
+/**
+ * AccountStatus
+ */
+export type AccountStatus = 'active' | 'disabled' | 'deactivated';
+
+/**
  * AcknowledgePartialMatchRequest
  */
 export type AcknowledgePartialMatchRequest = {
@@ -34,6 +217,129 @@ export type AcknowledgePartialMatchRequest = {
      * Reason
      */
     reason: string;
+};
+
+/**
+ * AdminRoleUpdateRequest
+ */
+export type AdminRoleUpdateRequest = {
+    /**
+     * Expected Version
+     */
+    expected_version: number;
+    /**
+     * Reason
+     */
+    reason: string;
+    role: AccountRole;
+};
+
+/**
+ * AdminRuntimeSettingsResponse
+ */
+export type AdminRuntimeSettingsResponse = {
+    /**
+     * Model
+     */
+    model: string;
+    /**
+     * Provider Base Url
+     */
+    provider_base_url: string;
+    /**
+     * Reasoning Effort
+     */
+    reasoning_effort: string;
+    /**
+     * Restart Required
+     */
+    restart_required?: boolean;
+};
+
+/**
+ * AdminRuntimeSettingsUpdateRequest
+ */
+export type AdminRuntimeSettingsUpdateRequest = {
+    /**
+     * Model
+     */
+    model: string;
+    /**
+     * Reasoning Effort
+     */
+    reasoning_effort: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+};
+
+/**
+ * AdminStatusUpdateRequest
+ */
+export type AdminStatusUpdateRequest = {
+    /**
+     * Expected Version
+     */
+    expected_version: number;
+    /**
+     * Reason
+     */
+    reason: string;
+};
+
+/**
+ * AdminUserPageResponse
+ */
+export type AdminUserPageResponse = {
+    /**
+     * Items
+     */
+    items: Array<AdminUserResponse>;
+    /**
+     * Next Cursor
+     */
+    next_cursor: string | null;
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * AdminUserResponse
+ */
+export type AdminUserResponse = {
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Display Name
+     */
+    display_name: string | null;
+    /**
+     * Email
+     */
+    email: string;
+    /**
+     * Is Current User
+     */
+    is_current_user: boolean;
+    /**
+     * Is Protected Admin
+     */
+    is_protected_admin: boolean;
+    /**
+     * Last Active At
+     */
+    last_active_at: string | null;
+    role: AccountRole;
+    status: AccountStatus;
+    /**
+     * User Id
+     */
+    user_id: string;
+    /**
+     * Version
+     */
+    version: number;
 };
 
 /**
@@ -1651,6 +1957,34 @@ export type CaseThemeMatrixCellResponse = {
 };
 
 /**
+ * ChangePasswordRequest
+ */
+export type ChangePasswordRequest = {
+    /**
+     * Current Password
+     */
+    current_password: string;
+    /**
+     * New Password
+     */
+    new_password: string;
+    /**
+     * Revoke Other Sessions
+     */
+    revoke_other_sessions?: boolean;
+};
+
+/**
+ * ChangePasswordResponse
+ */
+export type ChangePasswordResponse = {
+    /**
+     * Revoked Session Count
+     */
+    revoked_session_count: number;
+};
+
+/**
  * CodebookEntryResponse
  */
 export type CodebookEntryResponse = {
@@ -2018,20 +2352,6 @@ export type CourseKnowledgeResponse = {
      * Topics
      */
     topics: Array<CourseTopicResponse>;
-};
-
-/**
- * CourseProfileResponse
- */
-export type CourseProfileResponse = {
-    /**
-     * Guide Dismissed
-     */
-    guide_dismissed?: boolean;
-    /**
-     * Role
-     */
-    role?: 'teacher' | 'student' | null;
 };
 
 /**
@@ -2439,7 +2759,7 @@ export type CreateResearchDocumentRequest = {
     /**
      * Theory Plan Id
      */
-    theory_plan_id: string;
+    theory_plan_id?: string | null;
     /**
      * Title
      */
@@ -2526,6 +2846,145 @@ export type CreateTranscriptVersionRequest = {
 };
 
 /**
+ * CreditCodeBatchCreateRequest
+ */
+export type CreditCodeBatchCreateRequest = {
+    /**
+     * Count
+     */
+    count: number;
+    /**
+     * Expires In Days
+     */
+    expires_in_days: number;
+};
+
+/**
+ * CreditCodeBatchResponse
+ */
+export type CreditCodeBatchResponse = {
+    /**
+     * Codes
+     */
+    codes: Array<string>;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
+     * Points
+     */
+    points: number;
+};
+
+/**
+ * CreditLedgerEntryResponse
+ */
+export type CreditLedgerEntryResponse = {
+    /**
+     * Balance After
+     */
+    balance_after: number;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Entry Id
+     */
+    entry_id: string;
+    /**
+     * Input Tokens
+     */
+    input_tokens: number;
+    /**
+     * Kind
+     */
+    kind: 'signup_grant' | 'usage' | 'redemption';
+    /**
+     * Output Tokens
+     */
+    output_tokens: number;
+    /**
+     * Points
+     */
+    points: number;
+};
+
+/**
+ * CreditPricingResponse
+ */
+export type CreditPricingResponse = {
+    /**
+     * Input Tokens Per Credit
+     */
+    input_tokens_per_credit: number;
+    /**
+     * Output Tokens Per Credit
+     */
+    output_tokens_per_credit: number;
+};
+
+/**
+ * CreditRedemptionRequest
+ */
+export type CreditRedemptionRequest = {
+    /**
+     * Code
+     */
+    code: string;
+};
+
+/**
+ * CreditRedemptionResponse
+ */
+export type CreditRedemptionResponse = {
+    /**
+     * Balance
+     */
+    balance: number;
+    /**
+     * Redeemed Points
+     */
+    redeemed_points: number;
+};
+
+/**
+ * CreditSummaryResponse
+ */
+export type CreditSummaryResponse = {
+    /**
+     * Balance
+     */
+    balance: number;
+    /**
+     * Credit Limit
+     */
+    credit_limit: number;
+    /**
+     * Entries
+     */
+    entries: Array<CreditLedgerEntryResponse>;
+    /**
+     * Grant Amount
+     */
+    grant_amount: number;
+    /**
+     * Is Unlimited
+     */
+    is_unlimited: boolean;
+    /**
+     * Next Cursor
+     */
+    next_cursor: string | null;
+    pricing: CreditPricingResponse;
+    /**
+     * Total Entries
+     */
+    total_entries: number;
+};
+
+/**
  * CycleEvidenceResponse
  */
 export type CycleEvidenceResponse = {
@@ -2585,6 +3044,71 @@ export type CycleEvidenceResponse = {
      * Statement
      */
     statement: string;
+};
+
+/**
+ * DataExportCreateRequest
+ */
+export type DataExportCreateRequest = {
+    /**
+     * Format
+     */
+    format?: 'json';
+};
+
+/**
+ * DataExportResponse
+ */
+export type DataExportResponse = {
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Download Href
+     */
+    download_href: string;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
+     * Export Id
+     */
+    export_id: string;
+    /**
+     * Format
+     */
+    format: 'json';
+    status: ExportStatus;
+};
+
+/**
+ * DeactivateAccountRequest
+ */
+export type DeactivateAccountRequest = {
+    /**
+     * Current Password
+     */
+    current_password: string;
+    /**
+     * Reason
+     */
+    reason: string;
+};
+
+/**
+ * DeactivateAccountResponse
+ */
+export type DeactivateAccountResponse = {
+    /**
+     * Recoverable
+     */
+    recoverable: true;
+    /**
+     * Recovery
+     */
+    recovery: 'contact_an_administrator';
 };
 
 /**
@@ -2707,6 +3231,30 @@ export type DeidentifiedMaterialInput = {
      * Source Description
      */
     source_description?: string | null;
+};
+
+/**
+ * DeleteAccountRequest
+ */
+export type DeleteAccountRequest = {
+    /**
+     * Confirmation Email
+     */
+    confirmation_email: string;
+    /**
+     * Current Password
+     */
+    current_password: string;
+};
+
+/**
+ * DeleteAccountResponse
+ */
+export type DeleteAccountResponse = {
+    /**
+     * Recoverable
+     */
+    recoverable: false;
 };
 
 /**
@@ -2935,6 +3483,11 @@ export type EvidenceReferenceResponse = {
     use_boundary: string;
     verification_status: SourceVerificationStatus;
 };
+
+/**
+ * ExportStatus
+ */
+export type ExportStatus = 'ready' | 'failed';
 
 /**
  * ExtractPhenomenonCandidatesRequest
@@ -3324,6 +3877,16 @@ export type FrameworkReviewRunStatus = 'requested' | 'running' | 'succeeded' | '
 export type FrameworkStatus = 'draft' | 'under_review' | 'revision_required' | 'ready_to_confirm' | 'confirmed';
 
 /**
+ * HTTPValidationError
+ */
+export type HttpValidationError = {
+    /**
+     * Detail
+     */
+    detail?: Array<ValidationError>;
+};
+
+/**
  * HealthResponse
  */
 export type HealthResponse = {
@@ -3693,6 +4256,40 @@ export type KnowledgeReleaseResponse = {
  * KnowledgeReviewStatus
  */
 export type KnowledgeReviewStatus = 'draft' | 'pending' | 'pre_review_completed' | 'reviewed' | 'retired';
+
+/**
+ * KnowledgeStorageResponse
+ */
+export type KnowledgeStorageResponse = {
+    /**
+     * Library Count
+     */
+    library_count: number;
+    /**
+     * Max Bytes
+     */
+    max_bytes: number;
+    /**
+     * Max Document Characters
+     */
+    max_document_characters: number;
+    /**
+     * Max Documents Per Library
+     */
+    max_documents_per_library: number;
+    /**
+     * Max File Bytes
+     */
+    max_file_bytes: number;
+    /**
+     * Max Libraries
+     */
+    max_libraries: number;
+    /**
+     * Used Bytes
+     */
+    used_bytes: number;
+};
 
 /**
  * KnowledgeUseEligibilityResponse
@@ -4791,6 +5388,52 @@ export type NextResearchStepContract = {
 };
 
 /**
+ * PasswordResetConsumeRequest
+ */
+export type PasswordResetConsumeRequest = {
+    /**
+     * New Password
+     */
+    new_password: string;
+    /**
+     * Token
+     */
+    token: string;
+};
+
+/**
+ * PasswordResetConsumeResponse
+ */
+export type PasswordResetConsumeResponse = {
+    /**
+     * Password Reset
+     */
+    password_reset: boolean;
+};
+
+/**
+ * PasswordResetLinkResponse
+ */
+export type PasswordResetLinkResponse = {
+    /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
+     * Reset Id
+     */
+    reset_id: string;
+    /**
+     * Reset Token
+     */
+    reset_token?: string | null;
+    /**
+     * User Id
+     */
+    user_id: string;
+};
+
+/**
  * PhenomenonCandidateAction
  */
 export type PhenomenonCandidateAction = 'update' | 'confirm';
@@ -5872,7 +6515,7 @@ export type ResearchDocumentEvidenceRefContract = {
 /**
  * ResearchDocumentEvidenceSourceKind
  */
-export type ResearchDocumentEvidenceSourceKind = 'public_knowledge' | 'personal_material';
+export type ResearchDocumentEvidenceSourceKind = 'public_knowledge' | 'personal_material' | 'personal_knowledge' | 'research_material' | 'web';
 
 /**
  * ResearchDocumentExportManifest
@@ -5883,7 +6526,7 @@ export type ResearchDocumentExportManifest = {
     /**
      * Agent Proposals
      */
-    agent_proposals: Array<{
+    agent_proposals?: Array<{
         [key: string]: unknown;
     }>;
     /**
@@ -5900,7 +6543,7 @@ export type ResearchDocumentExportManifest = {
     /**
      * Evidence
      */
-    evidence: Array<{
+    evidence?: Array<{
         [key: string]: unknown;
     }>;
     /**
@@ -5913,49 +6556,49 @@ export type ResearchDocumentExportManifest = {
     /**
      * Knowledge Release
      */
-    knowledge_release: {
+    knowledge_release?: {
         [key: string]: unknown;
     };
-    method_plan: MethodPlanResponse | null;
+    method_plan?: MethodPlanResponse | null;
     /**
      * Model
      */
-    model: {
+    model?: {
         [key: string]: unknown;
     } | null;
     /**
      * Phenomenon
      */
-    phenomenon: {
+    phenomenon?: {
         [key: string]: unknown;
     };
-    research_analysis: ResearchAnalysisHandoffContract | null;
+    research_analysis?: ResearchAnalysisHandoffContract | null;
     /**
      * Schema Version
      */
-    schema_version: 'research-delivery-v2';
+    schema_version: 'research-delivery-v2' | 'everplain-document-v1';
     /**
      * Theory Assignments
      */
-    theory_assignments: Array<{
+    theory_assignments?: Array<{
         [key: string]: unknown;
     }>;
     /**
      * Theory Candidates
      */
-    theory_candidates: Array<{
+    theory_candidates?: Array<{
         [key: string]: unknown;
     }>;
     /**
      * Theory Decisions
      */
-    theory_decisions: Array<{
+    theory_decisions?: Array<{
         [key: string]: unknown;
     }>;
     /**
      * Theory Relations
      */
-    theory_relations: Array<{
+    theory_relations?: Array<{
         [key: string]: unknown;
     }>;
 };
@@ -5992,7 +6635,7 @@ export type ResearchDocumentExportResponse = {
     /**
      * Theory Plan Id
      */
-    theory_plan_id: string;
+    theory_plan_id: string | null;
     /**
      * Version
      */
@@ -6148,7 +6791,7 @@ export type ResearchDocumentProposalResponse = {
     /**
      * Theory Plan Id
      */
-    theory_plan_id: string;
+    theory_plan_id: string | null;
     /**
      * Title
      */
@@ -6214,7 +6857,7 @@ export type ResearchDocumentResponse = {
     /**
      * Theory Plan Id
      */
-    theory_plan_id: string;
+    theory_plan_id: string | null;
     /**
      * Title
      */
@@ -7174,6 +7817,20 @@ export type RevokeCodingPlanRequest = {
      * Reason
      */
     reason: string;
+};
+
+/**
+ * RevokeSessionResponse
+ */
+export type RevokeSessionResponse = {
+    /**
+     * Revoked
+     */
+    revoked: boolean;
+    /**
+     * Session Id
+     */
+    session_id: string;
 };
 
 /**
@@ -8376,17 +9033,21 @@ export type TransitionCodebookEntryRequest = {
 };
 
 /**
- * UpdateCourseProfileRequest
+ * UpdateDocumentKnowledgeRequest
  */
-export type UpdateCourseProfileRequest = {
+export type UpdateDocumentKnowledgeRequest = {
     /**
-     * Guide Dismissed
+     * Relations
      */
-    guide_dismissed?: boolean;
+    relations?: Array<UpdateKnowledgeRelation>;
     /**
-     * Role
+     * Summary
      */
-    role: 'teacher' | 'student';
+    summary: string;
+    /**
+     * Topics
+     */
+    topics: Array<UpdateKnowledgeTopic>;
 };
 
 /**
@@ -8406,6 +9067,46 @@ export type UpdateFrameworkRequest = {
      * Revision Reason
      */
     revision_reason: string;
+};
+
+/**
+ * UpdateKnowledgeRelation
+ */
+export type UpdateKnowledgeRelation = {
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Segment Ids
+     */
+    segment_ids: Array<string>;
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Target
+     */
+    target: string;
+};
+
+/**
+ * UpdateKnowledgeTopic
+ */
+export type UpdateKnowledgeTopic = {
+    /**
+     * Segment Ids
+     */
+    segment_ids: Array<string>;
+    /**
+     * Summary
+     */
+    summary: string;
+    /**
+     * Title
+     */
+    title: string;
 };
 
 /**
@@ -8460,6 +9161,24 @@ export type UpdateMethodPlanRequest = {
 };
 
 /**
+ * UpdateModelDataAuthorizationRequest
+ */
+export type UpdateModelDataAuthorizationRequest = {
+    /**
+     * Allowed
+     */
+    allowed: boolean;
+    /**
+     * Expected Version
+     */
+    expected_version: number;
+    /**
+     * Policy Version
+     */
+    policy_version: string;
+};
+
+/**
  * UpdatePhenomenonCandidateRequest
  */
 export type UpdatePhenomenonCandidateRequest = {
@@ -8479,6 +9198,42 @@ export type UpdatePhenomenonCandidateRequest = {
      * Research Intent
      */
     research_intent?: string | null;
+};
+
+/**
+ * UpdatePreferencesRequest
+ */
+export type UpdatePreferencesRequest = {
+    /**
+     * Expected Version
+     */
+    expected_version: number;
+    /**
+     * Locale
+     */
+    locale: string;
+    /**
+     * Research Updates Enabled
+     */
+    research_updates_enabled: boolean;
+    /**
+     * Timezone
+     */
+    timezone: string;
+};
+
+/**
+ * UpdateProfileRequest
+ */
+export type UpdateProfileRequest = {
+    /**
+     * Display Name
+     */
+    display_name: string;
+    /**
+     * Expected Version
+     */
+    expected_version: number;
 };
 
 /**
@@ -8545,6 +9300,870 @@ export type UpdateSharedKnowledgeRequest = {
      */
     sharing_enabled?: boolean | null;
 };
+
+/**
+ * ValidationError
+ */
+export type ValidationError = {
+    /**
+     * Context
+     */
+    ctx?: {
+        [key: string]: unknown;
+    };
+    /**
+     * Input
+     */
+    input?: unknown;
+    /**
+     * Location
+     */
+    loc: Array<string | number>;
+    /**
+     * Message
+     */
+    msg: string;
+    /**
+     * Error Type
+     */
+    type: string;
+};
+
+export type GetAccountData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/account';
+};
+
+export type GetAccountErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetAccountError = GetAccountErrors[keyof GetAccountErrors];
+
+export type GetAccountResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountResponse;
+};
+
+export type GetAccountResponse = GetAccountResponses[keyof GetAccountResponses];
+
+export type RedeemAccountCreditsData = {
+    body: CreditRedemptionRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/account/credit-redemptions';
+};
+
+export type RedeemAccountCreditsErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type RedeemAccountCreditsError = RedeemAccountCreditsErrors[keyof RedeemAccountCreditsErrors];
+
+export type RedeemAccountCreditsResponses = {
+    /**
+     * Successful Response
+     */
+    200: CreditRedemptionResponse;
+};
+
+export type RedeemAccountCreditsResponse = RedeemAccountCreditsResponses[keyof RedeemAccountCreditsResponses];
+
+export type GetAccountCreditsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Cursor
+         */
+        cursor?: number;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/account/credits';
+};
+
+export type GetAccountCreditsErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetAccountCreditsError = GetAccountCreditsErrors[keyof GetAccountCreditsErrors];
+
+export type GetAccountCreditsResponses = {
+    /**
+     * Successful Response
+     */
+    200: CreditSummaryResponse;
+};
+
+export type GetAccountCreditsResponse = GetAccountCreditsResponses[keyof GetAccountCreditsResponses];
+
+export type CreateAccountDataExportData = {
+    body: DataExportCreateRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/account/data-exports';
+};
+
+export type CreateAccountDataExportErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type CreateAccountDataExportError = CreateAccountDataExportErrors[keyof CreateAccountDataExportErrors];
+
+export type CreateAccountDataExportResponses = {
+    /**
+     * Successful Response
+     */
+    201: DataExportResponse;
+};
+
+export type CreateAccountDataExportResponse = CreateAccountDataExportResponses[keyof CreateAccountDataExportResponses];
+
+export type GetAccountDataExportData = {
+    body?: never;
+    path: {
+        /**
+         * Export Id
+         */
+        export_id: string;
+    };
+    query?: never;
+    url: '/api/account/data-exports/{export_id}';
+};
+
+export type GetAccountDataExportErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetAccountDataExportError = GetAccountDataExportErrors[keyof GetAccountDataExportErrors];
+
+export type GetAccountDataExportResponses = {
+    /**
+     * Successful Response
+     */
+    200: DataExportResponse;
+};
+
+export type GetAccountDataExportResponse = GetAccountDataExportResponses[keyof GetAccountDataExportResponses];
+
+export type DownloadAccountDataExportData = {
+    body?: never;
+    path: {
+        /**
+         * Export Id
+         */
+        export_id: string;
+    };
+    query?: never;
+    url: '/api/account/data-exports/{export_id}/download';
+};
+
+export type DownloadAccountDataExportErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type DownloadAccountDataExportError = DownloadAccountDataExportErrors[keyof DownloadAccountDataExportErrors];
+
+export type DownloadAccountDataExportResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type DeactivateAccountData = {
+    body: DeactivateAccountRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/account/deactivate';
+};
+
+export type DeactivateAccountErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type DeactivateAccountError = DeactivateAccountErrors[keyof DeactivateAccountErrors];
+
+export type DeactivateAccountResponses = {
+    /**
+     * Successful Response
+     */
+    200: DeactivateAccountResponse;
+};
+
+export type DeactivateAccountResponse2 = DeactivateAccountResponses[keyof DeactivateAccountResponses];
+
+export type DeleteAccountData = {
+    body: DeleteAccountRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/account/delete';
+};
+
+export type DeleteAccountErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type DeleteAccountError = DeleteAccountErrors[keyof DeleteAccountErrors];
+
+export type DeleteAccountResponses = {
+    /**
+     * Successful Response
+     */
+    200: DeleteAccountResponse;
+};
+
+export type DeleteAccountResponse2 = DeleteAccountResponses[keyof DeleteAccountResponses];
+
+export type UpdateModelDataAuthorizationData = {
+    body: UpdateModelDataAuthorizationRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/account/model-data-authorization';
+};
+
+export type UpdateModelDataAuthorizationErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type UpdateModelDataAuthorizationError = UpdateModelDataAuthorizationErrors[keyof UpdateModelDataAuthorizationErrors];
+
+export type UpdateModelDataAuthorizationResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountPreferencesResponse;
+};
+
+export type UpdateModelDataAuthorizationResponse = UpdateModelDataAuthorizationResponses[keyof UpdateModelDataAuthorizationResponses];
+
+export type ConsumeAccountPasswordResetData = {
+    body: PasswordResetConsumeRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/account/password-resets/consume';
+};
+
+export type ConsumeAccountPasswordResetErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ConsumeAccountPasswordResetError = ConsumeAccountPasswordResetErrors[keyof ConsumeAccountPasswordResetErrors];
+
+export type ConsumeAccountPasswordResetResponses = {
+    /**
+     * Successful Response
+     */
+    200: PasswordResetConsumeResponse;
+};
+
+export type ConsumeAccountPasswordResetResponse = ConsumeAccountPasswordResetResponses[keyof ConsumeAccountPasswordResetResponses];
+
+export type ChangeAccountPasswordData = {
+    body: ChangePasswordRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/account/password/change';
+};
+
+export type ChangeAccountPasswordErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ChangeAccountPasswordError = ChangeAccountPasswordErrors[keyof ChangeAccountPasswordErrors];
+
+export type ChangeAccountPasswordResponses = {
+    /**
+     * Successful Response
+     */
+    200: ChangePasswordResponse;
+};
+
+export type ChangeAccountPasswordResponse = ChangeAccountPasswordResponses[keyof ChangeAccountPasswordResponses];
+
+export type UpdateAccountPreferencesData = {
+    body: UpdatePreferencesRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/account/preferences';
+};
+
+export type UpdateAccountPreferencesErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type UpdateAccountPreferencesError = UpdateAccountPreferencesErrors[keyof UpdateAccountPreferencesErrors];
+
+export type UpdateAccountPreferencesResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountPreferencesResponse;
+};
+
+export type UpdateAccountPreferencesResponse = UpdateAccountPreferencesResponses[keyof UpdateAccountPreferencesResponses];
+
+export type UpdateAccountProfileData = {
+    body: UpdateProfileRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/account/profile';
+};
+
+export type UpdateAccountProfileErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type UpdateAccountProfileError = UpdateAccountProfileErrors[keyof UpdateAccountProfileErrors];
+
+export type UpdateAccountProfileResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountResponse;
+};
+
+export type UpdateAccountProfileResponse = UpdateAccountProfileResponses[keyof UpdateAccountProfileResponses];
+
+export type ListAccountSessionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/account/sessions';
+};
+
+export type ListAccountSessionsErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ListAccountSessionsError = ListAccountSessionsErrors[keyof ListAccountSessionsErrors];
+
+export type ListAccountSessionsResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountSessionPageResponse;
+};
+
+export type ListAccountSessionsResponse = ListAccountSessionsResponses[keyof ListAccountSessionsResponses];
+
+export type RevokeAccountSessionData = {
+    body?: never;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Session Id
+         */
+        session_id: string;
+    };
+    query?: never;
+    url: '/api/account/sessions/{session_id}/revoke';
+};
+
+export type RevokeAccountSessionErrors = {
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type RevokeAccountSessionError = RevokeAccountSessionErrors[keyof RevokeAccountSessionErrors];
+
+export type RevokeAccountSessionResponses = {
+    /**
+     * Successful Response
+     */
+    200: RevokeSessionResponse;
+};
+
+export type RevokeAccountSessionResponse = RevokeAccountSessionResponses[keyof RevokeAccountSessionResponses];
+
+export type ListAccountAuditEventsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Cursor
+         */
+        cursor?: number;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/admin/audit-events';
+};
+
+export type ListAccountAuditEventsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListAccountAuditEventsError = ListAccountAuditEventsErrors[keyof ListAccountAuditEventsErrors];
+
+export type ListAccountAuditEventsResponses = {
+    /**
+     * Successful Response
+     */
+    200: AccountAuditPageResponse;
+};
+
+export type ListAccountAuditEventsResponse = ListAccountAuditEventsResponses[keyof ListAccountAuditEventsResponses];
+
+export type CreateAdminCreditRedemptionCodesData = {
+    body: CreditCodeBatchCreateRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/credit-redemption-codes';
+};
+
+export type CreateAdminCreditRedemptionCodesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateAdminCreditRedemptionCodesError = CreateAdminCreditRedemptionCodesErrors[keyof CreateAdminCreditRedemptionCodesErrors];
+
+export type CreateAdminCreditRedemptionCodesResponses = {
+    /**
+     * Successful Response
+     */
+    201: CreditCodeBatchResponse;
+};
+
+export type CreateAdminCreditRedemptionCodesResponse = CreateAdminCreditRedemptionCodesResponses[keyof CreateAdminCreditRedemptionCodesResponses];
+
+export type GetAdminRuntimeSettingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/admin/runtime-settings';
+};
+
+export type GetAdminRuntimeSettingsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+};
+
+export type GetAdminRuntimeSettingsError = GetAdminRuntimeSettingsErrors[keyof GetAdminRuntimeSettingsErrors];
+
+export type GetAdminRuntimeSettingsResponses = {
+    /**
+     * Successful Response
+     */
+    200: AdminRuntimeSettingsResponse;
+};
+
+export type GetAdminRuntimeSettingsResponse = GetAdminRuntimeSettingsResponses[keyof GetAdminRuntimeSettingsResponses];
+
+export type UpdateAdminRuntimeSettingsData = {
+    body: AdminRuntimeSettingsUpdateRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/admin/runtime-settings';
+};
+
+export type UpdateAdminRuntimeSettingsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateAdminRuntimeSettingsError = UpdateAdminRuntimeSettingsErrors[keyof UpdateAdminRuntimeSettingsErrors];
+
+export type UpdateAdminRuntimeSettingsResponses = {
+    /**
+     * Successful Response
+     */
+    200: AdminRuntimeSettingsResponse;
+};
+
+export type UpdateAdminRuntimeSettingsResponse = UpdateAdminRuntimeSettingsResponses[keyof UpdateAdminRuntimeSettingsResponses];
+
+export type ListAdminUsersData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Query
+         */
+        query?: string | null;
+        /**
+         * Role
+         */
+        role?: string | null;
+        /**
+         * Status
+         */
+        status?: string | null;
+        /**
+         * Cursor
+         */
+        cursor?: number;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/admin/users';
+};
+
+export type ListAdminUsersErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListAdminUsersError = ListAdminUsersErrors[keyof ListAdminUsersErrors];
+
+export type ListAdminUsersResponses = {
+    /**
+     * Successful Response
+     */
+    200: AdminUserPageResponse;
+};
+
+export type ListAdminUsersResponse = ListAdminUsersResponses[keyof ListAdminUsersResponses];
+
+export type DisableAdminUserData = {
+    body: AdminStatusUpdateRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * User Id
+         */
+        user_id: string;
+    };
+    query?: never;
+    url: '/api/admin/users/{user_id}/disable';
+};
+
+export type DisableAdminUserErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DisableAdminUserError = DisableAdminUserErrors[keyof DisableAdminUserErrors];
+
+export type DisableAdminUserResponses = {
+    /**
+     * Successful Response
+     */
+    200: AdminUserResponse;
+};
+
+export type DisableAdminUserResponse = DisableAdminUserResponses[keyof DisableAdminUserResponses];
+
+export type EnableAdminUserData = {
+    body: AdminStatusUpdateRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * User Id
+         */
+        user_id: string;
+    };
+    query?: never;
+    url: '/api/admin/users/{user_id}/enable';
+};
+
+export type EnableAdminUserErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type EnableAdminUserError = EnableAdminUserErrors[keyof EnableAdminUserErrors];
+
+export type EnableAdminUserResponses = {
+    /**
+     * Successful Response
+     */
+    200: AdminUserResponse;
+};
+
+export type EnableAdminUserResponse = EnableAdminUserResponses[keyof EnableAdminUserResponses];
+
+export type CreateAdminPasswordResetData = {
+    body?: never;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * User Id
+         */
+        user_id: string;
+    };
+    query?: never;
+    url: '/api/admin/users/{user_id}/password-reset-links';
+};
+
+export type CreateAdminPasswordResetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateAdminPasswordResetError = CreateAdminPasswordResetErrors[keyof CreateAdminPasswordResetErrors];
+
+export type CreateAdminPasswordResetResponses = {
+    /**
+     * Successful Response
+     */
+    201: PasswordResetLinkResponse;
+};
+
+export type CreateAdminPasswordResetResponse = CreateAdminPasswordResetResponses[keyof CreateAdminPasswordResetResponses];
+
+export type UpdateAdminUserRoleData = {
+    body: AdminRoleUpdateRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * User Id
+         */
+        user_id: string;
+    };
+    query?: never;
+    url: '/api/admin/users/{user_id}/role';
+};
+
+export type UpdateAdminUserRoleErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateAdminUserRoleError = UpdateAdminUserRoleErrors[keyof UpdateAdminUserRoleErrors];
+
+export type UpdateAdminUserRoleResponses = {
+    /**
+     * Successful Response
+     */
+    200: AdminUserResponse;
+};
+
+export type UpdateAdminUserRoleResponse = UpdateAdminUserRoleResponses[keyof UpdateAdminUserRoleResponses];
 
 export type ListAgentConversationsData = {
     body?: never;
@@ -9049,86 +10668,6 @@ export type StreamAgentTurnResponses = {
 
 export type StreamAgentTurnResponse = StreamAgentTurnResponses[keyof StreamAgentTurnResponses];
 
-export type GetCourseProfileData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/course-profile';
-};
-
-export type GetCourseProfileErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
-    /**
-     * Forbidden
-     */
-    403: ErrorResponse;
-    /**
-     * Not Found
-     */
-    404: ErrorResponse;
-    /**
-     * Unprocessable Entity
-     */
-    422: ErrorResponse;
-};
-
-export type GetCourseProfileError = GetCourseProfileErrors[keyof GetCourseProfileErrors];
-
-export type GetCourseProfileResponses = {
-    /**
-     * Successful Response
-     */
-    200: CourseProfileResponse;
-};
-
-export type GetCourseProfileResponse = GetCourseProfileResponses[keyof GetCourseProfileResponses];
-
-export type UpdateCourseProfileData = {
-    body: UpdateCourseProfileRequest;
-    headers: {
-        /**
-         * Idempotency-Key
-         */
-        'Idempotency-Key': string;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/course-profile';
-};
-
-export type UpdateCourseProfileErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
-    /**
-     * Forbidden
-     */
-    403: ErrorResponse;
-    /**
-     * Not Found
-     */
-    404: ErrorResponse;
-    /**
-     * Unprocessable Entity
-     */
-    422: ErrorResponse;
-};
-
-export type UpdateCourseProfileError = UpdateCourseProfileErrors[keyof UpdateCourseProfileErrors];
-
-export type UpdateCourseProfileResponses = {
-    /**
-     * Successful Response
-     */
-    200: CourseProfileResponse;
-};
-
-export type UpdateCourseProfileResponse = UpdateCourseProfileResponses[keyof UpdateCourseProfileResponses];
-
 export type ConfirmTheoryPlanData = {
     body: ConfirmTheoryPlanRequest;
     headers: {
@@ -9553,6 +11092,43 @@ export type GetHealthResponses = {
 };
 
 export type GetHealthResponse = GetHealthResponses[keyof GetHealthResponses];
+
+export type GetKnowledgeStorageData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/knowledge-storage';
+};
+
+export type GetKnowledgeStorageErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetKnowledgeStorageError = GetKnowledgeStorageErrors[keyof GetKnowledgeStorageErrors];
+
+export type GetKnowledgeStorageResponses = {
+    /**
+     * Successful Response
+     */
+    200: KnowledgeStorageResponse;
+};
+
+export type GetKnowledgeStorageResponse = GetKnowledgeStorageResponses[keyof GetKnowledgeStorageResponses];
 
 export type ListBuiltinCasesData = {
     body?: never;
@@ -15094,6 +16670,58 @@ export type DetachSharedDocumentResponses = {
 };
 
 export type DetachSharedDocumentResponse = DetachSharedDocumentResponses[keyof DetachSharedDocumentResponses];
+
+export type UpdateDocumentKnowledgeData = {
+    body: UpdateDocumentKnowledgeRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Kb Id
+         */
+        kb_id: string;
+        /**
+         * Document Id
+         */
+        document_id: string;
+    };
+    query?: never;
+    url: '/api/shared-knowledge-bases/{kb_id}/documents/{document_id}/knowledge';
+};
+
+export type UpdateDocumentKnowledgeErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type UpdateDocumentKnowledgeError = UpdateDocumentKnowledgeErrors[keyof UpdateDocumentKnowledgeErrors];
+
+export type UpdateDocumentKnowledgeResponses = {
+    /**
+     * Successful Response
+     */
+    200: SharedDocumentResponse;
+};
+
+export type UpdateDocumentKnowledgeResponse = UpdateDocumentKnowledgeResponses[keyof UpdateDocumentKnowledgeResponses];
 
 export type OrganizeSharedDocumentData = {
     body?: never;

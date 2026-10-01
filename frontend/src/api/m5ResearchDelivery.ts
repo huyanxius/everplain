@@ -12,6 +12,7 @@ import {
   restoreResearchDocument as restoreDocumentRequest,
   updateResearchDocument as updateDocumentRequest,
   type ResearchDocumentCompletionGateResponse,
+  type ResearchDocumentExportManifest,
   type ResearchDocumentExportResponse,
   type ResearchDocumentProposalResponse,
   type ResearchDocumentResponse,
@@ -94,7 +95,7 @@ export type M5ResearchDocument = Readonly<{
   sections: readonly M5ResearchDocumentSection[]
   status: 'draft' | 'confirmed'
   taskId: string
-  theoryPlanId: string
+  theoryPlanId: ResearchDocumentResponse['theory_plan_id']
   title: string
   version: number
 }>
@@ -122,7 +123,7 @@ export type M5ResearchDocumentProposal = Readonly<{
   status: M5ProposalStatus
   targetSectionId: string | null
   taskId: string
-  theoryPlanId: string
+  theoryPlanId: ResearchDocumentProposalResponse['theory_plan_id']
   title: string
   userId: string
 }>
@@ -158,7 +159,7 @@ export type M5ResearchAnalysisBasis = Readonly<{
 
 export type M5ResearchDeliveryState = Readonly<{
   taskId: string
-  confirmedTheoryPlanId: string
+  confirmedTheoryPlanId: ResearchDocumentResponse['theory_plan_id']
   phase: M5DeliveryPhase
   document: M5ResearchDocument | null
   proposals: readonly M5ResearchDocumentProposal[]
@@ -329,7 +330,7 @@ function waitingCompletion(
 
 export async function loadM5ResearchDelivery(input: {
   taskId: string
-  confirmedTheoryPlanId: string
+  confirmedTheoryPlanId: ResearchDocumentResponse['theory_plan_id']
 }): Promise<M5ResearchDeliveryState> {
   const [documentsResult, proposalsResult] = await Promise.all([
     listDocumentsRequest(withClient({ path: { task_id: input.taskId } })),
@@ -400,7 +401,7 @@ export async function loadM5ResearchDelivery(input: {
 
 export async function createM5ResearchDocument(input: {
   taskId: string
-  confirmedTheoryPlanId: string
+  confirmedTheoryPlanId: ResearchDocumentResponse['theory_plan_id']
   title: string
   sections: readonly M5ResearchDocumentSection[]
   idempotencyKey: string
@@ -515,22 +516,16 @@ export type M5SerializedExport = Readonly<{
   content: string
 }>
 
-/** Stable public shape of the versioned audit package returned by M5 export. */
-export type M5ResearchExportManifest = Readonly<{
-  agent_proposals: readonly Readonly<Record<string, unknown>>[]
-  document_versions: readonly Readonly<Record<string, unknown>>[]
-  evidence: readonly Readonly<Record<string, unknown>>[]
-  formal_document: Readonly<Record<string, unknown>>
-  knowledge_release: Readonly<Record<string, unknown>>
-  model: Readonly<Record<string, unknown>> | null
-  phenomenon: Readonly<Record<string, unknown>>
-  research_analysis: unknown | null
-  schema_version: 'research-delivery-v2'
-  theory_assignments: readonly Readonly<Record<string, unknown>>[]
-  theory_candidates: readonly Readonly<Record<string, unknown>>[]
-  theory_decisions: readonly Readonly<Record<string, unknown>>[]
-  theory_relations: readonly Readonly<Record<string, unknown>>[]
-}>
+/** Personal exports omit disciplinary audit fields; array consumers can still iterate safely. */
+export type M5ResearchExportManifest = Readonly<ResearchDocumentExportManifest & Required<Pick<
+  ResearchDocumentExportManifest,
+  | 'agent_proposals'
+  | 'evidence'
+  | 'theory_assignments'
+  | 'theory_candidates'
+  | 'theory_decisions'
+  | 'theory_relations'
+>>>
 
 export type M5ResearchExport = Readonly<{
   documentId: string
@@ -539,7 +534,7 @@ export type M5ResearchExport = Readonly<{
   manifest: M5ResearchExportManifest
   markdown: string
   taskId: string
-  theoryPlanId: string
+  theoryPlanId: ResearchDocumentExportResponse['theory_plan_id']
   version: number
 }>
 
@@ -548,7 +543,15 @@ function mapExport(exported: ResearchDocumentExportResponse): M5ResearchExport {
     documentId: exported.document_id,
     filename: exported.filename,
     knowledgeReleaseId: exported.knowledge_release_id,
-    manifest: exported.manifest,
+    manifest: {
+      ...exported.manifest,
+      agent_proposals: exported.manifest.agent_proposals ?? [],
+      evidence: exported.manifest.evidence ?? [],
+      theory_assignments: exported.manifest.theory_assignments ?? [],
+      theory_candidates: exported.manifest.theory_candidates ?? [],
+      theory_decisions: exported.manifest.theory_decisions ?? [],
+      theory_relations: exported.manifest.theory_relations ?? [],
+    },
     markdown: exported.markdown,
     taskId: exported.task_id,
     theoryPlanId: exported.theory_plan_id,

@@ -52,3 +52,4 @@ export { createResearchReportDocx, researchReportDocxFilename } from './research
 export { buildResearchReportHtml, openResearchReportPrintWindow } from './researchReportPrint'
 export { canvasSuggestions } from './canvasEditing'
 export { saveCanvasNode } from './researchAgentGateway'
+export { citationGroup, parseCitationText } from './citationPresentation'

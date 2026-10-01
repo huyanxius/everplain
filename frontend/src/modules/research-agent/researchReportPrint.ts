@@ -155,7 +155,7 @@ export function buildResearchReportHtml(report: ResearchReport) {
   return `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>${escapeHtml(report.title)}</title>
 <style>${PRINT_CSS}</style></head><body>
-  <header class="letterhead">${brandMarkSvg}<b>群学致知</b></header>
+  <header class="letterhead">${brandMarkSvg}<b>Everplain</b></header>
   <div class="masthead">
     <h1>${escapeHtml(report.title)}</h1>
     <p class="subtitle">${escapeHtml(report.subtitle)}</p>

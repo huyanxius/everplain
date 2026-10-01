@@ -12,7 +12,12 @@ from qunxue_api.modules.agent_conversation import (
     empty_research_map,
     normalize_research_map_patch,
 )
-from qunxue_api.modules.knowledge_catalog import KnowledgeCatalog, KnowledgeUsePurpose
+from qunxue_api.modules.knowledge_catalog import (
+    KnowledgeCatalog,
+    KnowledgeReleaseLevel,
+    KnowledgeReleaseRef,
+    KnowledgeUsePurpose,
+)
 
 from .retrieval import fuzzy_match_score
 
@@ -53,14 +58,24 @@ class KnowledgeToolRegistry:
         self._catalog = catalog
         self._retriever = retriever
         self._web_research = web_research
-        # Keep an installed theory release and its index usable. Uploads are already
-        # reviewed, so the optional theory bundle must never gate ordinary Agent use.
+        self.private_knowledge = None
+        self.catalog_available = True
+        # An empty personal workspace still has a stable provenance identifier;
+        # it is not a published or curated knowledge source.
         try:
             self.release = catalog.current_release(purpose=KnowledgeUsePurpose.MATCH)
         except LookupError:
-            self.release = catalog.current_release(purpose=KnowledgeUsePurpose.BROWSE)
+            try:
+                self.release = catalog.current_release(purpose=KnowledgeUsePurpose.BROWSE)
+            except LookupError:
+                self.catalog_available = False
+                self.release = KnowledgeReleaseRef(
+                    knowledge_release_id="everplain-personal-v1",
+                    level=KnowledgeReleaseLevel.WORKING,
+                    content_hash="empty",
+                )
         require_ready = getattr(retriever, "require_ready_manifest", None)
-        if callable(require_ready):
+        if self.catalog_available and callable(require_ready):
             try:
                 require_ready(
                     knowledge_release_id=self.release.knowledge_release_id,
@@ -68,7 +83,7 @@ class KnowledgeToolRegistry:
                 )
             except RetrievalPipelineUnavailable:
                 self._retriever = None
-        if self._retriever is None:
+        if self.catalog_available and self._retriever is None:
             from qunxue_api.adapters.theory_evidence import CatalogTheoryLexicalRetriever
 
             self._retriever = CatalogTheoryLexicalRetriever(catalog)
@@ -81,6 +96,12 @@ class KnowledgeToolRegistry:
         self.web_read_enabled = web_research is not None
         self._web_queries: set[str] = set()
         self.research_map: dict[str, object] = empty_research_map()
+
+    @property
+    def research_map_prompt_context(self) -> dict[str, object]:
+        if self.private_knowledge is not None:
+            return self.private_knowledge.prompt_map(self.research_map)
+        return self.research_map
 
     def agent_route_context(self) -> Mapping[str, UUID | None]:
         """Expose only safe correlation identifiers for model-attempt routing."""
@@ -269,6 +290,10 @@ class KnowledgeToolRegistry:
         return patch
 
     def search_knowledge(self, query: str, *, limit: int = 5) -> list[dict[str, object]]:
+        if self.private_knowledge is not None:
+            return self.private_knowledge.search(query, limit=limit)
+        if not self.catalog_available:
+            return []
         if self._retriever is None:
             raise RetrievalPipelineUnavailable("release-bound hybrid retriever is not configured")
         result = self._retriever.search(
@@ -345,6 +370,10 @@ class KnowledgeToolRegistry:
         return values
 
     def read_knowledge_entry(self, knowledge_id: str) -> dict[str, object]:
+        if self.private_knowledge is not None:
+            return self.private_knowledge.read(knowledge_id)
+        if not self.catalog_available:
+            return {"error": "knowledge_entry_not_found", "knowledge_id": knowledge_id}
         try:
             detail = self._catalog.get_entry(
                 knowledge_id=knowledge_id,
@@ -376,6 +405,10 @@ class KnowledgeToolRegistry:
         }
 
     def read_sources(self, source_ids: list[str]) -> list[dict[str, object]]:
+        if self.private_knowledge is not None:
+            return self.private_knowledge.sources(source_ids)
+        if not self.catalog_available:
+            return []
         requested = [source_id for source_id in source_ids if source_id in self._allowed_source_ids]
         sources = self._catalog.get_sources(
             source_ids=tuple(requested),
@@ -410,6 +443,10 @@ class KnowledgeToolRegistry:
         *,
         limit: int = 24,
     ) -> list[dict[str, object]]:
+        if self.private_knowledge is not None:
+            return self.private_knowledge.directory(query, limit=limit)
+        if not self.catalog_available:
+            return []
         directory = self._catalog.get_directory(release_id=self.release.knowledge_release_id)
         safe_limit = max(1, min(limit, 40))
         if query and query.strip():

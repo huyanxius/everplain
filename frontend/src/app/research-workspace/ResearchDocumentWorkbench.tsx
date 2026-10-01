@@ -72,7 +72,7 @@ const M5_SECTIONS = [
   ['evidence_gaps', '证据缺口'],
 ] as const
 
-const AGENT_PANEL_WIDTH_STORAGE_KEY = 'qunxue.research.agent-panel-width'
+const AGENT_PANEL_WIDTH_STORAGE_KEY = 'everplain.research.agent-panel-width'
 const DEFAULT_AGENT_PANEL_WIDTH = 430
 const MIN_AGENT_PANEL_WIDTH = 320
 const MAX_AGENT_PANEL_WIDTH = 680

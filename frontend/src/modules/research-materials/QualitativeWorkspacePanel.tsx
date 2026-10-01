@@ -92,7 +92,7 @@ export function QualitativeWorkspacePanel({
   }
 
   return (
-    <section className="qual-workspace" aria-label="社会学质性分析工作区">
+    <section className="qual-workspace" aria-label="材料分析工作区">
       <header className="qual-workspace__method">
         <label>
           <span>方法取向</span>

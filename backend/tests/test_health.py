@@ -763,7 +763,7 @@ def test_legacy_fallback_inherits_primary_model_from_json_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "QUNXUE_MODEL_FALLBACKS",
+        "EVERPLAIN_MODEL_FALLBACKS",
         json.dumps(
             [
                 {
@@ -789,7 +789,7 @@ def test_fallback_env_validation_hides_api_key_when_required_field_is_missing(
 ) -> None:
     secret = "validation-test-secret-key"
     monkeypatch.setenv(
-        "QUNXUE_MODEL_FALLBACKS",
+        "EVERPLAIN_MODEL_FALLBACKS",
         json.dumps([{"api_key": secret}]),
     )
 
@@ -806,7 +806,7 @@ def test_fallback_env_validation_hides_credential_bearing_url(
 ) -> None:
     credential_url = "https://validation-user:validation-pass@backup.test/v1"
     monkeypatch.setenv(
-        "QUNXUE_MODEL_FALLBACKS",
+        "EVERPLAIN_MODEL_FALLBACKS",
         json.dumps(
             [
                 {
@@ -832,7 +832,7 @@ def test_fallback_env_validation_rejects_unknown_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "QUNXUE_MODEL_FALLBACKS",
+        "EVERPLAIN_MODEL_FALLBACKS",
         json.dumps(
             [
                 {

@@ -19,6 +19,327 @@
         "title": "AcceptResearchDocumentProposalRequest",
         "type": "object"
       },
+      "AccountAuditEventResponse": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Email"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "succeeded",
+              "denied",
+              "failed"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "target_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Email"
+          }
+        },
+        "required": [
+          "event_id",
+          "action",
+          "outcome",
+          "actor_email",
+          "target_email",
+          "reason",
+          "details",
+          "occurred_at"
+        ],
+        "title": "AccountAuditEventResponse",
+        "type": "object"
+      },
+      "AccountAuditPageResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AccountAuditEventResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "AccountAuditPageResponse",
+        "type": "object"
+      },
+      "AccountPreferencesResponse": {
+        "properties": {
+          "consent_policy_version": {
+            "title": "Consent Policy Version",
+            "type": "string"
+          },
+          "consent_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent Updated At"
+          },
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "model_improvement_allowed": {
+            "title": "Model Improvement Allowed",
+            "type": "boolean"
+          },
+          "research_updates_enabled": {
+            "title": "Research Updates Enabled",
+            "type": "boolean"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "locale",
+          "timezone",
+          "research_updates_enabled",
+          "model_improvement_allowed",
+          "consent_policy_version",
+          "consent_updated_at",
+          "version"
+        ],
+        "title": "AccountPreferencesResponse",
+        "type": "object"
+      },
+      "AccountResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "is_protected_admin": {
+            "title": "Is Protected Admin",
+            "type": "boolean"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          },
+          "preferences": {
+            "$ref": "#/components/schemas/AccountPreferencesResponse"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AccountRole"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AccountStatus"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "display_name",
+          "role",
+          "status",
+          "version",
+          "created_at",
+          "updated_at",
+          "last_login_at",
+          "is_protected_admin",
+          "preferences"
+        ],
+        "title": "AccountResponse",
+        "type": "object"
+      },
+      "AccountRole": {
+        "enum": [
+          "member",
+          "admin"
+        ],
+        "title": "AccountRole",
+        "type": "string"
+      },
+      "AccountSessionPageResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AccountSessionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AccountSessionPageResponse",
+        "type": "object"
+      },
+      "AccountSessionResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "device_label": {
+            "title": "Device Label",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "ip_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Address"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "current",
+          "created_at",
+          "last_seen_at",
+          "expires_at",
+          "device_label",
+          "ip_address"
+        ],
+        "title": "AccountSessionResponse",
+        "type": "object"
+      },
+      "AccountStatus": {
+        "enum": [
+          "active",
+          "disabled",
+          "deactivated"
+        ],
+        "title": "AccountStatus",
+        "type": "string"
+      },
       "AcknowledgePartialMatchRequest": {
         "properties": {
           "acknowledged_candidate_ids": {
@@ -56,6 +377,216 @@
           "reason"
         ],
         "title": "AcknowledgePartialMatchRequest",
+        "type": "object"
+      },
+      "AdminRoleUpdateRequest": {
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 240,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AccountRole"
+          }
+        },
+        "required": [
+          "role",
+          "expected_version",
+          "reason"
+        ],
+        "title": "AdminRoleUpdateRequest",
+        "type": "object"
+      },
+      "AdminRuntimeSettingsResponse": {
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider_base_url": {
+            "title": "Provider Base Url",
+            "type": "string"
+          },
+          "reasoning_effort": {
+            "title": "Reasoning Effort",
+            "type": "string"
+          },
+          "restart_required": {
+            "default": false,
+            "title": "Restart Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "model",
+          "reasoning_effort",
+          "provider_base_url"
+        ],
+        "title": "AdminRuntimeSettingsResponse",
+        "type": "object"
+      },
+      "AdminRuntimeSettingsUpdateRequest": {
+        "properties": {
+          "model": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "reasoning_effort": {
+            "enum": [
+              "none",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "title": "Reasoning Effort",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "reasoning_effort"
+        ],
+        "title": "AdminRuntimeSettingsUpdateRequest",
+        "type": "object"
+      },
+      "AdminStatusUpdateRequest": {
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 240,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_version",
+          "reason"
+        ],
+        "title": "AdminStatusUpdateRequest",
+        "type": "object"
+      },
+      "AdminUserPageResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminUserResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "next_cursor"
+        ],
+        "title": "AdminUserPageResponse",
+        "type": "object"
+      },
+      "AdminUserResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "is_current_user": {
+            "title": "Is Current User",
+            "type": "boolean"
+          },
+          "is_protected_admin": {
+            "title": "Is Protected Admin",
+            "type": "boolean"
+          },
+          "last_active_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Active At"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AccountRole"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AccountStatus"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "display_name",
+          "role",
+          "status",
+          "version",
+          "created_at",
+          "last_active_at",
+          "is_current_user",
+          "is_protected_admin"
+        ],
+        "title": "AdminUserResponse",
         "type": "object"
       },
       "AgentCanvasNodeEditRequest": {
@@ -3059,6 +3590,47 @@
         "title": "CaseThemeMatrixCellResponse",
         "type": "object"
       },
+      "ChangePasswordRequest": {
+        "properties": {
+          "current_password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "maxLength": 128,
+            "minLength": 12,
+            "title": "New Password",
+            "type": "string"
+          },
+          "revoke_other_sessions": {
+            "default": true,
+            "title": "Revoke Other Sessions",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "ChangePasswordRequest",
+        "type": "object"
+      },
+      "ChangePasswordResponse": {
+        "properties": {
+          "revoked_session_count": {
+            "minimum": 0.0,
+            "title": "Revoked Session Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revoked_session_count"
+        ],
+        "title": "ChangePasswordResponse",
+        "type": "object"
+      },
       "CodebookEntryResponse": {
         "properties": {
           "code_id": {
@@ -3710,32 +4282,6 @@
           "topics"
         ],
         "title": "CourseKnowledgeResponse",
-        "type": "object"
-      },
-      "CourseProfileResponse": {
-        "properties": {
-          "guide_dismissed": {
-            "default": false,
-            "title": "Guide Dismissed",
-            "type": "boolean"
-          },
-          "role": {
-            "anyOf": [
-              {
-                "enum": [
-                  "teacher",
-                  "student"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Role"
-          }
-        },
-        "title": "CourseProfileResponse",
         "type": "object"
       },
       "CourseRelationResponse": {
@@ -4483,9 +5029,16 @@
             "type": "array"
           },
           "theory_plan_id": {
-            "format": "uuid",
-            "title": "Theory Plan Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theory Plan Id"
           },
           "title": {
             "maxLength": 512,
@@ -4495,7 +5048,6 @@
           }
         },
         "required": [
-          "theory_plan_id",
           "title",
           "sections"
         ],
@@ -4668,6 +5220,225 @@
         "title": "CreateTranscriptVersionRequest",
         "type": "object"
       },
+      "CreditCodeBatchCreateRequest": {
+        "properties": {
+          "count": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "expires_in_days": {
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Expires In Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "expires_in_days"
+        ],
+        "title": "CreditCodeBatchCreateRequest",
+        "type": "object"
+      },
+      "CreditCodeBatchResponse": {
+        "properties": {
+          "codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Codes",
+            "type": "array"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "points": {
+            "exclusiveMinimum": 0.0,
+            "title": "Points",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "codes",
+          "points",
+          "expires_at"
+        ],
+        "title": "CreditCodeBatchResponse",
+        "type": "object"
+      },
+      "CreditLedgerEntryResponse": {
+        "properties": {
+          "balance_after": {
+            "minimum": 0.0,
+            "title": "Balance After",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "entry_id": {
+            "format": "uuid",
+            "title": "Entry Id",
+            "type": "string"
+          },
+          "input_tokens": {
+            "minimum": 0.0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "signup_grant",
+              "usage",
+              "redemption"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "output_tokens": {
+            "minimum": 0.0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "points": {
+            "title": "Points",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entry_id",
+          "kind",
+          "points",
+          "balance_after",
+          "input_tokens",
+          "output_tokens",
+          "created_at"
+        ],
+        "title": "CreditLedgerEntryResponse",
+        "type": "object"
+      },
+      "CreditPricingResponse": {
+        "properties": {
+          "input_tokens_per_credit": {
+            "minimum": 1.0,
+            "title": "Input Tokens Per Credit",
+            "type": "integer"
+          },
+          "output_tokens_per_credit": {
+            "minimum": 1.0,
+            "title": "Output Tokens Per Credit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input_tokens_per_credit",
+          "output_tokens_per_credit"
+        ],
+        "title": "CreditPricingResponse",
+        "type": "object"
+      },
+      "CreditRedemptionRequest": {
+        "properties": {
+          "code": {
+            "maxLength": 64,
+            "minLength": 16,
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "CreditRedemptionRequest",
+        "type": "object"
+      },
+      "CreditRedemptionResponse": {
+        "properties": {
+          "balance": {
+            "minimum": 0.0,
+            "title": "Balance",
+            "type": "integer"
+          },
+          "redeemed_points": {
+            "exclusiveMinimum": 0.0,
+            "title": "Redeemed Points",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "redeemed_points",
+          "balance"
+        ],
+        "title": "CreditRedemptionResponse",
+        "type": "object"
+      },
+      "CreditSummaryResponse": {
+        "properties": {
+          "balance": {
+            "minimum": 0.0,
+            "title": "Balance",
+            "type": "integer"
+          },
+          "credit_limit": {
+            "minimum": 0.0,
+            "title": "Credit Limit",
+            "type": "integer"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/CreditLedgerEntryResponse"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "grant_amount": {
+            "minimum": 0.0,
+            "title": "Grant Amount",
+            "type": "integer"
+          },
+          "is_unlimited": {
+            "title": "Is Unlimited",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "pricing": {
+            "$ref": "#/components/schemas/CreditPricingResponse"
+          },
+          "total_entries": {
+            "minimum": 0.0,
+            "title": "Total Entries",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "balance",
+          "credit_limit",
+          "grant_amount",
+          "is_unlimited",
+          "pricing",
+          "entries",
+          "total_entries",
+          "next_cursor"
+        ],
+        "title": "CreditSummaryResponse",
+        "type": "object"
+      },
       "CycleEvidenceResponse": {
         "properties": {
           "annotation_id": {
@@ -4761,6 +5532,101 @@
           "confirmed"
         ],
         "title": "CycleEvidenceResponse",
+        "type": "object"
+      },
+      "DataExportCreateRequest": {
+        "properties": {
+          "format": {
+            "const": "json",
+            "default": "json",
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "title": "DataExportCreateRequest",
+        "type": "object"
+      },
+      "DataExportResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "download_href": {
+            "title": "Download Href",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "export_id": {
+            "format": "uuid",
+            "title": "Export Id",
+            "type": "string"
+          },
+          "format": {
+            "const": "json",
+            "title": "Format",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExportStatus"
+          }
+        },
+        "required": [
+          "export_id",
+          "status",
+          "format",
+          "created_at",
+          "expires_at",
+          "download_href"
+        ],
+        "title": "DataExportResponse",
+        "type": "object"
+      },
+      "DeactivateAccountRequest": {
+        "properties": {
+          "current_password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Current Password",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 240,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "reason"
+        ],
+        "title": "DeactivateAccountRequest",
+        "type": "object"
+      },
+      "DeactivateAccountResponse": {
+        "properties": {
+          "recoverable": {
+            "const": true,
+            "title": "Recoverable",
+            "type": "boolean"
+          },
+          "recovery": {
+            "const": "contact_an_administrator",
+            "title": "Recovery",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recoverable",
+          "recovery"
+        ],
+        "title": "DeactivateAccountResponse",
         "type": "object"
       },
       "DecideAnalysisRecordRequest": {
@@ -4961,6 +5827,42 @@
           "deidentified_text"
         ],
         "title": "DeidentifiedMaterialInput",
+        "type": "object"
+      },
+      "DeleteAccountRequest": {
+        "properties": {
+          "confirmation_email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Confirmation Email",
+            "type": "string"
+          },
+          "current_password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Current Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "confirmation_email"
+        ],
+        "title": "DeleteAccountRequest",
+        "type": "object"
+      },
+      "DeleteAccountResponse": {
+        "properties": {
+          "recoverable": {
+            "const": false,
+            "title": "Recoverable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "recoverable"
+        ],
+        "title": "DeleteAccountResponse",
         "type": "object"
       },
       "DeleteResearchTaskResponse": {
@@ -5384,6 +6286,14 @@
         ],
         "title": "EvidenceReferenceResponse",
         "type": "object"
+      },
+      "ExportStatus": {
+        "enum": [
+          "ready",
+          "failed"
+        ],
+        "title": "ExportStatus",
+        "type": "string"
       },
       "ExtractPhenomenonCandidatesRequest": {
         "properties": {
@@ -6072,6 +6982,19 @@
         "title": "FrameworkStatus",
         "type": "string"
       },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
       "HealthResponse": {
         "properties": {
           "capability": {
@@ -6673,6 +7596,49 @@
         ],
         "title": "KnowledgeReviewStatus",
         "type": "string"
+      },
+      "KnowledgeStorageResponse": {
+        "properties": {
+          "library_count": {
+            "title": "Library Count",
+            "type": "integer"
+          },
+          "max_bytes": {
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "max_document_characters": {
+            "title": "Max Document Characters",
+            "type": "integer"
+          },
+          "max_documents_per_library": {
+            "title": "Max Documents Per Library",
+            "type": "integer"
+          },
+          "max_file_bytes": {
+            "title": "Max File Bytes",
+            "type": "integer"
+          },
+          "max_libraries": {
+            "title": "Max Libraries",
+            "type": "integer"
+          },
+          "used_bytes": {
+            "title": "Used Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "used_bytes",
+          "max_bytes",
+          "max_file_bytes",
+          "library_count",
+          "max_libraries",
+          "max_documents_per_library",
+          "max_document_characters"
+        ],
+        "title": "KnowledgeStorageResponse",
+        "type": "object"
       },
       "KnowledgeUseEligibilityResponse": {
         "properties": {
@@ -8603,6 +9569,78 @@
           "action"
         ],
         "title": "NextResearchStepContract",
+        "type": "object"
+      },
+      "PasswordResetConsumeRequest": {
+        "properties": {
+          "new_password": {
+            "maxLength": 128,
+            "minLength": 12,
+            "title": "New Password",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 256,
+            "minLength": 32,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "new_password"
+        ],
+        "title": "PasswordResetConsumeRequest",
+        "type": "object"
+      },
+      "PasswordResetConsumeResponse": {
+        "properties": {
+          "password_reset": {
+            "title": "Password Reset",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "password_reset"
+        ],
+        "title": "PasswordResetConsumeResponse",
+        "type": "object"
+      },
+      "PasswordResetLinkResponse": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "reset_id": {
+            "format": "uuid",
+            "title": "Reset Id",
+            "type": "string"
+          },
+          "reset_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reset Token"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reset_id",
+          "user_id",
+          "expires_at"
+        ],
+        "title": "PasswordResetLinkResponse",
         "type": "object"
       },
       "PhenomenonCandidateAction": {
@@ -10558,7 +11596,10 @@
       "ResearchDocumentEvidenceSourceKind": {
         "enum": [
           "public_knowledge",
-          "personal_material"
+          "personal_material",
+          "personal_knowledge",
+          "research_material",
+          "web"
         ],
         "title": "ResearchDocumentEvidenceSourceKind",
         "type": "string"
@@ -10651,7 +11692,10 @@
             ]
           },
           "schema_version": {
-            "const": "research-delivery-v2",
+            "enum": [
+              "research-delivery-v2",
+              "everplain-document-v1"
+            ],
             "title": "Schema Version",
             "type": "string"
           },
@@ -10693,17 +11737,6 @@
           "document_identity",
           "formatting",
           "citation_audit",
-          "phenomenon",
-          "knowledge_release",
-          "model",
-          "theory_candidates",
-          "theory_decisions",
-          "theory_assignments",
-          "theory_relations",
-          "evidence",
-          "research_analysis",
-          "method_plan",
-          "agent_proposals",
           "document_versions",
           "formal_document"
         ],
@@ -10743,9 +11776,16 @@
             "type": "string"
           },
           "theory_plan_id": {
-            "format": "uuid",
-            "title": "Theory Plan Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theory Plan Id"
           },
           "version": {
             "title": "Version",
@@ -11054,9 +12094,16 @@
             "type": "string"
           },
           "theory_plan_id": {
-            "format": "uuid",
-            "title": "Theory Plan Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theory Plan Id"
           },
           "title": {
             "title": "Title",
@@ -11188,9 +12235,16 @@
             "type": "string"
           },
           "theory_plan_id": {
-            "format": "uuid",
-            "title": "Theory Plan Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theory Plan Id"
           },
           "title": {
             "title": "Title",
@@ -13068,6 +14122,25 @@
           "reason"
         ],
         "title": "RevokeCodingPlanRequest",
+        "type": "object"
+      },
+      "RevokeSessionResponse": {
+        "properties": {
+          "revoked": {
+            "title": "Revoked",
+            "type": "boolean"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "revoked"
+        ],
+        "title": "RevokeSessionResponse",
         "type": "object"
       },
       "SaveAnalysisCaseProfileRequest": {
@@ -15229,27 +16302,38 @@
         "title": "TransitionCodebookEntryRequest",
         "type": "object"
       },
-      "UpdateCourseProfileRequest": {
+      "UpdateDocumentKnowledgeRequest": {
         "additionalProperties": false,
         "properties": {
-          "guide_dismissed": {
-            "default": false,
-            "title": "Guide Dismissed",
-            "type": "boolean"
+          "relations": {
+            "items": {
+              "$ref": "#/components/schemas/UpdateKnowledgeRelation"
+            },
+            "maxItems": 1000,
+            "title": "Relations",
+            "type": "array"
           },
-          "role": {
-            "enum": [
-              "teacher",
-              "student"
-            ],
-            "title": "Role",
+          "summary": {
+            "maxLength": 16000,
+            "minLength": 1,
+            "title": "Summary",
             "type": "string"
+          },
+          "topics": {
+            "items": {
+              "$ref": "#/components/schemas/UpdateKnowledgeTopic"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Topics",
+            "type": "array"
           }
         },
         "required": [
-          "role"
+          "summary",
+          "topics"
         ],
-        "title": "UpdateCourseProfileRequest",
+        "title": "UpdateDocumentKnowledgeRequest",
         "type": "object"
       },
       "UpdateFrameworkRequest": {
@@ -15281,6 +16365,79 @@
           "revision_reason"
         ],
         "title": "UpdateFrameworkRequest",
+        "type": "object"
+      },
+      "UpdateKnowledgeRelation": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "segment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Segment Ids",
+            "type": "array"
+          },
+          "source": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "target",
+          "label",
+          "segment_ids"
+        ],
+        "title": "UpdateKnowledgeRelation",
+        "type": "object"
+      },
+      "UpdateKnowledgeTopic": {
+        "additionalProperties": false,
+        "properties": {
+          "segment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Segment Ids",
+            "type": "array"
+          },
+          "summary": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "summary",
+          "segment_ids"
+        ],
+        "title": "UpdateKnowledgeTopic",
         "type": "object"
       },
       "UpdateMaterialArchiveProfileRequest": {
@@ -15393,6 +16550,32 @@
         "title": "UpdateMethodPlanRequest",
         "type": "object"
       },
+      "UpdateModelDataAuthorizationRequest": {
+        "properties": {
+          "allowed": {
+            "title": "Allowed",
+            "type": "boolean"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "policy_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Policy Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "allowed",
+          "policy_version",
+          "expected_version"
+        ],
+        "title": "UpdateModelDataAuthorizationRequest",
+        "type": "object"
+      },
       "UpdatePhenomenonCandidateRequest": {
         "properties": {
           "context": {
@@ -15436,6 +16619,59 @@
           "phenomenon"
         ],
         "title": "UpdatePhenomenonCandidateRequest",
+        "type": "object"
+      },
+      "UpdatePreferencesRequest": {
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "locale": {
+            "maxLength": 16,
+            "minLength": 2,
+            "title": "Locale",
+            "type": "string"
+          },
+          "research_updates_enabled": {
+            "title": "Research Updates Enabled",
+            "type": "boolean"
+          },
+          "timezone": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "timezone",
+          "research_updates_enabled",
+          "expected_version"
+        ],
+        "title": "UpdatePreferencesRequest",
+        "type": "object"
+      },
+      "UpdateProfileRequest": {
+        "properties": {
+          "display_name": {
+            "maxLength": 80,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "display_name",
+          "expected_version"
+        ],
+        "title": "UpdateProfileRequest",
         "type": "object"
       },
       "UpdateResearchDocumentRequest": {
@@ -15600,16 +16836,1514 @@
         },
         "title": "UpdateSharedKnowledgeRequest",
         "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
       }
     }
   },
   "info": {
-    "description": "群学致知前后端架构基线 API。",
-    "title": "群学致知 API",
+    "description": "Everplain personal knowledge and research API.",
+    "title": "Everplain API",
     "version": "0.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/account": {
+      "get": {
+        "operationId": "get_account",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Account",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/credit-redemptions": {
+      "post": {
+        "operationId": "redeem_account_credits",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditRedemptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditRedemptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Redeem Account Credits",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/credits": {
+      "get": {
+        "operationId": "get_account_credits",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Cursor",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Account Credits",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/data-exports": {
+      "post": {
+        "operationId": "create_account_data_export",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataExportCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Create Account Data Export",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/data-exports/{export_id}": {
+      "get": {
+        "operationId": "get_account_data_export",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataExportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Account Data Export",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/data-exports/{export_id}/download": {
+      "get": {
+        "operationId": "download_account_data_export",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Export Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Download Account Data Export",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/deactivate": {
+      "post": {
+        "operationId": "deactivate_account",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeactivateAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeactivateAccountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Deactivate Account",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/delete": {
+      "post": {
+        "operationId": "delete_account",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteAccountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Delete Account",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/model-data-authorization": {
+      "patch": {
+        "operationId": "update_model_data_authorization",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateModelDataAuthorizationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPreferencesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Update Model Data Authorization",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/password-resets/consume": {
+      "post": {
+        "operationId": "consume_account_password_reset",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetConsumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordResetConsumeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Consume Account Password Reset",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/password/change": {
+      "post": {
+        "operationId": "change_account_password",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangePasswordResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Change Account Password",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/preferences": {
+      "patch": {
+        "operationId": "update_account_preferences",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePreferencesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPreferencesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Update Account Preferences",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/profile": {
+      "patch": {
+        "operationId": "update_account_profile",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Update Account Profile",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/sessions": {
+      "get": {
+        "operationId": "list_account_sessions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountSessionPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Account Sessions",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/account/sessions/{session_id}/revoke": {
+      "post": {
+        "operationId": "revoke_account_session",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Revoke Account Session",
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/admin/audit-events": {
+      "get": {
+        "operationId": "list_account_audit_events",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Cursor",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountAuditPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Account Audit Events",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/credit-redemption-codes": {
+      "post": {
+        "operationId": "create_admin_credit_redemption_codes",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditCodeBatchCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditCodeBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Admin Credit Redemption Codes",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/runtime-settings": {
+      "get": {
+        "operationId": "get_admin_runtime_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRuntimeSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          }
+        },
+        "summary": "Get Admin Runtime Settings",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "update_admin_runtime_settings",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminRuntimeSettingsUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRuntimeSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Admin Runtime Settings",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "operationId": "list_admin_users",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(member|admin)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(active|disabled|deactivated)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Cursor",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Admin Users",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users/{user_id}/disable": {
+      "post": {
+        "operationId": "disable_admin_user",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminStatusUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Disable Admin User",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users/{user_id}/enable": {
+      "post": {
+        "operationId": "enable_admin_user",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminStatusUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Enable Admin User",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users/{user_id}/password-reset-links": {
+      "post": {
+        "operationId": "create_admin_password_reset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordResetLinkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Admin Password Reset",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users/{user_id}/role": {
+      "patch": {
+        "operationId": "update_admin_user_role",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminRoleUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Admin User Role",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/agent/conversations": {
       "get": {
         "operationId": "list_agent_conversations",
@@ -16502,149 +19236,6 @@
         ]
       }
     },
-    "/api/course-profile": {
-      "get": {
-        "operationId": "get_course_profile",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CourseProfileResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          }
-        },
-        "summary": "Get Course Profile",
-        "tags": [
-          "shared-knowledge"
-        ]
-      },
-      "patch": {
-        "operationId": "update_course_profile",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": true,
-            "schema": {
-              "maxLength": 128,
-              "minLength": 8,
-              "title": "Idempotency-Key",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateCourseProfileRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CourseProfileResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          }
-        },
-        "summary": "Update Course Profile",
-        "tags": [
-          "shared-knowledge"
-        ]
-      }
-    },
     "/api/decision-sets/{decision_set_id}/confirm": {
       "post": {
         "operationId": "confirm_theory_plan",
@@ -17430,6 +20021,67 @@
         "summary": "Get Health",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/api/knowledge-storage": {
+      "get": {
+        "operationId": "get_knowledge_storage",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeStorageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Knowledge Storage",
+        "tags": [
+          "shared-knowledge"
         ]
       }
     },
@@ -27514,6 +30166,110 @@
           }
         },
         "summary": "Detach Document",
+        "tags": [
+          "shared-knowledge"
+        ]
+      }
+    },
+    "/api/shared-knowledge-bases/{kb_id}/documents/{document_id}/knowledge": {
+      "put": {
+        "operationId": "update_document_knowledge",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Kb Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDocumentKnowledgeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedDocumentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Update Document Knowledge",
         "tags": [
           "shared-knowledge"
         ]

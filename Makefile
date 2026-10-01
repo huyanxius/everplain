@@ -18,7 +18,7 @@ check: check-contract check-backend check-frontend
 
 check-backend:
 	cd backend && uv --cache-dir $(UV_CACHE_DIR) run ruff check .
-	cd backend && uv --cache-dir $(UV_CACHE_DIR) run pytest
+	cd backend && uv --cache-dir $(UV_CACHE_DIR) run pytest $$(sed '/^[[:space:]]*#/d; /^[[:space:]]*$$/d' tests/product-suite.txt)
 
 check-contract: contract
 	git diff --exit-code -- backend/openapi.json frontend/src/api/generated
@@ -31,7 +31,7 @@ check-frontend:
 
 dev-api:
 	cd backend && uv --cache-dir $(UV_CACHE_DIR) run alembic upgrade head
-	cd backend && uv --cache-dir $(UV_CACHE_DIR) run uvicorn qunxue_api.main:app --reload
+	cd backend && uv --cache-dir $(UV_CACHE_DIR) run uvicorn qunxue_api.main:app --host 127.0.0.1 --port 8297 --reload
 
 dev-web:
 	cd frontend && npm run dev

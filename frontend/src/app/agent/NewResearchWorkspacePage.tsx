@@ -45,7 +45,7 @@ import { PageContent, PageShell } from '../ui/PageShell'
 import { ResearchAgentConversationPage } from './ResearchAgentConversationPage'
 import './new-research-workspace.css'
 
-const AGENT_PANEL_WIDTH_STORAGE_KEY = 'qunxue.research.agent-panel-width'
+const AGENT_PANEL_WIDTH_STORAGE_KEY = 'everplain.research.agent-panel-width'
 const DEFAULT_AGENT_PANEL_WIDTH = 430
 const MIN_AGENT_PANEL_WIDTH = 320
 const MAX_AGENT_PANEL_WIDTH = 680

@@ -374,11 +374,11 @@ class DisciplinaryAgentApplication:
                 reference_knowledge_base_id is not None
                 and reference_knowledge_base_id != conversation.reference_knowledge_base_id
             ):
-                raise ConversationTaskBindingConflict("切换课程资料需要新建对话。")
+                raise ConversationTaskBindingConflict("切换知识库需要新建对话。")
             reference_knowledge_base_id = conversation.reference_knowledge_base_id
         if reference_knowledge_base_id is not None:
             if self._shared_references is None:
-                raise ValueError("课程资料暂不可用。")
+                raise ValueError("知识库暂不可用。")
             self._shared_references.application.require_read(user_id, reference_knowledge_base_id)
         if self._credits is not None:
             self._credits.ensure_can_start(user_id=user_id)
@@ -634,10 +634,11 @@ class DisciplinaryAgentApplication:
                     user_id=user_id, kb_id=reference_knowledge_base_id, query=prompt, tools=tools
                 )
                 conversation_history = self._shared_references.filter_history(
-                    user_id=user_id, kb_id=reference_knowledge_base_id, turns=conversation_history
-                )
-            # Shared evidence can be revoked and must not become unscoped personal memory.
-            if self._memory_tools_factory is not None and reference_knowledge_base_id is None:
+                    user_id=user_id, kb_id=reference_knowledge_base_id, turns=current.turns
+                )[-8:]
+            # Preferences remain available in a library chat. Source-derived text
+            # cannot enter persistent memory, so deleting a file also removes recall.
+            if self._memory_tools_factory is not None:
                 tools.memory = self._memory_tools_factory(
                     user_id=user_id,
                     task_id=task_id,
@@ -645,6 +646,8 @@ class DisciplinaryAgentApplication:
                     prompt=prompt,
                     run_id=run.run_id,
                 )
+                if reference_knowledge_base_id is not None:
+                    tools.memory.user_text_only = True
             deep_research_started = mode == "deep_research" and deep_research_action == "confirm"
 
             def save_initial_title(title: str) -> None:

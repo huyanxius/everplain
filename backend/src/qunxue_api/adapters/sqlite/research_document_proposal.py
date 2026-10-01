@@ -39,12 +39,12 @@ class SqliteResearchDocumentProposalRepository:
                 .values(
                     user_id=str(snapshot.user_id),
                     task_id=str(snapshot.task_id),
-                    theory_plan_id=str(snapshot.theory_plan_id),
+                    theory_plan_id=str(snapshot.theory_plan_id)
+                    if snapshot.theory_plan_id
+                    else None,
                     proposal_id=str(snapshot.proposal_id),
                 )
-                .on_conflict_do_nothing(
-                    index_elements=["user_id", "task_id", "theory_plan_id"]
-                )
+                .on_conflict_do_nothing()
             )
             handoff = self._session.scalar(
                 select(ResearchDocumentHandoffRow)
@@ -52,7 +52,7 @@ class SqliteResearchDocumentProposalRepository:
                     ResearchDocumentHandoffRow.user_id == str(snapshot.user_id),
                     ResearchDocumentHandoffRow.task_id == str(snapshot.task_id),
                     ResearchDocumentHandoffRow.theory_plan_id
-                    == str(snapshot.theory_plan_id),
+                    == (str(snapshot.theory_plan_id) if snapshot.theory_plan_id else None),
                 )
                 .execution_options(populate_existing=True)
             )
@@ -81,9 +81,7 @@ class SqliteResearchDocumentProposalRepository:
                     "target_section_id",
                 ]
             )
-        self._session.execute(
-            statement
-        )
+        self._session.execute(statement)
         persisted = _snapshot(
             self._session.get(ResearchDocumentProposalRow, str(snapshot.proposal_id))
         )
@@ -116,8 +114,7 @@ class SqliteResearchDocumentProposalRepository:
             update(ResearchDocumentProposalRow)
             .where(
                 ResearchDocumentProposalRow.proposal_id == str(snapshot.proposal_id),
-                ResearchDocumentProposalRow.status
-                == ResearchDocumentProposalStatus.PENDING.value,
+                ResearchDocumentProposalRow.status == ResearchDocumentProposalStatus.PENDING.value,
             )
             .values(
                 status=snapshot.status.value,
@@ -131,18 +128,13 @@ class SqliteResearchDocumentProposalRepository:
             )
         )
         if result.rowcount == 1:
-            if (
-                snapshot.kind is ResearchDocumentProposalKind.CREATE
-                and snapshot.status
-                in {
-                    ResearchDocumentProposalStatus.REJECTED,
-                    ResearchDocumentProposalStatus.ABORTED,
-                }
-            ):
+            if snapshot.kind is ResearchDocumentProposalKind.CREATE and snapshot.status in {
+                ResearchDocumentProposalStatus.REJECTED,
+                ResearchDocumentProposalStatus.ABORTED,
+            }:
                 self._session.execute(
                     delete(ResearchDocumentHandoffRow).where(
-                        ResearchDocumentHandoffRow.proposal_id
-                        == str(snapshot.proposal_id)
+                        ResearchDocumentHandoffRow.proposal_id == str(snapshot.proposal_id)
                     )
                 )
             return snapshot
@@ -158,9 +150,7 @@ class SqliteResearchDocumentProposalRepository:
             raise LookupError(snapshot.proposal_id)
         return persisted
 
-    def list_for_document(
-        self, document_id: UUID
-    ) -> tuple[ResearchDocumentProposalSnapshot, ...]:
+    def list_for_document(self, document_id: UUID) -> tuple[ResearchDocumentProposalSnapshot, ...]:
         rows = self._session.scalars(
             select(ResearchDocumentProposalRow)
             .where(ResearchDocumentProposalRow.document_id == str(document_id))
@@ -168,9 +158,7 @@ class SqliteResearchDocumentProposalRepository:
         )
         return tuple(item for row in rows if (item := _snapshot(row)) is not None)
 
-    def list_for_task(
-        self, task_id: UUID
-    ) -> tuple[ResearchDocumentProposalSnapshot, ...]:
+    def list_for_task(self, task_id: UUID) -> tuple[ResearchDocumentProposalSnapshot, ...]:
         rows = self._session.scalars(
             select(ResearchDocumentProposalRow)
             .where(ResearchDocumentProposalRow.task_id == str(task_id))
@@ -193,15 +181,12 @@ class SqliteResearchDocumentProposalRepository:
             select(ResearchDocumentProposalRow)
             .where(
                 ResearchDocumentProposalRow.task_id == str(task_id),
-                ResearchDocumentProposalRow.status
-                == ResearchDocumentProposalStatus.PENDING.value,
+                ResearchDocumentProposalRow.status == ResearchDocumentProposalStatus.PENDING.value,
                 or_(
                     and_(
                         ResearchDocumentProposalRow.kind
                         == ResearchDocumentProposalKind.CREATE.value,
-                        ResearchDocumentProposalRow.proposal_id.in_(
-                            canonical_create_ids
-                        ),
+                        ResearchDocumentProposalRow.proposal_id.in_(canonical_create_ids),
                     ),
                     and_(
                         ResearchDocumentProposalRow.kind
@@ -260,14 +245,14 @@ class SqliteResearchDocumentProposalRepository:
         *,
         user_id: UUID,
         task_id: UUID,
-        theory_plan_id: UUID,
+        theory_plan_id: UUID | None,
     ) -> ResearchDocumentProposalSnapshot | None:
         proposal_id = self._session.scalar(
-            select(ResearchDocumentHandoffRow.proposal_id)
-            .where(
+            select(ResearchDocumentHandoffRow.proposal_id).where(
                 ResearchDocumentHandoffRow.user_id == str(user_id),
                 ResearchDocumentHandoffRow.task_id == str(task_id),
-                ResearchDocumentHandoffRow.theory_plan_id == str(theory_plan_id),
+                ResearchDocumentHandoffRow.theory_plan_id
+                == (str(theory_plan_id) if theory_plan_id else None),
             )
         )
         if proposal_id is None:
@@ -303,7 +288,7 @@ def _row(snapshot: ResearchDocumentProposalSnapshot) -> ResearchDocumentProposal
         conversation_id=str(snapshot.conversation_id),
         agent_run_id=str(snapshot.agent_run_id),
         task_id=str(snapshot.task_id),
-        theory_plan_id=str(snapshot.theory_plan_id),
+        theory_plan_id=str(snapshot.theory_plan_id) if snapshot.theory_plan_id else None,
         knowledge_release_id=snapshot.knowledge_release_id,
         title=snapshot.title,
         proposed_sections=[_section_payload(item) for item in snapshot.proposed_sections],
@@ -373,7 +358,7 @@ def _snapshot(
         conversation_id=UUID(row.conversation_id),
         agent_run_id=UUID(row.agent_run_id),
         task_id=UUID(row.task_id),
-        theory_plan_id=UUID(row.theory_plan_id),
+        theory_plan_id=UUID(row.theory_plan_id) if row.theory_plan_id else None,
         knowledge_release_id=row.knowledge_release_id,
         title=row.title,
         proposed_sections=tuple(
@@ -406,9 +391,7 @@ def _snapshot(
                             else None
                         ),
                         parse_id=(
-                            UUID(str(evidence["parse_id"]))
-                            if evidence.get("parse_id")
-                            else None
+                            UUID(str(evidence["parse_id"])) if evidence.get("parse_id") else None
                         ),
                         segment_id=(
                             str(evidence["segment_id"])
@@ -457,9 +440,7 @@ def _snapshot(
         request_hash=row.request_hash,
         model_provider=row.model_provider,
         model_name=row.model_name,
-        analysis_handoff=(
-            dict(row.analysis_handoff) if row.analysis_handoff is not None else None
-        ),
+        analysis_handoff=(dict(row.analysis_handoff) if row.analysis_handoff is not None else None),
     )
 
 

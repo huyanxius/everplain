@@ -45,7 +45,7 @@ const workspaceTools = new Set<ResearchWorkspaceTool>([
   'archive',
 ])
 
-const RESUME_STORAGE_PREFIX = 'qunxue.research-workspace.resume.v1:'
+const RESUME_STORAGE_PREFIX = 'everplain.research-workspace.resume.v1:'
 
 type WorkspaceStorage = Pick<Storage, 'getItem' | 'setItem'>
 

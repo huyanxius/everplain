@@ -140,7 +140,7 @@ describe('research report content', () => {
 
   it('文件名去掉路径字符并挂上品牌前缀', () => {
     const report = buildResearchReport({ conversation: { ...conversation, title: '研究/报告: 初稿' } })
-    expect(researchReportFilename(report, 'docx')).toBe('群学致知-研究 报告 初稿.docx')
+    expect(researchReportFilename(report, 'docx')).toBe('Everplain-研究 报告 初稿.docx')
   })
 })
 
@@ -155,7 +155,7 @@ describe('research report docx', () => {
     expect(document).toContain('困惑人类的不平等从哪里来')
     expect(document).toContain('结构位置的产物')
     expect(document).toContain('引用资料')
-    expect(document).toContain('群学知识库')
+    expect(document).toContain('知识库资料')
     expect(document).toContain('https://www.oecd.org/en/publications/2024/11/how-s-life')
     // 版式沿用作品方案那份 Word：正文宋体小四、1.5 倍行距、首行缩进两字。
     expect(document).toContain('w:eastAsia="宋体"')
@@ -175,7 +175,7 @@ describe('research report print page', () => {
   it('打印页带品牌信头、A4 版心和引用资料', () => {
     const report = buildResearchReport({ conversation, elapsedSeconds: 267 })
     const html = buildResearchReportHtml(report)
-    expect(html).toContain('群学致知')
+    expect(html).toContain('Everplain')
     expect(html).toContain('<svg')
     expect(html).toContain('@page { size: A4; margin: 25.4mm 30mm; }')
     expect(html).toContain('困惑人类的不平等从哪里来')

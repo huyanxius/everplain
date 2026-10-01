@@ -534,7 +534,7 @@ def test_analysis_migration_matches_the_repository_metadata(
     alembic_config: Config,
 ) -> None:
     database_url = f"sqlite:///{tmp_path / 'research-analysis.db'}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     command.upgrade(alembic_config, "head")
 
     engine = create_engine(Settings().database_url)

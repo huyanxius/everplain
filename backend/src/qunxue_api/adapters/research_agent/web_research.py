@@ -99,7 +99,7 @@ def _search_tavily(
     )
 
 
-def plan_web_queries(query: str, *, profile: SearchProfile = "sociology") -> list[str]:
+def plan_web_queries(query: str, *, profile: SearchProfile = "generic") -> list[str]:
     """Clean the Agent's search-box query using STORM's bounded-query convention."""
 
     del profile
@@ -224,7 +224,7 @@ class OpenWebResearchClient:
         search_engines: tuple[str, ...] = (),
         search_timeout_seconds: float = 12,
         search_transport: SearchTransport | None = None,
-        profile: SearchProfile = "sociology",
+        profile: SearchProfile = "generic",
         allowed_domains: tuple[str, ...] = (),
         reranker: WebCandidateReranker | None = None,
         fetch: FetchFunction = _fetch_page,

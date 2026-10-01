@@ -66,8 +66,8 @@ def install_account_management(
             configured_admin_password = setting.get_secret_value()
     if not configured_admin_email or not configured_admin_password:
         raise RuntimeError(
-            "QUNXUE_ACCOUNT_INITIAL_ADMIN_EMAIL and "
-            "QUNXUE_ACCOUNT_INITIAL_ADMIN_PASSWORD must be configured before "
+            "EVERPLAIN_ACCOUNT_INITIAL_ADMIN_EMAIL and "
+            "EVERPLAIN_ACCOUNT_INITIAL_ADMIN_PASSWORD must be configured before "
             "installing account management"
         )
     if len(configured_admin_password) < 12:

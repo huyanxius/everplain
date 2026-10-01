@@ -9,6 +9,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -44,9 +45,9 @@ class ResearchDocumentProposalRow(Base):
     task_id: Mapped[str] = mapped_column(
         ForeignKey("research_tasks.task_id", ondelete="CASCADE"), nullable=False
     )
-    theory_plan_id: Mapped[str] = mapped_column(
+    theory_plan_id: Mapped[str | None] = mapped_column(
         ForeignKey("confirmed_theory_plans.theory_plan_id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
     knowledge_release_id: Mapped[str] = mapped_column(String(128), nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
@@ -71,6 +72,13 @@ class ResearchDocumentHandoffRow(Base):
 
     __tablename__ = "research_document_handoffs"
     __table_args__ = (
+        Index(
+            "uq_personal_document_handoff",
+            "user_id",
+            "task_id",
+            unique=True,
+            sqlite_where=text("theory_plan_id IS NULL"),
+        ),
         UniqueConstraint(
             "proposal_id",
             name="uq_research_document_handoff_proposal",
@@ -83,8 +91,9 @@ class ResearchDocumentHandoffRow(Base):
     task_id: Mapped[str] = mapped_column(
         ForeignKey("research_tasks.task_id", ondelete="CASCADE"), primary_key=True
     )
-    theory_plan_id: Mapped[str] = mapped_column(
+    theory_plan_id: Mapped[str | None] = mapped_column(
         ForeignKey("confirmed_theory_plans.theory_plan_id", ondelete="CASCADE"),
         primary_key=True,
+        nullable=True,
     )
     proposal_id: Mapped[str] = mapped_column(String(36), nullable=False)

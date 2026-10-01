@@ -12,7 +12,7 @@ def test_professional_material_archive_tables_follow_the_single_material_store(
     alembic_config: Config,
 ) -> None:
     database_url = f"sqlite:///{tmp_path / 'professional-materials.db'}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
 
     command.upgrade(alembic_config, "head")
 

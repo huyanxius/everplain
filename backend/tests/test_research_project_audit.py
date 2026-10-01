@@ -29,7 +29,7 @@ EXCHANGE_ID = UUID("20000000-0000-4000-8000-000000000004")
 
 def _migrated_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Database:
     database_url = f"sqlite:///{tmp_path / 'audit.db'}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
     command.upgrade(config, "head")
     return Database(database_url)

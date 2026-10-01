@@ -42,7 +42,7 @@ export function SocioMatchWorkspace({
           <span className="wordmark-mark" aria-hidden="true">
             群
           </span>
-          <span>群学致知</span>
+          <span>Everplain</span>
         </a>
         <p>RESEARCH / DRAFT</p>
       </header>

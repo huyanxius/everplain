@@ -33,19 +33,19 @@ class SqliteResearchDocumentRepository:
                 insert(ResearchDocumentIdentityRow)
                 .values(
                     task_id=str(snapshot.task_id),
-                    theory_plan_id=str(snapshot.theory_plan_id),
+                    theory_plan_id=str(snapshot.theory_plan_id)
+                    if snapshot.theory_plan_id
+                    else None,
                     document_id=str(snapshot.document_id),
                 )
-                .on_conflict_do_nothing(
-                    index_elements=["task_id", "theory_plan_id"]
-                )
+                .on_conflict_do_nothing()
             )
             identity = self._session.scalar(
                 select(ResearchDocumentIdentityRow)
                 .where(
                     ResearchDocumentIdentityRow.task_id == str(snapshot.task_id),
                     ResearchDocumentIdentityRow.theory_plan_id
-                    == str(snapshot.theory_plan_id),
+                    == (str(snapshot.theory_plan_id) if snapshot.theory_plan_id else None),
                 )
                 .execution_options(populate_existing=True)
             )
@@ -57,11 +57,12 @@ class SqliteResearchDocumentRepository:
                     raise RuntimeError("research document identity has no document")
                 return persisted
         self._session.execute(
-            insert(ResearchDocumentVersionRow).values(
+            insert(ResearchDocumentVersionRow)
+            .values(
                 document_id=str(snapshot.document_id),
                 version=snapshot.version,
                 task_id=str(snapshot.task_id),
-                theory_plan_id=str(snapshot.theory_plan_id),
+                theory_plan_id=str(snapshot.theory_plan_id) if snapshot.theory_plan_id else None,
                 knowledge_release_id=snapshot.knowledge_release_id,
                 revision_id=str(snapshot.revision_id),
                 title=snapshot.title,
@@ -100,13 +101,13 @@ class SqliteResearchDocumentRepository:
         return snapshot
 
     def find_for_task_and_plan(
-        self, *, task_id: UUID, theory_plan_id: UUID
+        self, *, task_id: UUID, theory_plan_id: UUID | None
     ) -> ResearchDocumentSnapshot | None:
         document_id = self._session.scalar(
-            select(ResearchDocumentIdentityRow.document_id)
-            .where(
+            select(ResearchDocumentIdentityRow.document_id).where(
                 ResearchDocumentIdentityRow.task_id == str(task_id),
-                ResearchDocumentIdentityRow.theory_plan_id == str(theory_plan_id),
+                ResearchDocumentIdentityRow.theory_plan_id
+                == (str(theory_plan_id) if theory_plan_id else None),
             )
         )
         return self.latest(UUID(document_id)) if document_id is not None else None
@@ -169,17 +170,17 @@ def _section_payload(section: ResearchDocumentSection) -> dict[str, object]:
         "content": section.content,
         "status": section.status.value,
         "evidence_refs": [
-                {
-                    "evidence_ref_id": item.evidence_ref_id,
-                    "source_id": item.source_id,
-                    "knowledge_release_id": item.knowledge_release_id,
-                    "source_kind": item.source_kind.value,
-                    "annotation_id": str(item.annotation_id) if item.annotation_id else None,
-                    "material_id": str(item.material_id) if item.material_id else None,
-                    "parse_id": str(item.parse_id) if item.parse_id else None,
-                    "segment_id": item.segment_id,
-                    "locator": item.locator,
-                }
+            {
+                "evidence_ref_id": item.evidence_ref_id,
+                "source_id": item.source_id,
+                "knowledge_release_id": item.knowledge_release_id,
+                "source_kind": item.source_kind.value,
+                "annotation_id": str(item.annotation_id) if item.annotation_id else None,
+                "material_id": str(item.material_id) if item.material_id else None,
+                "parse_id": str(item.parse_id) if item.parse_id else None,
+                "segment_id": item.segment_id,
+                "locator": item.locator,
+            }
             for item in section.evidence_refs
         ],
         "citation_refs": [
@@ -202,7 +203,7 @@ def _snapshot(row: ResearchDocumentVersionRow | None) -> ResearchDocumentSnapsho
     return ResearchDocumentSnapshot(
         document_id=UUID(row.document_id),
         task_id=UUID(row.task_id),
-        theory_plan_id=UUID(row.theory_plan_id),
+        theory_plan_id=UUID(row.theory_plan_id) if row.theory_plan_id else None,
         knowledge_release_id=row.knowledge_release_id,
         revision_id=UUID(row.revision_id),
         version=row.version,
@@ -227,29 +228,17 @@ def _snapshot(row: ResearchDocumentVersionRow | None) -> ResearchDocumentSnapsho
                             str(item.get("source_kind", "public_knowledge"))
                         ),
                         annotation_id=(
-                            UUID(str(item["annotation_id"]))
-                            if item.get("annotation_id")
-                            else None
+                            UUID(str(item["annotation_id"])) if item.get("annotation_id") else None
                         ),
                         material_id=(
-                            UUID(str(item["material_id"]))
-                            if item.get("material_id")
-                            else None
+                            UUID(str(item["material_id"])) if item.get("material_id") else None
                         ),
-                        parse_id=(
-                            UUID(str(item["parse_id"]))
-                            if item.get("parse_id")
-                            else None
-                        ),
+                        parse_id=(UUID(str(item["parse_id"])) if item.get("parse_id") else None),
                         segment_id=(
-                            str(item["segment_id"])
-                            if item.get("segment_id") is not None
-                            else None
+                            str(item["segment_id"]) if item.get("segment_id") is not None else None
                         ),
                         locator=(
-                            dict(item["locator"])
-                            if isinstance(item.get("locator"), dict)
-                            else None
+                            dict(item["locator"]) if isinstance(item.get("locator"), dict) else None
                         ),
                     )
                     for item in section.get("evidence_refs", [])
@@ -265,9 +254,7 @@ def _snapshot(row: ResearchDocumentVersionRow | None) -> ResearchDocumentSnapsho
                             else None
                         ),
                         locator=(
-                            dict(item["locator"])
-                            if isinstance(item.get("locator"), dict)
-                            else None
+                            dict(item["locator"]) if isinstance(item.get("locator"), dict) else None
                         ),
                         state=ResearchDocumentCitationState(str(item["state"])),
                     )
@@ -280,9 +267,7 @@ def _snapshot(row: ResearchDocumentVersionRow | None) -> ResearchDocumentSnapsho
         change_summary=row.change_summary,
         actor=row.actor,
         created_at=_utc(row.created_at),
-        analysis_handoff=(
-            dict(row.analysis_handoff) if row.analysis_handoff is not None else None
-        ),
+        analysis_handoff=(dict(row.analysis_handoff) if row.analysis_handoff is not None else None),
         restored_from_version=row.restored_from_version,
         confirmed_at=_utc(row.confirmed_at) if row.confirmed_at is not None else None,
         formatting=ResearchDocumentFormatting(
@@ -290,14 +275,10 @@ def _snapshot(row: ResearchDocumentVersionRow | None) -> ResearchDocumentSnapsho
             csl_style_id=str(row.formatting["csl_style_id"]),
             locale=str(row.formatting["locale"]),
             custom_csl=(
-                str(row.formatting["custom_csl"])
-                if row.formatting.get("custom_csl")
-                else None
+                str(row.formatting["custom_csl"]) if row.formatting.get("custom_csl") else None
             ),
             custom_css=(
-                str(row.formatting["custom_css"])
-                if row.formatting.get("custom_css")
-                else None
+                str(row.formatting["custom_css"]) if row.formatting.get("custom_css") else None
             ),
         ),
     )

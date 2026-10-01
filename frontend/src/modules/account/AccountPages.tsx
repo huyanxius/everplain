@@ -47,17 +47,17 @@ function AccountPortal({
       </div>
       <div className="account-portal__story">
         <img className="account-portal__brand-echo" src={brandMark} alt="" aria-hidden="true" />
-        <a className="account-portal__brand" href="/" aria-label="返回群学致知首页">
+        <a className="account-portal__brand" href="/" aria-label="返回 Everplain 首页">
           <span className="account-portal__brand-mark"><img src={brandMark} alt="" /></span>
           <span className="account-portal__brand-copy">
-            <strong>群学致知</strong>
-            <small>COLLECTIVE INQUIRY</small>
+            <strong>Everplain</strong>
+            <small>YOUR KNOWLEDGE, CONNECTED</small>
           </span>
         </a>
         <h1 id={`account-${kind}-title`}>{title}</h1>
         <div className="account-portal__axis" aria-hidden="true">
-          <span>现象</span>
-          <span>理论</span>
+          <span>资料</span>
+          <span>问题</span>
           <span>证据</span>
         </div>
       </div>
@@ -120,7 +120,7 @@ export function LoginPage({
     <AccountPortal
       kind="login"
       title="登录"
-      formLabel="登录到研究档案"
+      formLabel="登录到 Everplain"
       switcher={<p className="account-switch">还没有账号？<a href={registerHref}>创建账号</a></p>}
     >
       <form className="account-form" onSubmit={submit} noValidate>
@@ -243,7 +243,7 @@ export function RegisterPage({
     <AccountPortal
       kind="register"
       title="注册"
-      formLabel="创建研究档案"
+      formLabel="创建 Everplain 账号"
       switcher={<p className="account-switch">已有账号？<a href={loginHref}>返回登录</a></p>}
     >
       <div className="account-register-progress" aria-live="polite">

@@ -13,7 +13,7 @@ def test_m5_parallel_head_enforces_document_and_handoff_identity(
     alembic_config: Config,
 ) -> None:
     database_url = f"sqlite:///{tmp_path / 'm5-identity.db'}"
-    monkeypatch.setenv("QUNXUE_DATABASE_URL", database_url)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
     command.upgrade(alembic_config, "20260820_0005")
 
     engine = create_engine(database_url)

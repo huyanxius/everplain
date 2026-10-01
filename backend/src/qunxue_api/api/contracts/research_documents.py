@@ -79,7 +79,7 @@ class ResearchDocumentSectionContract(BaseModel):
 
 
 class CreateResearchDocumentRequest(BaseModel):
-    theory_plan_id: UUID
+    theory_plan_id: UUID | None = None
     title: str = Field(min_length=1, max_length=512)
     sections: list[ResearchDocumentSectionContract] = Field(min_length=1, max_length=32)
 
@@ -113,7 +113,7 @@ class RejectResearchDocumentProposalRequest(BaseModel):
 class ResearchDocumentResponse(BaseModel):
     document_id: UUID
     task_id: UUID
-    theory_plan_id: UUID
+    theory_plan_id: UUID | None
     knowledge_release_id: str
     revision_id: UUID
     version: int
@@ -149,7 +149,7 @@ class ResearchDocumentProposalResponse(BaseModel):
     model_provider: str | None
     model_name: str | None
     task_id: UUID
-    theory_plan_id: UUID
+    theory_plan_id: UUID | None
     knowledge_release_id: str
     title: str
     proposed_sections: list[ResearchDocumentSectionContract]
@@ -200,21 +200,21 @@ class ResearchDocumentCompletionGateResponse(BaseModel):
 class ResearchDocumentExportManifest(BaseModel):
     """Versioned, machine-readable audit package for one formal M5 delivery."""
 
-    schema_version: Literal["research-delivery-v2"]
+    schema_version: Literal["research-delivery-v2", "everplain-document-v1"]
     document_identity: ResearchDocumentVersionIdentityContract
     formatting: ResearchDocumentFormattingContract
     citation_audit: list[ResearchDocumentCitationAuditContract]
-    phenomenon: dict[str, object]
-    knowledge_release: dict[str, object]
-    model: dict[str, object] | None
-    theory_candidates: list[dict[str, object]]
-    theory_decisions: list[dict[str, object]]
-    theory_assignments: list[dict[str, object]]
-    theory_relations: list[dict[str, object]]
-    evidence: list[dict[str, object]]
-    research_analysis: ResearchAnalysisHandoffContract | None
-    method_plan: MethodPlanResponse | None
-    agent_proposals: list[dict[str, object]]
+    phenomenon: dict[str, object] = Field(default_factory=dict)
+    knowledge_release: dict[str, object] = Field(default_factory=dict)
+    model: dict[str, object] | None = None
+    theory_candidates: list[dict[str, object]] = Field(default_factory=list)
+    theory_decisions: list[dict[str, object]] = Field(default_factory=list)
+    theory_assignments: list[dict[str, object]] = Field(default_factory=list)
+    theory_relations: list[dict[str, object]] = Field(default_factory=list)
+    evidence: list[dict[str, object]] = Field(default_factory=list)
+    research_analysis: ResearchAnalysisHandoffContract | None = None
+    method_plan: MethodPlanResponse | None = None
+    agent_proposals: list[dict[str, object]] = Field(default_factory=list)
     document_versions: list[dict[str, object]]
     formal_document: dict[str, object]
 
@@ -222,7 +222,7 @@ class ResearchDocumentExportManifest(BaseModel):
 class ResearchDocumentExportResponse(BaseModel):
     document_id: UUID
     task_id: UUID
-    theory_plan_id: UUID
+    theory_plan_id: UUID | None
     knowledge_release_id: str
     version: int
     filename: str

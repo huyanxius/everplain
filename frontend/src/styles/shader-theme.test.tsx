@@ -3,7 +3,6 @@ import { act, cleanup, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResearchMapIdleShader } from '../app/research-workspace/ResearchMapIdleShader'
 import { ResearchMaterialsShader } from '../app/research/ResearchMaterialsShader'
-import { ResearchToolsShader } from '../app/research-tools/ResearchToolsShader'
 import { ResearchAgentShader } from '../app/agent/ResearchAgentShader'
 import { FoundationLightPaperShader } from '../app/foundation/FoundationLightPaperShader'
 import { FoundationAgentShader } from '../app/foundation/FoundationAgentShader'
@@ -31,7 +30,7 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); document.documentElement.style.removeProperty('color-scheme'); vi.unstubAllGlobals() })
 
-const shaders = { ResearchMapIdleShader, ResearchMaterialsShader, ResearchToolsShader, ResearchAgentShader, FoundationLightPaperShader, FoundationAgentShader }
+const shaders = { ResearchMapIdleShader, ResearchMaterialsShader, ResearchAgentShader, FoundationLightPaperShader, FoundationAgentShader }
 describe.each(Object.entries(shaders))('%s', (_, Component) => {
   it('updates every shader palette in place when system appearance changes and restores the light palette', () => {
     const screen = render(createElement('section', { id: 'knowledge-preview' }, createElement(Component)))

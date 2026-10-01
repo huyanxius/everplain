@@ -50,6 +50,9 @@ class ResearchDocumentSectionStatus(StrEnum):
 class ResearchDocumentEvidenceSourceKind(StrEnum):
     PUBLIC_KNOWLEDGE = "public_knowledge"
     PERSONAL_MATERIAL = "personal_material"
+    PERSONAL_KNOWLEDGE = "personal_knowledge"
+    RESEARCH_MATERIAL = "research_material"
+    WEB = "web"
 
 
 class ResearchDocumentCitationKind(StrEnum):
@@ -83,10 +86,14 @@ class ResearchDocumentCitationRef:
             raise ValueError("citation and source ids are required")
         kind = ResearchDocumentCitationKind(self.kind)
         state = ResearchDocumentCitationState(self.state)
-        if kind in {
-            ResearchDocumentCitationKind.EMPIRICAL,
-            ResearchDocumentCitationKind.SCHOLARLY,
-        } and not self.locator:
+        if (
+            kind
+            in {
+                ResearchDocumentCitationKind.EMPIRICAL,
+                ResearchDocumentCitationKind.SCHOLARLY,
+            }
+            and not self.locator
+        ):
             raise ValueError("empirical and scholarly citations require an exact locator")
         object.__setattr__(self, "citation_id", citation_id)
         object.__setattr__(self, "source_id", source_id)
@@ -148,11 +155,19 @@ class ResearchDocumentEvidenceRef:
             if not self.knowledge_release_id or not self.knowledge_release_id.strip():
                 raise ValueError("public evidence requires a knowledge release")
             return
+        if source_kind is ResearchDocumentEvidenceSourceKind.WEB:
+            if not self.source_id.startswith(("https://", "http://")):
+                raise ValueError("web evidence requires an HTTP URL")
+            if self.knowledge_release_id is not None:
+                raise ValueError("web evidence cannot claim a knowledge release")
+            return
         if self.knowledge_release_id is not None:
             raise ValueError("personal material evidence cannot claim a knowledge release")
         if not all(
             (
-                self.annotation_id,
+                self.annotation_id
+                if source_kind is ResearchDocumentEvidenceSourceKind.PERSONAL_MATERIAL
+                else True,
                 self.material_id,
                 self.parse_id,
                 self.segment_id and self.segment_id.strip(),
@@ -179,7 +194,7 @@ class ResearchDocumentSection:
 class ResearchDocumentSnapshot:
     document_id: UUID
     task_id: UUID
-    theory_plan_id: UUID
+    theory_plan_id: UUID | None
     knowledge_release_id: str
     revision_id: UUID
     version: int
@@ -199,7 +214,7 @@ class ResearchDocumentSnapshot:
 class ResearchDocumentMarkdownExport:
     document_id: UUID
     task_id: UUID
-    theory_plan_id: UUID
+    theory_plan_id: UUID | None
     knowledge_release_id: str
     version: int
     filename: str
@@ -255,7 +270,7 @@ class ResearchDocumentService:
         self,
         *,
         task_id: UUID,
-        theory_plan_id: UUID,
+        theory_plan_id: UUID | None,
         knowledge_release_id: str,
         title: str,
         sections: tuple[ResearchDocumentSection, ...],
@@ -337,21 +352,21 @@ class ResearchDocumentService:
         if not summary:
             raise ValueError("change summary is required")
         candidate = replace(
-                current,
-                revision_id=self._id_factory(),
-                version=current.version + 1,
-                sections=sections,
-                change_summary=summary,
-                actor=actor.strip() or "user",
-                created_at=self._clock(),
-                analysis_handoff=(
-                    current.analysis_handoff
-                    if analysis_handoff is None
-                    else _analysis_handoff(analysis_handoff)
-                ),
-                formatting=current.formatting if formatting is None else formatting,
-                restored_from_version=None,
-            )
+            current,
+            revision_id=self._id_factory(),
+            version=current.version + 1,
+            sections=sections,
+            change_summary=summary,
+            actor=actor.strip() or "user",
+            created_at=self._clock(),
+            analysis_handoff=(
+                current.analysis_handoff
+                if analysis_handoff is None
+                else _analysis_handoff(analysis_handoff)
+            ),
+            formatting=current.formatting if formatting is None else formatting,
+            restored_from_version=None,
+        )
         persisted = self._repository.add(candidate)
         if persisted.revision_id != candidate.revision_id:
             raise ValueError("stale research document version")
@@ -372,16 +387,16 @@ class ResearchDocumentService:
         if not summary:
             raise ValueError("restore reason is required")
         candidate = replace(
-                source,
-                revision_id=self._id_factory(),
-                version=current.version + 1,
-                status=ResearchDocumentStatus.DRAFT,
-                change_summary=summary,
-                actor="user",
-                created_at=self._clock(),
-                restored_from_version=source_version,
-                confirmed_at=None,
-            )
+            source,
+            revision_id=self._id_factory(),
+            version=current.version + 1,
+            status=ResearchDocumentStatus.DRAFT,
+            change_summary=summary,
+            actor="user",
+            created_at=self._clock(),
+            restored_from_version=source_version,
+            confirmed_at=None,
+        )
         persisted = self._repository.add(candidate)
         if persisted.revision_id != candidate.revision_id:
             raise ValueError("stale research document version")
@@ -394,6 +409,34 @@ class ResearchDocumentService:
         pending_proposal_count: int = 0,
     ) -> ResearchDocumentCompletionGate:
         current = self.get(document_id)
+        if current.theory_plan_id is None:
+            unresolved = [
+                section.title
+                for section in current.sections
+                if section.status
+                in {
+                    ResearchDocumentSectionStatus.DRAFT,
+                    ResearchDocumentSectionStatus.NEEDS_USER_DECISION,
+                }
+            ]
+            blockers = tuple(f"章节“{title}”仍待审阅。" for title in unresolved)
+            if pending_proposal_count:
+                blockers += (f"还有 {pending_proposal_count} 条建议待处理。",)
+            return ResearchDocumentCompletionGate(
+                document_id=document_id,
+                version=current.version,
+                ready=not blockers,
+                pending_proposal_count=pending_proposal_count,
+                blockers=blockers,
+                checks=(
+                    ResearchDocumentCompletionCheck(
+                        code="section_review",
+                        label="文稿已审阅",
+                        passed=not blockers,
+                        detail="文稿已可导出。" if not blockers else "请完成文稿审阅。",
+                    ),
+                ),
+            )
         section_by_key = {section.key: section for section in current.sections}
         missing = sorted(REQUIRED_FRAMEWORK_SECTION_KEYS - section_by_key.keys())
         unresolved = tuple(
@@ -415,9 +458,9 @@ class ResearchDocumentService:
             and not section.evidence_refs
             and section.status is not ResearchDocumentSectionStatus.EVIDENCE_GAP
         )
-        blockers = tuple(
-            [f"缺少必需章节：{', '.join(missing)}。"] if missing else []
-        ) + tuple(f"章节“{section.title}”仍待审阅。" for section in unresolved)
+        blockers = tuple([f"缺少必需章节：{', '.join(missing)}。"] if missing else []) + tuple(
+            f"章节“{section.title}”仍待审阅。" for section in unresolved
+        )
         blockers += tuple(
             f"章节“{section.title}”的关键判断需要引用，或明确标记为证据缺口。"
             for section in missing_provenance
@@ -476,9 +519,7 @@ class ResearchDocumentService:
                 label="证据缺口已披露",
                 passed=gaps_disclosed,
                 detail=(
-                    "证据缺口章节已有明确说明。"
-                    if gaps_disclosed
-                    else "证据缺口章节不能为空。"
+                    "证据缺口章节已有明确说明。" if gaps_disclosed else "证据缺口章节不能为空。"
                 ),
             ),
             ResearchDocumentCompletionCheck(
@@ -522,34 +563,30 @@ class ResearchDocumentService:
                 section.key for section in current.sections
             }
             if missing:
-                raise ValueError(
-                    "required sections are missing: " + ", ".join(sorted(missing))
-                )
+                raise ValueError("required sections are missing: " + ", ".join(sorted(missing)))
             if any(
                 section.status is ResearchDocumentSectionStatus.NEEDS_USER_DECISION
                 for section in current.sections
             ):
-                raise ValueError(
-                    "pending user decisions must be resolved before confirmation"
-                )
+                raise ValueError("pending user decisions must be resolved before confirmation")
             raise ValueError("completion gate blocked: " + " ".join(gate.blockers))
         now = self._clock()
         candidate = replace(
-                current,
-                revision_id=self._id_factory(),
-                version=current.version + 1,
-                status=ResearchDocumentStatus.CONFIRMED,
-                change_summary="用户确认正式研究框架",
-                actor="user",
-                created_at=now,
-                analysis_handoff=(
-                    current.analysis_handoff
-                    if analysis_handoff is None
-                    else _analysis_handoff(analysis_handoff)
-                ),
-                restored_from_version=None,
-                confirmed_at=now,
-            )
+            current,
+            revision_id=self._id_factory(),
+            version=current.version + 1,
+            status=ResearchDocumentStatus.CONFIRMED,
+            change_summary="用户确认正式研究框架",
+            actor="user",
+            created_at=now,
+            analysis_handoff=(
+                current.analysis_handoff
+                if analysis_handoff is None
+                else _analysis_handoff(analysis_handoff)
+            ),
+            restored_from_version=None,
+            confirmed_at=now,
+        )
         persisted = self._repository.add(candidate)
         if persisted.revision_id != candidate.revision_id:
             raise ValueError("stale research document version")
@@ -560,9 +597,9 @@ class ResearchDocumentService:
     ) -> ResearchDocumentMarkdownExport:
         snapshot = self.get(document_id, version=version)
         latest = self.get(document_id)
-        if (
-            snapshot.revision_id != latest.revision_id
-            or snapshot.status is not ResearchDocumentStatus.CONFIRMED
+        if snapshot.revision_id != latest.revision_id or (
+            snapshot.theory_plan_id is not None
+            and snapshot.status is not ResearchDocumentStatus.CONFIRMED
         ):
             raise ValueError("only the latest confirmed document version can be exported")
         metadata = (
@@ -574,6 +611,16 @@ class ResearchDocumentService:
             f"version: {snapshot.version}\n"
             "---\n\n"
         )
+
+        if snapshot.theory_plan_id is None:
+            metadata = (
+                "---\n"
+                f"document_id: {snapshot.document_id}\n"
+                f"version: {snapshot.version}\n"
+                "product: Everplain\n"
+                "---\n\n"
+            )
+
         def render_section(section: ResearchDocumentSection) -> str:
             rendered = f"## {section.title}\n\n{section.content.strip()}"
             blocks = [rendered]
@@ -584,7 +631,11 @@ class ResearchDocumentService:
                         f"`{evidence.evidence_ref_id}` — personal material "
                         f"`{evidence.material_id}`; segment `{evidence.segment_id}`"
                         if evidence.source_kind
-                        is ResearchDocumentEvidenceSourceKind.PERSONAL_MATERIAL
+                        in {
+                            ResearchDocumentEvidenceSourceKind.PERSONAL_MATERIAL,
+                            ResearchDocumentEvidenceSourceKind.PERSONAL_KNOWLEDGE,
+                            ResearchDocumentEvidenceSourceKind.RESEARCH_MATERIAL,
+                        }
                         else "- "
                         f"`{evidence.evidence_ref_id}` — source `{evidence.source_id}`; "
                         f"release `{evidence.knowledge_release_id}`"
@@ -638,8 +689,7 @@ class ResearchDocumentService:
             if not section.title.strip() or not section.content.strip():
                 raise ValueError("document section title and content are required")
             if any(
-                evidence.source_kind
-                is ResearchDocumentEvidenceSourceKind.PUBLIC_KNOWLEDGE
+                evidence.source_kind is ResearchDocumentEvidenceSourceKind.PUBLIC_KNOWLEDGE
                 and evidence.knowledge_release_id != release_id
                 for evidence in section.evidence_refs
             ):

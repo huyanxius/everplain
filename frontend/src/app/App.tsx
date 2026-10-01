@@ -1,5 +1,4 @@
 import { CourseKnowledgePage } from './courses/CourseKnowledgePage'
-import { CourseInvitationRoute } from './courses/CourseInvitationRoute'
 import { CoursesPage } from './courses/CoursesPage'
 import {
   BrowserRouter,
@@ -9,9 +8,8 @@ import {
   useLocation,
   useNavigate,
   useParams,
-  useSearchParams,
 } from 'react-router'
-import { useCallback, useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 
 import {
   AccountSettingsPage,
@@ -22,26 +20,11 @@ import {
   RegisterPage,
   useAccount,
 } from '../modules/account'
-import {
-  KnowledgeEntryPage,
-  KnowledgeExplorerPage,
-  type KnowledgeEntrySummary,
-  readKnowledgeGraphReturnTo,
-  saveKnowledgeListScroll,
-  readKnowledgeUrlState,
-  writeKnowledgeUrlState,
-} from '../modules/knowledge-explorer'
-import {
-  FullscreenKnowledgeGraphPage,
-  type FullscreenKnowledgeGraphState,
-} from '../modules/knowledge-graph'
-import { KnowledgeGraphIntegration } from './KnowledgeGraphIntegration'
 import { ResearchTaskNavigationRoute } from './ResearchTaskNavigationRoute'
 import { ResearchAgentPage } from './agent/ResearchAgentPage'
 import { NewResearchWorkspacePage } from './agent/NewResearchWorkspacePage'
 import { ExistingResearchEntryPage } from './research/ExistingResearchEntryPage'
 import { ResearchMaterialsPage } from './research/ResearchMaterialsPage'
-import { ResearchToolsPage } from './research-tools/ResearchToolsPage'
 import { ResearchProjectWorkspacePage } from './research-workspace/ResearchProjectWorkspacePage'
 import { legacyResearchWorkspaceDestination } from './research-workspace/researchProjectWorkspaceModel'
 import { FoundationPage } from './foundation/FoundationPage'
@@ -62,164 +45,10 @@ type AppRoutesProps = {
   sessionState?: SessionState
 }
 
-function KnowledgeExplorerRoute() {
-  const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const state = readKnowledgeUrlState(searchParams)
-  const [graphOpen, setGraphOpen] = useState(false)
-  const [focusEntry, setFocusEntry] = useState<KnowledgeEntrySummary>()
-
-  const updateState = useCallback((nextState: typeof state) => {
-    setSearchParams(writeKnowledgeUrlState(nextState))
-  }, [setSearchParams])
-  const resolveRelease = useCallback((releaseId: string) => {
-    setSearchParams((current) => writeKnowledgeUrlState({
-      ...readKnowledgeUrlState(current),
-      releaseId,
-    }))
-  }, [setSearchParams])
-
-  if (searchParams.get('scope') === 'courses') return <CourseKnowledgePage />
-
-  return (
-    <PageShell workspace defaultRailCollapsed>
-      <PageContent>
-        <KnowledgeExplorerPage
-          state={state}
-          onStateChange={updateState}
-          onReleaseResolved={resolveRelease}
-          onOpenEntry={(knowledgeId) => {
-            saveKnowledgeListScroll(state, window.scrollY)
-            const query = writeKnowledgeUrlState(state).toString()
-            navigate(`/knowledge/${encodeURIComponent(knowledgeId)}${query ? `?${query}` : ''}`)
-          }}
-          onLocateEntry={(entry) => {
-            setFocusEntry(entry)
-            setGraphOpen(true)
-          }}
-          onOpenGraph={() => setGraphOpen(true)}
-          onOpenCourseLibrary={() => navigate("/knowledge?scope=courses")}
-        />
-        {state.releaseId ? (
-          <>
-            {graphOpen ? (
-              <KnowledgeGraphIntegration
-                releaseId={state.releaseId}
-                focusEntry={focusEntry}
-                onSelectKnowledge={(knowledgeId) => {
-                  const query = writeKnowledgeUrlState(state).toString()
-                  navigate(`/knowledge/${encodeURIComponent(knowledgeId)}${query ? `?${query}` : ''}`)
-                }}
-              />
-            ) : null}
-          </>
-        ) : null}
-      </PageContent>
-    </PageShell>
-  )
-}
-
-function KnowledgeEntryRoute() {
-  const { knowledge_id: knowledgeId } = useParams<{ knowledge_id: string }>()
-  const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const state = readKnowledgeUrlState(searchParams)
-  const graphReturnTo = readKnowledgeGraphReturnTo(searchParams)
-  const resolveRelease = useCallback((releaseId: string) => {
-    setSearchParams((current) => writeKnowledgeUrlState({
-      ...readKnowledgeUrlState(current),
-      releaseId,
-    }))
-  }, [setSearchParams])
-
-  if (!knowledgeId) {
-    return (
-      <PageShell>
-        <PageContent><ErrorState detail="知识条目地址无效。" /></PageContent>
-      </PageShell>
-    )
-  }
-
-  return (
-    <PageShell workspace defaultRailCollapsed>
-      <PageContent>
-        <KnowledgeEntryPage
-          knowledgeId={knowledgeId}
-          releaseId={state.releaseId}
-          onReleaseResolved={resolveRelease}
-          onReturnToResearch={state.returnTo ? () => navigate(state.returnTo) : undefined}
-          onReturnToKnowledge={() => {
-            if (graphReturnTo) {
-              navigate(graphReturnTo)
-              return
-            }
-            const query = writeKnowledgeUrlState({ ...state, returnTo: undefined }).toString()
-            navigate(`/knowledge${query ? `?${query}` : ''}`)
-          }}
-          returnToKnowledgeLabel={graphReturnTo ? '返回知识图谱' : '返回知识库'}
-          onStartResearch={({ theoryId, theoryName }) => {
-            navigate(
-              `/research/new?seed_theory_id=${encodeURIComponent(theoryId)}`,
-              { state: { seedTheoryName: theoryName } },
-            )
-          }}
-        />
-      </PageContent>
-    </PageShell>
-  )
-}
-
-function KnowledgeGraphRoute() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const state: FullscreenKnowledgeGraphState = {
-    releaseId: searchParams.get('knowledge_release_id') ?? undefined,
-    query: searchParams.get('query') ?? undefined,
-    centerId: searchParams.get('center') ?? undefined,
-    pendingEnabled: searchParams.get('pending') === '1',
-  }
-  const updateState = useCallback((changes: Partial<FullscreenKnowledgeGraphState>) => {
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current)
-      const keys: Record<keyof FullscreenKnowledgeGraphState, string> = {
-        releaseId: 'knowledge_release_id',
-        query: 'query',
-        centerId: 'center',
-        pendingEnabled: 'pending',
-      }
-      for (const [stateKey, value] of Object.entries(changes)) {
-        const queryKey = keys[stateKey as keyof FullscreenKnowledgeGraphState]
-        if (stateKey === 'pendingEnabled') {
-          if (value) next.set(queryKey, '1')
-          else next.delete(queryKey)
-        } else if (value) next.set(queryKey, String(value))
-        else next.delete(queryKey)
-      }
-      return next
-    })
-  }, [setSearchParams])
-  const entryHref = useCallback((knowledgeId: string) => {
-    const returnTo = `/knowledge/graph?${searchParams.toString()}`
-    const detailParams = new URLSearchParams({
-      knowledge_release_id: state.releaseId ?? '',
-      return_to: returnTo,
-    })
-    return `/knowledge/${encodeURIComponent(knowledgeId)}?${detailParams}`
-  }, [searchParams, state.releaseId])
-  return (
-    <PageShell workspace>
-      <FullscreenKnowledgeGraphPage
-        state={state}
-        onStateChange={updateState}
-        entryHref={entryHref}
-      />
-    </PageShell>
-  )
-}
-
 function loginRedirect(value: string | null) {
   if (!value?.startsWith('/')) return '/app'
 
-  const origin = 'https://qunxue.local'
+  const origin = 'https://everplain.local'
   try {
     const target = new URL(value, origin)
     return target.origin === origin
@@ -419,14 +248,13 @@ export function AppRoutes({
       <Route path="/welcome" element={productHome} />
       <Route path="/app" element={protectedRoute(<AppHomePage />)} />
       <Route path="/agent" element={protectedRoute(<ResearchAgentPage userId={authenticatedUserId} introSessionId={authenticatedSessionId} />)} />
-      <Route path="/knowledge" element={<KnowledgeExplorerRoute />} />
-      <Route path="/knowledge/graph" element={<KnowledgeGraphRoute />} />
-      <Route path="/knowledge/:knowledge_id" element={<KnowledgeEntryRoute />} />
+      <Route path="/library" element={protectedRoute(<CoursesPage />)} />
+      <Route path="/library/knowledge" element={protectedRoute(<CourseKnowledgePage />)} />
+      <Route path="/knowledge/*" element={<Navigate replace to="/library" />} />
       <Route path="/research/new" element={protectedRoute(<NewResearchRoute userId={authenticatedUserId} />)} />
       <Route path="/research/existing" element={protectedRoute(<ExistingResearchEntryPage />)} />
-      <Route path="/research/tools" element={protectedRoute(<ResearchToolsPage />)} />
-      <Route path="/courses/join" element={<CourseInvitationRoute>{protectedRoute(<CoursesPage />)}</CourseInvitationRoute>} />
-      <Route path="/courses/*" element={protectedRoute(<CoursesPage />)} />
+      <Route path="/research/tools" element={<Navigate to="/app" replace />} />
+      <Route path="/courses/*" element={<Navigate replace to="/library" />} />
       <Route path="/research/materials" element={protectedRoute(<ResearchMaterialsRoute userId={authenticatedUserId} />)} />
       <Route
         path="/research/:task_id"

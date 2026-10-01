@@ -28,7 +28,7 @@ def test_cli_installs_and_replays_a_pre_reviewed_release(
     ]
     environment = {
         **os.environ,
-        "QUNXUE_DATABASE_URL": client.app.state.settings.database_url,
+        "EVERPLAIN_DATABASE_URL": client.app.state.settings.database_url,
     }
 
     first = subprocess.run(

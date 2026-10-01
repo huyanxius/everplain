@@ -307,7 +307,7 @@ describe('ResearchDocumentWorkbench', () => {
     fireEvent.mouseUp(window)
 
     expect(separator).toHaveAttribute('aria-valuenow', '540')
-    expect(window.localStorage.getItem('qunxue.research.agent-panel-width')).toBe('540')
+    expect(window.localStorage.getItem('everplain.research.agent-panel-width')).toBe('540')
   })
 
   it('states the preview boundary when the research agent is not available', async () => {

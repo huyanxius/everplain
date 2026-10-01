@@ -1,6 +1,5 @@
 import json
 import os
-import subprocess
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -86,13 +85,8 @@ admin_router = APIRouter(
 
 
 def _runtime_config_path(request: Request):
-    configured = os.environ.get("QUNXUE_CANONICAL_CONFIG_PATH")
-    if configured:
-        return configured
-    candidate = "/root/qunxue-config/qunxue.env"
-    if os.path.exists(candidate):
-        return candidate
-    return str(Path(__file__).resolve().parents[4] / ".env")
+    configured = os.environ.get("EVERPLAIN_CANONICAL_CONFIG_PATH")
+    return configured or str(Path(__file__).resolve().parents[4] / ".env")
 
 
 def _replace_env_values(path: str, values: dict[str, str]) -> None:
@@ -111,7 +105,7 @@ def _replace_env_values(path: str, values: dict[str, str]) -> None:
         if key not in seen:
             output.append(f"{key}={value}\n")
     directory = os.path.dirname(path) or "."
-    fd, temporary = tempfile.mkstemp(prefix="qunxue-config-", dir=directory, text=True)
+    fd, temporary = tempfile.mkstemp(prefix="everplain-config-", dir=directory, text=True)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.writelines(output)
@@ -377,7 +371,7 @@ def download_account_data_export(
         headers={
             "Cache-Control": "no-store",
             "Content-Disposition": (
-                f'attachment; filename="qunxue-account-export-{export_id}.json"'
+                f'attachment; filename="everplain-account-export-{export_id}.json"'
             ),
             "Content-Type": "application/json; charset=utf-8",
             "X-Content-Type-Options": "nosniff",
@@ -465,14 +459,9 @@ def update_admin_runtime_settings(
     service.require_admin_access(current.user.user_id)
     path = _runtime_config_path(request)
     _replace_env_values(path, {
-        "QUNXUE_MODEL_NAME": payload.model.strip(),
-        "QUNXUE_MODEL_REASONING_EFFORT": payload.reasoning_effort,
+        "EVERPLAIN_MODEL_NAME": payload.model.strip(),
+        "EVERPLAIN_MODEL_REASONING_EFFORT": payload.reasoning_effort,
     })
-    subprocess.Popen(
-        ["pm2", "restart", "qunxue-api"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
     return AdminRuntimeSettingsResponse(
         model=payload.model.strip(),
         reasoning_effort=payload.reasoning_effort,

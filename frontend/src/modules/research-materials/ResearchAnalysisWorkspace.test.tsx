@@ -161,7 +161,7 @@ describe('ResearchAnalysisWorkspace', () => {
       />,
     )
 
-    expect(screen.getByRole('region', { name: '社会学质性分析工作区' })).toBeVisible()
+    expect(screen.getByRole('region', { name: '材料分析工作区' })).toBeVisible()
     expect(screen.getByRole('combobox', { name: '方法取向' })).toHaveValue('thematic_analysis')
     expect(screen.getByText('代码不等于主题。')).toBeVisible()
   })

@@ -832,3 +832,20 @@
   }
   .new-research__conversation { scroll-behavior: auto; }
 }
+
+.new-research__citation-chip {
+  display: inline;
+  margin: 0 .2em;
+  padding: .1em .32em;
+  border: 1px solid var(--research-rule);
+  border-radius: 4px;
+  color: var(--research-ink);
+  background: var(--research-surface);
+  font: inherit;
+  font-size: .75em;
+  line-height: 1;
+  vertical-align: .16em;
+  cursor: pointer;
+}
+.new-research__citation-chip:hover { background: var(--research-panel); }
+.new-research__citation-chip:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

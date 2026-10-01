@@ -4,15 +4,12 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router'
 import {
   BellIcon,
   BooksIcon,
-  GraduationCapIcon,
   ChatCircleDotsIcon,
   DotsThreeIcon,
   FileTextIcon,
   HouseIcon,
   PlusIcon,
   SidebarSimpleIcon,
-  ToolboxIcon,
-  TreeStructureIcon,
   UserCircleIcon,
   XIcon,
 } from '@phosphor-icons/react'
@@ -73,11 +70,8 @@ function PrimaryNavigation({
     { href: '/app', label: text('工作台', 'Workbench'), mobileLabel: text('工作台', 'Home'), icon: HouseIcon, end: true },
     { href: '/agent', label: text('研究 Agent', 'Research Agent'), mobileLabel: 'Agent', icon: ChatCircleDotsIcon, end: true },
     { href: '/research/new', label: text('新建研究', 'New research'), mobileLabel: text('新建', 'New'), icon: PlusIcon },
-    { href: '/research/tools', label: text('研究工具', 'Research tools'), mobileLabel: text('工具', 'Tools'), icon: ToolboxIcon, end: true },
     { href: '/research/materials', label: text('我的研究', 'My research'), mobileLabel: text('研究', 'Research'), icon: FileTextIcon, end: true },
-    { href: '/courses', label: text('课程', 'Courses'), mobileLabel: text('课程', 'Courses'), icon: GraduationCapIcon },
-    { href: '/knowledge', label: text('知识库', 'Knowledge base'), mobileLabel: text('知识', 'Library'), icon: BooksIcon, end: true },
-    { href: '/knowledge/graph', label: text('知识图谱', 'Knowledge graph'), mobileLabel: text('图谱', 'Graph'), icon: TreeStructureIcon },
+    { href: '/library', label: text('知识库', 'Knowledge base'), mobileLabel: text('知识', 'Library'), icon: BooksIcon },
   ]
   const visibleItems = mobile
     ? navigationItems.filter(({ href }) => [
@@ -85,7 +79,7 @@ function PrimaryNavigation({
       '/agent',
       '/research/new',
       '/research/materials',
-      '/knowledge',
+      '/library',
     ].includes(href))
     : navigationItems
   return (
@@ -194,9 +188,9 @@ export function PageShell({
         <>
           <a className="skip-link" href="#main-content">{text('跳到主要内容', 'Skip to main content')}</a>
           <header className="masthead mobile-masthead">
-            <Link className="wordmark" to="/app" aria-label={text('群学致知工作台', 'Qunxue Zhizhi workbench')}>
+            <Link className="wordmark" to="/app" aria-label={text('Everplain 工作台', 'Everplain workbench')}>
               <ProductMark />
-              <strong>群学致知</strong>
+              <strong>Everplain</strong>
             </Link>
             <nav className="account-navigation" aria-label={text('账户导航', 'Account navigation')}>
               {viewDestination ? <Link to={viewDestination}>{viewLabel}</Link> : null}
@@ -215,11 +209,11 @@ export function PageShell({
             </nav>
           </header>
 
-          <aside className={`desktop-rail${railCollapsed ? ' desktop-rail--collapsed' : ''}`} aria-label={text('群学致知功能栏', 'Qunxue Zhizhi navigation')}>
+          <aside className={`desktop-rail${railCollapsed ? ' desktop-rail--collapsed' : ''}`} aria-label={text('Everplain 功能栏', 'Everplain navigation')}>
             <div className="desktop-rail__topbar">
-              <Link className="desktop-rail__brand" to="/app" aria-label={text('群学致知工作台', 'Qunxue Zhizhi workbench')}>
+              <Link className="desktop-rail__brand" to="/app" aria-label={text('Everplain 工作台', 'Everplain workbench')}>
                 <ProductMark />
-                <strong>群学致知</strong>
+                <strong>Everplain</strong>
               </Link>
               <button
                 className="desktop-rail__collapse"
@@ -265,7 +259,6 @@ export function PageShell({
                     onClick={() => setNotificationsOpen((open) => !open)}
                   >
                     <BellIcon size={19} weight="regular" aria-hidden="true" />
-                    <span className="desktop-rail__notification-dot" aria-hidden="true" />
                   </button>
                   {notificationsOpen ? (
                     <div className="desktop-rail__notification-panel" id="desktop-notifications" aria-label={text('通知栏', 'Notifications panel')}>
@@ -290,15 +283,13 @@ export function PageShell({
                       {notificationFilter === 'updates' || notificationFilter === 'all' ? (
                         <article className="desktop-rail__notification-item">
                           <strong>{text('深度研究现已上线', 'Deep Research is now available')}</strong>
-                          <p>{text('我们已上线“深度研究”功能。它会自动让 Agent 规划任务，完成知识库检索、研究分析网页内容，并补充输出研究结果。欢迎体验这一整条研究链路。', 'Deep Research is now available. It automatically asks the Agent to plan tasks, search the knowledge base, analyze research pages, and complete the final research output. Try the full research workflow.')}</p>
-                          <time dateTime="2026-09-04">{text('9月4日', 'Sep 4')}</time>
+                          <p>{text('选择深度研究，自动让 Agent 规划任务，检索你的知识库并阅读网页。你可以查看来源，在文稿中继续编辑结果。', 'Use Deep Research to plan a task, search your library, and read web sources. Inspect citations and continue editing the result in your document.')}</p>
                         </article>
                       ) : null}
                       {notificationFilter === 'messages' || notificationFilter === 'all' ? (
                         <article className="desktop-rail__notification-item">
-                          <strong>{text('外部服务响应延迟', 'External service response delays')}</strong>
-                          <p>{text('部分外部服务当前响应延迟，相关请求可能需要更长时间完成。我们正在持续关注服务状态，感谢理解。', 'Some external services are currently experiencing response delays, so related requests may take longer to complete. We are monitoring the service status closely.')}</p>
-                          <time dateTime="2026-09-03">{text('9月3日', 'Sep 3')}</time>
+                          <strong>{text('暂无新消息', 'No new messages')}</strong>
+                          <p>{text('你的研究与知识库会保存在账户中，随时回来继续。', 'Your research and libraries are saved to your account, ready whenever you return.')}</p>
                         </article>
                       ) : null}
                     </div>
@@ -350,14 +341,9 @@ export function PageShell({
                   </button>
                 </header>
                 <nav aria-label={text('更多功能', 'More features')}>
-                  <NavLink to="/research/tools" onClick={() => setMobileMoreOpen(false)}>
-                    <ToolboxIcon size={20} aria-hidden="true" />
-                    <span>{text('研究工具', 'Research tools')}</span>
-                  </NavLink>
-                  <NavLink to="/courses" onClick={() => setMobileMoreOpen(false)}><GraduationCapIcon size={20} aria-hidden="true" /><span>{text('课程', 'Courses')}</span></NavLink>
-                  <NavLink to="/knowledge/graph" onClick={() => setMobileMoreOpen(false)}>
-                    <TreeStructureIcon size={20} aria-hidden="true" />
-                    <span>{text('知识图谱', 'Knowledge graph')}</span>
+                  <NavLink to="/library/knowledge" onClick={() => setMobileMoreOpen(false)}>
+                    <BooksIcon size={20} aria-hidden="true" />
+                    <span>{text('知识整理', 'Organized knowledge')}</span>
                   </NavLink>
                 </nav>
               </section>
