@@ -60,6 +60,7 @@ from qunxue_api.adapters.retrieval import (
 from qunxue_api.adapters.security import Argon2PasswordHasher
 from qunxue_api.adapters.sqlite.agent_conversation_repository import SqliteConversationRepository
 from qunxue_api.adapters.sqlite.agent_memory_repository import SqliteMemoryRepository
+from qunxue_api.adapters.sqlite.agent_profile import SqliteAgentProfileRepository
 from qunxue_api.adapters.sqlite.billing_repository import SqliteCreditRepository
 from qunxue_api.adapters.sqlite.database import Database
 from qunxue_api.adapters.sqlite.identity_repository import SqliteIdentityRepository
@@ -114,6 +115,7 @@ from qunxue_api.adapters.transcription import (
 )
 from qunxue_api.api.contracts.common import ErrorCode, ErrorDetail, ErrorResponse
 from qunxue_api.api.routes.agent import router as agent_router
+from qunxue_api.api.routes.agent_profile import router as agent_profile_router
 from qunxue_api.api.routes.health import router as health_router
 from qunxue_api.api.routes.memories import MemoryValidationError
 from qunxue_api.api.routes.memories import router as memories_router
@@ -150,6 +152,7 @@ from qunxue_api.application import (
     TheoryMatchingApplication,
     TranscriptionApplication,
 )
+from qunxue_api.application.agent_profile import AgentProfileApplication
 from qunxue_api.application.agent_research_workflow import AgentResearchWorkflow
 from qunxue_api.application.memory_learning import MemoryLearningWorker
 from qunxue_api.application.memory_overview import MemoryOverview
@@ -984,6 +987,7 @@ def create_app(
                         ),
                         app.state.knowledge_retriever,
                     ),
+                    persona_factory=current_persona,
                     memory_tools_factory=lambda **scope: AgentMemoryTools(
                         memory_service_scope, **scope
                     ),
@@ -1049,6 +1053,19 @@ def create_app(
             yield MemoryService(SqliteMemoryRepository(memory_session))
 
     app.state.memory_service_scope = memory_service_scope
+
+    @contextmanager
+    def agent_profile_scope():
+        with resolved_database.session() as session:
+            yield AgentProfileApplication(SqliteAgentProfileRepository(session),
+                                          MemoryService(SqliteMemoryRepository(session)))
+
+    app.state.agent_profile_scope = agent_profile_scope
+
+    def current_persona(user_id):
+        with agent_profile_scope() as application:
+            return application.get(user_id).persona()
+
     app.state.memory_overview = MemoryOverview()
     if app.state.model_endpoints:
         endpoint = app.state.model_endpoints[0]
@@ -1117,6 +1134,7 @@ def create_app(
     app.include_router(research_exchange_router)
     app.include_router(phenomena_router)
     app.include_router(material_intakes_router)
+    app.include_router(agent_profile_router)
     app.include_router(agent_router)
 
     @app.exception_handler(ResearchTaskNotFound)

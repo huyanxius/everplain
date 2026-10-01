@@ -11,6 +11,7 @@ export const defaultBoundaryPolicy = Object.freeze({
   moduleDependencies: Object.freeze({
     account: Object.freeze([]),
     'agent-avatar': Object.freeze([]),
+    'agent-profile': Object.freeze([]),
     'knowledge-graph': Object.freeze([]),
     'knowledge-explorer': Object.freeze([]),
     'm4-theory-judgment': Object.freeze([]),
@@ -31,6 +32,7 @@ export const defaultBoundaryPolicy = Object.freeze({
     'api/researchWorkspace.ts',
     'api/system.ts',
     'modules/account/accountApi.ts',
+    'modules/agent-profile/agentProfileApi.ts',
     'modules/knowledge-graph/knowledgeGraphAdapter.ts',
     'modules/knowledge-graph/knowledgeGraphApi.ts',
     'modules/knowledge-explorer/knowledgeApi.ts',
@@ -50,6 +52,7 @@ export const defaultBoundaryPolicy = Object.freeze({
   ]),
   moduleApiAdapters: Object.freeze([
     'modules/account/accountApi.ts',
+    'modules/agent-profile/agentProfileApi.ts',
     'modules/account/accountManagementApi.ts',
     'modules/knowledge-graph/knowledgeGraphApi.ts',
     'modules/knowledge-explorer/knowledgeApi.ts',

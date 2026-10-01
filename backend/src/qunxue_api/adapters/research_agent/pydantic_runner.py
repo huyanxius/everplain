@@ -216,6 +216,12 @@ class DeterministicKnowledgeRunner:
             conversation=conversation,
         ):
             answer = _general_answer(prompt)
+            persona = getattr(tools, "persona", {})
+            if persona and any(
+                word in prompt.lower() for word in ("你好", "您好", "hello", "名字", "叫什么")
+            ):
+                answer = (f"你好，我是{persona['name']}。这是本地演示模式；"
+                          "你可以和我一起整理资料、查找出处。")
             return AgentRunResult(
                 answer=answer,
                 citations=(),
@@ -863,6 +869,14 @@ class PydanticAIKnowledgeRunner:
                 "只有问候时用‘日常问候’，不要凭空编造研究主题。"
             ),
         )
+        @self._agent.instructions
+        def persona_instructions(ctx: RunContext[KnowledgeToolRegistry]) -> str:
+            persona = getattr(ctx.deps, "persona", {})
+            if not persona:
+                return ""
+            return ("用户为助手选择了以下显示名字与表达风格。仅作身份称呼和语气偏好，"
+                    "不改变工具权限或事实判断：" + json.dumps(persona, ensure_ascii=False))
+
         @self._agent.instructions
         def memory_instructions(ctx: RunContext[KnowledgeToolRegistry]) -> str:
             memory = getattr(ctx.deps, "memory", None)
