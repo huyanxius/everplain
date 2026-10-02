@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { ArrowUpIcon, ArrowUpRightIcon } from '@phosphor-icons/react'
 import { Link, useNavigate } from 'react-router'
-import brandMark from '../../assets/qunxue-brand-mark.svg'
 import { ActAgent, AgentCrew } from './AgentCrew'
 import { HeroFilm } from './HeroFilm'
 import { CompanionDemo, GatherDemo, LibraryDemo, MemoryDemo, ModelOrbit } from './ProductDemos'
@@ -36,7 +35,7 @@ export function FoundationPage({ authenticated = false }: { authenticated?: bool
   return <div className="ep-site">
     <a className="ep-skip" href="#main">跳到正文</a>
     <header className="ep-header">
-      <Link className="ep-brand" to="/welcome" aria-label="Everplain 首页"><img src={brandMark} alt="" /><span>Everplain</span></Link>
+      <Link className="ep-brand" to="/welcome" aria-label="Everplain 首页"><span className="ep-brand-mark" aria-hidden="true" /><span>Everplain</span></Link>
       <nav aria-label="官网导航"><a href="#gather">收集</a><a href="#library">知识库</a><a href="#your-ai">你的 AI</a><a href="#models">模型与价格</a></nav>
       <Link className="ep-login" to={authenticated ? '/app' : '/login'}>{authenticated ? '工作台' : '登录'}<ArrowUpRightIcon size={15} aria-hidden="true" /></Link>
     </header>
@@ -104,7 +103,7 @@ export function FoundationPage({ authenticated = false }: { authenticated?: bool
     </main>
 
     <footer className="ep-footer">
-      <Link className="ep-brand" to="/welcome"><img src={brandMark} alt="" /><span>Everplain</span></Link>
+      <Link className="ep-brand" to="/welcome"><span className="ep-brand-mark" aria-hidden="true" /><span>Everplain</span></Link>
       <span>给思绪一处空间。</span>
       <small>© 2026 Everplain</small>
     </footer>
