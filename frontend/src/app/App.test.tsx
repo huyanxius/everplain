@@ -907,7 +907,7 @@ describe('App routes', () => {
   it('offers a real import path when the personal library is empty', async () => {
     renderRoute('/app', { status: 'authenticated' })
     expect(await screen.findByRole('heading', { name: '把第一份资料，放进来。' })).toBeVisible()
-    expect(screen.getByRole('link', { name: /开始导入/ })).toHaveAttribute('href', '/welcome/setup')
+    expect(screen.getByRole('link', { name: /开始导入/ })).toHaveAttribute('href', '/imports')
     expect(screen.queryByRole('link', { name: /内置案例/ })).not.toBeInTheDocument()
   })
 
