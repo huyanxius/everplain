@@ -155,6 +155,37 @@
   --qx-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --qx-ease-standard: cubic-bezier(0.65, 0, 0.35, 1);
 
+
+  /*
+   * 新一版设计令牌里官网先用到的部分。这些都是新名字，应用里还没有页面引用，
+   * 加进来不改变任何现有界面；整站迁移合入时会被那一版 tokens.css 整体取代。
+   * info/warning/success 是状态色，data-* 是类别色（主题、概念类型这类互相区分的东西），
+   * hero/act/statement 只给官网大标题用。
+   */
+  --qx-color-info: light-dark(#315f91, #90aac6);
+  --qx-color-warning: light-dark(#9c6527, #bfa07d);
+  --qx-color-success: light-dark(#5b9866, #7fa386);
+  --qx-color-data-blue: light-dark(#43639a, #95a5c0);
+  --qx-color-data-green: light-dark(#44745f, #9db9ad);
+  --qx-color-data-teal: light-dark(#367083, #94b6c2);
+  --qx-color-data-rose: light-dark(#985067, #bc9aa5);
+  --qx-color-data-amber: light-dark(#8a6b2f, #c6b390);
+  --qx-color-data-violet: light-dark(#695b91, #a59eb7);
+  --qx-color-data-olive: light-dark(#718a72, #a7afa9);
+  --qx-text-hero: clamp(3.5rem, 7.6vw, 7.5rem);
+  --qx-text-act: clamp(2.5rem, 5.6vw, 5.25rem);
+  --qx-text-statement: clamp(1.875rem, 3.6vw, 3.25rem);
+  --qx-text-display: 2.25rem;
+  --qx-space-5: 20px;
+  --qx-radius-tag: 10px;
+  --qx-radius-item: 14px;
+  --qx-radius-card: 20px;
+  --qx-radius-field: 24px;
+  --qx-radius-panel: 28px;
+  --qx-composer-min-height: 56px;
+  --qx-shadow-ring: 0 0 0 1px color-mix(in srgb, var(--qx-color-ink) 7%, transparent);
+  --qx-shadow-composer: var(--qx-shadow-ring), 0 8px 32px rgb(17 17 17 / 7%);
+
   /* ---- 兼容别名：老模块继续用短名，新代码不要引用这一段 ---- */
   --bg: var(--qx-color-canvas);
   --surface: var(--qx-color-surface);

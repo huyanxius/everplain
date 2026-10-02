@@ -17,7 +17,7 @@ describe('Everplain product website', () => {
     const requests: string[] = []
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => { requests.push(String(input)); return new Response('{}', { status: 503 }) })
     render(<MemoryRouter><FoundationPage /></MemoryRouter>)
-    expect(screen.getByRole('heading', { level: 1, name: 'Room for your mind.' })).toBeVisible()
+    expect(screen.getByRole('heading', { level: 1, name: /^Everplain，帮你/ })).toBeVisible()
     for (const name of ['你的知识，你的 AI。', '散落各处的，收到一处。', '一键，建成你的知识库。', '只属于你的 AI。', '用 1% 的成本，和全球最顶尖的模型对话。']) {
       expect(screen.getByRole('heading', { name })).toBeVisible()
     }
@@ -92,7 +92,7 @@ describe('Everplain product website', () => {
     expect(within(library).getByText('给 AI 用')).toHaveAttribute('data-on', 'true')
     const conversation = screen.getByLabelText('对话演示')
     fireEvent.click(within(conversation).getByRole('button', { name: '查看来源 2' }))
-    expect(within(conversation).getByText('沉默的螺旋，十分钟讲清楚').closest('li')).toHaveAttribute('data-focus', 'true')
+    expect(within(conversation).getByText('沉默的螺旋，十分钟讲清楚', { selector: '.ep-sources li' })).toHaveAttribute('data-focus', 'true')
   })
 
   it('lets visitors forget a memory and undo it', () => {

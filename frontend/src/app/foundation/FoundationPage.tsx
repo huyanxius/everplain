@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowUpIcon, ArrowUpRightIcon } from '@phosphor-icons/react'
 import { Link, useNavigate } from 'react-router'
+import { AgentAvatar, agentAvatarPresets } from '../../modules/agent-avatar'
+import { Companion } from '../../modules/companion'
 import { ActAgent, AgentCrew } from './AgentCrew'
 import { HeroFilm } from './HeroFilm'
 import { CompanionDemo, GatherDemo, LibraryDemo, MemoryDemo, ModelOrbit } from './ProductDemos'
@@ -17,11 +19,52 @@ function Composer({ id, authenticated }: { id: string; authenticated: boolean })
   }
   return <form className="ep-composer" onSubmit={event => { event.preventDefault(); start() }}>
     <label className="ep-visually-hidden" htmlFor={id}>你的想法</label>
-    <textarea id={id} placeholder="说说你的想法…" value={thought} maxLength={4000} rows={2} onChange={event => setThought(event.target.value)} onKeyDown={event => {
+    <textarea id={id} placeholder="说说你的想法…" value={thought} maxLength={4000} rows={1} onChange={event => setThought(event.target.value)} onKeyDown={event => {
       if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); start() }
     }} />
     <button type="submit" aria-label="开始对话" disabled={!thought.trim()}><ArrowUpIcon size={20} aria-hidden="true" /></button>
   </form>
+}
+
+/*
+ * 首屏标题：「Everplain〔角色〕，」+「帮你……」轮换产品真实能做的事，每换一句换一个角色。
+ * 读屏只读固定的一句完整说明，轮换的部分对读屏隐藏，免得一直被打断。
+ */
+const abilities = ['整理散落的收藏', '找回读过的文章', '把笔记连成图谱', '带着出处回答', '把问题想清楚', '写出第一稿']
+const headlineLabel = `Everplain，帮你${abilities.slice(0, 3).join('、')}。`
+
+function RotatingHeadline() {
+  const [turn, setTurn] = useState({ current: 0, previous: -1 })
+  useEffect(() => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    const timer = window.setInterval(() => setTurn(t => ({ current: (t.current + 1) % abilities.length, previous: t.current })), 3000)
+    return () => window.clearInterval(timer)
+  }, [])
+  const active = turn.current % agentAvatarPresets.length
+  const chars = (text: string, phase: 'in' | 'out') => Array.from(text).map((char, i) => (
+    <span key={`${phase}-${i}`} className={`ep-char ep-char--${phase}`} style={{ animationDelay: `${i * 38}ms` }}>{char}</span>
+  ))
+  return <h1 id="ep-hero-title" className="ep-headline" aria-label={headlineLabel}>
+    <span className="ep-headline__line" aria-hidden="true">
+      Everplain
+      {/* 七个 bot 叠成一排，只在进场时依次弹出一次；之后谁对应当前这句，谁打招呼 */}
+      <span className="ep-crew">
+        {agentAvatarPresets.map((preset, i) => (
+          <span key={preset.id} className="ep-crew__bot" data-active={i === active} style={{ animationDelay: `${300 + i * 90}ms`, zIndex: i === active ? 10 : 7 - i }}>
+            <AgentAvatar avatar={preset.id} state={i === active ? 'greet' : 'idle'} offset={i * 0.6} size="100%" />
+          </span>
+        ))}
+      </span>
+      ，
+    </span>
+    <span className="ep-headline__line" aria-hidden="true">
+      帮你
+      <span className="ep-ability">
+        {turn.previous >= 0 ? <span className="ep-ability__text ep-ability__text--out" key={`out-${turn.previous}-${turn.current}`}>{chars(abilities[turn.previous], 'out')}</span> : null}
+        <span className="ep-ability__text" key={`in-${turn.current}`}>{chars(abilities[turn.current], 'in')}</span>
+      </span>
+    </span>
+  </h1>
 }
 
 /*
@@ -44,8 +87,7 @@ export function FoundationPage({ authenticated = false }: { authenticated?: bool
       <section className="ep-hero" aria-labelledby="ep-hero-title">
         <HeroFilm />
         <div className="ep-hero-copy">
-          <h1 id="ep-hero-title">Room for your mind.</h1>
-          <p className="ep-hero-chinese">给思绪一处空间。</p>
+          <RotatingHeadline />
           <Composer id="ep-thought" authenticated={authenticated} />
           <a className="ep-text-link" href="#gather">免登录查看静态演示<ArrowUpRightIcon size={16} aria-hidden="true" /></a>
           <p className="ep-demo-disclosure">下方演示使用预设示例，不读取个人资料，也不调用真实 AI。进入工作台仍需登录。</p>
@@ -96,15 +138,16 @@ export function FoundationPage({ authenticated = false }: { authenticated?: bool
 
       <section className="ep-closing" aria-labelledby="ep-closing-title">
         <ActAgent avatar="you" state="greet" side="center" />
-        <h2 id="ep-closing-title">Room for your mind.</h2>
+        <h2 id="ep-closing-title">说说你在想的事。</h2>
         <Composer id="ep-thought-closing" authenticated={authenticated} />
         <a className="ep-text-link" href="#gather">再看静态演示<ArrowUpRightIcon size={16} aria-hidden="true" /></a>
       </section>
     </main>
 
+    <div className="ep-companion"><Companion size={190} /></div>
+
     <footer className="ep-footer">
       <Link className="ep-brand" to="/welcome"><span className="ep-brand-mark" aria-hidden="true" /><span>Everplain</span></Link>
-      <span>给思绪一处空间。</span>
       <small>© 2026 Everplain</small>
     </footer>
   </div>

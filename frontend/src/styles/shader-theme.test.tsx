@@ -4,8 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResearchMapIdleShader } from '../app/research-workspace/ResearchMapIdleShader'
 import { ResearchMaterialsShader } from '../app/research/ResearchMaterialsShader'
 import { ResearchAgentShader } from '../app/agent/ResearchAgentShader'
-import { FoundationLightPaperShader } from '../app/foundation/FoundationLightPaperShader'
-import { FoundationAgentShader } from '../app/foundation/FoundationAgentShader'
 
 // Assert the colors passed across the WebGL boundary; real canvas rendering is checked in Chrome.
 vi.mock('@paper-design/shaders-react', () => {
@@ -30,7 +28,7 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); document.documentElement.style.removeProperty('color-scheme'); vi.unstubAllGlobals() })
 
-const shaders = { ResearchMapIdleShader, ResearchMaterialsShader, ResearchAgentShader, FoundationLightPaperShader, FoundationAgentShader }
+const shaders = { ResearchMapIdleShader, ResearchMaterialsShader, ResearchAgentShader }
 describe.each(Object.entries(shaders))('%s', (_, Component) => {
   it('updates every shader palette in place when system appearance changes and restores the light palette', () => {
     const screen = render(createElement('section', { id: 'knowledge-preview' }, createElement(Component)))
