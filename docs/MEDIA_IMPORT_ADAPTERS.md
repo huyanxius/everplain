@@ -41,7 +41,9 @@ restrictions are not guaranteed. No login fallback or Cookie/SESSDATA config exi
 
 ## Subtitle-first videos and temporary audio
 
-`YtDlpSubtitleProvider` invokes a separately installed, trusted `yt-dlp` executable.
+`YtDlpSubtitleProvider` invokes the `yt-dlp` executable installed from the locked
+backend dependency. The stock API image includes it through `uv sync`; other
+runtime packaging must keep the backend virtual environment's `bin` directory on `PATH`.
 It ignores user config, browser/file cookies, default plugin directories and disk
 cache. `--no-simulate --skip-download` allows subtitle writes while excluding media
 downloads; `--dump-json` collects metadata. It requests Chinese/English VTT/SRT/JSON
