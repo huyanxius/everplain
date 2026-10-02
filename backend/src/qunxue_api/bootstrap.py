@@ -19,8 +19,15 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from qunxue_api.account_extension import install_account_management
 from qunxue_api.adapters.email import ResendEmailProvider
 from qunxue_api.adapters.empty_catalog import EmptyKnowledgeCatalog
-from qunxue_api.adapters.import_sources import parse_import
 from qunxue_api.adapters.import_sources.fetch import fetch_bookmark
+from qunxue_api.adapters.media_import import (
+    BilibiliFavoritesAdapter,
+    BilibiliTemporaryAudioProvider,
+    ImageImportAdapter,
+    OpenAICompatibleVisionProvider,
+    VideoImportAdapter,
+)
+from qunxue_api.adapters.media_import.integration import MediaImportGateway, parse_files
 from qunxue_api.adapters.model import (
     BuiltInCaseCatalog,
     ModelEndpoint,
@@ -618,8 +625,10 @@ def create_app(
                 max_storage_bytes=resolved_settings.max_storage_bytes,
                 max_libraries=resolved_settings.max_libraries,
                 max_documents_per_library=resolved_settings.max_documents_per_library)
-            yield KnowledgeImportApplication(SqliteImportRepository(session), libraries,
-                                             parse_import, app.state.import_fetch_text)
+            yield KnowledgeImportApplication(
+                SqliteImportRepository(session), libraries, parse_files,
+                app.state.import_fetch_text, app.state.media_import_gateway,
+            )
 
     def run_import_once():
         with knowledge_import_scope() as application:
@@ -639,7 +648,8 @@ def create_app(
             )
             yield PersonalGraphApplication(
                 SqlitePersonalGraphRepository(
-                    session, mock=resolved_settings.runtime_mode == "mock"
+                    session, mock=resolved_settings.runtime_mode == "mock",
+                    embedding_model=resolved_settings.embedding_model,
                 ),
                 name_topic=namer,
             )
@@ -652,6 +662,19 @@ def create_app(
 
     app.state.personal_graph_scope = personal_graph_scope
     app.state.run_graph_once = run_graph_once
+    vision = None
+    if (resolved_settings.runtime_mode != "mock" and resolved_settings.vision_base_url
+            and resolved_settings.vision_model):
+        vision = OpenAICompatibleVisionProvider(
+            base_url=resolved_settings.vision_base_url, model=resolved_settings.vision_model,
+            api_key=(resolved_settings.vision_api_key.get_secret_value()
+                     if resolved_settings.vision_api_key else None))
+    app.state.media_import_gateway = MediaImportGateway(
+        BilibiliFavoritesAdapter(),
+        VideoImportAdapter(audio=BilibiliTemporaryAudioProvider(),
+                           transcription=_build_transcription_provider(resolved_settings)
+                           if resolved_settings.runtime_mode != "mock" else None),
+        ImageImportAdapter(provider=vision))
     app.state.knowledge_import_scope = knowledge_import_scope
     app.state.import_fetch_text = fetch_bookmark
     app.state.run_import_once = run_import_once

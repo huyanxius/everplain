@@ -24,6 +24,7 @@ class PersonalGraphSource(BaseModel):
     document_id: str
     title: str
     source_url: str | None = None
+    asset_url: str | None = None
     segment_id: str | None = None
 
 

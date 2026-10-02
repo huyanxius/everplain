@@ -29,6 +29,7 @@ import { ResearchProjectWorkspacePage } from './research-workspace/ResearchProje
 import { legacyResearchWorkspaceDestination } from './research-workspace/researchProjectWorkspaceModel'
 import { FoundationPage } from './foundation/FoundationPage'
 import { AppHomePage } from './home/AppHomePage'
+import { ImportsPage } from './imports/ImportsPage'
 import { PersonalGraphPage } from './personal-graph/PersonalGraphPage'
 import { OnboardingGate, WelcomeSetupPage } from './welcome/WelcomeSetupPage'
 import { PageContent, PageShell, RailStateProvider } from './ui/PageShell'
@@ -250,6 +251,7 @@ export function AppRoutes({
       />
       <Route path="/welcome" element={productHome} />
       <Route path="/welcome/setup" element={protectedRoute(<WelcomeSetupPage userId={authenticatedUserId} />)} />
+      <Route path="/imports" element={protectedRoute(<ImportsPage userId={authenticatedUserId} />)} />
       <Route path="/my/graph" element={protectedRoute(<PersonalGraphPage userId={authenticatedUserId} />)} />
       <Route path="/app" element={protectedRoute(<AppHomePage />)} />
       <Route path="/agent" element={protectedRoute(<ResearchAgentPage userId={authenticatedUserId} introSessionId={authenticatedSessionId} />)} />

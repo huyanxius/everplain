@@ -1,0 +1,56 @@
+.ep-imports { max-width: 1160px; margin: 0 auto; padding: 20px 12px; color: var(--qx-color-ink); }
+.ep-imports a { text-decoration: none; color: inherit; }
+.ep-imports button, .ep-imports input { font: inherit; }
+.ep-imports button { cursor: pointer; }
+.ep-imports-back { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; color: var(--qx-color-muted) !important; }
+.ep-imports > header { margin: 35px 0 35px; }
+.ep-imports > header > p { font-size: 8px; letter-spacing: .15em; color: var(--qx-color-muted); }
+.ep-imports h1 { font: 400 clamp(25px,2.4vw,34px)/1.5 var(--qx-font-reading); margin: 14px 0; }
+.ep-imports > header > span { font-size: 12px; line-height: 1.8; color: var(--qx-color-muted); }
+.ep-imports-layout { display: grid; grid-template-columns: minmax(0,1fr) 280px; gap: 35px; }
+.ep-imports-sources { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 11px; }
+.ep-imports-sources button { display: grid; text-align: left; gap: 12px; align-content: start; background: var(--qx-color-surface); color: var(--qx-color-ink); padding: 20px 17px; border: 1px solid var(--qx-color-rule); border-radius: 8px; min-height: 146px; }
+.ep-imports-sources button[aria-pressed=true] { border-color: var(--qx-paper-muted); background: var(--qx-paper-surface); }
+.ep-imports-sources strong { font-size: 12px; font-weight: 500; }
+.ep-imports-sources span { font-size: 10px; line-height: 1.8; color: var(--qx-color-muted); }
+.ep-imports-upload { margin-top: 23px; padding: 35px 25px; text-align: center; border: 1px dashed var(--qx-color-rule-strong); border-radius: 9px; background: var(--qx-paper-surface); color: var(--qx-paper-ink); }
+.ep-imports-upload h2 { font: 400 24px var(--qx-font-reading); margin: 15px 0 12px; }
+.ep-imports-upload p { font-size: 12px; color: var(--qx-paper-muted); }
+.ep-upload-button { display: inline-flex; align-items: center; gap: 8px; background: var(--qx-paper-ink); color: var(--qx-paper-surface); border-radius: 6px; padding: 12px 20px; font-size: 12px; cursor: pointer; margin: 10px 0 14px; }
+.ep-upload-button input, .ep-upload-folder input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.ep-upload-folder { display: block; width: fit-content; font-size: 11px; color: var(--qx-paper-muted); cursor: pointer; margin: 0 auto 18px; }
+.ep-imports-upload small { display: block; color: var(--qx-paper-muted); font-size: 10px; line-height: 1.8; }
+.ep-imports-upload form { display: grid; gap: 15px; max-width: 360px; margin: 20px auto 0; }
+.ep-imports-upload form label { display: grid; gap: 9px; text-align: left; font-size: 11px; }
+.ep-imports-upload form input { padding: 11px; background: var(--qx-color-surface); border: 1px solid var(--qx-paper-rule); border-radius: 5px; color: var(--qx-paper-ink); }
+.ep-imports-upload form button { display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 5px; background: var(--qx-paper-ink); color: var(--qx-paper-surface); padding: 12px; font-size: 12px; }
+.ep-imports-extension { display: flex; align-items: center; gap: 15px; border-top: 1px solid var(--qx-color-rule); margin-top: 25px; padding: 20px 0; }
+.ep-imports-extension > div { flex: 1; }
+.ep-imports-extension strong { font-size: 12px; font-weight: 500; }
+.ep-imports-extension p { font-size: 10px; color: var(--qx-color-muted); line-height: 1.8; margin-bottom: 0; }
+.ep-imports-extension a { display: flex; gap: 7px; align-items: center; font-size: 11px; }
+.ep-imports-history { border-left: 1px solid var(--qx-color-rule); padding-left: 25px; }
+.ep-imports-history > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.ep-imports-history h2 { font: 400 19px var(--qx-font-reading); margin: 0; }
+.ep-imports-history button { border: 0; background: transparent; color: var(--qx-color-muted); font-size: 10px; }
+.ep-imports-muted { font-size: 11px; color: var(--qx-color-muted); line-height: 1.9; }
+.ep-import-batch { border-bottom: 1px solid var(--qx-color-rule); padding: 19px 0; }
+.ep-import-batch > div { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 15px; }
+.ep-import-batch strong { font-weight: 500; }
+.ep-import-batch > div > span { color: var(--qx-color-muted); }
+.ep-import-batch progress { width: 100%; height: 3px; appearance: none; display: block; border: 0; margin-bottom: 12px; }
+.ep-import-batch progress::-webkit-progress-bar { background: var(--qx-color-rule); }
+.ep-import-batch progress::-webkit-progress-value { background: var(--qx-color-ink); }
+.ep-import-batch progress::-moz-progress-bar { background: var(--qx-color-ink); }
+.ep-import-batch > small { color: var(--qx-color-muted); font-size: 10px; }
+.ep-import-batch details { margin-top: 14px; }
+.ep-import-batch summary { font-size: 10px; color: var(--qx-color-muted); cursor: pointer; }
+.ep-import-item { display: flex; align-items: center; gap: 10px; padding: 13px 0; border-bottom: 1px solid var(--qx-color-rule); font-size: 10px; }
+.ep-import-item > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ep-import-item small { display: block; color: var(--qx-color-muted); margin-top: 4px; line-height: 1.7; }
+.ep-import-batch > a { display: flex; align-items: center; gap: 6px; font-size: 10px; margin-top: 14px; }
+.ep-imports-error { color: var(--qx-color-danger); font-size: 12px; }
+.ep-imports-notice { display: flex; align-items: center; gap: 8px; color: var(--qx-color-ink-soft); font-size: 12px; }
+.ep-graph-source-image { display: block; max-width: 100%; height: auto; margin: 0 0 20px; border-radius: 6px; }
+@media(max-width:900px) { .ep-imports-layout { grid-template-columns: minmax(0,1fr); } .ep-imports-history { border-left: 0; padding-left: 0; border-top: 1px solid var(--qx-color-rule); padding-top: 25px; } }
+@media(max-width:550px) { .ep-imports { padding: 12px 0; } .ep-imports-sources { grid-template-columns: repeat(2,minmax(0,1fr)); } .ep-imports-sources button { padding: 17px 14px; } .ep-imports-extension { flex-wrap: wrap; } .ep-imports-extension a { margin-left: 38px; } }
