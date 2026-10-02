@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
+
 from qunxue_api.adapters.media_import import (
     BilibiliFavoritesAdapter,
     BilibiliTemporaryAudioProvider,
