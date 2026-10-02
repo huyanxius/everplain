@@ -24,7 +24,7 @@ def test_personal_graph_is_owner_scoped_and_source_bound(plain_client):
     c = plain_client
     c.app.state.import_worker_enabled = False
     _authenticate(c)
-    batch = start(
+    start(
         c, [("vault/A.md", b"# Alpha\n\n[[B]]"), ("vault/B.md", b"# Beta\n\nSecond source")]
     )
     drain(c)
