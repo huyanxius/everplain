@@ -8,17 +8,15 @@
 @import 'tailwindcss/utilities.css' layer(utilities);
 
 /*
- * 全站视觉令牌的唯一取值源。先冻结已有视觉，再逐页把局部写法收回这套语义。
- *
- * 圆角只借鉴 Windup 的微观几何：8px 紧凑元素、12px 控件、16px 普通表面。群学致知自己的
- * 中性灰、阅读字体和 24px 特征容器保留，不搬 Windup 的颜色和纸张风格。
+ * Tailwind 工具类的令牌出口。取值源是 tokens.css，这里只做同值映射，
+ * 两边各写一份数字迟早会对不上。
  */
 @theme static {
   --*: initial;
 
   --spacing: 0.25rem;
-  --spacing-control: 2.25rem;
-  --spacing-tool-control: 2rem;
+  --spacing-control: var(--qx-action-height);
+  --spacing-tool-control: var(--qx-control-height);
 
   /* 颜色继续由现有 tokens.css 和各页 shader 提供；Tailwind 只暴露同值工具类。 */
   --color-canvas: var(--bg);
@@ -44,30 +42,39 @@
   --font-ui: var(--sans);
   --font-reading: var(--serif);
 
-  --text-locator: 0.625rem;
-  --text-meta: 0.75rem;
-  --text-body: 0.875rem;
-  --text-reading: 1rem;
-  --text-title: 1.125rem;
-  --text-section: 1.5rem;
+  /* 字阶与圆角只是 tokens.css 的同值出口，取值别在这里改。 */
+  --text-locator: var(--qx-text-locator);
+  --text-meta: var(--qx-text-meta);
+  --text-body: var(--qx-text-body);
+  --text-reading: var(--qx-text-reading);
+  --text-title: var(--qx-text-title);
+  --text-section: var(--qx-text-section);
+  --text-display: var(--qx-text-display);
 
-  --text-locator--line-height: 1.45;
-  --text-meta--line-height: 1.5;
-  --text-body--line-height: 1.6;
-  --text-reading--line-height: 1.9;
-  --text-title--line-height: 1.45;
-  --text-section--line-height: 1.3;
+  --text-locator--line-height: var(--qx-text-locator--line-height);
+  --text-meta--line-height: var(--qx-text-meta--line-height);
+  --text-body--line-height: var(--qx-text-body--line-height);
+  --text-reading--line-height: var(--qx-text-reading--line-height);
+  --text-title--line-height: var(--qx-text-title--line-height);
+  --text-section--line-height: var(--qx-text-section--line-height);
+  --text-display--line-height: var(--qx-text-display--line-height);
 
-  --text-heading: 0.9375rem;
-  --text-heading--line-height: 1.5;
-  --text-eyebrow: 0.6875rem;
-  --text-eyebrow--line-height: 1.45;
+  --text-heading: var(--qx-text-heading);
+  --text-heading--line-height: var(--qx-text-heading--line-height);
+  --text-eyebrow: var(--qx-text-eyebrow);
+  --text-eyebrow--line-height: var(--qx-text-eyebrow--line-height);
 
-  --radius-compact: 8px;
-  --radius-field: 12px;
-  --radius-surface: 16px;
+  --radius-tag: var(--qx-radius-tag);
+  --radius-item: var(--qx-radius-item);
+  --radius-card: var(--qx-radius-card);
+  --radius-field: var(--qx-radius-field);
+  --radius-panel: var(--qx-radius-panel);
+  --radius-modal: var(--qx-radius-modal);
+  --radius-pill: var(--qx-radius-pill);
+  /* 旧名：compact/surface/feature 仍有工具类在用。 */
+  --radius-compact: var(--qx-radius-compact);
+  --radius-surface: var(--qx-radius-surface);
   --radius-feature: var(--qx-radius-feature);
-  --radius-pill: 999px;
 
   --shadow-surface: var(--shadow-sm);
 }
@@ -103,7 +110,7 @@
 /* 小型操作浮层统一使用紧凑圆角和菜单级阴影；颜色仍继承所在页面。 */
 @utility qx-popover-surface {
   border: 1px solid var(--qx-color-rule-strong);
-  border-radius: var(--radius-field);
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--qx-color-surface-raised) 96%, transparent);
   box-shadow: var(--qx-shadow-menu);
 }
@@ -111,6 +118,6 @@
 /* 状态强调只改变圆角背景和语义色，不再用左竖线制造另一套层级。 */
 .qx-notice-surface {
   border: 0;
-  border-radius: var(--radius-field);
+  border-radius: var(--radius-card);
   background: var(--qx-color-notice-soft);
 }
