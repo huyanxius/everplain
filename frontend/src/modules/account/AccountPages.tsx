@@ -8,8 +8,10 @@ import {
   registrationCodeFailureMessage,
   registrationFailureMessage,
 } from './accountApi'
+import { AgentAvatar, agentAvatarPresets } from '../agent-avatar'
 import { AccountPaperShader } from './AccountPaperShader'
 import './account.css'
+import './account-portal.css'
 
 type LoginPageProps = {
   onLogin(email: string, password: string): Promise<unknown>
@@ -27,6 +29,10 @@ type RegisterPageProps = {
 
 const emailPattern = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 
+/*
+ * 登录与注册共用的外壳：单列居中，七个角色在上，衬线标题，下面是表单。
+ * 背景的纸面 shader 保留；表单本身的校验、报错与步骤都在各自页面里，这里只管排布。
+ */
 function AccountPortal({
   kind,
   title,
@@ -45,29 +51,19 @@ function AccountPortal({
       <div className="account-paper-field" aria-hidden="true">
         <AccountPaperShader />
       </div>
-      <div className="account-portal__story">
-        <img className="account-portal__brand-echo" src={brandMark} alt="" aria-hidden="true" />
-        <a className="account-portal__brand" href="/" aria-label="返回 Everplain 首页">
-          <span className="account-portal__brand-mark"><img src={brandMark} alt="" /></span>
-          <span className="account-portal__brand-copy">
-            <strong>Everplain</strong>
-            <small>YOUR KNOWLEDGE, CONNECTED</small>
-          </span>
-        </a>
-        <h1 id={`account-${kind}-title`}>{title}</h1>
-        <div className="account-portal__axis" aria-hidden="true">
-          <span>资料</span>
-          <span>问题</span>
-          <span>证据</span>
+      <a className="account-portal__brand" href="/" aria-label="返回 Everplain 首页">
+        <img src={brandMark} alt="" />
+        <span>Everplain</span>
+      </a>
+      <div className="account-portal__center">
+        <div className="account-portal__crowd" aria-hidden="true">
+          {agentAvatarPresets.map((preset, index) => (
+            <AgentAvatar key={preset.id} avatar={preset.id} size={index === 3 ? 72 : 46} offset={index * 0.7} state={index === 3 ? 'greet' : 'idle'} />
+          ))}
         </div>
-      </div>
-
-      <div className="account-portal__entry">
-        <div className="account-portal__entry-inner">
-          <div className="account-portal__form-heading">
-            <img src={brandMark} alt="" aria-hidden="true" />
-            <p className="account-portal__form-label">{formLabel}</p>
-          </div>
+        <h1 id={`account-${kind}-title`} className="qx-display">{title}</h1>
+        <p className="account-portal__lead">{kind === 'login' ? '把你读过的，都留下来。' : '给读过的东西，找一个安放的地方。'}</p>
+        <div className="account-portal__entry" aria-label={formLabel} role="group">
           {children}
           {switcher}
         </div>
