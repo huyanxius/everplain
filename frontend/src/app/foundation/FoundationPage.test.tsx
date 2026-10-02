@@ -25,6 +25,8 @@ describe('Everplain product website', () => {
     for (const name of ['Claude Opus 5.5', 'GPT-6 Sol', 'Gemini 3.1 Pro']) expect(within(models).getByText(name)).toBeInTheDocument()
     for (const provider of ['Anthropic', 'OpenAI', 'Google']) expect(within(models).getAllByText(provider)).toHaveLength(2)
     expect(screen.getByRole('link', { name: '登录' })).toHaveAttribute('href', '/login')
+    expect(screen.getByRole('link', { name: '免登录查看静态演示' })).toHaveAttribute('href', '#gather')
+    expect(screen.getByText(/下方演示使用预设示例/)).toBeVisible()
     expect(requests).toEqual([])
   })
 

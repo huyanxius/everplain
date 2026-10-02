@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal, cast
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -113,6 +113,7 @@ class Settings(BaseSettings):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
     )
     runtime_mode: Literal["mock", "base", "sft"] = "mock"
+    allow_model_fallback: bool = False
     database_url: str = DEFAULT_DATABASE_URL
     memory_learning_enabled: bool = True
     memory_learning_idle_seconds: int = Field(default=600, ge=60)
@@ -201,6 +202,39 @@ class Settings(BaseSettings):
         hide_input_in_errors=True,
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_unconfigured_models(cls, values):
+        """Only absent model credentials opt into fallback; other services stay real."""
+        if not isinstance(values, dict) or str(
+            values.get("allow_model_fallback", False)
+        ).lower() not in {
+            "true",
+            "1",
+            "yes",
+            "on",
+        }:
+            return values
+        values = dict(values)
+        for prefix in ("model", "embedding", "reranker", "vision", "transcription"):
+            key = values.get(f"{prefix}_api_key")
+            raw = key.get_secret_value() if hasattr(key, "get_secret_value") else key
+            if raw and str(raw).strip():
+                continue
+            for suffix in ("base_url", "api_key", "model"):
+                name = f"{prefix}_{suffix}"
+                if name in cls.model_fields:
+                    values[name] = None
+            if prefix == "model":
+                values.update(model_name=None, model_fallbacks=[], model_extra_headers={})
+        return values
+
+    @model_validator(mode="after")
+    def validate_model_fallback_runtime(self):
+        if self.allow_model_fallback and self.runtime_mode != "base":
+            raise ValueError("model fallback requires runtime_mode=base")
+        return self
+
     @field_validator("model_base_url")
     @classmethod
     def validate_model_base_url(cls, value: str | None) -> str | None:
@@ -239,9 +273,7 @@ class Settings(BaseSettings):
         primary_base_url = self.model_base_url or (
             DEFAULT_MODEL_BASE_URL if self.has_model_api_key else None
         )
-        primary_model = self.model_name or (
-            DEFAULT_MODEL_NAME if self.has_model_api_key else None
-        )
+        primary_model = self.model_name or (DEFAULT_MODEL_NAME if self.has_model_api_key else None)
         if primary_base_url is None and primary_model is None and not self.model_fallbacks:
             return ()
         if primary_base_url is None or primary_model is None:

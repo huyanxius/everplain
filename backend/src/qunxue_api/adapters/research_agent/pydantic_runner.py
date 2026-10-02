@@ -31,7 +31,7 @@ from pydantic_ai.messages import (
     TextPartDelta,
     UserPromptPart,
 )
-from pydantic_ai.models import ModelRequestParameters, StreamedResponse
+from pydantic_ai.models import Model, ModelRequestParameters, StreamedResponse
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIChatModelSettings
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings, merge_model_settings
@@ -51,6 +51,10 @@ from qunxue_api.adapters.research_agent.catalog_tools import (
 from qunxue_api.adapters.research_agent.research_map_contracts import (
     ResearchMapNodeInput,
     ResearchMapRelationInput,
+)
+from qunxue_api.adapters.research_agent.unconfigured_model import (
+    MODEL_API_MOCK_NAME,
+    unconfigured_model,
 )
 from qunxue_api.adapters.retrieval.errors import RetrievalPipelineUnavailable
 from qunxue_api.modules.agent_conversation import (
@@ -664,11 +668,12 @@ class PydanticAIKnowledgeRunner:
         extra_headers: Mapping[str, str] | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         route_executor: ModelRouteExecutor | None = None,
+        model_api_mock: bool = False,
     ) -> None:
-        self._model = model
+        self._model = MODEL_API_MOCK_NAME if model_api_mock else model
         self.runtime_identity = AgentRuntimeIdentity(
             provider="pydantic-ai",
-            model=model,
+            model=self._model,
         )
 
         def settings_for(
@@ -716,35 +721,40 @@ class PydanticAIKnowledgeRunner:
                 settings=settings_for(endpoint_url, endpoint_model),
             )
 
-        fallback_models: dict[str, OpenAIChatModel] = {}
-        for index, fallback in enumerate(fallback_endpoints, start=1):
-            endpoint_url, endpoint_key = fallback[:2]
-            endpoint_model = fallback[2] if len(fallback) == 3 else model
-            fallback_models[f"fallback-{index}"] = build_model(
-                endpoint_url,
-                endpoint_key,
-                endpoint_model,
-            )
-        expected_endpoint_ids = ("primary", *fallback_models)
-        if (
-            route_executor is not None
-            and route_executor.endpoint_ids != expected_endpoint_ids
-        ):
-            raise ValueError("Agent model endpoints must match the shared route executor")
-
-        model_instance = _RetryingOpenAIChatModel(
-            model,
-            provider=OpenAIProvider(
-                openai_client=AsyncOpenAI(
-                    base_url=base_url,
-                    api_key=api_key,
-                    max_retries=0,
+        model_instance: Model
+        if model_api_mock:
+            # Only the model boundary changes; keep the real Agent/tool workflow.
+            model_instance = unconfigured_model()
+        else:
+            fallback_models: dict[str, OpenAIChatModel] = {}
+            for index, fallback in enumerate(fallback_endpoints, start=1):
+                endpoint_url, endpoint_key = fallback[:2]
+                endpoint_model = fallback[2] if len(fallback) == 3 else model
+                fallback_models[f"fallback-{index}"] = build_model(
+                    endpoint_url,
+                    endpoint_key,
+                    endpoint_model,
                 )
-            ),
-            settings=primary_model_settings,
-            route_executor=route_executor,
-            fallback_models=fallback_models,
-        )
+            expected_endpoint_ids = ("primary", *fallback_models)
+            if (
+                route_executor is not None
+                and route_executor.endpoint_ids != expected_endpoint_ids
+            ):
+                raise ValueError("Agent model endpoints must match the shared route executor")
+
+            model_instance = _RetryingOpenAIChatModel(
+                model,
+                provider=OpenAIProvider(
+                    openai_client=AsyncOpenAI(
+                        base_url=base_url,
+                        api_key=api_key,
+                        max_retries=0,
+                    )
+                ),
+                settings=primary_model_settings,
+                route_executor=route_executor,
+                fallback_models=fallback_models,
+            )
         self._agent = Agent(
             model_instance,
             deps_type=KnowledgeToolRegistry,
