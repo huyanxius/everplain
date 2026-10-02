@@ -25,6 +25,7 @@ class KnowledgeImportApplication:
 
     def run_once(self):
         item = self.repository.claim()
+        self.last_user_id = item["user_id"] if item else None
         if item is None:
             return False
         try:

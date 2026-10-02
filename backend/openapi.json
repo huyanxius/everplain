@@ -10014,6 +10014,199 @@
         "title": "PasswordResetLinkResponse",
         "type": "object"
       },
+      "PersonalGraphEdge": {
+        "properties": {
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "layer": {
+            "title": "Layer",
+            "type": "string"
+          },
+          "relationType": {
+            "title": "Relationtype",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "target",
+          "relationType",
+          "direction",
+          "layer"
+        ],
+        "title": "PersonalGraphEdge",
+        "type": "object"
+      },
+      "PersonalGraphNode": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "integer"
+          },
+          "nodeType": {
+            "enum": [
+              "self",
+              "topic",
+              "document",
+              "knowledge"
+            ],
+            "title": "Nodetype",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "nodeType",
+          "level"
+        ],
+        "title": "PersonalGraphNode",
+        "type": "object"
+      },
+      "PersonalGraphResponse": {
+        "properties": {
+          "avatar_id": {
+            "title": "Avatar Id",
+            "type": "string"
+          },
+          "color": {
+            "title": "Color",
+            "type": "string"
+          },
+          "document_count": {
+            "title": "Document Count",
+            "type": "integer"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/PersonalGraphEdge"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "mock",
+              "semantic"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/PersonalGraphNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "pending_count": {
+            "title": "Pending Count",
+            "type": "integer"
+          },
+          "releaseId": {
+            "title": "Releaseid",
+            "type": "string"
+          },
+          "sources": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PersonalGraphSource"
+            },
+            "title": "Sources",
+            "type": "object"
+          },
+          "topic_count": {
+            "title": "Topic Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "releaseId",
+          "nodes",
+          "edges",
+          "sources",
+          "pending_count",
+          "document_count",
+          "topic_count",
+          "mode",
+          "avatar_id",
+          "color",
+          "name"
+        ],
+        "title": "PersonalGraphResponse",
+        "type": "object"
+      },
+      "PersonalGraphSource": {
+        "properties": {
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "library_id": {
+            "title": "Library Id",
+            "type": "string"
+          },
+          "segment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment Id"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "library_id",
+          "document_id",
+          "title"
+        ],
+        "title": "PersonalGraphSource",
+        "type": "object"
+      },
       "PhenomenonCandidateAction": {
         "enum": [
           "update",
@@ -23161,6 +23354,71 @@
         "summary": "List Method Plan Versions",
         "tags": [
           "research-method-plans"
+        ]
+      }
+    },
+    "/api/personal-graph": {
+      "get": {
+        "operationId": "get_personal_graph",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalGraphResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Graph",
+        "tags": [
+          "personal-graph"
+        ]
+      }
+    },
+    "/api/personal-graph/refresh": {
+      "post": {
+        "operationId": "refresh_personal_graph",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonalGraphResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Graph",
+        "tags": [
+          "personal-graph"
         ]
       }
     },

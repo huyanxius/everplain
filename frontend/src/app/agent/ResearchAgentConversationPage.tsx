@@ -1,3 +1,4 @@
+import { PersonalCompanion } from './PersonalCompanion'
 import { CourseReferenceSelector } from '../courses/CourseReferenceSelector'
 import { composeResearchDiscussion, latestResearchAsk, resolveResearchCitation, type ResearchDiscussion } from '../../modules/research-workspace'
 import {
@@ -3276,7 +3277,7 @@ export function ResearchAgentConversationPage({
             {isEmpty ? (
               <div className="research-agent-page__empty-state">
                 <div className="research-agent-page__empty-copy">
-                  <ResearchAgentBot />
+                  <PersonalCompanion userId={userId} fallback={<ResearchAgentBot />} />
                   <ResearchPromptCarousel onSelect={choosePrompt} />
                 </div>
               </div>

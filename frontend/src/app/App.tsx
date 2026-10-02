@@ -29,6 +29,8 @@ import { ResearchProjectWorkspacePage } from './research-workspace/ResearchProje
 import { legacyResearchWorkspaceDestination } from './research-workspace/researchProjectWorkspaceModel'
 import { FoundationPage } from './foundation/FoundationPage'
 import { AppHomePage } from './home/AppHomePage'
+import { PersonalGraphPage } from './personal-graph/PersonalGraphPage'
+import { OnboardingGate, WelcomeSetupPage } from './welcome/WelcomeSetupPage'
 import { PageContent, PageShell, RailStateProvider } from './ui/PageShell'
 import { ErrorState, LoadingState } from './ui/States'
 import { RouteMotionSurface } from './route-motion'
@@ -121,6 +123,7 @@ function AccountSettingsRoute() {
   }
   return (
     <SettingsModal onClose={() => location.state?.settingsBackground ? navigate(-1) : navigate('/app', { replace: true })}>
+        <button className="account-profile-setup" onClick={() => navigate('/welcome/setup')}>重新设置我的 AI 伙伴</button>
         <AccountSettingsPage
           onLogout={leaveAccount}
           onProfileUpdated={() => account.retrySession()}
@@ -229,7 +232,7 @@ export function AppRoutes({
     ? account.sessionState.session.sessionId
     : null
   const protectedRoute = (element: ReactNode) => (
-    <ProtectedRoute sessionState={resolvedSessionState}>{element}</ProtectedRoute>
+    <ProtectedRoute sessionState={resolvedSessionState}><OnboardingGate userId={authenticatedUserId}>{element}</OnboardingGate></ProtectedRoute>
   )
   const productHome = (
     <FoundationPage authenticated={resolvedSessionState.status === 'authenticated'} />
@@ -246,6 +249,8 @@ export function AppRoutes({
           : productHome}
       />
       <Route path="/welcome" element={productHome} />
+      <Route path="/welcome/setup" element={protectedRoute(<WelcomeSetupPage userId={authenticatedUserId} />)} />
+      <Route path="/my/graph" element={protectedRoute(<PersonalGraphPage userId={authenticatedUserId} />)} />
       <Route path="/app" element={protectedRoute(<AppHomePage />)} />
       <Route path="/agent" element={protectedRoute(<ResearchAgentPage userId={authenticatedUserId} introSessionId={authenticatedSessionId} />)} />
       <Route path="/library" element={protectedRoute(<CoursesPage />)} />

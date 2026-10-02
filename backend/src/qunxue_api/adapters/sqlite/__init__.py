@@ -49,6 +49,7 @@ from qunxue_api.adapters.sqlite.knowledge_import import (
 )
 from qunxue_api.adapters.sqlite.model_attempt_model import ModelRouteAttemptRow
 from qunxue_api.adapters.sqlite.model_invocation_model import ModelInvocationRow
+from qunxue_api.adapters.sqlite.personal_graph import PersonalGraphRow
 from qunxue_api.adapters.sqlite.professional_material_model import (
     LiteratureEntryRow,
     MaterialArchiveProfileRow,
@@ -131,6 +132,7 @@ from qunxue_api.adapters.sqlite.theory_matching_model import (
 )
 
 __all__ = [
+    "PersonalGraphRow",
     "ImportBatchRow", "ImportItemRow", "ImportSourceRow",
     "AgentProfileRow",
     "MemoryJobRow",
