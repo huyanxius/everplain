@@ -24,6 +24,7 @@ from pydantic_ai import (
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pydantic_ai.messages import (
     ModelMessage,
+    ModelMessagesTypeAdapter,
     ModelRequest,
     ModelResponse,
     TextPart,
@@ -555,6 +556,18 @@ class _RetryingOpenAIChatModel(OpenAIChatModel):
                 OpenAIChatModelSettings,
                 merge_model_settings(model.settings, runtime_overrides) or {},
             )
+            if self._route_executor.max_input_tokens is not None:
+                serialized = ModelMessagesTypeAdapter.dump_json(messages)
+                contracts = json.dumps(
+                    model_request_parameters.__dict__, default=str, ensure_ascii=False
+                ).encode()
+                if len(serialized) + len(contracts) + 4096 > self._route_executor.max_input_tokens:
+                    raise ModelAttemptFailure(code="model_input_limit", retryable=False)
+            if self._route_executor.max_output_tokens is not None:
+                endpoint_settings["max_tokens"] = min(
+                    endpoint_settings.get("max_tokens") or self._route_executor.max_output_tokens,
+                    self._route_executor.max_output_tokens,
+                )
             try:
                 value = await OpenAIChatModel._completions_create(
                     model,

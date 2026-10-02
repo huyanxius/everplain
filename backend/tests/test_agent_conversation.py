@@ -3188,3 +3188,35 @@ def test_read_published_entry_returns_uniform_entry_evidence() -> None:
     assert result["content"] == "社会事实具有外在性和约束力。"
     assert result["evidence_status"] == "verified"
     assert registry.evidence["knowledge:D1:C031"].kind == "entry"
+
+
+@pytest.mark.parametrize('input_limit', [10, 32000])
+def test_agent_enforces_configured_single_call_limits(monkeypatch, input_limit):
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+    endpoints = _agent_endpoints()[:1]
+    router = ModelRouteExecutor(
+        endpoints=endpoints, max_input_tokens=input_limit, max_output_tokens=700,
+    )
+    runner = PydanticAIKnowledgeRunner(
+        base_url=endpoints[0].base_url, api_key='test-key', model=endpoints[0].model,
+        timeout_seconds=30, route_executor=router,
+    )
+    captured = []
+
+    async def request_once(model, messages, stream, settings, parameters):
+        captured.append(settings)
+        return SimpleNamespace(usage=None)
+
+    monkeypatch.setattr(OpenAIChatModel, '_completions_create', request_once)
+    call = runner._agent.model._completions_create(
+        [ModelRequest(parts=[UserPromptPart(content='原文')])],
+        False, {'max_tokens': 9999}, ModelRequestParameters(),
+    )
+    if input_limit == 10:
+        with pytest.raises(AgentModelRouteError):
+            asyncio.run(call)
+        assert not captured
+    else:
+        asyncio.run(call)
+        assert captured[0]['max_tokens'] == 700

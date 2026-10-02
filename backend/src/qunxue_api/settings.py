@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, cast
@@ -137,6 +138,25 @@ class Settings(BaseSettings):
         Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None
     ) = None
     model_timeout_seconds: float = Field(default=30, gt=0)
+    model_max_input_tokens: int = Field(default=32000, gt=0)
+    model_max_output_tokens: int = Field(default=3000, gt=0)
+    model_max_retries: int = Field(default=0, ge=0, le=10)
+    organization_max_input_tokens: int = Field(default=32000, gt=0)
+    organization_max_output_tokens: int = Field(default=3000, gt=0)
+    organization_batch_chars: int = Field(default=5000, gt=0, le=120000)
+    organization_max_batches: int = Field(default=24, gt=0)
+    organization_max_concurrency: int = Field(default=1, ge=1, le=8)
+    organization_max_retries: int = Field(default=0, ge=0, le=10)
+    organization_budget: Decimal | None = Field(default=None, gt=0, allow_inf_nan=False)
+    organization_input_rate_per_million: Decimal | None = Field(
+        default=None, gt=0, allow_inf_nan=False
+    )
+    organization_output_rate_per_million: Decimal | None = Field(
+        default=None, gt=0, allow_inf_nan=False
+    )
+    organization_cost_currency: str | None = Field(
+        default=None, pattern=r"^[A-Za-z][A-Za-z0-9_-]{1,15}$"
+    )
     model_probe_interval_seconds: float = Field(default=300, gt=0)
     model_extra_headers: dict[str, SecretStr] = Field(default_factory=dict)
     web_search_provider: Literal["tavily", "custom"] = "tavily"

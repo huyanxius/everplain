@@ -3,6 +3,7 @@
 import asyncio
 import json
 from dataclasses import replace
+from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from uuid import uuid4
 
@@ -22,10 +23,12 @@ from qunxue_api.adapters.model.routing import (
     ModelRoutesUnavailable,
 )
 
+from .course_cost import CourseCostLimits
 from .pydantic_runner import (
     _is_deepseek_flash,
     _is_retryable_model_error,
     _model_attempt_failure_code,
+    _result_usage,
 )
 
 
@@ -85,6 +88,13 @@ class CourseOrganizationError(RuntimeError):
             "model_invalid_output": "模型返回的知识或原文引用未通过校验",
             "model_request_rejected": "模型服务拒绝请求，请检查服务配置",
             "input_too_large": "资料正文超过 12 万字符，请拆分为多份资料",
+            "model_cost_unconfigured": "真实知识整理需要先配置预算、币种和费率",
+            "model_budget_exceeded": "知识整理费用预留已达预算上限",
+            "model_retry_limit": "知识整理已达重试上限",
+            "model_input_limit": "单次模型输入超过配置上限，请减小批次",
+            "model_output_limit": "模型输出超过配置上限",
+            "model_batch_limit": "资料解析批次数超过配置上限",
+            "model_cost_checkpoint_invalid": "费用检查点无效，已停止真实知识整理",
             "internal_error": "知识整理遇到内部错误",
         }.get(code, "模型服务暂不可用")
         progress = f"第 {batch}/{total} 批：" if total else ""
@@ -99,10 +109,13 @@ class CourseWorkCancelled(RuntimeError):
 class CourseKnowledgeGenerator:
     VERSION = 2
 
-    def __init__(self, endpoints, *, route_executor=None, max_concurrency=3):
+    def __init__(self, endpoints, *, route_executor=None, max_concurrency=None, cost_limits=None):
         endpoints = tuple(endpoints) if isinstance(endpoints, (list, tuple)) else (endpoints,)
         self.router = route_executor or ModelRouteExecutor(endpoints=endpoints)
-        self.max_concurrency = max(1, min(3, max_concurrency))
+        self.cost_limits = cost_limits or CourseCostLimits()
+        self.max_concurrency = min(
+            self.cost_limits.concurrency, max_concurrency or self.cost_limits.concurrency
+        )
 
     def __call__(self, document, *, checkpoints=None, on_checkpoint=None):
         return asyncio.run(
@@ -116,20 +129,34 @@ class CourseKnowledgeGenerator:
         for segment in document.segments:
             # Long paragraphs are split without changing their original citation identity.
             text = segment["text"]
-            for start in range(0, len(text), 5000):
-                part = {"segment_id": segment["segment_id"], "text": text[start : start + 5000]}
-                if current and (size + len(part["text"]) > 5000 or len(current) >= 60):
+            for start in range(0, len(text), self.cost_limits.batch_chars):
+                part = {
+                    "segment_id": segment["segment_id"],
+                    "text": text[start : start + self.cost_limits.batch_chars],
+                }
+                if current and (
+                    size + len(part["text"]) > self.cost_limits.batch_chars or len(current) >= 60
+                ):
                     batches.append(current)
                     current, size = [], 0
                 current.append(part)
                 size += len(part["text"])
         if current:
             batches.append(current)
+        if len(batches) > self.cost_limits.max_batches:
+            raise CourseOrganizationError("model_batch_limit")
+        for batch in batches:
+            # Byte-level tokenizers cannot use more content tokens than UTF-8 bytes.
+            # Include schema and a generous allowance for instructions/protocol framing.
+            encoded = json.dumps(batch, ensure_ascii=False).encode()
+            schema = json.dumps(BatchKnowledge.model_json_schema(), ensure_ascii=False).encode()
+            if len(encoded) + len(schema) + 4096 > self.cost_limits.input_tokens:
+                raise CourseOrganizationError("model_input_limit")
         return batches
 
     async def _generate_at_endpoint(self, endpoint, batch):
         timeout = endpoint.timeout_seconds
-        settings = {"max_tokens": 3000, "timeout": timeout}
+        settings = {"max_tokens": self.cost_limits.output_tokens, "timeout": timeout}
         if endpoint.model.lower().startswith("gpt-5"):
             settings["openai_reasoning_effort"] = "low"
         # Compact IDs reduce copying/token cost; only original IDs leave this adapter.
@@ -157,7 +184,12 @@ class CourseKnowledgeGenerator:
             )
             result = await agent.run(
                 json.dumps(prompt_batch, ensure_ascii=False),
-                usage_limits=UsageLimits(request_limit=1, tool_calls_limit=0),
+                usage_limits=UsageLimits(
+                    request_limit=1,
+                    tool_calls_limit=0,
+                    input_tokens_limit=self.cost_limits.input_tokens,
+                    output_tokens_limit=self.cost_limits.output_tokens,
+                ),
             )
             value = result.output.model_dump()
             for item in (*value["topics"], *value["relations"]):
@@ -166,10 +198,27 @@ class CourseKnowledgeGenerator:
                 item["segment_ids"] = list(
                     dict.fromkeys(sources[key] for key in item["segment_ids"])
                 )
-            return value
+            usage = _result_usage(result)
+            return ModelAttemptResult(value, input_tokens=usage[0], output_tokens=usage[1])
 
     async def generate(self, document, *, checkpoints=None, on_checkpoint=None):
+        if not self.cost_limits.configured:
+            raise CourseOrganizationError("model_cost_unconfigured")
         batches = self.batches(document)
+        raw_cost = (checkpoints or {}).get("cost", {})
+        try:
+            reserved = Decimal(raw_cost.get("reserved", "0"))
+            attempts = dict(raw_cost.get("attempts", {}))
+            if (
+                not reserved.is_finite()
+                or reserved < 0
+                or any(type(value) is not int or value < 0 for value in attempts.values())
+                or (raw_cost and raw_cost.get("currency") != self.cost_limits.currency)
+                or ((checkpoints or {}).get("batches") and not raw_cost)
+            ):
+                raise ValueError
+        except (InvalidOperation, ValueError, TypeError):
+            raise CourseOrganizationError("model_cost_checkpoint_invalid") from None
         previous = (
             (checkpoints or {}).get("batches", {})
             if (checkpoints or {}).get("version") == self.VERSION
@@ -182,6 +231,34 @@ class CourseKnowledgeGenerator:
         # Revisiting cached prefixes must not erase later completed batches on a restart.
         saved = {key: value for key, value in previous.items() if key in batch_keys}
         results = [None] * len(batches)
+
+        def checkpoint():
+            if on_checkpoint:
+                on_checkpoint(
+                    {
+                        "version": self.VERSION,
+                        "total": len(batches),
+                        "batches": dict(saved),
+                        "cost": {
+                            "currency": self.cost_limits.currency,
+                            "reserved": str(reserved),
+                            "attempts": dict(attempts),
+                        },
+                    }
+                )
+
+        def reserve(key):
+            nonlocal reserved
+            if attempts.get(key, 0) >= self.cost_limits.retries + 1:
+                raise ModelAttemptFailure(code="model_retry_limit", retryable=False)
+            amount = self.cost_limits.reservation
+            if reserved + amount > self.cost_limits.budget:
+                raise ModelAttemptFailure(code="model_budget_exceeded", retryable=False)
+            # No await between admission and checkpoint: parallel tasks cannot overreserve.
+            # Failure, cancellation and unknown usage retain the worst-case reservation.
+            reserved += amount
+            attempts[key] = attempts.get(key, 0) + 1
+            checkpoint()
 
         async def process(number, batch):
             key = sha256(json.dumps(batch, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
@@ -196,17 +273,28 @@ class CourseKnowledgeGenerator:
                     value = None
             if value is None:
                 saved.pop(key, None)
-                if on_checkpoint:
-                    on_checkpoint(
-                        {"version": self.VERSION, "total": len(batches), "batches": dict(saved)}
-                    )
+                checkpoint()
 
                 async def invoke(endpoint, batch=batch, batch_document=batch_document):
+                    reserve(key)
                     try:
                         async with asyncio.timeout(endpoint.timeout_seconds):
                             output = await self._generate_at_endpoint(endpoint, batch)
+                        usage = output if isinstance(output, ModelAttemptResult) else None
+                        if usage is not None:
+                            output = usage.value
+                            if (usage.input_tokens or 0) > self.cost_limits.input_tokens:
+                                raise ModelAttemptFailure(code="model_input_limit", retryable=False)
+                            if (usage.output_tokens or 0) > self.cost_limits.output_tokens:
+                                raise ModelAttemptFailure(
+                                    code="model_output_limit", retryable=False
+                                )
                         output = BatchKnowledge.model_validate(output).model_dump()
-                        return ModelAttemptResult(value=validate_knowledge(output, batch_document))
+                        return ModelAttemptResult(
+                            value=validate_knowledge(output, batch_document),
+                            input_tokens=usage.input_tokens if usage else None,
+                            output_tokens=usage.output_tokens if usage else None,
+                        )
                     except (ModelHTTPError, ModelAPIError) as error:
                         raise ModelAttemptFailure(
                             code=_model_attempt_failure_code(error),
@@ -239,10 +327,7 @@ class CourseKnowledgeGenerator:
                     ) from None
             saved[key] = value
             results[number - 1] = value
-            if on_checkpoint:
-                on_checkpoint(
-                    {"version": self.VERSION, "total": len(batches), "batches": dict(saved)}
-                )
+            checkpoint()
 
         for start in range(0, len(batches), self.max_concurrency):
             tasks = [

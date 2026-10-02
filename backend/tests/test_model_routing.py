@@ -509,3 +509,24 @@ async def _raise_unexpected_async(
 ) -> ModelAttemptResult[object]:
     calls.append(endpoint_id)
     raise ValueError("unexpected failure; prompt=secret")
+
+
+@pytest.mark.parametrize('asynchronous', [False, True])
+def test_configured_retry_limit_rejects_fallback_without_invocation(asynchronous):
+    router = ModelRouteExecutor(endpoints=_endpoints(), max_retries=0)
+    calls = []
+
+    def invoke(endpoint):
+        calls.append(endpoint.endpoint_id)
+        raise ModelAttemptFailure(code='model_timeout', retryable=True)
+
+    async def invoke_async(endpoint):
+        return invoke(endpoint)
+
+    with pytest.raises(ModelAttemptFailure) as error:
+        if asynchronous:
+            asyncio.run(router.execute_async(context=_context(), invoke=invoke_async))
+        else:
+            router.execute(context=_context(), invoke=invoke)
+    assert error.value.code == 'model_retry_limit'
+    assert len(calls) == 1
