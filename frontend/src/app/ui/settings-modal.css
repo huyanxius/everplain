@@ -8,13 +8,13 @@
   margin: auto;
   padding: 0;
   border: 1px solid var(--qx-color-rule);
-  border-radius: 24px;
+  border-radius: var(--qx-radius-field);
   color: var(--qx-color-ink);
   background: var(--qx-paper-surface);
-  box-shadow: 0 24px 100px rgb(0 0 0 / 28%);
+  box-shadow: 0 24px 100px color-mix(in srgb, var(--qx-color-ink) 28%, transparent);
   overflow: hidden;
 }
-.settings-modal::backdrop { background: rgb(0 0 0 / 35%); backdrop-filter: blur(5px); }
+.settings-modal::backdrop { background: color-mix(in srgb, var(--qx-color-ink) 35%, transparent); backdrop-filter: blur(5px); }
 .settings-modal .qs-settings { height: 100%; min-height: 0; border: 0; border-radius: 0; }
 .settings-modal .qs-sidebar { min-height: 0; }
 .settings-modal .qs-content { overflow-y: auto; overscroll-behavior: contain; padding-top: 48px; }
@@ -25,16 +25,16 @@
   top: 10px;
   right: 12px;
   width: 36px;
-  height: 36px;
+  height: var(--qx-control-height);
   border: 0;
   border-radius: 50%;
   background: transparent;
   color: var(--qx-paper-muted);
-  font-size: 26px;
+  font-size: var(--qx-text-workspace-title);
   cursor: pointer;
 }
 .settings-modal__close:hover { background: var(--qx-paper-selected); }
 @media (max-width: 640px) {
-  .settings-modal { width: calc(100vw - 24px); max-height: calc(100dvh - 32px); border-radius: 18px; }
+  .settings-modal { width: calc(100vw - 24px); max-height: calc(100dvh - 32px); border-radius: var(--qx-radius-card); }
   .settings-modal .qs-settings { min-height: 0; }
 }

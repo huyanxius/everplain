@@ -29,7 +29,7 @@
   /* Compact screens show one working pane at a time, preserving mounted state. */
   .app-frame .new-research:has(> .mobile-pane-tabs) { display: grid; grid-template-rows: 44px minmax(0, 1fr); overflow: hidden; }
   .app-frame .mobile-pane-tabs { align-items: stretch; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--app-border); background: var(--app-canvas); }
-  .app-frame .mobile-pane-tabs button { flex: 1; min-width: 0; padding: 0 12px; border: 0; border-radius: 0; background: transparent; color: var(--app-muted); font: inherit; font-size: 13px; }
+  .app-frame .mobile-pane-tabs button { flex: 1; min-width: 0; padding: 0 12px; border: 0; border-radius: 0; background: transparent; color: var(--app-muted); font: inherit; font-size: var(--qx-text-meta); }
   .app-frame .mobile-pane-tabs button[aria-pressed='true'] { color: var(--app-ink); box-shadow: inset 0 -2px var(--app-ink); }
   .app-frame .new-research__workspace { height: 100%; min-height: 0; grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
   .app-frame .new-research__map-column,
@@ -55,7 +55,7 @@
     min-height: 64px;
     max-height: min(320px, 40dvh);
     padding: 6px 8px;
-    font-size: 16px;
+    font-size: var(--qx-text-body);
     line-height: 24px;
     resize: none;
   }
@@ -83,7 +83,7 @@
   .app-frame .research-agent-conversation .new-research__agent-actions button { width: 44px; height: 44px; flex-shrink: 0; }
   .app-frame .research-agent-conversation .research-agent-page__composer-dock { padding-bottom: 10px; overflow: visible; }
   .app-frame .research-agent-conversation .deep-research-mock-card--question { max-height: 28dvh; overflow-y: auto; }
-  .app-frame .mobile-agent-history { position: absolute; top: 4px; left: 12px; z-index: 6; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px; border: 0; background: var(--app-canvas); color: var(--app-ink-soft); font: inherit; font-size: 12px; border-radius: 10px; }
+  .app-frame .mobile-agent-history { position: absolute; top: 4px; left: 12px; z-index: 6; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px; border: 0; background: var(--app-canvas); color: var(--app-ink-soft); font: inherit; font-size: var(--qx-text-meta); border-radius: var(--qx-radius-tag); }
   .app-frame .research-agent-page__empty-state { padding-top: 56px; }
   .app-frame .research-agent-conversation > .research-context-rail { position: absolute; inset: 0; width: 100%; max-width: 100%; border-radius: 0; }
 
@@ -91,7 +91,7 @@
   .app-frame .knowledge-library { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
   .app-frame .knowledge-library__sidebar { flex: 0 0 auto; max-height: 55%; }
   .app-frame .knowledge-library__identity { flex-shrink: 0; }
-  .app-frame .knowledge-library__identity .mobile-only { margin-left: auto; align-items: center; padding: 0 10px; border: 0; background: transparent; color: var(--app-ink); font: inherit; font-size: 12px; }
+  .app-frame .knowledge-library__identity .mobile-only { margin-left: auto; align-items: center; padding: 0 10px; border: 0; background: transparent; color: var(--app-ink); font: inherit; font-size: var(--qx-text-meta); }
   .app-frame .knowledge-library__sidebar[data-mobile-open='false'] > .knowledge-tree { display: none; }
   .app-frame .knowledge-library__search { height: 44px; grid-template-columns: 16px minmax(0, 1fr) 44px; }
   .app-frame .knowledge-library__search input { width: 100%; min-width: 0; }

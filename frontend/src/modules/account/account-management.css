@@ -2,18 +2,18 @@
 .account-flow,
 .account-dialog-backdrop,
 .account-management-state {
-  --account-paper: light-dark(#f6f7f3, #1b1b1a);
-  --account-canvas: light-dark(#ffffff, #212121);
-  --account-ink: light-dark(#151515, #e3e3e3);
-  --account-muted: light-dark(#686b67, #aaaca9);
-  --account-rule: light-dark(#dedfd9, #42433d);
-  --account-rule-strong: light-dark(#c7c9c1, #41433d);
-  --account-accent: light-dark(#65451d, #dac9b4);
-  --account-accent-soft: light-dark(#f1ece4, #1e1b17);
-  --account-danger: light-dark(#9b3029, #c7928e);
-  --account-danger-soft: light-dark(#f8eeec, #1e1918);
-  --account-success: light-dark(#356144, #bcd2c3);
-  --account-success-soft: light-dark(#edf3ee, #1a1b1a);
+  --account-paper: var(--qx-color-canvas);
+  --account-canvas: var(--qx-color-surface);
+  --account-ink: var(--qx-color-ink);
+  --account-muted: var(--qx-color-muted);
+  --account-rule: var(--qx-color-rule);
+  --account-rule-strong: var(--qx-color-rule-strong);
+  --account-accent: var(--qx-color-danger);
+  --account-accent-soft: var(--qx-color-canvas);
+  --account-danger: var(--qx-color-danger);
+  --account-danger-soft: var(--qx-color-canvas);
+  --account-success: var(--qx-color-info);
+  --account-success-soft: var(--qx-color-canvas);
   color: var(--account-ink);
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -68,20 +68,20 @@
 .account-flow__eyebrow {
   margin-bottom: 9px !important;
   color: var(--account-accent);
-  font-size: 11px;
+  font-size: var(--qx-text-meta);
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: normal;
 }
 
 .account-management-hero h1 {
-  font-size: clamp(32px, 4vw, 46px);
+  font-size: var(--qx-text-display);
   line-height: 1.12;
 }
 
 .account-management-hero > div:first-child > p:last-child {
   margin-top: 12px;
   color: var(--account-muted);
-  font-size: 15px;
+  font-size: var(--qx-text-body);
   line-height: 1.7;
 }
 
@@ -95,8 +95,8 @@
   min-width: 280px;
   padding: 13px 15px;
   border: 1px solid var(--account-rule);
-  border-radius: 12px;
-  background: light-dark(rgba(255, 255, 255, 0.62), rgb(33 33 33 / 0.62));
+  border-radius: var(--qx-radius-item);
+  background: color-mix(in srgb, var(--qx-color-surface) 62%, transparent);
 }
 
 .account-management-identity > span:first-child,
@@ -118,7 +118,7 @@
 
 .account-management-identity strong {
   overflow: hidden;
-  font-size: 14px;
+  font-size: var(--qx-text-control);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -127,7 +127,7 @@
 .account-admin-summary small {
   overflow: hidden;
   color: var(--account-muted);
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
   text-overflow: ellipsis;
 }
 
@@ -139,24 +139,24 @@
   min-height: 25px;
   padding: 3px 8px;
   border: 1px solid var(--account-rule);
-  border-radius: 999px;
+  border-radius: var(--qx-radius-pill);
   color: var(--account-muted);
-  background: light-dark(#fafaf8, #1c1c1a);
-  font-size: 11px;
+  background: var(--qx-color-canvas);
+  font-size: var(--qx-text-meta);
   font-weight: 650;
   white-space: nowrap;
 }
 
 .account-management-badge--current,
 .account-status--active {
-  border-color: light-dark(#cddace, #3a463b);
+  border-color: var(--qx-color-rule);
   color: var(--account-success);
   background: var(--account-success-soft);
 }
 
 .account-status--disabled,
 .account-status--deactivated {
-  border-color: light-dark(#e5cac5, #503530);
+  border-color: var(--qx-color-danger-line);
   color: var(--account-danger);
   background: var(--account-danger-soft);
 }
@@ -165,7 +165,7 @@
   grid-column: 2;
   justify-self: end;
   color: var(--account-accent);
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   font-weight: 650;
   text-decoration-thickness: 1px;
   text-underline-offset: 4px;
@@ -202,7 +202,7 @@
   color: var(--account-muted);
   background: transparent;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   text-align: left;
   cursor: pointer;
   transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
@@ -213,7 +213,7 @@
 .account-settings-nav button.is-active {
   border-left-color: var(--account-accent);
   color: var(--account-ink);
-  background: light-dark(rgba(255, 255, 255, 0.55), rgb(33 33 33 / 0.55));
+  background: color-mix(in srgb, var(--qx-color-surface) 55%, transparent);
 }
 
 .account-settings-nav button.is-active {
@@ -221,7 +221,7 @@
 }
 
 .account-settings-nav button:focus-visible {
-  outline: 2px solid light-dark(rgba(101, 69, 29, 0.2), rgb(191 162 125 / 0.2));
+  outline: 2px solid color-mix(in srgb, var(--qx-color-warning) 20%, transparent);
   outline-offset: 2px;
 }
 
@@ -236,9 +236,9 @@
 .account-admin-audit {
   overflow: hidden;
   border: 1px solid var(--account-rule);
-  border-radius: 14px;
+  border-radius: var(--qx-radius-item);
   background: var(--account-canvas);
-  box-shadow: 0 8px 30px rgba(24, 26, 21, 0.035);
+  box-shadow: 0 8px 30px color-mix(in srgb, var(--qx-color-ink) 4%, transparent);
 }
 
 .account-settings-section {
@@ -253,7 +253,7 @@
 .account-credit-meter__label small,
 .account-credit-meter__value span {
   color: var(--account-muted);
-  font-size: 11px;
+  font-size: var(--qx-text-meta);
   line-height: 1.55;
 }
 
@@ -278,7 +278,7 @@
 
 .account-credit-meter__label span {
   color: var(--account-ink);
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   font-weight: 620;
 }
 
@@ -290,7 +290,7 @@
 }
 
 .account-credit-meter__value strong {
-  font-size: 20px;
+  font-size: var(--qx-text-title);
   font-weight: 620;
   letter-spacing: -0.025em;
   font-variant-numeric: tabular-nums;
@@ -300,8 +300,8 @@
   position: relative;
   height: 8px;
   overflow: hidden;
-  border-radius: 999px;
-  background: light-dark(rgb(23 24 22 / 9%), rgb(227 228 226 / 0.09));
+  border-radius: var(--qx-radius-pill);
+  background: color-mix(in srgb, var(--qx-color-ink) 9%, transparent);
 }
 
 .account-credit-meter__track > span {
@@ -338,7 +338,7 @@
 .account-credit-redemption p {
   margin-top: 3px;
   color: var(--account-muted);
-  font-size: 11px;
+  font-size: var(--qx-text-meta);
 }
 
 .account-credit-redemption input,
@@ -347,8 +347,8 @@
   min-height: 2.55rem;
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--account-rule);
-  border-radius: 7px;
-  background: light-dark(rgb(255 255 252 / 58%), rgb(34 34 32 / 0.58));
+  border-radius: var(--qx-radius-tag);
+  background: color-mix(in srgb, var(--qx-color-surface) 58%, transparent);
   color: var(--account-ink);
 }
 
@@ -362,14 +362,14 @@
 
 .account-credit-pagination span {
   color: var(--account-muted);
-  font-size: 0.84rem;
+  font-size: var(--qx-text-control);
 }
 
 .account-admin-credit-codes {
   margin-bottom: 1rem;
   padding: 1.1rem;
   border: 1px solid var(--account-rule);
-  border-radius: 1rem;
+  border-radius: var(--qx-radius-item);
   background: var(--account-canvas);
 }
 
@@ -395,7 +395,7 @@
   display: grid;
   gap: 0.35rem;
   color: var(--account-muted);
-  font-size: 0.82rem;
+  font-size: var(--qx-text-meta);
 }
 
 .account-admin-credit-code-result {
@@ -419,7 +419,7 @@
 
 .account-admin-credit-code-result code {
   user-select: all;
-  font-size: 0.88rem;
+  font-size: var(--qx-text-control);
 }
 
 @media (max-width: 760px) {
@@ -440,14 +440,14 @@
 
 .account-credit-ledger__heading h3 {
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   font-weight: 720;
   letter-spacing: 0;
 }
 
 .account-credit-ledger__heading span {
   color: var(--account-muted);
-  font-size: 11px;
+  font-size: var(--qx-text-meta);
 }
 
 .account-credit-ledger__rows {
@@ -473,13 +473,13 @@
 }
 
 .account-credit-entry strong {
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
 }
 
 .account-credit-entry small,
 .account-credit-entry p {
   color: var(--account-muted);
-  font-size: 11px;
+  font-size: var(--qx-text-meta);
   line-height: 1.55;
 }
 
@@ -505,7 +505,7 @@
   width: 31px;
   height: 31px;
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--qx-radius-tag);
   color: var(--account-accent);
   background: var(--account-accent-soft);
 }
@@ -513,7 +513,7 @@
 .account-settings-section__heading h2,
 .account-admin-directory h2,
 .account-admin-audit h2 {
-  font-size: 20px;
+  font-size: var(--qx-text-title);
   line-height: 1.35;
 }
 
@@ -521,7 +521,7 @@
 .account-admin-audit header p {
   margin-top: 5px;
   color: var(--account-muted);
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   line-height: 1.55;
 }
 
@@ -541,13 +541,13 @@
   display: grid;
   gap: 7px;
   color: var(--account-ink);
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   font-weight: 620;
 }
 
 .account-management-form small {
   color: var(--account-muted);
-  font-size: 11px;
+  font-size: var(--qx-text-meta);
   font-weight: 450;
   line-height: 1.5;
 }
@@ -561,12 +561,12 @@
 .account-dialog-field textarea {
   width: 100%;
   border: 1px solid var(--account-rule-strong);
-  border-radius: 8px;
+  border-radius: var(--qx-radius-tag);
   outline: none;
   color: var(--account-ink);
-  background: light-dark(#fff, #212121);
+  background: var(--qx-color-surface);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--qx-text-control);
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
@@ -594,12 +594,12 @@
 .account-admin-role-control select:focus-visible,
 .account-dialog-field textarea:focus-visible {
   border-color: var(--account-accent);
-  box-shadow: 0 0 0 3px rgba(101, 69, 29, 0.12);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--qx-color-danger) 12%, transparent);
 }
 
 .account-management-form input[readonly] {
   color: var(--account-muted);
-  background: light-dark(#f7f7f4, #1c1c1a);
+  background: var(--qx-color-canvas);
 }
 
 .account-management-form__grid {
@@ -627,11 +627,11 @@
   min-height: 38px;
   padding: 7px 13px;
   border: 1px solid var(--account-rule-strong);
-  border-radius: 8px;
+  border-radius: var(--qx-radius-pill);
   color: var(--account-ink);
-  background: light-dark(#fff, #212121);
+  background: var(--qx-color-surface);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   font-weight: 650;
   line-height: 1.2;
   text-decoration: none;
@@ -640,8 +640,8 @@
 }
 
 .account-management-button:hover:not(:disabled) {
-  border-color: light-dark(#9b9e95, #a0a29a);
-  background: light-dark(#fafaf7, #1c1c1a);
+  border-color: var(--qx-color-faint);
+  background: var(--qx-color-canvas);
   transform: translateY(-1px);
 }
 
@@ -655,26 +655,26 @@
 .account-admin-reset-link:focus-visible,
 .account-flow a:focus-visible,
 .account-switch-control:focus-visible {
-  outline: 3px solid light-dark(rgba(101, 69, 29, 0.22), rgb(191 162 125 / 0.22));
+  outline: 3px solid color-mix(in srgb, var(--qx-color-warning) 22%, transparent);
   outline-offset: 3px;
 }
 
 .account-management-button:disabled {
-  color: light-dark(#a1a39c, #878980);
-  background: light-dark(#f4f4f1, #1c1c1a);
+  color: var(--qx-color-faint);
+  background: var(--qx-color-canvas);
   cursor: not-allowed;
 }
 
 .account-management-button--primary {
   border-color: var(--account-ink);
-  color: light-dark(#fff, #212121);
+  color: var(--qx-color-on-accent);
   background: var(--account-ink);
 }
 
 .account-management-button--primary:hover:not(:disabled) {
-  border-color: light-dark(#2c2c2a, #a0a09c);
-  color: light-dark(#fff, #212121);
-  background: light-dark(#2c2c2a, #c8c8c6);
+  border-color: var(--qx-color-muted);
+  color: var(--qx-color-on-accent);
+  background: var(--qx-color-accent-hover);
 }
 
 .account-management-button--quiet {
@@ -683,24 +683,24 @@
   border-color: transparent;
   color: var(--account-muted);
   background: transparent;
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
 }
 
 .account-management-button--danger,
 .account-management-button--danger-outline {
   border-color: var(--account-danger);
-  color: light-dark(#fff, #212121);
+  color: var(--qx-color-on-accent);
   background: var(--account-danger);
 }
 
 .account-management-button--danger-outline {
   color: var(--account-danger);
-  background: light-dark(#fff, #212121);
+  background: var(--qx-color-surface);
 }
 
 .account-management-button--danger:hover:not(:disabled) {
-  border-color: light-dark(#7e2520, #bf817d);
-  background: light-dark(#7e2520, #dab6b4);
+  border-color: var(--qx-color-danger);
+  background: var(--qx-color-danger);
 }
 
 .account-management-button--danger-outline:hover:not(:disabled) {
@@ -716,8 +716,8 @@
   gap: 10px !important;
   padding: 13px 14px;
   border: 1px solid var(--account-rule);
-  border-radius: 9px;
-  background: light-dark(#fafaf8, #1c1c1a);
+  border-radius: var(--qx-radius-tag);
+  background: var(--qx-color-canvas);
 }
 
 .account-management-check input {
@@ -750,7 +750,7 @@
 .account-export-row h3,
 .account-danger-row h3 {
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--qx-text-control);
   font-weight: 690;
   letter-spacing: 0;
 }
@@ -761,13 +761,13 @@
 .account-danger-row p {
   margin-top: 5px;
   color: var(--account-muted);
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
   line-height: 1.55;
 }
 
 .account-settings-subsection__heading > span {
   color: var(--account-muted);
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
 }
 
 .account-session-list {
@@ -787,16 +787,16 @@
 .account-session__icon {
   display: grid;
   width: 32px;
-  height: 32px;
+  height: var(--qx-icon-control-size);
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--qx-radius-tag);
   color: var(--account-muted);
-  background: light-dark(#f1f2ee, #1b1b1a);
+  background: var(--qx-color-canvas);
 }
 
 .account-session h4 {
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   font-weight: 670;
   letter-spacing: 0;
 }
@@ -804,13 +804,13 @@
 .account-session p {
   margin-top: 4px;
   color: var(--account-muted);
-  font-size: 11px;
+  font-size: var(--qx-text-meta);
 }
 
 .account-settings-empty {
   padding: 15px 0 0;
   color: var(--account-muted);
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
   line-height: 1.55;
 }
 
@@ -836,9 +836,9 @@
   width: 34px;
   height: 34px;
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--qx-radius-tag);
   color: var(--account-muted);
-  background: light-dark(#f2f2ef, #1b1b1a);
+  background: var(--qx-color-canvas);
 }
 
 .account-protected-admin-notice {
@@ -857,28 +857,28 @@
   width: 34px;
   height: 34px;
   place-items: center;
-  border: 1px solid light-dark(rgba(105, 75, 46, 0.14), rgb(183 158 133 / 0.14));
-  border-radius: 8px;
-  background: light-dark(rgba(255, 255, 255, 0.54), rgb(33 33 33 / 0.54));
+  border: 1px solid color-mix(in srgb, var(--qx-color-warning) 14%, transparent);
+  border-radius: var(--qx-radius-tag);
+  background: color-mix(in srgb, var(--qx-color-surface) 54%, transparent);
 }
 
 .account-protected-admin-notice h3 {
   color: var(--account-ink);
-  font-size: 14px;
+  font-size: var(--qx-text-control);
 }
 
 .account-protected-admin-notice p {
   margin-top: 5px;
   color: var(--account-muted);
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
   line-height: 1.6;
 }
 
 .account-privacy-row small {
   display: block;
   margin-top: 8px;
-  color: light-dark(#898b84, #acada8);
-  font-size: 11px;
+  color: var(--qx-color-faint);
+  font-size: var(--qx-text-meta);
 }
 
 .account-switch-control {
@@ -886,9 +886,9 @@
   width: 43px;
   height: 25px;
   padding: 0;
-  border: 1px solid light-dark(#b8bab3, #41433d);
-  border-radius: 999px;
-  background: light-dark(#d6d7d2, #353630);
+  border: 1px solid var(--qx-color-rule-strong);
+  border-radius: var(--qx-radius-pill);
+  background: var(--qx-color-rule);
   cursor: pointer;
   transition: border-color 160ms ease, background 160ms ease;
 }
@@ -900,8 +900,8 @@
   width: 17px;
   height: 17px;
   border-radius: 50%;
-  background: light-dark(#fff, #212121);
-  box-shadow: 0 1px 3px rgba(20, 20, 18, 0.25);
+  background: var(--qx-color-surface);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--qx-color-ink) 25%, transparent);
   transition: transform 180ms ease;
 }
 
@@ -927,11 +927,11 @@
   gap: 20px;
   margin: 0 24px 22px;
   padding: 12px 14px;
-  border: 1px solid light-dark(#cfdacd, #3b463a);
-  border-radius: 8px;
+  border: 1px solid var(--qx-color-rule);
+  border-radius: var(--qx-radius-tag);
   color: var(--account-success);
   background: var(--account-success-soft);
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
 }
 
 .account-export-result a,
@@ -943,7 +943,7 @@
 }
 
 .account-settings-section--danger {
-  border-color: light-dark(#e1ceca, #4b3834);
+  border-color: var(--qx-color-rule);
 }
 
 .account-settings-section--danger .account-settings-section__heading > span,
@@ -957,16 +957,16 @@
   width: min(1180px, 100%);
   margin: 0 auto;
   padding: 11px 13px;
-  border: 1px solid light-dark(#cedbcc, #3b4739);
-  border-radius: 8px;
+  border: 1px solid var(--qx-color-rule);
+  border-radius: var(--qx-radius-tag);
   color: var(--account-success);
   background: var(--account-success-soft);
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
   line-height: 1.5;
 }
 
 .account-management-alert {
-  border-color: light-dark(#e2c7c3, #4e3531);
+  border-color: var(--qx-color-rule);
   color: var(--account-danger);
   background: var(--account-danger-soft);
 }
@@ -978,7 +978,7 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: light-dark(rgba(19, 20, 18, 0.52), rgb(227 228 226 / 0.52));
+  background: color-mix(in srgb, var(--qx-color-ink) 52%, transparent);
   backdrop-filter: blur(3px);
   animation: account-backdrop-in 150ms ease-out both;
 }
@@ -989,10 +989,10 @@
   overflow: auto;
   padding: 24px;
   border: 1px solid var(--account-rule-strong);
-  border-radius: 14px;
+  border-radius: var(--qx-radius-item);
   outline: none;
-  background: light-dark(#fff, #212121);
-  box-shadow: 0 24px 72px rgba(14, 15, 13, 0.22);
+  background: var(--qx-color-surface);
+  box-shadow: 0 24px 72px color-mix(in srgb, var(--qx-color-ink) 22%, transparent);
   animation: account-dialog-in 180ms ease-out both;
 }
 
@@ -1002,7 +1002,7 @@
   height: 35px;
   margin-bottom: 15px;
   place-items: center;
-  border-radius: 9px;
+  border-radius: var(--qx-radius-tag);
   color: var(--account-accent);
   background: var(--account-accent-soft);
 }
@@ -1013,13 +1013,13 @@
 }
 
 .account-dialog h2 {
-  font-size: 22px;
+  font-size: var(--qx-text-workspace-title);
 }
 
 .account-dialog > p {
   margin-top: 8px;
   color: var(--account-muted);
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   line-height: 1.65;
 }
 
@@ -1053,27 +1053,27 @@
   align-content: center;
   gap: 12px;
   border: 1px solid var(--account-rule);
-  border-radius: 14px;
+  border-radius: var(--qx-radius-item);
   text-align: center;
-  background: light-dark(#fff, #212121);
+  background: var(--qx-color-surface);
 }
 
 .account-management-state h2 {
   font-family: "Songti SC", "STSong", serif;
-  font-size: 22px;
+  font-size: var(--qx-text-workspace-title);
 }
 
 .account-management-state p {
   color: var(--account-muted);
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
 }
 
 .account-management-state__icon {
   display: grid;
   width: 36px;
-  height: 36px;
+  height: var(--qx-control-height);
   place-items: center;
-  border-radius: 9px;
+  border-radius: var(--qx-radius-tag);
   color: var(--account-danger);
   background: var(--account-danger-soft);
 }
@@ -1086,8 +1086,8 @@
   display: block;
   width: 78%;
   height: 12px;
-  border-radius: 5px;
-  background: light-dark(#ecece8, #1b1b1a);
+  border-radius: var(--qx-radius-mark);
+  background: var(--qx-color-canvas);
   animation: account-pulse 1.2s ease-in-out infinite alternate;
 }
 
@@ -1117,7 +1117,7 @@
 
 .account-admin-summary strong {
   font-family: "Songti SC", "STSong", serif;
-  font-size: 24px;
+  font-size: var(--qx-text-workspace-title);
 }
 
 .account-admin-toolbar {
@@ -1167,7 +1167,7 @@
 
 .account-admin-directory > header > span {
   color: var(--account-muted);
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
 }
 
 .account-admin-table-wrap {
@@ -1179,16 +1179,16 @@
   min-width: 940px;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
 }
 
 .account-admin-table th {
   padding: 11px 14px;
   color: var(--account-muted);
-  background: light-dark(#f8f8f5, #1c1c1a);
-  font-size: 11px;
+  background: var(--qx-color-canvas);
+  font-size: var(--qx-text-meta);
   font-weight: 680;
-  letter-spacing: 0.04em;
+  letter-spacing: normal;
   text-align: left;
 }
 
@@ -1206,7 +1206,7 @@
 }
 
 .account-admin-table tbody tr:hover {
-  background: light-dark(#fbfbf9, #222220);
+  background: var(--qx-color-surface-muted);
 }
 
 .account-admin-table td:first-child {
@@ -1217,7 +1217,7 @@
 .account-admin-table td:first-child strong {
   overflow: hidden;
   color: var(--account-ink);
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1232,14 +1232,14 @@
   width: fit-content;
   margin-top: 3px;
   padding: 2px 5px;
-  border-radius: 4px;
+  border-radius: var(--qx-radius-mark);
   color: var(--account-accent);
   background: var(--account-accent-soft);
 }
 
 .account-admin-table td:first-child small.account-admin-protected {
   color: var(--account-ink);
-  background: light-dark(#ebe9e2, #1c1c1a);
+  background: var(--qx-color-canvas);
 }
 
 .account-admin-role-control,
@@ -1253,7 +1253,7 @@
   width: 112px;
   min-height: 34px;
   padding: 5px 7px;
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
 }
 
 .account-admin-actions {
@@ -1265,7 +1265,7 @@
   display: block;
   margin-top: 7px;
   color: var(--account-accent);
-  font-size: 11px;
+  font-size: var(--qx-text-meta);
   text-align: right;
 }
 
@@ -1284,12 +1284,12 @@
 }
 
 .account-admin-empty h3 {
-  font-size: 19px;
+  font-size: var(--qx-text-title);
 }
 
 .account-admin-empty p {
   color: var(--account-muted);
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
 }
 
 .account-admin-audit > header {
@@ -1331,14 +1331,14 @@
 }
 
 .account-admin-audit li strong {
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
 }
 
 .account-admin-audit li p,
 .account-admin-audit li > span:last-child {
   margin-top: 3px;
   color: var(--account-muted);
-  font-size: 11px;
+  font-size: var(--qx-text-meta);
 }
 
 /* Password reset uses the account language while the frozen login screen stays untouched. */
@@ -1354,9 +1354,9 @@
   width: min(460px, 100%);
   padding: clamp(28px, 5vw, 44px);
   border: 1px solid var(--account-rule-strong);
-  border-radius: 16px;
-  background: light-dark(#fff, #212121);
-  box-shadow: 0 20px 60px rgba(25, 26, 22, 0.07);
+  border-radius: var(--qx-radius-item);
+  background: var(--qx-color-surface);
+  box-shadow: 0 20px 60px color-mix(in srgb, var(--qx-color-ink) 7%, transparent);
 }
 
 .account-flow__header {
@@ -1379,13 +1379,13 @@
   width: 34px;
   height: 34px;
   place-items: center;
-  border-radius: 9px;
+  border-radius: var(--qx-radius-tag);
   color: var(--account-accent);
   background: var(--account-accent-soft);
 }
 
 .account-flow h1 {
-  font-size: 30px;
+  font-size: var(--qx-text-section);
   line-height: 1.2;
 }
 
@@ -1393,7 +1393,7 @@
 .account-flow__sheet--success > p {
   margin-top: 10px;
   color: var(--account-muted);
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   line-height: 1.65;
 }
 
@@ -1409,7 +1409,7 @@
 .account-flow__footer {
   margin-top: 21px !important;
   color: var(--account-muted);
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
   text-align: center;
 }
 
@@ -1491,7 +1491,7 @@
     width: auto;
     flex: 0 0 auto;
     border: 1px solid var(--account-rule);
-    border-radius: 7px;
+    border-radius: var(--qx-radius-pill);
   }
 
   .account-management-form__grid--password {
@@ -1627,8 +1627,8 @@
     gap: 12px;
     padding: 15px;
     border: 1px solid var(--account-rule);
-    border-radius: 9px;
-    background: light-dark(#fff, #212121);
+    border-radius: var(--qx-radius-tag);
+    background: var(--qx-color-surface);
   }
 
   .account-admin-table td,
@@ -1643,9 +1643,9 @@
   .account-admin-table td::before {
     grid-column: 1;
     color: var(--account-muted);
-    font-size: 10px;
+    font-size: var(--qx-text-meta);
     font-weight: 680;
-    letter-spacing: 0.05em;
+    letter-spacing: normal;
   }
 
   .account-admin-table td:nth-child(1)::before { content: "用户"; grid-row: 1 / span 4; }
@@ -1688,7 +1688,7 @@
   .account-dialog {
     width: 100%;
     max-height: 88vh;
-    border-radius: 16px 16px 0 0;
+    border-radius: var(--qx-radius-item) var(--qx-radius-item) 0 0;
   }
 
   .account-flow {
@@ -1714,19 +1714,19 @@
 
 /* 设置页沿用工作台的克制工作区语言；账户后台与登录流程保留各自样式。 */
 .account-settings-page {
-  --account-paper: light-dark(#f3f2ed, #1b1b1a);
-  --account-canvas: light-dark(rgb(250 249 245 / 88%), rgb(28 27 26 / 0.88));
-  --account-ink: light-dark(#171816, #e3e4e2);
-  --account-muted: light-dark(#6b6c66, #acada8);
-  --account-rule: light-dark(rgb(23 24 22 / 11%), rgb(158 162 154 / 0.11));
-  --account-rule-strong: light-dark(rgb(23 24 22 / 17%), rgb(158 162 154 / 0.17));
-  --account-accent: light-dark(#171816, #e3e4e2);
-  --account-accent-soft: light-dark(rgb(23 24 22 / 6%), rgb(227 228 226 / 0.06));
+  --account-paper: var(--qx-color-canvas);
+  --account-canvas: color-mix(in srgb, var(--qx-color-canvas) 88%, transparent);
+  --account-ink: var(--qx-color-ink);
+  --account-muted: var(--qx-color-muted);
+  --account-rule: color-mix(in srgb, var(--qx-color-accent) 11%, transparent);
+  --account-rule-strong: color-mix(in srgb, var(--qx-color-accent) 17%, transparent);
+  --account-accent: var(--qx-color-ink);
+  --account-accent-soft: color-mix(in srgb, var(--qx-color-ink) 6%, transparent);
   position: relative;
   z-index: 1;
   min-height: 100dvh;
   padding: 0 clamp(20px, 3.2vw, 52px) clamp(44px, 6vw, 82px);
-  background: light-dark(#f3f3ef, #1b1b1a);
+  background: var(--qx-color-canvas);
   isolation: isolate;
 }
 
@@ -1747,7 +1747,7 @@
 }
 
 .account-settings-page .account-management-hero h1 {
-  font-size: clamp(30px, 3vw, 44px);
+  font-size: var(--qx-text-display);
   font-weight: 520;
   line-height: 1;
   letter-spacing: -0.055em;
@@ -1755,7 +1755,7 @@
 
 .account-settings-page .account-management-hero > div:first-child > p:last-child {
   margin-top: 10px;
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   line-height: 1.5;
   letter-spacing: 0.01em;
 }
@@ -1763,15 +1763,15 @@
 .account-settings-page .account-management-identity {
   min-width: 300px;
   padding: 11px 13px;
-  border-radius: 14px;
-  background: light-dark(rgb(255 255 252 / 46%), rgb(34 34 32 / 0.46));
-  box-shadow: 0 1px 0 light-dark(rgb(255 255 255 / 52%), transparent) inset;
+  border-radius: var(--qx-radius-item);
+  background: color-mix(in srgb, var(--qx-color-surface) 46%, transparent);
+  box-shadow: var(--qx-shadow-ring);
 }
 
 .account-settings-page .account-management-identity > span:first-child,
 .account-settings-page .account-settings-section__heading > span {
   color: var(--account-ink);
-  background: light-dark(rgb(23 24 22 / 6%), rgb(227 228 226 / 0.06));
+  background: color-mix(in srgb, var(--qx-color-ink) 6%, transparent);
 }
 
 .account-settings-page .account-management-layout {
@@ -1791,31 +1791,31 @@
   min-height: 38px;
   padding: 0 12px;
   border: 0;
-  border-radius: 9px;
-  font-size: 13px;
+  border-radius: var(--qx-radius-pill);
+  font-size: var(--qx-text-meta);
 }
 
 .account-settings-page .account-settings-nav button:hover,
 .account-settings-page .account-settings-nav button:focus-visible {
-  background: light-dark(rgb(255 255 252 / 68%), rgb(34 34 32 / 0.68));
+  background: color-mix(in srgb, var(--qx-color-surface) 68%, transparent);
 }
 
 .account-settings-page .account-settings-nav button.is-active {
   color: var(--account-ink);
-  background: light-dark(rgb(23 24 22 / 7%), rgb(227 228 226 / 0.07));
+  background: color-mix(in srgb, var(--qx-color-ink) 7%, transparent);
   font-weight: 620;
 }
 
 .account-settings-page .account-settings-nav button.account-settings-nav__logout {
   margin-top: 10px;
-  color: light-dark(#b42318, #c7928e);
-  background: light-dark(rgb(180 35 24 / 8%), rgb(183 113 108 / 0.08));
+  color: var(--qx-color-danger);
+  background: color-mix(in srgb, var(--qx-color-danger) 8%, transparent);
 }
 
 .account-settings-page .account-settings-nav button.account-settings-nav__logout:hover,
 .account-settings-page .account-settings-nav button.account-settings-nav__logout:focus-visible {
-  color: light-dark(#8f1d14, #dab7b4);
-  background: light-dark(rgb(180 35 24 / 14%), rgb(183 113 108 / 0.14));
+  color: var(--qx-color-danger);
+  background: color-mix(in srgb, var(--qx-color-danger) 14%, transparent);
 }
 
 .account-settings-page .account-settings-sections {
@@ -1823,9 +1823,9 @@
 }
 
 .account-settings-page .account-settings-section {
-  border-radius: 12px;
-  background: light-dark(rgb(250 249 245 / 96%), rgb(28 27 26 / 0.96));
-  box-shadow: 0 10px 28px rgb(20 26 23 / 5%);
+  border-radius: var(--qx-radius-item);
+  background: color-mix(in srgb, var(--qx-color-canvas) 96%, transparent);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--qx-color-ink) 5%, transparent);
 }
 
 .account-settings-page .account-settings-section__heading {
@@ -1833,7 +1833,7 @@
 }
 
 .account-settings-page .account-settings-section__heading h2 {
-  font-size: 18px;
+  font-size: var(--qx-text-title);
   font-weight: 560;
   letter-spacing: -0.025em;
 }

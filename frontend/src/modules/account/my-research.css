@@ -16,7 +16,7 @@
   min-height: 38px;
   color: var(--app-muted);
   background: var(--app-surface-subtle);
-  font-size: 11px;
+  font-size: var(--qx-text-meta);
 }
 
 .research-row {
@@ -37,7 +37,7 @@
 .research-row__question a {
   overflow: hidden;
   color: var(--app-ink);
-  font-size: 14px;
+  font-size: var(--qx-text-control);
   font-weight: 500;
   text-decoration: none;
   text-overflow: ellipsis;
@@ -53,17 +53,17 @@
 .research-row__next,
 .research-row time {
   color: var(--app-muted);
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
 }
 
 .research-row__stage {
   display: inline-flex;
   width: fit-content;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: var(--qx-radius-pill);
   color: var(--app-ink-soft);
   background: var(--app-surface);
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
 }
 
 .research-row__actions {
@@ -73,12 +73,12 @@
 
 .research-row__actions > button {
   width: 32px;
-  height: 32px;
+  height: var(--qx-icon-control-size);
   display: grid;
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--qx-radius-pill);
   color: var(--app-muted);
   background: transparent;
   cursor: pointer;
@@ -98,9 +98,9 @@
   width: 148px;
   padding: 5px;
   border: 1px solid var(--app-border);
-  border-radius: 10px;
+  border-radius: var(--qx-radius-tag);
   background: var(--app-canvas);
-  box-shadow: 0 8px 28px rgb(23 23 22 / 10%);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--qx-color-ink) 10%, transparent);
 }
 
 .research-row__menu a,
@@ -112,11 +112,11 @@
   gap: 8px;
   padding: 0 9px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--qx-radius-pill);
   color: var(--app-ink-soft);
   background: transparent;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
   text-decoration: none;
 }
 
@@ -145,7 +145,7 @@
 
 .research-library-state h2 {
   color: var(--app-ink);
-  font-size: 17px;
+  font-size: var(--qx-text-reading);
   font-weight: 500;
 }
 
@@ -153,7 +153,7 @@
   max-width: 390px;
   margin-top: 8px;
   color: var(--app-muted);
-  font-size: 14px;
+  font-size: var(--qx-text-control);
   line-height: 1.5;
 }
 
@@ -165,11 +165,11 @@
   margin-top: 18px;
   padding: 0 14px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--qx-radius-pill);
   color: var(--app-canvas);
   background: var(--app-ink);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   text-decoration: none;
 }
 
@@ -195,7 +195,7 @@
 
 .research-library-state--loading span {
   height: 13px;
-  border-radius: 3px;
+  border-radius: var(--qx-radius-mark);
   background: var(--app-surface);
   animation: loading-breathe 1.3s ease-in-out infinite;
 }
@@ -203,7 +203,7 @@
 .research-library-state--loading span:nth-child(1) { width: 66%; }
 .research-library-state--loading span:nth-child(2) { width: 48%; animation-delay: 100ms; }
 .research-library-state--loading span:nth-child(3) { width: 30%; animation-delay: 200ms; }
-.research-library-state--loading p { margin-top: 4px; font-size: 12px; }
+.research-library-state--loading p { margin-top: 4px; font-size: var(--qx-text-meta); }
 
 .delete-dialog-backdrop {
   position: fixed;
@@ -212,7 +212,7 @@
   display: grid;
   place-items: center;
   padding: 20px;
-  background: light-dark(rgb(23 23 22 / 24%), rgb(228 228 226 / 0.24));
+  background: color-mix(in srgb, var(--qx-color-ink) 24%, transparent);
   backdrop-filter: blur(2px);
 }
 
@@ -220,9 +220,9 @@
   width: min(420px, 100%);
   padding: 22px;
   border: 1px solid var(--app-border);
-  border-radius: 14px;
+  border-radius: var(--qx-radius-item);
   background: var(--app-canvas);
-  box-shadow: 0 20px 60px rgb(23 23 22 / 18%);
+  box-shadow: 0 20px 60px color-mix(in srgb, var(--qx-color-ink) 18%, transparent);
 }
 
 .delete-dialog__icon {
@@ -232,20 +232,20 @@
   place-items: center;
   border-radius: 50%;
   color: var(--app-danger);
-  background: light-dark(#fff1f0, #1e1818);
+  background: var(--qx-color-canvas);
 }
 
 .delete-dialog h2 {
   margin: 16px 0 0;
   color: var(--app-ink);
-  font-size: 17px;
+  font-size: var(--qx-text-reading);
   font-weight: 500;
 }
 
 .delete-dialog p {
   margin: 7px 0 0;
   color: var(--app-muted);
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   line-height: 1.5;
 }
 
@@ -268,19 +268,19 @@
 }
 
 .delete-dialog__actions button {
-  min-height: 36px;
+  min-height: var(--qx-control-height);
   padding: 0 14px;
   border: 1px solid var(--app-border-strong);
-  border-radius: 999px;
+  border-radius: var(--qx-radius-pill);
   color: var(--app-ink);
   background: var(--app-canvas);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
 }
 
 .delete-dialog__actions .delete-dialog__confirm {
   border-color: var(--app-danger);
-  color: light-dark(#fff, #212121);
+  color: var(--qx-color-on-accent);
   background: var(--app-danger);
 }
 
