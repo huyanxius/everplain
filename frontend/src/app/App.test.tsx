@@ -944,7 +944,7 @@ describe('App routes', () => {
 
     expect(
       await screen.findByRole('heading', {
-        name: /你的个人知识库，.*也是研究工作台。/,
+        level: 1, name: 'Room for your mind.',
       }),
     ).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/')
@@ -1026,7 +1026,7 @@ describe('App routes', () => {
 
     expect(
       await screen.findByRole('heading', {
-        name: /你的个人知识库，.*也是研究工作台。/,
+        level: 1, name: 'Room for your mind.',
       }),
     ).toBeVisible()
     expect(screen.getByRole('link', { name: action })).toBeVisible()
@@ -1211,7 +1211,7 @@ describe('App routes', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '退出' }))
 
-    expect(await screen.findByRole('heading', { name: /你的个人知识库，.*也是研究工作台。/ })).toBeVisible()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Room for your mind.' })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/')
   })
 
