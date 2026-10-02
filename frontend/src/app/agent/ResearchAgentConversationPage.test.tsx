@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { cleanup, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -1361,7 +1362,7 @@ describe('ResearchAgentConversationPage', () => {
     expect(within(basis).getByText('当前回合的知识版本尚未确认，暂不提供跳转。')).toBeVisible()
   })
 
-  it('moves the homepage bot into the first assistant turn with a shared-element transition', async () => {
+  it('starts the first assistant transition from the personal companion', async () => {
     const conversation = conversationFixture()
     const startViewTransition = vi.fn((update: () => void) => {
       update()
@@ -1384,7 +1385,7 @@ describe('ResearchAgentConversationPage', () => {
     renderPage()
 
     const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
-    expect(region.querySelector('[data-research-agent-bot]')).toBeInTheDocument()
+    expect(region.querySelector('[data-avatar="cheng"]')).toBeInTheDocument()
     const textbox = within(region).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(textbox, { target: { value: conversation.title } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
@@ -2141,3 +2142,10 @@ it('restores a homepage question into the composer without submitting a paid run
   await waitFor(() => expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('Compare the uploaded specifications'))
   expect(requests.some(url => url.includes('/api/agent/turns'))).toBe(false)
 })
+
+function render(ui: Parameters<typeof rtlRender>[0], options?: Parameters<typeof rtlRender>[1]) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return rtlRender(ui, { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>, ...options })
+}
+
+vi.mock('../../modules/agent-profile', () => ({ readAgentProfile: vi.fn(async () => ({ name: 'Everplain', avatar_id: 'cheng', color: '#b8c5b0', greeting: '你想研究什么？', speaking_style: 'clear', setup_step: 4, setup_completed: true, questionnaire: { occupation: '', industry: '', goals: [], interests: [], additional: '' }, version: 1 })) }))
