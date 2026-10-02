@@ -45,6 +45,18 @@ const colorTokens = [
   ['danger', '危险'],
   ['danger-soft', '危险底'],
   ['notice-soft', '提示底'],
+  ['info', '链接、进行中'],
+  ['warning', '待留意'],
+  ['success', '完成'],
+  ['highlight', '标注'],
+  ['data-blue', '类别'],
+  ['data-green', '类别'],
+  ['data-teal', '类别'],
+  ['data-rose', '类别'],
+  ['data-amber', '类别'],
+  ['data-violet', '类别'],
+  ['data-rust', '类别'],
+  ['data-olive', '类别'],
 ] as const
 
 const typeTokens = [
@@ -59,6 +71,7 @@ const typeTokens = [
 ] as const
 
 const radiusTokens = [
+  ['mark', '行内高亮'],
   ['tag', '标签'],
   ['item', '侧栏行'],
   ['card', '卡片'],
@@ -207,7 +220,7 @@ export function DesignSystemPage() {
           </div>
         </div>
 
-        <Section id="color" title="颜色" note="这一轮没有改色值，列出来方便对照。切右上角的外观看深色。">
+        <Section id="color" title="颜色" note="中性色没有改；状态色与类别色取自各页原有颜色。切右上角的外观看深色。">
           <div className="ds-grid ds-grid--swatch">
             {colorTokens.map(([token, use]) => (
               <Swatch key={token} token={token} use={use} scheme={scheme} />
