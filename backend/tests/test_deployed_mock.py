@@ -6,12 +6,13 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from test_registration_email_verification import RecordingEmailProvider, _send_code
+from test_shared_knowledge_api import create_library, upload
+
 from qunxue_api.adapters.research_agent.web_research import OpenWebResearchClient
 from qunxue_api.adapters.sqlite.database import Database
 from qunxue_api.bootstrap import create_app
 from qunxue_api.settings import Settings
-from test_registration_email_verification import RecordingEmailProvider, _send_code
-from test_shared_knowledge_api import create_library, upload
 
 
 def test_only_absent_model_keys_fall_back_and_non_model_config_survives():

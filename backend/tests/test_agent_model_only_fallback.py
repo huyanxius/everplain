@@ -3,6 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 from pydantic_ai import Agent
+
 from qunxue_api.adapters.research_agent import pydantic_runner
 from qunxue_api.adapters.research_agent.pydantic_runner import PydanticAIKnowledgeRunner
 from qunxue_api.adapters.research_agent.unconfigured_model import (
