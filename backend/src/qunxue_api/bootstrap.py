@@ -73,6 +73,7 @@ from qunxue_api.adapters.sqlite.agent_memory_repository import SqliteMemoryRepos
 from qunxue_api.adapters.sqlite.agent_profile import SqliteAgentProfileRepository
 from qunxue_api.adapters.sqlite.billing_repository import SqliteCreditRepository
 from qunxue_api.adapters.sqlite.database import Database
+from qunxue_api.adapters.sqlite.external_agents import SqliteExternalAgentRepository
 from qunxue_api.adapters.sqlite.identity_repository import SqliteIdentityRepository
 from qunxue_api.adapters.sqlite.knowledge_import import SqliteImportRepository
 from qunxue_api.adapters.sqlite.material_vector_cache import SqliteMaterialVectorCache
@@ -127,6 +128,7 @@ from qunxue_api.adapters.transcription import (
 from qunxue_api.api.contracts.common import ErrorCode, ErrorDetail, ErrorResponse
 from qunxue_api.api.routes.agent import router as agent_router
 from qunxue_api.api.routes.agent_profile import router as agent_profile_router
+from qunxue_api.api.routes.external_agents import router as external_agents_router
 from qunxue_api.api.routes.health import router as health_router
 from qunxue_api.api.routes.knowledge_import import router as knowledge_import_router
 from qunxue_api.api.routes.memories import MemoryValidationError
@@ -163,6 +165,7 @@ from qunxue_api.application import (
 )
 from qunxue_api.application.agent_profile import AgentProfileApplication
 from qunxue_api.application.agent_research_workflow import AgentResearchWorkflow
+from qunxue_api.application.external_agents import ExternalAgentApplication
 from qunxue_api.application.knowledge_import import KnowledgeImportApplication
 from qunxue_api.application.memory_learning import MemoryLearningWorker
 from qunxue_api.application.memory_overview import MemoryOverview
@@ -171,6 +174,7 @@ from qunxue_api.application.shared_knowledge import SharedKnowledgeApplication
 from qunxue_api.modules.agent_conversation import ConversationNotFound, ConversationService
 from qunxue_api.modules.agent_memory import MemoryService
 from qunxue_api.modules.billing import CreditService
+from qunxue_api.modules.external_agents import ExternalAgentService
 from qunxue_api.modules.identity import (
     EmailAlreadyRegistered,
     EmailDeliveryUnavailable,
@@ -202,6 +206,7 @@ from qunxue_api.modules.research_materials import (
 from qunxue_api.modules.research_method import MethodPlanService
 from qunxue_api.modules.shared_knowledge import (
     SharedKnowledgeForbidden,
+    SharedKnowledgeService,
     SharedKnowledgeUnavailable,
     SharedKnowledgeValidationError,
 )
@@ -1197,6 +1202,17 @@ def create_app(
     app.include_router(research_exchange_router)
     app.include_router(phenomena_router)
     app.include_router(material_intakes_router)
+    @contextmanager
+    def external_agents_scope():
+        with resolved_database.session() as session:
+            yield ExternalAgentApplication(
+                ExternalAgentService(SqliteExternalAgentRepository(session)),
+                identities=SqliteIdentityRepository(session),
+                libraries=SharedKnowledgeService(SqliteSharedKnowledgeRepository(session)),
+            )
+
+    app.state.external_agents_scope = external_agents_scope
+    app.include_router(external_agents_router)
     app.include_router(personal_graph_router)
     app.include_router(knowledge_import_router)
     app.include_router(agent_profile_router)

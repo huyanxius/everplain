@@ -28,6 +28,7 @@ from qunxue_api.adapters.sqlite.billing_model import (
     CreditLedgerRow,
     CreditRedemptionCodeRow,
 )
+from qunxue_api.adapters.sqlite.external_agents import ExternalAgentConnectionRow
 from qunxue_api.adapters.sqlite.identity_model import (
     RegistrationVerificationRow,
     UserRow,
@@ -136,6 +137,7 @@ from qunxue_api.adapters.sqlite.theory_matching_model import (
 )
 
 __all__ = [
+    "ExternalAgentConnectionRow",
     "SharedKnowledgePublicationRow",
     "SharedKnowledgePublicationRequestRow",
     "PersonalGraphRow",

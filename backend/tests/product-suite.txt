@@ -8,6 +8,7 @@ tests/test_personal_knowledge_api.py
 tests/test_shared_knowledge_api.py
 tests/test_shared_knowledge_pptx.py
 tests/test_explicit_library_sharing.py
+tests/test_external_agents.py
 tests/test_course_workspace.py
 tests/test_course_organization_recovery.py
 tests/test_account_management_api.py

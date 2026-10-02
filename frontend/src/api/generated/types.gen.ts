@@ -2939,6 +2939,87 @@ export type EvidenceReferenceResponse = {
 export type ExportStatus = 'ready' | 'failed';
 
 /**
+ * ExternalAgentConnectionCreate
+ */
+export type ExternalAgentConnectionCreate = {
+    /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
+     * Library Ids
+     */
+    library_ids: Array<string>;
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
+ * ExternalAgentConnectionGrant
+ */
+export type ExternalAgentConnectionGrant = {
+    connection: ExternalAgentConnectionResponse;
+    /**
+     * Mcp Endpoint
+     */
+    mcp_endpoint?: string;
+    /**
+     * Secret
+     */
+    secret: string;
+};
+
+/**
+ * ExternalAgentConnectionList
+ */
+export type ExternalAgentConnectionList = {
+    /**
+     * Connections
+     */
+    connections: Array<ExternalAgentConnectionResponse>;
+    /**
+     * Mcp Endpoint
+     */
+    mcp_endpoint?: string;
+};
+
+/**
+ * ExternalAgentConnectionResponse
+ */
+export type ExternalAgentConnectionResponse = {
+    /**
+     * Connection Id
+     */
+    connection_id: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Expires At
+     */
+    expires_at: string;
+    /**
+     * Library Ids
+     */
+    library_ids: Array<string>;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Revoked At
+     */
+    revoked_at: string | null;
+    /**
+     * Status
+     */
+    status: 'active' | 'expired' | 'revoked';
+};
+
+/**
  * ExtractPhenomenonCandidatesRequest
  */
 export type ExtractPhenomenonCandidatesRequest = {
@@ -10093,6 +10174,77 @@ export type ConfirmTheoryPlanResponses = {
 
 export type ConfirmTheoryPlanResponse = ConfirmTheoryPlanResponses[keyof ConfirmTheoryPlanResponses];
 
+export type ListExternalAgentConnectionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/external-agents/connections';
+};
+
+export type ListExternalAgentConnectionsResponses = {
+    /**
+     * Successful Response
+     */
+    200: ExternalAgentConnectionList;
+};
+
+export type ListExternalAgentConnectionsResponse = ListExternalAgentConnectionsResponses[keyof ListExternalAgentConnectionsResponses];
+
+export type CreateExternalAgentConnectionData = {
+    body: ExternalAgentConnectionCreate;
+    path?: never;
+    query?: never;
+    url: '/api/external-agents/connections';
+};
+
+export type CreateExternalAgentConnectionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateExternalAgentConnectionError = CreateExternalAgentConnectionErrors[keyof CreateExternalAgentConnectionErrors];
+
+export type CreateExternalAgentConnectionResponses = {
+    /**
+     * Successful Response
+     */
+    201: ExternalAgentConnectionGrant;
+};
+
+export type CreateExternalAgentConnectionResponse = CreateExternalAgentConnectionResponses[keyof CreateExternalAgentConnectionResponses];
+
+export type RevokeExternalAgentConnectionData = {
+    body?: never;
+    path: {
+        /**
+         * Connection Id
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/api/external-agents/connections/{connection_id}';
+};
+
+export type RevokeExternalAgentConnectionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RevokeExternalAgentConnectionError = RevokeExternalAgentConnectionErrors[keyof RevokeExternalAgentConnectionErrors];
+
+export type RevokeExternalAgentConnectionResponses = {
+    /**
+     * Successful Response
+     */
+    200: ExternalAgentConnectionResponse;
+};
+
+export type RevokeExternalAgentConnectionResponse = RevokeExternalAgentConnectionResponses[keyof RevokeExternalAgentConnectionResponses];
+
 export type GetFrameworkData = {
     body?: never;
     path: {
@@ -11489,6 +11641,20 @@ export type GetMaterialIntakeRunResponses = {
 };
 
 export type GetMaterialIntakeRunResponse = GetMaterialIntakeRunResponses[keyof GetMaterialIntakeRunResponses];
+
+export type ExternalAgentMcpData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/mcp';
+};
+
+export type ExternalAgentMcpResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
 
 export type ListMemoriesData = {
     body?: never;

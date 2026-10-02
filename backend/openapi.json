@@ -5333,6 +5333,145 @@
         "title": "ExportStatus",
         "type": "string"
       },
+      "ExternalAgentConnectionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "library_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Library Ids",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "library_ids",
+          "expires_at"
+        ],
+        "title": "ExternalAgentConnectionCreate",
+        "type": "object"
+      },
+      "ExternalAgentConnectionGrant": {
+        "properties": {
+          "connection": {
+            "$ref": "#/components/schemas/ExternalAgentConnectionResponse"
+          },
+          "mcp_endpoint": {
+            "default": "/api/mcp",
+            "title": "Mcp Endpoint",
+            "type": "string"
+          },
+          "secret": {
+            "title": "Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connection",
+          "secret"
+        ],
+        "title": "ExternalAgentConnectionGrant",
+        "type": "object"
+      },
+      "ExternalAgentConnectionList": {
+        "properties": {
+          "connections": {
+            "items": {
+              "$ref": "#/components/schemas/ExternalAgentConnectionResponse"
+            },
+            "title": "Connections",
+            "type": "array"
+          },
+          "mcp_endpoint": {
+            "default": "/api/mcp",
+            "title": "Mcp Endpoint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connections"
+        ],
+        "title": "ExternalAgentConnectionList",
+        "type": "object"
+      },
+      "ExternalAgentConnectionResponse": {
+        "properties": {
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "library_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Library Ids",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "expired",
+              "revoked"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connection_id",
+          "name",
+          "library_ids",
+          "created_at",
+          "expires_at",
+          "revoked_at",
+          "status"
+        ],
+        "title": "ExternalAgentConnectionResponse",
+        "type": "object"
+      },
       "ExtractPhenomenonCandidatesRequest": {
         "properties": {
           "expected_task_version": {
@@ -18146,6 +18285,109 @@
         ]
       }
     },
+    "/api/external-agents/connections": {
+      "get": {
+        "operationId": "list_external_agent_connections",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalAgentConnectionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Connections",
+        "tags": [
+          "external-agents"
+        ]
+      },
+      "post": {
+        "operationId": "create_external_agent_connection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalAgentConnectionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalAgentConnectionGrant"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Connection",
+        "tags": [
+          "external-agents"
+        ]
+      }
+    },
+    "/api/external-agents/connections/{connection_id}": {
+      "delete": {
+        "operationId": "revoke_external_agent_connection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Connection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalAgentConnectionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Connection",
+        "tags": [
+          "external-agents"
+        ]
+      }
+    },
     "/api/frameworks/{framework_id}": {
       "get": {
         "deprecated": true,
@@ -20749,6 +20991,25 @@
         "summary": "Get Material Intake Run",
         "tags": [
           "phenomena"
+        ]
+      }
+    },
+    "/api/mcp": {
+      "post": {
+        "operationId": "external_agent_mcp",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Mcp",
+        "tags": [
+          "external-agents"
         ]
       }
     },
