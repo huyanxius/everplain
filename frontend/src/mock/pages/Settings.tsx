@@ -16,7 +16,7 @@ import {
   ArrowsClockwiseIcon,
 } from '@phosphor-icons/react'
 
-import { AgentAvatar, agentAvatarPresets } from '../agent-avatar'
+import { AgentAvatar, agentAvatarPresets } from '../../modules/agent-avatar'
 import { agentColors, memories } from '../data'
 import { useAgent } from '../state'
 import { Dialog } from '../ui'

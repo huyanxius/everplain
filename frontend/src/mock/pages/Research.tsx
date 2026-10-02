@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ArrowLeftIcon, CheckIcon, ExportIcon, PlusIcon, SidebarSimpleIcon } from '@phosphor-icons/react'
 
-import { AgentAvatar } from '../agent-avatar'
+import { AgentAvatar } from '../../modules/agent-avatar'
 import { materialById, researches } from '../data'
 import { useAgent } from '../state'
 import { Composer, KindIcon, PageHead } from '../ui'

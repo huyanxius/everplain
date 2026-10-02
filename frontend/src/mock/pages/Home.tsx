@@ -1,6 +1,6 @@
 import { ArrowRightIcon } from '@phosphor-icons/react'
 
-import { AgentAvatar } from '../agent-avatar'
+import { AgentAvatar } from '../../modules/agent-avatar'
 import { materials, researches } from '../data'
 import { go, useAgent } from '../state'
 import { Composer, MaterialCard } from '../ui'

@@ -9,7 +9,7 @@ import {
   XIcon,
 } from '@phosphor-icons/react'
 
-import { AgentAvatar } from '../agent-avatar'
+import { AgentAvatar } from '../../modules/agent-avatar'
 import { conversations, materialById } from '../data'
 import { useAgent } from '../state'
 import { Composer, KindIcon, TopicChip } from '../ui'

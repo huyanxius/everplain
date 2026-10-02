@@ -1,4 +1,4 @@
-import type { AgentAvatarId } from './agent-avatar'
+import type { AgentAvatarId } from '../modules/agent-avatar'
 
 /*
  * Mock 数据。字段名尽量贴近将来的真实接口，但这里不是契约——真实 DTO 以

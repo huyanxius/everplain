@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ArrowLeftIcon, BookmarkSimpleIcon, CheckIcon, FolderIcon, NoteIcon, TelevisionSimpleIcon } from '@phosphor-icons/react'
 
-import { AgentAvatar, agentAvatarPresets } from '../agent-avatar'
+import { AgentAvatar, agentAvatarPresets } from '../../modules/agent-avatar'
 import { agentColors, topics } from '../data'
 import { go, useAgent } from '../state'
 

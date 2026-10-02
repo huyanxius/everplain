@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ArrowLeftIcon, GoogleLogoIcon } from '@phosphor-icons/react'
 
-import { AgentAvatar, agentAvatarPresets } from '../agent-avatar'
+import { AgentAvatar, agentAvatarPresets } from '../../modules/agent-avatar'
 import { go } from '../state'
 
 /* 登录：Muse 那种单列居中。先邮箱，再密码，两步各占一屏，不同时摆三个输入框。 */

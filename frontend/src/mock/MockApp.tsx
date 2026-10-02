@@ -11,7 +11,7 @@ import {
   XIcon,
 } from '@phosphor-icons/react'
 
-import { AgentAvatar } from './agent-avatar'
+import { AgentAvatar } from '../modules/agent-avatar'
 import { conversations, type AgentProfile } from './data'
 import { AgentPage } from './pages/Agent'
 import { GraphPage } from './pages/Graph'
