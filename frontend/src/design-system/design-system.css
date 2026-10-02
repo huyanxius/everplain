@@ -1,0 +1,61 @@
+/* 样张页自己的排布，只管位置，外观全部来自 components.css。 */
+.ds { min-height: 100vh; color: var(--qx-color-ink-soft); background: var(--qx-color-canvas); font-family: var(--qx-font-ui); }
+.ds code { color: var(--qx-color-ink); font-family: var(--qx-font-mono); font-size: var(--qx-text-meta); }
+.ds p { margin: 0; }
+
+.ds-top { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: var(--qx-space-4); padding: var(--qx-space-3) var(--qx-space-6); background: color-mix(in srgb, var(--qx-color-canvas) 88%, transparent); backdrop-filter: blur(16px); }
+.ds-top__brand { display: flex; align-items: center; gap: var(--qx-space-2); color: var(--qx-color-ink); font-weight: 600; white-space: nowrap; }
+.ds-top__nav { display: flex; flex: 1; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.ds-top .qx-segmented > button { padding: 0 var(--qx-space-3); }
+
+.ds-main { max-width: 1120px; margin: 0 auto; padding: 0 var(--qx-space-6) var(--qx-space-16); }
+.ds-hero { display: grid; justify-items: center; gap: var(--qx-space-6); padding: var(--qx-space-16) 0 var(--qx-space-12); text-align: center; }
+.ds-hero__composer { width: min(100%, 720px); }
+
+.ds-section { padding: var(--qx-space-12) 0; border-top: 1px solid var(--qx-color-rule); }
+.ds-section > * + * { margin-top: var(--qx-space-6); }
+.ds-section__head { display: grid; gap: var(--qx-space-1); }
+
+.ds-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--qx-space-3); }
+.ds-row--center { justify-content: center; }
+.ds-row--tight { gap: var(--qx-space-2); }
+.ds-row--end { justify-content: flex-end; }
+.ds-narrow { display: grid; gap: var(--qx-space-4); max-width: 440px; }
+.ds-narrow--wide { max-width: 560px; }
+
+.ds-grid { display: grid; gap: var(--qx-space-4); }
+.ds-grid--swatch { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.ds-grid--shape { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+.ds-grid--cards { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+
+.ds-swatch { display: flex; align-items: center; gap: var(--qx-space-3); }
+.ds-swatch__chip { width: 48px; height: 48px; flex: none; border-radius: var(--qx-radius-item); box-shadow: var(--qx-shadow-ring); }
+
+.ds-type { display: grid; }
+.ds-type__row { display: grid; grid-template-columns: 140px 1fr; align-items: baseline; gap: var(--qx-space-6); padding: var(--qx-space-4) 0; border-bottom: 1px solid var(--qx-color-rule); }
+.ds-type__label { display: grid; gap: 2px; }
+
+.ds-shape { display: grid; gap: var(--qx-space-1); }
+.ds-shape__box { height: 96px; margin-bottom: var(--qx-space-2); background: var(--qx-color-surface-strong); }
+.ds-shape__box--shadow { border-radius: var(--qx-radius-card); background: var(--qx-color-surface); }
+
+.ds-card-title { margin-top: var(--qx-space-4); }
+.ds-card-empty { display: grid; place-content: center; justify-items: center; gap: var(--qx-space-1); min-height: 200px; text-align: center; }
+.ds-card-empty > svg { width: 28px; height: 28px; color: var(--qx-color-muted); }
+.ds-panel { max-width: 560px; }
+
+.ds-split { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--qx-space-8); }
+.ds-sidebar { display: grid; gap: 2px; width: 260px; padding: var(--qx-space-3); border-radius: var(--qx-radius-panel); background: var(--qx-color-surface-muted); }
+.ds-danger-item, .ds-danger-item > svg { color: var(--qx-color-danger); }
+
+.ds-chat { display: grid; gap: var(--qx-space-6); max-width: 760px; }
+.ds-modal { max-width: 440px; }
+.ds-modal > * + * { margin-top: var(--qx-space-3); }
+.ds-modal .ds-row { margin-top: var(--qx-space-6); }
+
+@media (max-width: 760px) {
+  .ds-top { flex-wrap: wrap; padding: var(--qx-space-3) var(--qx-space-4); }
+  .ds-top__nav { order: 3; flex-basis: 100%; }
+  .ds-main { padding: 0 var(--qx-space-4) var(--qx-space-12); }
+  .ds-type__row { grid-template-columns: 1fr; gap: var(--qx-space-1); }
+}
