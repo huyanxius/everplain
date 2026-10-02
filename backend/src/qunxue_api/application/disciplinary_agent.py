@@ -55,6 +55,7 @@ class DisciplinaryAgentApplication:
         bind_research_draft: Callable[..., UUID] | None = None,
         memory_tools_factory: Callable[..., object] | None = None,
         shared_references=None,
+        persona_factory=None,
     ) -> None:
         self._conversations = conversations
         self._runner = runner
@@ -65,6 +66,7 @@ class DisciplinaryAgentApplication:
         self._bind_research_draft = bind_research_draft
         self._memory_tools_factory = memory_tools_factory
         self._shared_references = shared_references
+        self._persona_factory = persona_factory
 
     def list_conversations(self, *, user_id: UUID):
         return self._conversations.list_conversations(user_id=user_id)
@@ -628,6 +630,8 @@ class DisciplinaryAgentApplication:
             if cancelled():
                 raise AgentInterrupted("Agent run was interrupted by the client")
 
+            if self._persona_factory is not None:
+                tools.persona = self._persona_factory(user_id)
             conversation_history = current.turns[-8:]
             if reference_knowledge_base_id is not None:
                 self._shared_references.prepare(

@@ -1028,6 +1028,169 @@
         "title": "AgentMessageResponse",
         "type": "object"
       },
+      "AgentProfileResponse": {
+        "properties": {
+          "avatar_id": {
+            "title": "Avatar Id",
+            "type": "string"
+          },
+          "color": {
+            "title": "Color",
+            "type": "string"
+          },
+          "greeting": {
+            "title": "Greeting",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "questionnaire": {
+            "$ref": "#/components/schemas/Questionnaire"
+          },
+          "setup_completed": {
+            "title": "Setup Completed",
+            "type": "boolean"
+          },
+          "setup_step": {
+            "title": "Setup Step",
+            "type": "integer"
+          },
+          "speaking_style": {
+            "title": "Speaking Style",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "avatar_id",
+          "color",
+          "speaking_style",
+          "setup_step",
+          "setup_completed",
+          "questionnaire",
+          "version",
+          "greeting"
+        ],
+        "title": "AgentProfileResponse",
+        "type": "object"
+      },
+      "AgentProfileUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "avatar_id": {
+            "anyOf": [
+              {
+                "enum": [
+                  "cheng",
+                  "nian",
+                  "qi",
+                  "shi",
+                  "heng",
+                  "ruo",
+                  "you"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Id"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "pattern": "^#[0-9a-fA-F]{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "expected_version": {
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "questionnaire": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Questionnaire"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "setup_completed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Setup Completed"
+          },
+          "setup_step": {
+            "anyOf": [
+              {
+                "maximum": 4.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Setup Step"
+          },
+          "speaking_style": {
+            "anyOf": [
+              {
+                "enum": [
+                  "clear",
+                  "warm",
+                  "rigorous",
+                  "curious"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaking Style"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "AgentProfileUpdate",
+        "type": "object"
+      },
       "AgentResearchJourneyResponse": {
         "properties": {
           "conversation_id": {
@@ -10526,6 +10689,47 @@
         "title": "QualitativeWorkspaceSnapshotResponse",
         "type": "object"
       },
+      "Questionnaire": {
+        "additionalProperties": false,
+        "properties": {
+          "additional": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Additional",
+            "type": "string"
+          },
+          "goals": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Goals",
+            "type": "array"
+          },
+          "industry": {
+            "default": "",
+            "maxLength": 160,
+            "title": "Industry",
+            "type": "string"
+          },
+          "interests": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Interests",
+            "type": "array"
+          },
+          "occupation": {
+            "default": "",
+            "maxLength": 160,
+            "title": "Occupation",
+            "type": "string"
+          }
+        },
+        "title": "Questionnaire",
+        "type": "object"
+      },
       "RegisterSessionRequest": {
         "properties": {
           "display_name": {
@@ -18341,6 +18545,79 @@
         "summary": "Update Admin User Role",
         "tags": [
           "admin"
+        ]
+      }
+    },
+    "/api/agent-profile": {
+      "get": {
+        "operationId": "get_agent_profile",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProfileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Profile",
+        "tags": [
+          "agent-profile"
+        ]
+      },
+      "patch": {
+        "operationId": "update_agent_profile",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentProfileUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentProfileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Profile",
+        "tags": [
+          "agent-profile"
         ]
       }
     },

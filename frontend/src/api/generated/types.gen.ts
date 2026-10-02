@@ -590,6 +590,80 @@ export type AgentMessageResponse = {
 };
 
 /**
+ * AgentProfileResponse
+ */
+export type AgentProfileResponse = {
+    /**
+     * Avatar Id
+     */
+    avatar_id: string;
+    /**
+     * Color
+     */
+    color: string;
+    /**
+     * Greeting
+     */
+    greeting: string;
+    /**
+     * Name
+     */
+    name: string;
+    questionnaire: Questionnaire;
+    /**
+     * Setup Completed
+     */
+    setup_completed: boolean;
+    /**
+     * Setup Step
+     */
+    setup_step: number;
+    /**
+     * Speaking Style
+     */
+    speaking_style: string;
+    /**
+     * Version
+     */
+    version: number;
+};
+
+/**
+ * AgentProfileUpdate
+ */
+export type AgentProfileUpdate = {
+    /**
+     * Avatar Id
+     */
+    avatar_id?: 'cheng' | 'nian' | 'qi' | 'shi' | 'heng' | 'ruo' | 'you' | null;
+    /**
+     * Color
+     */
+    color?: string | null;
+    /**
+     * Expected Version
+     */
+    expected_version: number;
+    /**
+     * Name
+     */
+    name?: string | null;
+    questionnaire?: Questionnaire | null;
+    /**
+     * Setup Completed
+     */
+    setup_completed?: boolean | null;
+    /**
+     * Setup Step
+     */
+    setup_step?: number | null;
+    /**
+     * Speaking Style
+     */
+    speaking_style?: 'clear' | 'warm' | 'rigorous' | 'curious' | null;
+};
+
+/**
  * AgentResearchJourneyResponse
  */
 export type AgentResearchJourneyResponse = {
@@ -5906,6 +5980,32 @@ export type QualitativeWorkspaceSnapshotResponse = {
 };
 
 /**
+ * Questionnaire
+ */
+export type Questionnaire = {
+    /**
+     * Additional
+     */
+    additional?: string;
+    /**
+     * Goals
+     */
+    goals?: Array<string>;
+    /**
+     * Industry
+     */
+    industry?: string;
+    /**
+     * Interests
+     */
+    interests?: Array<string>;
+    /**
+     * Occupation
+     */
+    occupation?: string;
+};
+
+/**
  * RegisterSessionRequest
  */
 export type RegisterSessionRequest = {
@@ -10164,6 +10264,53 @@ export type UpdateAdminUserRoleResponses = {
 };
 
 export type UpdateAdminUserRoleResponse = UpdateAdminUserRoleResponses[keyof UpdateAdminUserRoleResponses];
+
+export type GetAgentProfileData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/agent-profile';
+};
+
+export type GetAgentProfileResponses = {
+    /**
+     * Successful Response
+     */
+    200: AgentProfileResponse;
+};
+
+export type GetAgentProfileResponse = GetAgentProfileResponses[keyof GetAgentProfileResponses];
+
+export type UpdateAgentProfileData = {
+    body: AgentProfileUpdate;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/agent-profile';
+};
+
+export type UpdateAgentProfileErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateAgentProfileError = UpdateAgentProfileErrors[keyof UpdateAgentProfileErrors];
+
+export type UpdateAgentProfileResponses = {
+    /**
+     * Successful Response
+     */
+    200: AgentProfileResponse;
+};
+
+export type UpdateAgentProfileResponse = UpdateAgentProfileResponses[keyof UpdateAgentProfileResponses];
 
 export type ListAgentConversationsData = {
     body?: never;

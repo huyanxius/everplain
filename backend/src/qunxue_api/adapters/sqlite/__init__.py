@@ -21,6 +21,7 @@ from qunxue_api.adapters.sqlite.agent_memory_model import (
     MemoryScopeRow,
     MemoryUsageRow,
 )
+from qunxue_api.adapters.sqlite.agent_profile import AgentProfileRow
 from qunxue_api.adapters.sqlite.base import Base
 from qunxue_api.adapters.sqlite.billing_model import (
     CreditAccountRow,
@@ -125,6 +126,7 @@ from qunxue_api.adapters.sqlite.theory_matching_model import (
 )
 
 __all__ = [
+    "AgentProfileRow",
     "MemoryJobRow",
     "MemoryRequestRow",
     "MemoryRevisionRow",
