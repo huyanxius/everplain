@@ -61,11 +61,11 @@ const projection: ResearchCanvasProjection = {
 }
 
 describe('ResearchMapCanvas', () => {
-  it('explains the dotted canvas without duplicating the Agent prompts', () => {
+  it('explains the empty canvas without duplicating the Agent prompts', () => {
     const { container } = render(<ResearchMapCanvas projection={{ status: 'empty', question: '', nodes: [], edges: [] }} />)
 
     expect(screen.getByLabelText('空白研究画布')).toBeVisible()
-    expect(container.querySelector('.react-flow__background')).toBeInTheDocument()
+    expect(container.querySelector('.react-flow__background')).not.toBeInTheDocument()
     expect(container.querySelector('[data-research-agent-bot]')).toBeInTheDocument()
     expect(screen.getByLabelText('画布说明')).toHaveTextContent('对话中形成的研究结构会在这里展开。')
     expect(within(screen.getByLabelText('画布说明')).queryByRole('button')).not.toBeInTheDocument()

@@ -1036,7 +1036,7 @@ describe('NewResearchWorkspacePage', () => {
     const workspace = await screen.findByRole('region', { name: '新建研究工作区' })
     fireEvent.click(await within(workspace).findByRole('button', { name: /查看证据：社区互助工作笔记/ }))
     const sources = await screen.findByRole('group', { name: '知识库' })
-    expect(sources).toHaveTextContent('知识条目')
+    expect(sources).toHaveTextContent('知识库资料')
     expect(sources).not.toHaveTextContent('未审核')
     fireEvent.click(within(sources).getByRole('button', { name: /社区互助工作笔记/ }))
 
