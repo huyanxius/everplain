@@ -3,8 +3,7 @@ name: CI
 on:
   pull_request:
     branches: ["**"]
-  push:
-    branches: [main]
+  workflow_call:
 
 permissions:
   contents: read
@@ -19,14 +18,17 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version-file: backend/.python-version
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
+          version: 0.11.29
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
 
@@ -36,23 +38,32 @@ jobs:
       - name: Run backend checks
         run: make check-backend
 
+      - name: Check release safety
+        run: |
+          cd backend
+          uv run ruff check --config pyproject.toml ../ops/cd ../ops/tests/test_cd.py
+          uv run python -m unittest discover -s ../ops/tests -v
+
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version-file: backend/.python-version
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
+          version: 0.11.29
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -65,4 +76,8 @@ jobs:
         run: make check-contract
 
       - name: Run frontend checks
-        run: make check-frontend
+        run: |
+          npm --prefix frontend run check:boundaries
+          npm --prefix frontend run lint
+          npm --prefix frontend run test -- --maxWorkers=1
+          npm --prefix frontend run build
