@@ -12,7 +12,6 @@ import {
   restoreResearchDocument as restoreDocumentRequest,
   updateResearchDocument as updateDocumentRequest,
   type ResearchDocumentCompletionGateResponse,
-  type ResearchDocumentExportManifest,
   type ResearchDocumentExportResponse,
   type ResearchDocumentProposalResponse,
   type ResearchDocumentResponse,
@@ -95,7 +94,7 @@ export type M5ResearchDocument = Readonly<{
   sections: readonly M5ResearchDocumentSection[]
   status: 'draft' | 'confirmed'
   taskId: string
-  theoryPlanId: ResearchDocumentResponse['theory_plan_id']
+  theoryPlanId: string | null
   title: string
   version: number
 }>
@@ -123,7 +122,7 @@ export type M5ResearchDocumentProposal = Readonly<{
   status: M5ProposalStatus
   targetSectionId: string | null
   taskId: string
-  theoryPlanId: ResearchDocumentProposalResponse['theory_plan_id']
+  theoryPlanId: string | null
   title: string
   userId: string
 }>
@@ -159,7 +158,7 @@ export type M5ResearchAnalysisBasis = Readonly<{
 
 export type M5ResearchDeliveryState = Readonly<{
   taskId: string
-  confirmedTheoryPlanId: ResearchDocumentResponse['theory_plan_id']
+  confirmedTheoryPlanId: string | null
   phase: M5DeliveryPhase
   document: M5ResearchDocument | null
   proposals: readonly M5ResearchDocumentProposal[]
@@ -516,16 +515,47 @@ export type M5SerializedExport = Readonly<{
   content: string
 }>
 
-/** Personal exports omit disciplinary audit fields; array consumers can still iterate safely. */
-export type M5ResearchExportManifest = Readonly<ResearchDocumentExportManifest & Required<Pick<
-  ResearchDocumentExportManifest,
-  | 'agent_proposals'
-  | 'evidence'
-  | 'theory_assignments'
-  | 'theory_candidates'
-  | 'theory_decisions'
-  | 'theory_relations'
->>>
+type M5ExportRecord = Readonly<Record<string, unknown>>
+
+/** Local export read model; optional provenance stays opaque until serialized. */
+export type M5ResearchExportManifest = Readonly<{
+  schema_version: 'research-delivery-v2' | 'everplain-document-v1'
+  document_identity: Readonly<{
+    document_id: string
+    revision_id: string
+    version: number
+  }>
+  formal_document: M5ExportRecord
+  document_versions: readonly M5ExportRecord[]
+  formatting: Readonly<{
+    csl_style_id: string
+    custom_csl?: string | null
+    custom_css?: string | null
+    locale: string
+    template_id: string
+  }>
+  citation_audit: readonly Readonly<{
+    citation_id: string
+    kind: 'empirical' | 'scholarly' | 'analysis'
+    locator?: M5ExportRecord | null
+    section_id: string
+    source_id: string
+    source_version?: string | null
+    state: 'verified' | 'needs_verification' | 'broken' | 'tombstoned'
+  }>[]
+  knowledge_release?: M5ExportRecord
+  method_plan?: M5ExportRecord | null
+  model?: M5ExportRecord | null
+  phenomenon?: M5ExportRecord
+  research_analysis?: M5ExportRecord | null
+  // Personal exports omit these audit fields; mapped arrays remain safe to iterate.
+  agent_proposals: readonly M5ExportRecord[]
+  evidence: readonly M5ExportRecord[]
+  theory_assignments: readonly M5ExportRecord[]
+  theory_candidates: readonly M5ExportRecord[]
+  theory_decisions: readonly M5ExportRecord[]
+  theory_relations: readonly M5ExportRecord[]
+}>
 
 export type M5ResearchExport = Readonly<{
   documentId: string
@@ -534,7 +564,7 @@ export type M5ResearchExport = Readonly<{
   manifest: M5ResearchExportManifest
   markdown: string
   taskId: string
-  theoryPlanId: ResearchDocumentExportResponse['theory_plan_id']
+  theoryPlanId: string | null
   version: number
 }>
 
