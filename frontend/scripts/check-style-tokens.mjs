@@ -49,6 +49,28 @@ for (const file of files) {
   }
 }
 
+// 自定义属性不能互相引用成环：环上的变量在计算时会一起失效，引用它们的边框和背景直接变透明。
+// 不分作用域地建图，宁可多报：别名层只该单向指向 tokens.css。
+const references = new Map()
+for (const file of files) {
+  for (const match of readFileSync(file, 'utf8').matchAll(/(--[\w-]+)\s*:\s*([^;{}]+)/g)) {
+    const targets = references.get(match[1]) ?? new Set()
+    for (const ref of match[2].matchAll(/var\((--[\w-]+)/g)) targets.add(ref[1])
+    references.set(match[1], targets)
+  }
+}
+const reported = new Set()
+function walk(name, path) {
+  for (const next of references.get(name) ?? []) {
+    if (path.includes(next)) {
+      const cycle = path.slice(path.indexOf(next)).concat(next).join(' -> ')
+      const key = [...new Set(path.slice(path.indexOf(next)))].sort().join(',')
+      if (!reported.has(key)) { reported.add(key); failures.push(`custom property cycle: ${cycle}`) }
+    } else if (path.length < 12) walk(next, path.concat(next))
+  }
+}
+for (const name of references.keys()) walk(name, [name])
+
 if (failures.length > 0) {
   console.error(failures.join('\n'))
   process.exit(1)

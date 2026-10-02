@@ -59,3 +59,12 @@ test('accepts colors mixed from tokens', () => {
 
   assert.equal(result.status, 0, result.stderr)
 })
+
+test('rejects custom properties that reference each other in a cycle', () => {
+  const result = runChecker(`
+    .frame { --app-ink: var(--qx-color-ink); --qx-color-ink: var(--app-ink); }
+  `)
+
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /custom property cycle/)
+})
