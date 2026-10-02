@@ -19,6 +19,8 @@ ALLOWED_MODULE_DEPENDENCIES = {
     "knowledge_import": set(),
     "personal_graph": set(),
     "external_agents": set(),
+    "model_catalog": set(),
+    "subscriptions": set(),
     "shared_knowledge": set(),
     "billing": set(),
     "identity": set(),

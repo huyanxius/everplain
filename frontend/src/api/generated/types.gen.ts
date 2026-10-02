@@ -1579,6 +1579,40 @@ export type CaseComparisonResponse = {
 };
 
 /**
+ * CatalogModelResponse
+ */
+export type CatalogModelResponse = {
+    /**
+     * Availability
+     */
+    availability: 'configured' | 'unavailable';
+    /**
+     * Capabilities
+     */
+    capabilities: Array<string>;
+    /**
+     * Display Name
+     */
+    display_name: string;
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Model
+     */
+    model: string;
+    /**
+     * Provider
+     */
+    provider: string;
+    /**
+     * Unavailable Reason
+     */
+    unavailable_reason: string | null;
+};
+
+/**
  * ChangePasswordRequest
  */
 export type ChangePasswordRequest = {
@@ -4948,6 +4982,16 @@ export type MethodPlanVersionListResponse = {
 export type ModelCapability = 'mock' | 'base' | 'sft';
 
 /**
+ * ModelCatalogResponse
+ */
+export type ModelCatalogResponse = {
+    /**
+     * Items
+     */
+    items: Array<CatalogModelResponse>;
+};
+
+/**
  * ModelMetadata
  */
 export type ModelMetadata = {
@@ -7897,6 +7941,120 @@ export type SubmitAuditResolutionsRequest = {
      * Resolutions
      */
     resolutions: Array<AuditResolutionInput>;
+};
+
+/**
+ * SubscriptionCheckoutRequest
+ */
+export type SubscriptionCheckoutRequest = {
+    /**
+     * Plan Id
+     */
+    plan_id: string;
+};
+
+/**
+ * SubscriptionCheckoutResponse
+ */
+export type SubscriptionCheckoutResponse = {
+    /**
+     * Checkout Url
+     */
+    checkout_url: string;
+    /**
+     * Session Id
+     */
+    session_id: string;
+};
+
+/**
+ * SubscriptionOverviewResponse
+ */
+export type SubscriptionOverviewResponse = {
+    /**
+     * Available
+     */
+    available: boolean;
+    /**
+     * Plans
+     */
+    plans: Array<SubscriptionPlanResponse>;
+    subscription: SubscriptionResponse | null;
+    /**
+     * Unavailable Reason
+     */
+    unavailable_reason: string | null;
+};
+
+/**
+ * SubscriptionPlanResponse
+ */
+export type SubscriptionPlanResponse = {
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
+ * SubscriptionPortalRequest
+ */
+export type SubscriptionPortalRequest = {
+    [key: string]: never;
+};
+
+/**
+ * SubscriptionPortalResponse
+ */
+export type SubscriptionPortalResponse = {
+    /**
+     * Portal Url
+     */
+    portal_url: string;
+};
+
+/**
+ * SubscriptionResponse
+ */
+export type SubscriptionResponse = {
+    /**
+     * Cancel At Period End
+     */
+    cancel_at_period_end: boolean;
+    /**
+     * Current Period End
+     */
+    current_period_end: string | null;
+    /**
+     * Plan Id
+     */
+    plan_id: string | null;
+    /**
+     * Status
+     */
+    status: string;
+};
+
+/**
+ * SubscriptionWebhookResponse
+ */
+export type SubscriptionWebhookResponse = {
+    /**
+     * Duplicate
+     */
+    duplicate: boolean;
+    /**
+     * Received
+     */
+    received: boolean;
 };
 
 /**
@@ -12195,6 +12353,22 @@ export type ListMethodPlanVersionsResponses = {
 
 export type ListMethodPlanVersionsResponse = ListMethodPlanVersionsResponses[keyof ListMethodPlanVersionsResponses];
 
+export type GetModelCatalogData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/models';
+};
+
+export type GetModelCatalogResponses = {
+    /**
+     * Successful Response
+     */
+    200: ModelCatalogResponse;
+};
+
+export type GetModelCatalogResponse = GetModelCatalogResponses[keyof GetModelCatalogResponses];
+
 export type GetPersonalGraphData = {
     body?: never;
     path?: never;
@@ -15915,6 +16089,112 @@ export type PublishKnowledgeMetadataResponses = {
 };
 
 export type PublishKnowledgeMetadataResponse = PublishKnowledgeMetadataResponses[keyof PublishKnowledgeMetadataResponses];
+
+export type GetSubscriptionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/subscription';
+};
+
+export type GetSubscriptionResponses = {
+    /**
+     * Successful Response
+     */
+    200: SubscriptionOverviewResponse;
+};
+
+export type GetSubscriptionResponse = GetSubscriptionResponses[keyof GetSubscriptionResponses];
+
+export type CreateSubscriptionCheckoutData = {
+    body: SubscriptionCheckoutRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/subscription/checkout';
+};
+
+export type CreateSubscriptionCheckoutErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateSubscriptionCheckoutError = CreateSubscriptionCheckoutErrors[keyof CreateSubscriptionCheckoutErrors];
+
+export type CreateSubscriptionCheckoutResponses = {
+    /**
+     * Successful Response
+     */
+    200: SubscriptionCheckoutResponse;
+};
+
+export type CreateSubscriptionCheckoutResponse = CreateSubscriptionCheckoutResponses[keyof CreateSubscriptionCheckoutResponses];
+
+export type CreateSubscriptionPortalData = {
+    /**
+     * Payload
+     */
+    body?: SubscriptionPortalRequest | null;
+    path?: never;
+    query?: never;
+    url: '/api/subscription/portal';
+};
+
+export type CreateSubscriptionPortalErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateSubscriptionPortalError = CreateSubscriptionPortalErrors[keyof CreateSubscriptionPortalErrors];
+
+export type CreateSubscriptionPortalResponses = {
+    /**
+     * Successful Response
+     */
+    200: SubscriptionPortalResponse;
+};
+
+export type CreateSubscriptionPortalResponse = CreateSubscriptionPortalResponses[keyof CreateSubscriptionPortalResponses];
+
+export type ReceiveSubscriptionWebhookData = {
+    body?: never;
+    headers?: {
+        /**
+         * Stripe-Signature
+         */
+        'Stripe-Signature'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/subscription/webhook';
+};
+
+export type ReceiveSubscriptionWebhookErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReceiveSubscriptionWebhookError = ReceiveSubscriptionWebhookErrors[keyof ReceiveSubscriptionWebhookErrors];
+
+export type ReceiveSubscriptionWebhookResponses = {
+    /**
+     * Successful Response
+     */
+    200: SubscriptionWebhookResponse;
+};
+
+export type ReceiveSubscriptionWebhookResponse = ReceiveSubscriptionWebhookResponses[keyof ReceiveSubscriptionWebhookResponses];
 
 export type GetConfirmedTheoryPlanData = {
     body?: never;

@@ -20,6 +20,7 @@ from qunxue_api.adapters.sqlite.identity_model import UserRow, UserSessionRow
 from qunxue_api.adapters.sqlite.model_invocation_model import ModelInvocationRow
 from qunxue_api.adapters.sqlite.research_intake_model import ResearchTaskRow
 from qunxue_api.modules.account_management import (
+    AccountConflict,
     ExpiredAccountToken,
     IdempotencyConflict,
     InvalidPasswordReset,
@@ -610,6 +611,19 @@ class SqliteAccountRepository:
             raise RuntimeError("account disappeared while deactivating")
 
     def delete_account(self, *, user_id: UUID, now: datetime) -> None:
+        from qunxue_api.adapters.sqlite.subscriptions import has_open_billing_commitment
+
+        # Serialize with checkout reservation and webhook updates before testing the
+        # guard. Erasing local records must never imply canceling remote charges.
+        self._db.execute(
+            update(UserRow)
+            .where(UserRow.user_id == str(user_id))
+            .values(
+                version=UserRow.version,
+            )
+        )
+        if has_open_billing_commitment(self._db, user_id, now):
+            raise AccountConflict("请先取消并确认订阅已结束，或等待结账会话过期，再删除账号。")
         user_key = str(user_id)
         task_ids = list(
             self._db.scalars(

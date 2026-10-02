@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from qunxue_api.account_extension import install_account_management
+from qunxue_api.adapters.commerce_config import CommerceSettings, build_model_catalog
 from qunxue_api.adapters.email import ResendEmailProvider
 from qunxue_api.adapters.empty_catalog import EmptyKnowledgeCatalog
 from qunxue_api.adapters.import_sources.fetch import fetch_bookmark
@@ -113,10 +114,12 @@ from qunxue_api.adapters.sqlite.research_task_repository import (
     SqliteResearchTaskRepository,
 )
 from qunxue_api.adapters.sqlite.shared_knowledge import SqliteSharedKnowledgeRepository
+from qunxue_api.adapters.sqlite.subscriptions import SqliteSubscriptionRepository
 from qunxue_api.adapters.sqlite.theory_matching import (
     SqliteMatchingRequestRepository,
     SqliteMatchRunRepository,
 )
+from qunxue_api.adapters.stripe_subscriptions import StripeSubscriptionGateway
 from qunxue_api.adapters.theory_evidence import (
     CatalogTheoryEvidenceSource,
     CatalogTheoryLexicalRetriever,
@@ -128,6 +131,7 @@ from qunxue_api.adapters.transcription import (
 from qunxue_api.api.contracts.common import ErrorCode, ErrorDetail, ErrorResponse
 from qunxue_api.api.routes.agent import router as agent_router
 from qunxue_api.api.routes.agent_profile import router as agent_profile_router
+from qunxue_api.api.routes.commerce import router as commerce_router
 from qunxue_api.api.routes.external_agents import router as external_agents_router
 from qunxue_api.api.routes.health import router as health_router
 from qunxue_api.api.routes.knowledge_import import router as knowledge_import_router
@@ -171,6 +175,7 @@ from qunxue_api.application.memory_learning import MemoryLearningWorker
 from qunxue_api.application.memory_overview import MemoryOverview
 from qunxue_api.application.personal_graph import PersonalGraphApplication
 from qunxue_api.application.shared_knowledge import SharedKnowledgeApplication
+from qunxue_api.application.subscriptions import SubscriptionApplication
 from qunxue_api.modules.agent_conversation import ConversationNotFound, ConversationService
 from qunxue_api.modules.agent_memory import MemoryService
 from qunxue_api.modules.billing import CreditService
@@ -1211,8 +1216,25 @@ def create_app(
                 libraries=SharedKnowledgeService(SqliteSharedKnowledgeRepository(session)),
             )
 
+    @contextmanager
+    def subscription_repository_scope():
+        with resolved_database.session() as session:
+            yield SqliteSubscriptionRepository(session)
+
+    commerce_settings = CommerceSettings(_env_file=None)
+    if resolved_settings.runtime_mode == "mock":
+        commerce_settings.stripe_enabled = False
+    app.state.model_catalog = build_model_catalog(resolved_settings, commerce_settings)
+    app.state.subscription_application = SubscriptionApplication(
+        subscription_repository_scope, StripeSubscriptionGateway(commerce_settings),
+        plans=commerce_settings.plans(), unavailable_reason=commerce_settings.unavailable_reason,
+        success_url=commerce_settings.stripe_success_url,
+        cancel_url=commerce_settings.stripe_cancel_url,
+        portal_return_url=commerce_settings.stripe_portal_return_url,
+    )
     app.state.external_agents_scope = external_agents_scope
     app.include_router(external_agents_router)
+    app.include_router(commerce_router)
     app.include_router(personal_graph_router)
     app.include_router(knowledge_import_router)
     app.include_router(agent_profile_router)
