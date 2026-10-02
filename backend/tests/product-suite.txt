@@ -7,6 +7,7 @@ tests/test_everplain_documents.py
 tests/test_personal_knowledge_api.py
 tests/test_shared_knowledge_api.py
 tests/test_shared_knowledge_pptx.py
+tests/test_explicit_library_sharing.py
 tests/test_course_workspace.py
 tests/test_course_organization_recovery.py
 tests/test_account_management_api.py
@@ -48,3 +49,10 @@ tests/test_transcription_policy.py
 tests/test_everplain_research_surface.py
 tests/test_transcript_import.py
 tests/test_architecture.py
+
+tests/test_agent_profile.py
+tests/test_import_sources.py
+tests/test_imported_knowledge_availability.py
+tests/test_knowledge_import.py
+tests/test_media_import.py
+tests/test_personal_graph.py
