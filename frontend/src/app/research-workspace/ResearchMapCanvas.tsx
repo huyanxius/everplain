@@ -33,6 +33,7 @@ import type {
   ResearchCanvasNodeKind,
   ResearchCanvasProjection,
 } from '../../modules/research-workspace'
+import { resolveCssColor } from '../../styles/resolveCssColor'
 import { arrangeResearchCanvas, researchCanvasStages, CANVAS_CARD_SIZE, CANVAS_COLUMN_GAP } from '../../modules/research-workspace'
 import { canvasSuggestions, type AgentConversation } from '../../modules/research-agent'
 import { CanvasCardEditor, type CanvasCardDraft } from './CanvasCardEditor'
@@ -298,7 +299,7 @@ export function ResearchMapCanvas({
           proOptions={{ hideAttribution: true }}
           aria-label={projection.nodes.length ? '可缩放、可拖动的研究画布' : '空白研究画布'}
         >
-          {projection.nodes.length ? <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#d8d6cf" /> : null}
+          {projection.nodes.length ? <Background variant={BackgroundVariant.Dots} gap={24} size={1} color={resolveCssColor('var(--qx-color-rule-strong)')} /> : null}
           {projection.nodes.length ? <Controls position="bottom-left" showInteractive={false} /> : null}
           {!hasDocumentNodes && projection.nodes.length >= 16 ? (
             <MiniMap
@@ -306,7 +307,7 @@ export function ResearchMapCanvas({
               pannable
               zoomable
               nodeColor={(node) => minimapColor((node.data as ArgumentNodeData).node.kind)}
-              maskColor="rgb(247 247 244 / 72%)"
+              maskColor={resolveCssColor('color-mix(in srgb, var(--qx-color-canvas) 72%, transparent)')}
             />
           ) : null}
         </ReactFlow>
@@ -433,21 +434,18 @@ function connectionCount(edges: ResearchCanvasEdge[], nodeId: string) {
   return edges.filter((edge) => edge.source === nodeId || edge.target === nodeId).length
 }
 
+// 关系与节点类别的颜色和 research-map-canvas.css 里卡片用的是同一组类别色 token。
+// React Flow 把颜色写进 SVG 属性，属性不认 var()，所以要先解析成具体色值。
+const relationToken: Record<string, string> = { supports: 'data-green', challenges: 'data-rust', derives: 'data-blue', refines: 'data-amber' }
+const kindToken: Record<string, string> = {
+  question: 'accent', phenomenon: 'data-amber', theory: 'data-blue', claim: 'data-green',
+  evidence: 'data-olive', gap: 'data-rust', document: 'ink-soft',
+}
+
 function relationColor(relation: ResearchCanvasEdge['relation']) {
-  if (relation === 'supports') return '#5d7869'
-  if (relation === 'challenges') return '#a75b49'
-  if (relation === 'derives') return '#5c7184'
-  if (relation === 'refines') return '#9a7742'
-  return '#9a9a92'
+  return resolveCssColor(`var(--qx-color-${relationToken[relation] ?? 'faint'})`)
 }
 
 function minimapColor(kind: ResearchCanvasNodeKind) {
-  if (kind === 'question') return '#292d2a'
-  if (kind === 'phenomenon') return '#9a7742'
-  if (kind === 'theory') return '#6c7b89'
-  if (kind === 'claim') return '#4f6f60'
-  if (kind === 'evidence') return '#8b988e'
-  if (kind === 'gap') return '#aa6755'
-  if (kind === 'document') return '#2f312e'
-  return '#765f84'
+  return resolveCssColor(`var(--qx-color-${kindToken[kind] ?? 'data-violet'})`)
 }

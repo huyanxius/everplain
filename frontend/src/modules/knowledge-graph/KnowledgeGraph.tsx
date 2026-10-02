@@ -1,3 +1,4 @@
+import { graphColor } from '../../styles/resolveCssColor'
 import cytoscape, { type ElementDefinition } from 'cytoscape'
 import { useEffect, useRef, useState } from 'react'
 
@@ -108,10 +109,10 @@ export function KnowledgeGraph({
           {
             selector: 'node',
             style: {
-              'background-color': '#e6f0f7',
-              'border-color': '#3e7cb1',
+              'background-color': graphColor('surface-strong'),
+              'border-color': graphColor('info'),
               'border-width': 1,
-              color: '#33404a',
+              color: graphColor('ink-soft'),
               'font-size': 12,
               label: 'data(displayLabel)',
               'text-halign': 'center',
@@ -128,8 +129,8 @@ export function KnowledgeGraph({
             selector: 'edge',
             style: {
               'curve-style': 'bezier',
-              'line-color': '#c8d1d7',
-              'target-arrow-color': '#c8d1d7',
+              'line-color': graphColor('rule-strong'),
+              'target-arrow-color': graphColor('rule-strong'),
               'target-arrow-shape': 'none',
               width: 1.5,
             },
@@ -137,8 +138,8 @@ export function KnowledgeGraph({
           {
             selector: 'edge[layer = "structure"]',
             style: {
-              'line-color': '#c8d1d7',
-              'target-arrow-color': '#c8d1d7',
+              'line-color': graphColor('rule-strong'),
+              'target-arrow-color': graphColor('rule-strong'),
               'target-arrow-shape': 'triangle',
               width: 1,
             },
@@ -146,15 +147,15 @@ export function KnowledgeGraph({
           {
             selector: 'edge[layer = "candidate"]',
             style: {
-              'line-color': '#a56b2a',
+              'line-color': graphColor('warning'),
               'line-style': 'dashed',
-              color: '#7a4f1f',
+              color: graphColor('warning'),
               'font-size': 10,
               label: 'data(label)',
-              'text-background-color': '#f7f3ed',
+              'text-background-color': graphColor('canvas'),
               'text-background-opacity': 0.92,
               'text-background-padding': '3px',
-              'target-arrow-color': '#a56b2a',
+              'target-arrow-color': graphColor('warning'),
               'target-arrow-shape': 'triangle',
               width: 4,
             },
@@ -162,8 +163,8 @@ export function KnowledgeGraph({
           {
             selector: 'edge[layer = "reviewed"]',
             style: {
-              'line-color': '#3e7cb1',
-              'target-arrow-color': '#3e7cb1',
+              'line-color': graphColor('info'),
+              'target-arrow-color': graphColor('info'),
               width: 2,
             },
           },
@@ -174,7 +175,7 @@ export function KnowledgeGraph({
           {
             selector: 'edge[direction = "bidirectional"]',
             style: {
-              'source-arrow-color': '#c8d1d7',
+              'source-arrow-color': graphColor('rule-strong'),
               'source-arrow-shape': 'triangle',
               'target-arrow-shape': 'triangle',
             },

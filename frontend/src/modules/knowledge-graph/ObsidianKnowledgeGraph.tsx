@@ -1,3 +1,4 @@
+import { graphColor } from '../../styles/resolveCssColor'
 import cytoscape, { type Core, type ElementDefinition } from 'cytoscape'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CornersOutIcon, ShuffleIcon } from '@phosphor-icons/react'
@@ -235,27 +236,28 @@ function revealBatches(projection: KnowledgeGraphProjection): string[][] {
     })
 }
 
-const graphStyle: cytoscape.StylesheetJson = [
+// 颜色在创建图谱时才解析：模块加载时全局样式还没注入，读不到 token。
+const graphStyle = (): cytoscape.StylesheetJson => [
   {
     selector: 'node',
     style: {
-      'background-color': '#7f929f',
-      'border-color': '#f7fafc',
+      'background-color': graphColor('faint'),
+      'border-color': graphColor('surface'),
       'border-width': 1.5,
-      color: '#33404a',
+      color: graphColor('ink-soft'),
       'font-size': 10,
       height: 10,
       label: 'data(label)',
       'min-zoomed-font-size': 8,
       opacity: 0.92,
       shape: 'ellipse',
-      'text-background-color': '#fcfdfe',
+      'text-background-color': graphColor('surface'),
       'text-background-opacity': 0,
       'text-background-padding': '2px',
       'text-background-shape': 'roundrectangle',
       'text-halign': 'center',
       'text-margin-y': -8,
-      'text-outline-color': '#fcfdfe',
+      'text-outline-color': graphColor('surface'),
       'text-outline-opacity': 0.92,
       'text-outline-width': 2,
       'text-valign': 'top',
@@ -269,10 +271,10 @@ const graphStyle: cytoscape.StylesheetJson = [
   {
     selector: 'node.node--dimension',
     style: {
-      'background-color': '#264d68',
-      'border-color': '#dcebf4',
+      'background-color': graphColor('info'),
+      'border-color': graphColor('rule'),
       'border-width': 2,
-      color: '#173f5f',
+      color: graphColor('info'),
       'font-size': 10,
       'font-weight': 700,
       height: 16,
@@ -285,7 +287,7 @@ const graphStyle: cytoscape.StylesheetJson = [
   {
     selector: 'node.node--category',
     style: {
-      'background-color': '#6f8797',
+      'background-color': graphColor('faint'),
       height: 12,
       width: 12,
       'z-index': 5,
@@ -294,7 +296,7 @@ const graphStyle: cytoscape.StylesheetJson = [
   {
     selector: 'node.node--neighbor',
     style: {
-      'background-color': '#3e7cb1',
+      'background-color': graphColor('info'),
       height: 11,
       opacity: 1,
       width: 11,
@@ -304,16 +306,16 @@ const graphStyle: cytoscape.StylesheetJson = [
   {
     selector: 'node.node--focus',
     style: {
-      'background-color': '#173f5f',
-      'border-color': '#9fc6df',
+      'background-color': graphColor('info'),
+      'border-color': graphColor('info', 45),
       'border-width': 3,
-      color: '#173f5f',
+      color: graphColor('info'),
       'font-size': 11,
       'font-weight': 700,
       height: 16,
       'min-zoomed-font-size': 9,
       'text-margin-y': -11,
-      'underlay-color': '#9fc6df',
+      'underlay-color': graphColor('info', 45),
       'underlay-opacity': 0.2,
       'underlay-padding': 5,
       'underlay-shape': 'ellipse',
@@ -323,7 +325,7 @@ const graphStyle: cytoscape.StylesheetJson = [
   },
   {
     selector: 'node.node--unreviewed',
-    style: { 'border-color': '#b48752' },
+    style: { 'border-color': graphColor('warning') },
   },
   {
     selector: 'node.node--context',
@@ -332,8 +334,8 @@ const graphStyle: cytoscape.StylesheetJson = [
   {
     selector: 'node.is-hovered, node:selected',
     style: {
-      'background-color': '#173f5f',
-      'border-color': '#9fc6df',
+      'background-color': graphColor('info'),
+      'border-color': graphColor('info', 45),
       'border-width': 4,
       opacity: 1,
       'z-index': 14,
@@ -347,7 +349,7 @@ const graphStyle: cytoscape.StylesheetJson = [
     selector: 'edge',
     style: {
       'curve-style': 'straight',
-      'line-color': '#c8d1d7',
+      'line-color': graphColor('rule-strong'),
       opacity: 0.72,
       'target-arrow-shape': 'none',
       'transition-duration': 480,
@@ -360,7 +362,7 @@ const graphStyle: cytoscape.StylesheetJson = [
   {
     selector: 'edge.edge--structure',
     style: {
-      'line-color': '#c8d1d7',
+      'line-color': graphColor('rule-strong'),
       opacity: 0.58,
       width: 0.7,
     },
@@ -368,19 +370,19 @@ const graphStyle: cytoscape.StylesheetJson = [
   {
     selector: 'edge.edge--reviewed',
     style: {
-      'line-color': '#3e7cb1',
+      'line-color': graphColor('info'),
       opacity: 0.9,
-      'target-arrow-color': '#3e7cb1',
+      'target-arrow-color': graphColor('info'),
       width: 1.8,
     },
   },
   {
     selector: 'edge.edge--candidate',
     style: {
-      'line-color': '#a56b2a',
+      'line-color': graphColor('warning'),
       'line-style': 'dashed',
       opacity: 0.88,
-      'target-arrow-color': '#a56b2a',
+      'target-arrow-color': graphColor('warning'),
       width: 1.6,
     },
   },
@@ -395,7 +397,7 @@ const graphStyle: cytoscape.StylesheetJson = [
     selector: 'edge.edge--bidirectional',
     style: {
       'arrow-scale': 0.65,
-      'source-arrow-color': '#3e7cb1',
+      'source-arrow-color': graphColor('info'),
       'source-arrow-shape': 'triangle',
       'target-arrow-shape': 'triangle',
     },
@@ -407,11 +409,11 @@ const graphStyle: cytoscape.StylesheetJson = [
   {
     selector: 'edge.is-hovered, edge:selected',
     style: {
-      color: '#33404a',
+      color: graphColor('ink-soft'),
       'font-size': 9,
       label: 'data(label)',
       opacity: 1,
-      'text-background-color': '#fcfdfe',
+      'text-background-color': graphColor('surface'),
       'text-background-opacity': 0.92,
       'text-background-padding': '3px',
       width: 2.2,
@@ -424,8 +426,8 @@ const graphStyle: cytoscape.StylesheetJson = [
   },
 ]
 
-const workspaceGraphStyle: cytoscape.StylesheetJson = [
-  ...graphStyle.map((rule) => {
+const workspaceGraphStyle = (): cytoscape.StylesheetJson => [
+  ...graphStyle().map((rule) => {
     if (
       !('style' in rule)
       || (rule.selector !== 'node' && rule.selector !== 'edge')
@@ -441,20 +443,20 @@ const workspaceGraphStyle: cytoscape.StylesheetJson = [
   {
     selector: 'node',
     style: {
-      'background-color': '#8d9295',
-      'border-color': '#ffffff',
-      color: '#303030',
-      'text-background-color': '#ffffff',
-      'text-outline-color': '#ffffff',
+      'background-color': graphColor('faint'),
+      'border-color': graphColor('surface'),
+      color: graphColor('ink-soft'),
+      'text-background-color': graphColor('surface'),
+      'text-outline-color': graphColor('surface'),
       'font-family': '"Songti SC", "Noto Serif CJK SC", Georgia, serif',
     },
   },
   {
     selector: 'node.node--dimension',
     style: {
-      'background-color': '#1d1f20',
-      'border-color': '#d9dcde',
-      color: '#111111',
+      'background-color': graphColor('ink'),
+      'border-color': graphColor('rule'),
+      color: graphColor('ink'),
       height: 20,
       'text-margin-y': -12,
       width: 20,
@@ -462,19 +464,19 @@ const workspaceGraphStyle: cytoscape.StylesheetJson = [
   },
   {
     selector: 'node.node--category',
-    style: { 'background-color': '#6d7376' },
+    style: { 'background-color': graphColor('muted') },
   },
   {
     selector: 'node.node--neighbor',
-    style: { 'background-color': '#3f464b' },
+    style: { 'background-color': graphColor('accent-hover') },
   },
   {
     selector: 'node.node--focus',
     style: {
-      'background-color': '#111111',
-      'border-color': '#b9bdc0',
-      color: '#111111',
-      'underlay-color': '#81878a',
+      'background-color': graphColor('ink'),
+      'border-color': graphColor('rule-strong'),
+      color: graphColor('ink'),
+      'underlay-color': graphColor('faint'),
     },
   },
   {
@@ -484,8 +486,8 @@ const workspaceGraphStyle: cytoscape.StylesheetJson = [
   {
     selector: 'node.is-hovered, node:selected',
     style: {
-      'background-color': '#111111',
-      'border-color': '#b9bdc0',
+      'background-color': graphColor('ink'),
+      'border-color': graphColor('rule-strong'),
       'text-opacity': 1,
     },
   },
@@ -500,18 +502,18 @@ const workspaceGraphStyle: cytoscape.StylesheetJson = [
   {
     selector: 'edge.edge--reviewed',
     style: {
-      'line-color': '#3f464b',
-      'target-arrow-color': '#3f464b',
+      'line-color': graphColor('muted'),
+      'target-arrow-color': graphColor('muted'),
     },
   },
   {
     selector: 'edge.edge--bidirectional',
-    style: { 'source-arrow-color': '#3f464b' },
+    style: { 'source-arrow-color': graphColor('muted') },
   },
 ]
 
-const previewGraphStyle: cytoscape.StylesheetJson = [
-  ...workspaceGraphStyle,
+const previewGraphStyle = (): cytoscape.StylesheetJson => [
+  ...workspaceGraphStyle(),
   {
     selector: 'node',
     style: {
@@ -568,7 +570,7 @@ const previewGraphStyle: cytoscape.StylesheetJson = [
   {
     selector: 'edge.edge--neighbor',
     style: {
-      'line-color': '#8a6739',
+      'line-color': graphColor('warning'),
       opacity: 0.96,
       width: 2,
     },
@@ -819,11 +821,11 @@ export function ObsidianKnowledgeGraph({
         ),
         maxZoom: 3.2,
         minZoom: 0.16,
-        style: personal ? [...workspaceGraphStyle,
+        style: personal ? [...workspaceGraphStyle(),
           { selector: 'node.node--self', style: { width: 70, height: 70, 'background-opacity': 0, 'border-width': 0, 'background-image': 'data(image)', 'background-fit': 'contain', 'text-margin-y': -5 } },
-          { selector: 'node.node--topic', style: { width: 18, height: 18, 'background-color': '#8f9e86', 'font-size': 12 } },
-          { selector: 'node.node--knowledge', style: { width: 6, height: 6, 'background-color': '#b9aea0', 'font-size': 9 } },
-        ] : variant === 'preview' ? previewGraphStyle : workspaceGraphStyle,
+          { selector: 'node.node--topic', style: { width: 18, height: 18, 'background-color': graphColor('faint'), 'font-size': 12 } },
+          { selector: 'node.node--knowledge', style: { width: 6, height: 6, 'background-color': graphColor('faint'), 'font-size': 9 } },
+        ] : variant === 'preview' ? previewGraphStyle() : workspaceGraphStyle(),
         userPanningEnabled: true,
         userZoomingEnabled: variant === 'workspace',
       })
