@@ -36,13 +36,13 @@
 
 .task-state span {
   color: var(--ink-soft);
-  font-size: 0.8rem;
+  font-size: var(--qx-text-meta);
 }
 
 .task-state strong {
   color: var(--signal);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.08em;
+  letter-spacing: normal;
 }
 
 .task-record dl {
@@ -59,22 +59,22 @@
 .task-record dt {
   margin-bottom: 4px;
   color: var(--ink-soft);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  font-size: var(--qx-text-meta);
+  letter-spacing: normal;
 }
 
 .task-record dd {
   margin: 0;
   overflow-wrap: anywhere;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.82rem;
+  font-size: var(--qx-text-meta);
 }
 
 .task-note,
 .loading-line {
   margin: 34px 0 0;
   color: var(--ink-soft);
-  font-size: 0.88rem;
+  font-size: var(--qx-text-control);
 }
 
 .text-link {
@@ -91,7 +91,7 @@
 .phenomenon-form label {
   margin-top: 16px;
   color: var(--ink);
-  font-size: 0.76rem;
+  font-size: var(--qx-text-meta);
   font-weight: 620;
 }
 
@@ -101,7 +101,7 @@
   padding: 13px 14px;
   resize: vertical;
   border: 1px solid var(--rule-strong);
-  border-radius: 8px;
+  border-radius: var(--qx-radius-tag);
   background: var(--surface);
   color: var(--ink);
   font: inherit;
@@ -135,7 +135,7 @@
   min-height: 38px;
   padding: 0 12px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--qx-radius-pill);
   background: transparent;
   color: var(--ink);
   font: inherit;
@@ -156,10 +156,10 @@
 }
 
 .research-entry__details summary {
-  min-height: 36px;
+  min-height: var(--qx-control-height);
   color: var(--ink-soft);
   cursor: pointer;
-  font-size: 0.73rem;
+  font-size: var(--qx-text-meta);
   font-weight: 620;
 }
 
@@ -179,9 +179,9 @@
 .seed-clue {
   margin: 0 0 18px;
   padding: 9px 11px;
-  border-radius: 8px;
+  border-radius: var(--qx-radius-tag);
   background: var(--accent-soft);
-  font-size: 0.74rem;
+  font-size: var(--qx-text-meta);
 }
 
 .example-list {
@@ -212,13 +212,13 @@
 
 .research-entry .content-mark p {
   margin-top: 5px;
-  font-size: 0.74rem;
+  font-size: var(--qx-text-meta);
 }
 
 .example-list h2 {
   width: 100%;
   margin: 0 0 4px;
-  font-size: 1rem;
+  font-size: var(--qx-text-body);
 }
 
 .processing-consents {
@@ -249,7 +249,7 @@
 .next-step-gate p,
 .snapshot-hash {
   color: var(--ink-soft);
-  font-size: 0.82rem;
+  font-size: var(--qx-text-meta);
 }
 
 .phenomenon-form button {
@@ -258,9 +258,9 @@
   margin-top: 16px;
   padding: 0 16px;
   border: 1px solid var(--ink-strong);
-  border-radius: 7px;
+  border-radius: var(--qx-radius-pill);
   background: var(--ink-strong);
-  color: light-dark(#fff, #212121);
+  color: var(--qx-color-on-accent);
   font: inherit;
 }
 
@@ -273,23 +273,23 @@
   width: fit-content;
   padding: 6px 10px;
   border: 1px solid var(--rule-strong);
-  border-radius: 6px;
+  border-radius: var(--qx-radius-tag);
   color: var(--ink-soft);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.76rem;
+  font-size: var(--qx-text-meta);
 }
 
 .evidence-card {
   margin-top: 16px;
   padding: 18px;
   border: 1px solid var(--rule);
-  border-radius: 8px;
+  border-radius: var(--qx-radius-tag);
   background: var(--surface-2);
 }
 
 .evidence-card h2 {
   margin-top: 0;
-  font-size: 1rem;
+  font-size: var(--qx-text-body);
 }
 
 .evidence-card p,
@@ -301,7 +301,7 @@
   max-width: 760px;
   padding: 24px;
   border: 1px solid var(--rule);
-  border-radius: 8px;
+  border-radius: var(--qx-radius-tag);
   background: var(--surface-2);
 }
 

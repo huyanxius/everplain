@@ -40,7 +40,7 @@
   padding-right: 12px;
   border-right: 1px solid var(--research-shell-line);
   color: var(--research-shell-muted);
-  font-size: 11px;
+  font-size: var(--qx-text-meta);
   text-decoration: none;
 }
 
@@ -51,7 +51,7 @@
   margin: 0;
   color: var(--research-shell-ink);
   font-family: var(--serif);
-  font-size: 18px;
+  font-size: var(--qx-text-title);
   font-weight: 580;
   letter-spacing: -.025em;
   text-overflow: ellipsis;
@@ -80,7 +80,7 @@
   gap: 6px;
   padding: 0 11px;
   color: var(--research-shell-muted);
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -97,7 +97,7 @@
 
 .research-project-workspace__tools a:hover,
 .research-project-workspace__tools a[aria-current='page'] { color: var(--research-shell-ink); }
-.research-project-workspace__tools a[aria-current='page']::after { background: light-dark(#68746b, #8c978f); }
+.research-project-workspace__tools a[aria-current='page']::after { background: var(--qx-color-muted); }
 
 .research-project-workspace__layout {
   position: relative;
@@ -145,8 +145,8 @@
 
 .research-project-workspace__separator:hover::after,
 .research-project-workspace__separator:focus-visible::after {
-  background: light-dark(#68746b, #8c978f);
-  box-shadow: 0 0 0 3px rgb(104 116 107 / 10%);
+  background: var(--qx-color-muted);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--qx-color-muted) 10%, transparent);
 }
 
 .research-project-workspace__separator:focus-visible { outline: none; }
@@ -171,7 +171,7 @@
 
 @media (max-width: 620px) {
   .research-project-workspace__identity { flex-basis: 34%; }
-  .research-project-workspace__identity h1 { font-size: 14px; }
+  .research-project-workspace__identity h1 { font-size: var(--qx-text-control); }
   .research-project-workspace__tools a span { display: none; }
 }
 
@@ -195,10 +195,10 @@
   }
 
   .research-project-workspace__mobile-switcher button {
-    min-height: 36px;
+    min-height: var(--qx-control-height);
     padding: 0 12px;
     border: 0;
-    border-radius: 8px;
+    border-radius: var(--qx-radius-pill);
     color: var(--research-shell-muted);
     background: transparent;
     font: inherit;

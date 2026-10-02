@@ -20,21 +20,21 @@
 }
 
 .research-shell__topbar span {
-  font-size: 0.86rem;
+  font-size: var(--qx-text-control);
   font-weight: 650;
 }
 
 .research-shell__topbar small {
   color: var(--quiet);
-  font-size: 0.72rem;
+  font-size: var(--qx-text-meta);
 }
 
 .research-shell__topbar a {
-  min-height: 36px;
+  min-height: var(--qx-control-height);
   display: inline-flex;
   align-items: center;
   color: var(--ink-soft);
-  font-size: 0.76rem;
+  font-size: var(--qx-text-meta);
   text-decoration: none;
 }
 
@@ -60,9 +60,9 @@
 .research-context > p:first-child {
   margin: 0 0 18px;
   color: var(--quiet);
-  font-size: 0.68rem;
+  font-size: var(--qx-text-meta);
   font-weight: 650;
-  letter-spacing: 0.06em;
+  letter-spacing: normal;
 }
 
 .research-stages ol {
@@ -79,7 +79,7 @@
   gap: 9px;
   align-items: start;
   padding: 9px 7px;
-  border-radius: 6px;
+  border-radius: var(--qx-radius-tag);
   color: var(--quiet);
 }
 
@@ -99,7 +99,7 @@
   place-items: center;
   border: 1px solid currentColor;
   border-radius: 50%;
-  font-size: 0.62rem;
+  font-size: var(--qx-text-meta);
 }
 
 .research-stages li[data-status='completed'] > span {
@@ -114,12 +114,12 @@
 }
 
 .research-stages strong {
-  font-size: 0.78rem;
+  font-size: var(--qx-text-meta);
   font-weight: 620;
 }
 
 .research-stages small {
-  font-size: 0.66rem;
+  font-size: var(--qx-text-meta);
   line-height: 1.45;
 }
 
@@ -137,14 +137,14 @@
 .research-task__heading p {
   margin: 0 0 14px;
   color: var(--accent-dark);
-  font-size: 0.7rem;
+  font-size: var(--qx-text-meta);
   font-weight: 650;
 }
 
 .research-task__heading h1 {
   margin: 0;
   color: var(--ink-strong);
-  font-size: clamp(1.65rem, 2.5vw, 2.2rem);
+  font-size: var(--qx-text-display);
   font-weight: 620;
   line-height: 1.12;
   letter-spacing: -0.035em;
@@ -155,7 +155,7 @@
   display: block;
   margin-top: 14px;
   color: var(--ink-soft);
-  font-size: 0.84rem;
+  font-size: var(--qx-text-control);
   line-height: 1.65;
 }
 
@@ -167,14 +167,14 @@
   border-left: 1px solid var(--rule);
   color: var(--ink-soft);
   background: var(--surface-2);
-  font-size: 0.76rem;
+  font-size: var(--qx-text-meta);
   line-height: 1.65;
 }
 
 .research-context h2 {
   margin: 0 0 10px;
   color: var(--ink);
-  font-size: 0.88rem;
+  font-size: var(--qx-text-control);
   font-weight: 620;
 }
 
@@ -202,7 +202,7 @@
   max-width: 520px;
   margin: 0;
   color: var(--ink-soft);
-  font-size: 0.82rem;
+  font-size: var(--qx-text-meta);
   line-height: 1.6;
 }
 
@@ -211,10 +211,10 @@
   display: inline-flex;
   align-items: center;
   padding: 0 13px;
-  border-radius: 999px;
+  border-radius: var(--qx-radius-pill);
   color: var(--app-canvas);
   background: var(--app-ink);
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   text-decoration: none;
 }
 
