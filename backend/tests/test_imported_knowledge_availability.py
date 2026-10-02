@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -11,7 +12,6 @@ from qunxue_api.adapters.retrieval.errors import RetrievalPipelineUnavailable
 from qunxue_api.adapters.sqlite.knowledge_catalog import SqliteKnowledgeCatalog
 from qunxue_api.modules.agent_conversation import AgentRunResult
 from qunxue_api.modules.knowledge_catalog import KnowledgeReviewStatus, KnowledgeUsePurpose
-from qunxue_api.settings import KNOWLEDGE_ROOT
 
 
 @pytest.fixture
@@ -19,7 +19,10 @@ def imported_catalog(plain_client, tmp_path):
     root = tmp_path / "knowledge"
     dimension = root / "本体论"
     dimension.mkdir(parents=True)
-    source = KNOWLEDGE_ROOT / "本体论/01-02-1. 古典社会学奠基.md"
+    source = (
+        Path(__file__).parent / "fixtures" / "legacy-catalog"
+        / "本体论/01-02-1. 古典社会学奠基.md"
+    )
     (dimension / source.name).symlink_to(source)
     return SqliteKnowledgeCatalog(plain_client.app.state.database, knowledge_root=root)
 
@@ -78,7 +81,7 @@ def test_upgrade_corrects_existing_imports_without_changing_content(
             )
         )
     command.stamp(alembic_config, "20260905_0340")
-    command.upgrade(alembic_config, "head")
+    command.upgrade(alembic_config, "20260905_0350")
     after = imported_catalog.get_entry(
         release_id=release.knowledge_release_id, knowledge_id="D1:C001"
     )
@@ -176,14 +179,14 @@ def test_upload_and_legacy_defaults_allow_agent_read_and_citation(
             "deidentification_status='pending'"
         ))
     command.stamp(alembic_config, "20260905_0340")
-    command.upgrade(alembic_config, "head")
+    command.upgrade(alembic_config, "20260905_0350")
     read()
     with database.session() as session:
         session.execute(text(
             "UPDATE research_material_archive_profiles SET model_processing_scope='manual_only'"
         ))
     command.stamp(alembic_config, "20260905_0340")
-    command.upgrade(alembic_config, "head")
+    command.upgrade(alembic_config, "20260905_0350")
     with database.session() as session:
         assert session.execute(text(
             "SELECT model_processing_scope FROM research_material_archive_profiles"
