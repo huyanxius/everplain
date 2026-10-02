@@ -4447,6 +4447,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
           "output_tokens": {
             "minimum": 0.0,
             "title": "Output Tokens",
@@ -4471,15 +4482,52 @@
       },
       "CreditPricingResponse": {
         "properties": {
+          "credits_per_usd": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credits Per Usd"
+          },
           "input_tokens_per_credit": {
             "minimum": 1.0,
             "title": "Input Tokens Per Credit",
             "type": "integer"
           },
+          "mode": {
+            "default": "legacy_tokens",
+            "enum": [
+              "legacy_tokens",
+              "model_rates",
+              "unconfigured"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
           "output_tokens_per_credit": {
             "minimum": 1.0,
             "title": "Output Tokens Per Credit",
             "type": "integer"
+          },
+          "price_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Version"
+          },
+          "reference_currency": {
+            "default": "USD",
+            "title": "Reference Currency",
+            "type": "string"
           }
         },
         "required": [
@@ -4526,6 +4574,17 @@
       },
       "CreditSummaryResponse": {
         "properties": {
+          "available_balance": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Balance"
+          },
           "balance": {
             "minimum": 0.0,
             "title": "Balance",
@@ -4542,6 +4601,12 @@
             },
             "title": "Entries",
             "type": "array"
+          },
+          "frozen_points": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Frozen Points",
+            "type": "integer"
           },
           "grant_amount": {
             "minimum": 0.0,
@@ -4562,6 +4627,14 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "operations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Operations",
+            "type": "array"
           },
           "pricing": {
             "$ref": "#/components/schemas/CreditPricingResponse"
@@ -5161,6 +5234,12 @@
           "provisioned_administrator_protected",
           "password_reset_invalid",
           "token_expired",
+          "credits_depleted",
+          "credit_run_in_progress",
+          "billing_budget_exceeded",
+          "billing_not_configured",
+          "billing_replay_blocked",
+          "billing_provider_error",
           "credit_code_unavailable",
           "credit_code_batch_conflict",
           "email_verification_invalid",
