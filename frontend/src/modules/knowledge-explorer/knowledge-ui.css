@@ -1,84 +1,84 @@
 .knowledge-surface {
-  --taxonomy-ink: light-dark(#43639a, #95a5c0);
-  --taxonomy-soft: light-dark(#eaf0f8, #171a1e);
-  --taxonomy-border: light-dark(#cbd8eb, #2d3c52);
+  --taxonomy-ink: var(--qx-color-info);
+  --taxonomy-soft: var(--qx-color-canvas);
+  --taxonomy-border: var(--qx-color-success);
   min-height: 100dvh;
   color: var(--app-ink-soft, var(--ink));
-  background: var(--app-canvas, light-dark(#fff, #212121));
+  background: var(--app-canvas, var(--qx-color-surface));
   font-family: var(--sans);
 }
 
 .knowledge-surface[data-dimension-tone='ontology'],
 .knowledge-surface [data-dimension-tone='ontology'] {
-  --taxonomy-ink: light-dark(#43639a, #95a5c0);
-  --taxonomy-soft: light-dark(#eaf0f8, #171a1e);
-  --taxonomy-border: light-dark(#cbd8eb, #2d3c52);
+  --taxonomy-ink: var(--qx-color-data-blue);
+  --taxonomy-soft: var(--qx-color-canvas);
+  --taxonomy-border: var(--qx-color-data-olive);
 }
 
 .knowledge-surface[data-dimension-tone='practice'],
 .knowledge-surface [data-dimension-tone='practice'] {
-  --taxonomy-ink: light-dark(#44745f, #9db9ad);
-  --taxonomy-soft: light-dark(#eaf3ee, #1a1c1b);
-  --taxonomy-border: light-dark(#c9dfd3, #354a3f);
+  --taxonomy-ink: var(--qx-color-data-green);
+  --taxonomy-soft: var(--qx-color-canvas);
+  --taxonomy-border: var(--qx-color-rule);
 }
 
 .knowledge-surface[data-dimension-tone='method'],
 .knowledge-surface [data-dimension-tone='method'] {
-  --taxonomy-ink: light-dark(#367083, #94b6c2);
-  --taxonomy-soft: light-dark(#e8f3f5, #181d1e);
-  --taxonomy-border: light-dark(#c4dde3, #31494f);
+  --taxonomy-ink: var(--qx-color-data-teal);
+  --taxonomy-soft: var(--qx-color-canvas);
+  --taxonomy-border: var(--qx-color-rule);
 }
 
 .knowledge-surface[data-dimension-tone='value'],
 .knowledge-surface [data-dimension-tone='value'] {
-  --taxonomy-ink: light-dark(#985067, #bc9aa5);
-  --taxonomy-soft: light-dark(#f7edf1, #1b1a1a);
-  --taxonomy-border: light-dark(#e6cbd4, #4e313b);
+  --taxonomy-ink: var(--qx-color-data-rose);
+  --taxonomy-soft: var(--qx-color-canvas);
+  --taxonomy-border: var(--qx-color-data-olive);
 }
 
 .knowledge-surface[data-dimension-tone='epistemology'],
 .knowledge-surface [data-dimension-tone='epistemology'] {
-  --taxonomy-ink: light-dark(#8a6b2f, #c6b390);
-  --taxonomy-soft: light-dark(#f7f1e3, #1e1c18);
-  --taxonomy-border: light-dark(#e5d5aa, #554a2a);
+  --taxonomy-ink: var(--qx-color-data-amber);
+  --taxonomy-soft: var(--qx-color-canvas);
+  --taxonomy-border: var(--qx-color-data-olive);
 }
 
 .knowledge-surface[data-dimension-tone='tradition'],
 .knowledge-surface [data-dimension-tone='tradition'] {
-  --taxonomy-ink: light-dark(#695b91, #a59eb7);
-  --taxonomy-soft: light-dark(#f0edf7, #1a1a1b);
-  --taxonomy-border: light-dark(#d8d0e9, #3a314f);
+  --taxonomy-ink: var(--qx-color-data-violet);
+  --taxonomy-soft: var(--qx-color-canvas);
+  --taxonomy-border: var(--qx-color-data-olive);
 }
 
 .knowledge-surface[data-dimension-tone='history'],
 .knowledge-surface [data-dimension-tone='history'] {
-  --taxonomy-ink: light-dark(#925c49, #bda299);
-  --taxonomy-soft: light-dark(#f7eee9, #1e1a18);
-  --taxonomy-border: light-dark(#e5d0c5, #503b30);
+  --taxonomy-ink: var(--qx-color-data-rust);
+  --taxonomy-soft: var(--qx-color-canvas);
+  --taxonomy-border: var(--qx-color-rule);
 }
 
 .knowledge-surface [data-stage='1'] {
-  --stage-ink: light-dark(#3f6fb2, #91a7c5);
-  --stage-soft: light-dark(#eaf1fb, #181a1e);
-  --stage-border: light-dark(#c7d9f1, #2a3d55);
+  --stage-ink: var(--qx-color-info);
+  --stage-soft: var(--qx-color-canvas);
+  --stage-border: var(--qx-color-success);
 }
 
 .knowledge-surface [data-stage='2'] {
-  --stage-ink: light-dark(#7661a8, #a49bbb);
-  --stage-soft: light-dark(#f1edfa, #1a181e);
-  --stage-border: light-dark(#d9d0ee, #382c53);
+  --stage-ink: var(--qx-color-highlight);
+  --stage-soft: var(--qx-color-canvas);
+  --stage-border: var(--qx-color-success);
 }
 
 .knowledge-surface [data-stage='3'] {
-  --stage-ink: light-dark(#a76428, #c7a98e);
-  --stage-soft: light-dark(#fbf0e4, #1e1b18);
-  --stage-border: light-dark(#ebd1b5, #55412a);
+  --stage-ink: var(--qx-color-warning);
+  --stage-soft: var(--qx-color-canvas);
+  --stage-border: var(--qx-color-success);
 }
 
 .knowledge-surface [data-stage='4'] {
-  --stage-ink: light-dark(#3f7a5b, #99bcaa);
-  --stage-soft: light-dark(#eaf4ee, #1a1b1a);
-  --stage-border: light-dark(#c9dfd2, #354a3e);
+  --stage-ink: var(--qx-color-success);
+  --stage-soft: var(--qx-color-canvas);
+  --stage-border: var(--qx-color-rule);
 }
 
 .knowledge-surface button,
@@ -106,7 +106,7 @@
   justify-content: center;
   flex-direction: column;
   color: var(--app-muted, var(--quiet));
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
   text-align: center;
 }
 
@@ -122,7 +122,7 @@
 
 .knowledge-ui__state strong {
   color: var(--app-ink, var(--ink));
-  font-size: 14px;
+  font-size: var(--qx-text-control);
   font-weight: 500;
 }
 
@@ -133,11 +133,11 @@
 }
 
 .knowledge-ui__state button {
-  min-height: 32px;
+  min-height: var(--qx-icon-control-size);
   margin-top: 14px;
   padding: 0 11px;
   border: 1px solid var(--app-border-strong, var(--rule-strong));
-  border-radius: 999px;
+  border-radius: var(--qx-radius-pill);
   color: var(--app-ink, var(--ink));
   background: transparent;
   cursor: pointer;
