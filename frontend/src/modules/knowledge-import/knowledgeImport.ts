@@ -5,4 +5,13 @@ export const retryImport = (...args: Parameters<typeof api.retryImport>) => api.
 export type ImportBatch = Awaited<ReturnType<typeof readImportBatches>>[number]
 
 export const importBilibili = (...args: Parameters<typeof api.importBilibili>) => api.importBilibili(...args)
-export type ImportSourceType = Parameters<typeof api.importFiles>[0]
+export type ImportSourceType =
+  | 'chrome'
+  | 'markdown'
+  | 'obsidian'
+  | 'enex'
+  | 'notion'
+  | 'flomo'
+  | 'keep'
+  | 'apple_notes'
+  | 'image'
