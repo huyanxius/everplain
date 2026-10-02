@@ -1772,6 +1772,24 @@ export type BodyBatchUploadMaterials = {
 };
 
 /**
+ * Body_create_import_batch
+ */
+export type BodyCreateImportBatch = {
+    /**
+     * Files
+     */
+    files: Array<Blob | File>;
+    /**
+     * Library Id
+     */
+    library_id?: string | null;
+    /**
+     * Source Type
+     */
+    source_type: 'chrome' | 'markdown' | 'obsidian';
+};
+
+/**
  * Body_import_literature_entries
  */
 export type BodyImportLiteratureEntries = {
@@ -4012,6 +4030,108 @@ export type HealthResponse = {
      * Status
      */
     status: 'ok';
+};
+
+/**
+ * ImportBatchListResponse
+ */
+export type ImportBatchListResponse = {
+    /**
+     * Items
+     */
+    items: Array<ImportBatchResponse>;
+};
+
+/**
+ * ImportBatchResponse
+ */
+export type ImportBatchResponse = {
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Duplicates
+     */
+    duplicates: number;
+    /**
+     * Failed
+     */
+    failed: number;
+    /**
+     * Finished
+     */
+    finished: number;
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Imported
+     */
+    imported: number;
+    /**
+     * Items
+     */
+    items: Array<ImportItemResponse>;
+    /**
+     * Library Id
+     */
+    library_id: string;
+    /**
+     * Source Type
+     */
+    source_type: string;
+    /**
+     * Status
+     */
+    status: 'processing' | 'partial' | 'completed';
+    /**
+     * Total
+     */
+    total: number;
+};
+
+/**
+ * ImportItemResponse
+ */
+export type ImportItemResponse = {
+    /**
+     * Attempts
+     */
+    attempts: number;
+    /**
+     * Document Id
+     */
+    document_id: string | null;
+    /**
+     * Error
+     */
+    error: string | null;
+    /**
+     * Filename
+     */
+    filename: string;
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Relative Path
+     */
+    relative_path: string;
+    /**
+     * Source Url
+     */
+    source_url: string | null;
+    /**
+     * Status
+     */
+    status: 'queued' | 'running' | 'imported' | 'duplicate' | 'failed';
+    /**
+     * Title
+     */
+    title: string;
 };
 
 /**
@@ -11239,6 +11359,123 @@ export type GetHealthResponses = {
 };
 
 export type GetHealthResponse = GetHealthResponses[keyof GetHealthResponses];
+
+export type ListImportBatchesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/imports';
+};
+
+export type ListImportBatchesResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportBatchListResponse;
+};
+
+export type ListImportBatchesResponse = ListImportBatchesResponses[keyof ListImportBatchesResponses];
+
+export type CreateImportBatchData = {
+    body: BodyCreateImportBatch;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/imports';
+};
+
+export type CreateImportBatchErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateImportBatchError = CreateImportBatchErrors[keyof CreateImportBatchErrors];
+
+export type CreateImportBatchResponses = {
+    /**
+     * Successful Response
+     */
+    202: ImportBatchResponse;
+};
+
+export type CreateImportBatchResponse = CreateImportBatchResponses[keyof CreateImportBatchResponses];
+
+export type GetImportBatchData = {
+    body?: never;
+    path: {
+        /**
+         * Batch Id
+         */
+        batch_id: string;
+    };
+    query?: never;
+    url: '/api/imports/{batch_id}';
+};
+
+export type GetImportBatchErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetImportBatchError = GetImportBatchErrors[keyof GetImportBatchErrors];
+
+export type GetImportBatchResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportBatchResponse;
+};
+
+export type GetImportBatchResponse = GetImportBatchResponses[keyof GetImportBatchResponses];
+
+export type RetryImportItemData = {
+    body?: never;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Batch Id
+         */
+        batch_id: string;
+        /**
+         * Item Id
+         */
+        item_id: string;
+    };
+    query?: never;
+    url: '/api/imports/{batch_id}/items/{item_id}/retry';
+};
+
+export type RetryImportItemErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RetryImportItemError = RetryImportItemErrors[keyof RetryImportItemErrors];
+
+export type RetryImportItemResponses = {
+    /**
+     * Successful Response
+     */
+    200: ImportBatchResponse;
+};
+
+export type RetryImportItemResponse = RetryImportItemResponses[keyof RetryImportItemResponses];
 
 export type GetKnowledgeStorageData = {
     body?: never;
