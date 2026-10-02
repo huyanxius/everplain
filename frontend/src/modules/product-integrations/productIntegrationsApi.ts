@@ -20,3 +20,6 @@ export async function directory(query = '') { return data(await sdk.listPublicKn
 export async function publicLibrary(id: string) { return data(await sdk.getPublicKnowledgeLibrary({ client: apiClient, path: { kb_id: id } })) }
 export async function publicSource(id: string, doc: string) { return data(await sdk.getPublicKnowledgeSource({ client: apiClient, path: { kb_id: id, document_id: doc } })) }
 export async function privateSource(id: string, doc: string) { return data(await sdk.getSharedDocumentSource({ client: apiClient, path: { kb_id: id, document_id: doc } })) }
+export async function connections() { return data(await sdk.listExternalAgentConnections({ client: apiClient })) }
+export async function createConnection(body: { name: string; library_ids: string[]; expires_at: string }) { return data(await sdk.createExternalAgentConnection({ client: apiClient, body, headers: headers() })) }
+export async function revokeConnection(id: string) { return data(await sdk.revokeExternalAgentConnection({ client: apiClient, path: { connection_id: id }, headers: headers() })) }

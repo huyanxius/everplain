@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams, useSearchParams } from 'react-router'
-import { ArrowLeftIcon, ArrowRightIcon, ArrowUpRightIcon, CheckIcon, CopyIcon, LinkIcon, MagnifyingGlassIcon, SparkleIcon, XIcon } from '@phosphor-icons/react'
+import { ArrowLeftIcon, ArrowRightIcon, ArrowUpRightIcon, CheckIcon, CopyIcon, KeyIcon, LinkIcon, MagnifyingGlassIcon, PlusIcon, ShieldCheckIcon, SparkleIcon, XIcon } from '@phosphor-icons/react'
 import * as api from '../../modules/product-integrations'
 import { useAccount } from '../../modules/account'
 import { PageContent, PageShell } from '../ui/PageShell'
@@ -9,7 +9,7 @@ import { ErrorState, LoadingState } from '../ui/States'
 import './integrations.css'
 
 function Shell({ active, title, subtitle, children }: { active: string; title: string; subtitle: string; children: ReactNode }) {
-  return <PageShell wide><PageContent><main className="ep-hub"><Link className="ep-hub-back" to="/app"><ArrowLeftIcon size={15} />我的空间</Link><header><p>MORE ROOM TO THINK</p><h1>{title}</h1><span>{subtitle}</span></header><nav className="ep-hub-nav" aria-label="知识空间设置">{[['sharing','共享知识库'],['discover','公共主题']].map(([id,label]) => <Link key={id} to={`/${id}`} aria-current={active === id ? 'page' : undefined}>{label}</Link>)}</nav>{children}</main></PageContent></PageShell>
+  return <PageShell wide><PageContent><main className="ep-hub"><Link className="ep-hub-back" to="/app"><ArrowLeftIcon size={15} />我的空间</Link><header><p>MORE ROOM TO THINK</p><h1>{title}</h1><span>{subtitle}</span></header><nav className="ep-hub-nav" aria-label="知识空间设置">{[['sharing','共享知识库'],['discover','公共主题'],['connections','外部连接']].map(([id,label]) => <Link key={id} to={`/${id}`} aria-current={active === id ? 'page' : undefined}>{label}</Link>)}</nav>{children}</main></PageContent></PageShell>
 }
 function useIdentityKey() { const account=useAccount(); return account.sessionState.status==='authenticated'?account.sessionState.session.user.userId:null }
 function message(e: unknown) { return e instanceof Error ? e.message : '暂时未完成，请重试' }
@@ -64,5 +64,19 @@ function SharedReaderContent({publicView=false}:{publicView?:boolean}) {
   const title='publication' in value.data&&value.data.publication?value.data.publication.title:'name' in value.data?value.data.name:'公开主题'
   const documents=value.data.documents??[]
   return <Shell active={publicView?'discover':'sharing'} title={title??'知识库'} subtitle="只读原文，保留出处。所有者撤销访问后，这些资料将不可继续读取。"><div className="ep-hub-reader"><aside>{documents.map(d=><button key={d.id} aria-pressed={selected===d.id} onClick={()=>setSelected(d.id)}>{d.filename}<ArrowRightIcon size={12}/></button>)}</aside><article>{!selected?<p className="ep-hub-muted">选择一份资料开始阅读。</p>:source.isPending?<LoadingState message="正在打开原文"/>:source.isError?<ErrorState detail={source.error.message}/>:<><h2>{source.data?.document.filename}</h2>{source.data?.segments.map(s=><p key={s.segment_id}>{s.text}</p>)}</>}</article></div></Shell>
+}
+
+export function ConnectionsPage() {
+  const userKey = useIdentityKey()
+  return <ConnectionsContent key={userKey ?? 'anonymous'} />
+}
+function ConnectionsContent() {
+  const userKey=useIdentityKey()
+  const list=useQuery({queryKey:['external-connections',userKey],queryFn:api.connections})
+  const libs=useQuery({queryKey:['share-libraries',userKey],queryFn:api.libraries})
+  const [name,setName]=useState('');const [ids,setIds]=useState<string[]>([]);const [days,setDays]=useState(30)
+  const [secret,setSecret]=useState('');const [error,setError]=useState('');const [busy,setBusy]=useState(false)
+  async function create(){setBusy(true);setError('');try{const result=await api.createConnection({name,library_ids:ids,expires_at:new Date(Date.now()+days*86400000).toISOString()});setSecret(result.secret);setName('');setIds([]);await list.refetch()}catch(e){setError(message(e))}finally{setBusy(false)}}
+  return <Shell active="connections" title="让你选的工具，读懂你的资料。" subtitle="每个连接只读指定知识库，有效期明确，可以随时撤销。"><div className="ep-hub-two-columns"><section className="ep-hub-panel"><KeyIcon size={26} weight="light"/><h2>建立一个受限连接</h2><form onSubmit={e=>{e.preventDefault();void create()}}><label>连接名称<input value={name} maxLength={80} required onChange={e=>setName(e.target.value)} placeholder="例如：我的桌面 Agent"/></label><fieldset><legend>允许阅读哪些知识库？</legend>{libs.isPending && <p>正在读取知识库…</p>}{libs.isError && <p role="alert">{libs.error.message}</p>}{libs.data?.filter(l=>l.viewer_access==='owner').map(l=><label className="ep-hub-check" key={l.id}><input type="checkbox" checked={ids.includes(l.id)} onChange={e=>setIds(e.target.checked?[...ids,l.id]:ids.filter(id=>id!==l.id))}/>{l.name}</label>)}</fieldset><label>有效期<select value={days} onChange={e=>setDays(Number(e.target.value))}><option value={7}>7 天</option><option value={30}>30 天</option><option value={90}>90 天</option></select></label><p className="ep-hub-muted">创建后请你手动配置 MCP 客户端。密钥仅显示一次，不要发送给不信任的人。</p><button className="ep-hub-primary" disabled={busy||!ids.length}>{busy?'正在创建…':'创建只读连接'}<PlusIcon size={14}/></button></form>{error&&<p role="alert" className="ep-hub-error">{error}</p>}{secret&&<div className="ep-hub-secret"><strong>请现在保存，关闭后不会再次显示</strong><textarea aria-label="一次性连接密钥" readOnly value={secret}/><p>MCP：{window.location.origin}{list.data?.mcp_endpoint??'/api/mcp'}</p><p>认证方式：Bearer Token</p><button onClick={()=>setSecret('')}>我已保存，关闭密钥</button></div>}</section><section><h2 className="ep-hub-section-title">现有连接</h2>{list.isError&&<p role="alert">{list.error.message}</p>}{list.data?.connections.map(c=><article className="ep-hub-connection" key={c.connection_id}><ShieldCheckIcon size={21} weight="light"/><div><strong>{c.name}</strong><p>{c.library_ids.length} 个知识库 · {new Date(c.expires_at).toLocaleDateString()} 到期</p><span>{c.status==='active'?'有效':c.status==='expired'?'已到期':'已撤销'}</span></div>{c.status==='active'&&<button disabled={busy} onClick={()=>{setBusy(true);void api.revokeConnection(c.connection_id).then(()=>list.refetch()).catch(e=>setError(message(e))).finally(()=>setBusy(false))}}>撤销</button>}</article>)}{list.data?.connections.length===0&&<p className="ep-hub-muted">还没有外部连接。你的资料不会自动开放给其他工具。</p>}</section></div></Shell>
 }
 

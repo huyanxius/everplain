@@ -10,3 +10,6 @@ export const directory = (...args: Parameters<typeof api.directory>) => api.dire
 export const publicLibrary = (...args: Parameters<typeof api.publicLibrary>) => api.publicLibrary(...args)
 export const publicSource = (...args: Parameters<typeof api.publicSource>) => api.publicSource(...args)
 export const privateSource = (...args: Parameters<typeof api.privateSource>) => api.privateSource(...args)
+export const connections = (...args: Parameters<typeof api.connections>) => api.connections(...args)
+export const createConnection = (...args: Parameters<typeof api.createConnection>) => api.createConnection(...args)
+export const revokeConnection = (...args: Parameters<typeof api.revokeConnection>) => api.revokeConnection(...args)
