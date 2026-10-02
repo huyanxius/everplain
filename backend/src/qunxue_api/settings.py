@@ -131,6 +131,19 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5196",
         "http://localhost:5196",
     )
+    billing_credits_per_usd: int | None = Field(default=None, gt=0)
+    billing_price_version: str | None = None
+    billing_model_aliases: dict[str, str] = Field(default_factory=dict)
+    billing_usage_policies: dict[str, Literal["omitted_cache_subsets_are_zero"]] = Field(
+        default_factory=dict
+    )
+    billing_phase_policies: dict[str, Literal["user", "operator"]] = Field(default_factory=dict)
+    billing_max_attempt_usd_micro: int | None = Field(default=None, gt=0)
+    billing_max_operation_usd_micro: int | None = Field(default=None, gt=0)
+    billing_daily_budget_usd_micro: int | None = Field(default=None, gt=0)
+    billing_deepseek_time_basis: Literal["server_dispatch_at"] | None = None
+    billing_calendar_version: str | None = None
+    billing_max_attempts: int = Field(default=64, gt=0, le=256)
     model_base_url: str | None = None
     model_api_key: SecretStr | None = None
     model_fallbacks: list[ModelFallbackSettings] = Field(default_factory=list)

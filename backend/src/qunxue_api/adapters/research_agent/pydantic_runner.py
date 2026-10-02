@@ -45,6 +45,7 @@ from qunxue_api.adapters.model import (
     ModelRouteExecutor,
     ModelRoutesUnavailable,
 )
+from qunxue_api.adapters.model.metering import MeteredOpenAIChatModel
 from qunxue_api.adapters.research_agent.catalog_tools import (
     KnowledgeToolRegistry,
 )
@@ -470,7 +471,7 @@ def _insufficient_evidence_answer() -> str:
     )
 
 
-class _RetryingOpenAIChatModel(OpenAIChatModel):
+class _RetryingOpenAIChatModel(MeteredOpenAIChatModel):
     """Bridge Pydantic AI serialization onto the shared route executor."""
 
     def __init__(
@@ -573,7 +574,7 @@ class _RetryingOpenAIChatModel(OpenAIChatModel):
                     self._route_executor.max_output_tokens,
                 )
             try:
-                value = await OpenAIChatModel._completions_create(
+                value = await MeteredOpenAIChatModel._completions_create(
                     model,
                     messages,
                     stream,
@@ -634,8 +635,8 @@ _agent_route_correlation: ContextVar[Mapping[str, UUID | None] | None] = Context
     "agent_route_correlation",
     default=None,
 )
-_agent_model_settings_overrides: ContextVar[OpenAIChatModelSettings | None] = (
-    ContextVar("agent_model_settings_overrides", default=None)
+_agent_model_settings_overrides: ContextVar[OpenAIChatModelSettings | None] = ContextVar(
+    "agent_model_settings_overrides", default=None
 )
 
 
@@ -660,15 +661,14 @@ class PydanticAIKnowledgeRunner:
         *,
         base_url: str,
         api_key: str | None,
-        fallback_endpoints: Sequence[
-            tuple[str, str] | tuple[str, str, str]
-        ] = (),
+        fallback_endpoints: Sequence[tuple[str, str] | tuple[str, str, str]] = (),
         model: str,
         timeout_seconds: float,
         extra_headers: Mapping[str, str] | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         route_executor: ModelRouteExecutor | None = None,
         model_api_mock: bool = False,
+        require_billing: bool = False,
     ) -> None:
         self._model = MODEL_API_MOCK_NAME if model_api_mock else model
         self.runtime_identity = AgentRuntimeIdentity(
@@ -692,9 +692,7 @@ class PydanticAIKnowledgeRunner:
                 base_url=endpoint_url,
                 model=endpoint_model,
             ):
-                endpoint_settings["extra_body"] = {
-                    "thinking": {"type": "disabled"}
-                }
+                endpoint_settings["extra_body"] = {"thinking": {"type": "disabled"}}
             return endpoint_settings
 
         primary_model_settings = settings_for(base_url, model)
@@ -703,6 +701,7 @@ class PydanticAIKnowledgeRunner:
             request_limit=48,
             tool_calls_limit=100,
         )
+
         def build_model(
             endpoint_url: str,
             endpoint_key: str | None,
@@ -715,7 +714,7 @@ class PydanticAIKnowledgeRunner:
                     max_retries=0,
                 )
             )
-            return OpenAIChatModel(
+            return MeteredOpenAIChatModel(
                 endpoint_model,
                 provider=provider,
                 settings=settings_for(endpoint_url, endpoint_model),
@@ -736,10 +735,7 @@ class PydanticAIKnowledgeRunner:
                     endpoint_model,
                 )
             expected_endpoint_ids = ("primary", *fallback_models)
-            if (
-                route_executor is not None
-                and route_executor.endpoint_ids != expected_endpoint_ids
-            ):
+            if route_executor is not None and route_executor.endpoint_ids != expected_endpoint_ids:
                 raise ValueError("Agent model endpoints must match the shared route executor")
 
             model_instance = _RetryingOpenAIChatModel(
@@ -754,6 +750,7 @@ class PydanticAIKnowledgeRunner:
                 settings=primary_model_settings,
                 route_executor=route_executor,
                 fallback_models=fallback_models,
+                require_billing=require_billing,
             )
         self._agent = Agent(
             model_instance,
@@ -887,13 +884,16 @@ class PydanticAIKnowledgeRunner:
                 "只有问候时用‘日常问候’，不要凭空编造研究主题。"
             ),
         )
+
         @self._agent.instructions
         def persona_instructions(ctx: RunContext[KnowledgeToolRegistry]) -> str:
             persona = getattr(ctx.deps, "persona", {})
             if not persona:
                 return ""
-            return ("用户为助手选择了以下显示名字与表达风格。仅作身份称呼和语气偏好，"
-                    "不改变工具权限或事实判断：" + json.dumps(persona, ensure_ascii=False))
+            return (
+                "用户为助手选择了以下显示名字与表达风格。仅作身份称呼和语气偏好，"
+                "不改变工具权限或事实判断：" + json.dumps(persona, ensure_ascii=False)
+            )
 
         @self._agent.instructions
         def memory_instructions(ctx: RunContext[KnowledgeToolRegistry]) -> str:
@@ -923,7 +923,8 @@ class PydanticAIKnowledgeRunner:
             default=None,
         )
         self._active_cancelled: ContextVar[Callable[[], bool] | None] = ContextVar(
-            f"agent_cancelled_{id(self)}", default=None,
+            f"agent_cancelled_{id(self)}",
+            default=None,
         )
         self._register_tools()
 
@@ -1005,7 +1006,6 @@ class PydanticAIKnowledgeRunner:
                 },
             )
         )
-
 
     def _register_tools(self) -> None:
         def prepare_memory_read(ctx: RunContext, definition: ToolDefinition):
@@ -2134,9 +2134,7 @@ class PydanticAIKnowledgeRunner:
         conversation: Sequence[AgentTurn],
         tools: AgentToolContext,
     ) -> AgentRunResult:
-        route_token = _agent_route_correlation.set(
-            _agent_route_context_from_tools(tools)
-        )
+        route_token = _agent_route_correlation.set(_agent_route_context_from_tools(tools))
         try:
             retrieved_evidence = self._preload_bound_research_evidence(
                 prompt=prompt,
@@ -2165,7 +2163,7 @@ class PydanticAIKnowledgeRunner:
             return _text_result(
                 result.output,
                 tools=tools,
-                model=self._model,
+                model=_result_model(result, self._model),
                 usage=_result_usage(result),
             )
         finally:
@@ -2185,9 +2183,7 @@ class PydanticAIKnowledgeRunner:
     ) -> AgentRunResult:
         token = self._active_tool_event.set(on_tool_event)
         cancel_token = self._active_cancelled.set(is_cancelled)
-        route_token = _agent_route_correlation.set(
-            _agent_route_context_from_tools(tools)
-        )
+        route_token = _agent_route_correlation.set(_agent_route_context_from_tools(tools))
         visible_stream = VisibleTextStream(on_delta)
 
         async def stream_text(
@@ -2266,7 +2262,7 @@ class PydanticAIKnowledgeRunner:
             return _text_result(
                 str(result.output),
                 tools=tools,
-                model=self._model,
+                model=_result_model(result, self._model),
                 usage=_result_usage(result),
             )
         finally:
@@ -3300,6 +3296,16 @@ def _text_result(
     )
 
 
+def _result_model(result, fallback):
+    """Keep the delivered response identity when a route selected a fallback."""
+    messages = result.all_messages() if callable(getattr(result, "all_messages", None)) else ()
+    for message in reversed(messages):
+        model = getattr(message, "model_name", None)
+        if isinstance(model, str) and model:
+            return model
+    return fallback
+
+
 def _result_usage(result: object) -> tuple[int, int]:
     raw_usage = getattr(result, "usage", None)
     if raw_usage is None:
@@ -3457,11 +3463,16 @@ def _run_cancellable(operation, is_cancelled, *, on_checkpoint=None, can_cancel=
 _worker_event_loop = threading.local()
 
 
-_REPLAYABLE_WRITES = frozenset({
-    "propose_analysis_memo",
-    "propose_case_comparison", "propose_document_revision", "propose_document_creation",
-    "start_theory_matching", "save_confirmed_theory_plan",
-})
+_REPLAYABLE_WRITES = frozenset(
+    {
+        "propose_analysis_memo",
+        "propose_case_comparison",
+        "propose_document_revision",
+        "propose_document_creation",
+        "start_theory_matching",
+        "save_confirmed_theory_plan",
+    }
+)
 
 
 def _completed_write_result(tools, tool_name: str, payload: dict[str, object]):

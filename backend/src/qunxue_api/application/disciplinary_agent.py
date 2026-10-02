@@ -26,7 +26,7 @@ from qunxue_api.modules.agent_conversation import (
     RunAlreadyActive,
     SubjectAgentRunner,
 )
-from qunxue_api.modules.billing import CreditService
+from qunxue_api.modules.billing import BillingOperations, CreditService
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +50,7 @@ class DisciplinaryAgentApplication:
         runner: SubjectAgentRunner,
         tools_factory: Callable[[], AgentToolContext],
         credits: CreditService | None = None,
+        billing: BillingOperations | None = None,
         atomic: Callable[[], AbstractContextManager[object]] | None = None,
         ensure_research_draft: Callable[..., UUID] | None = None,
         bind_research_draft: Callable[..., UUID] | None = None,
@@ -61,6 +62,7 @@ class DisciplinaryAgentApplication:
         self._runner = runner
         self._tools_factory = tools_factory
         self._credits = credits
+        self._billing = billing
         self._atomic = atomic or nullcontext
         self._ensure_research_draft = ensure_research_draft
         self._bind_research_draft = bind_research_draft
@@ -81,6 +83,9 @@ class DisciplinaryAgentApplication:
                 self._credits.release(user_id=user_id, run_id=run.run_id)
         if expired:
             self._conversations.commit()
+            if self._billing is not None:
+                for run in expired:
+                    self._billing.close(run_id=run.run_id, outcome="error")
         return self._conversations.get_conversation(
             user_id=user_id,
             conversation_id=conversation_id,
@@ -561,8 +566,19 @@ class DisciplinaryAgentApplication:
             if on_delta is not None:
                 on_delta(delta)
 
+        billing_context = None
         try:
-            if self._credits is not None:
+            if self._billing is not None:
+                self._conversations.commit()
+                billing_candidate = self._billing.open(
+                    user_id=user_id,
+                    run_id=run.run_id,
+                    payload=request_snapshot,
+                    before_network=lambda: checkpoint(force=True),
+                )
+                billing_candidate.__enter__()
+                billing_context = billing_candidate
+            elif self._credits is not None:
                 self._credits.reserve(user_id=user_id, run_id=run.run_id)
                 self._conversations.commit()
             current = self.get_conversation(
@@ -759,6 +775,8 @@ class DisciplinaryAgentApplication:
                             if self._credits is not None:
                                 self._credits.release(user_id=user_id, run_id=run.run_id)
                             self._conversations.commit()
+                            if billing_context is not None:
+                                billing_context.finish("success")
                             return AgentTurnExecution(
                                 conversation=current,
                                 run_id=run.run_id,
@@ -856,7 +874,7 @@ class DisciplinaryAgentApplication:
                     evidence_ids=evidence_ids,
                     turn_id=planned_turn_id,
                 )
-                if self._credits is not None:
+                if self._credits is not None and self._billing is None:
                     self._credits.charge(
                         user_id=user_id,
                         run_id=run.run_id,
@@ -881,6 +899,9 @@ class DisciplinaryAgentApplication:
                     finalize_agent_turn = getattr(tools, "finalize_agent_turn", None)
                     if callable(finalize_agent_turn):
                         finalize_agent_turn(source_turn_id=turn_result.turn_id)
+            if billing_context is not None:
+                self._conversations.commit()
+                billing_context.finish("success")
         except Exception as error:
             if owns_run():
                 checkpoint(force=True)
@@ -894,7 +915,14 @@ class DisciplinaryAgentApplication:
                     tool_summary=saved_summary(),
                 )
                 self._conversations.commit()
+            if billing_context is not None:
+                billing_context.finish(
+                    "cancelled" if isinstance(error, AgentInterrupted) else "error"
+                )
             raise
+        finally:
+            if billing_context is not None:
+                billing_context.__exit__(None, None, None)
         if isinstance(turn_result, IdempotentTurn):
             refreshed = self.get_conversation(
                 user_id=user_id,

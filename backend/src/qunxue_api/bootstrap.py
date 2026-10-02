@@ -269,7 +269,14 @@ def create_app(
     async def run_model_probe_loop(app: FastAPI) -> None:
         while True:
             try:
-                await app.state.model_provider.probe()
+                with app.state.billing_operations.open(
+                    user_id="operator:model_probe",
+                    run_id=uuid4(),
+                    payload={"phase": "model_probe"},
+                    phase="model_probe",
+                ) as scope:
+                    await app.state.model_provider.probe()
+                    scope.finish("success")
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -278,6 +285,10 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        if app.state.billing_operations.runtime:
+            app.state.billing_operations.runtime.recover_stale(
+                before=datetime.now(UTC) - timedelta(minutes=30)
+            )
         probe_task = None
         memory_task = None
         course_task = None
@@ -387,6 +398,9 @@ def create_app(
         description="Everplain personal knowledge and research API.",
         lifespan=lifespan,
     )
+    from qunxue_api.api.billing_errors import install_billing_error_handlers
+
+    install_billing_error_handlers(app)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(resolved_settings.cors_allowed_origins),
@@ -445,6 +459,14 @@ def create_app(
     app.state.model_endpoints = model_endpoints
     app.state.model_router = model_router
     app.state.model_attempt_recorder = model_attempt_recorder
+    from qunxue_api.adapters.model.billing_operations import SqliteBillingOperations
+
+    app.state.billing_operations = SqliteBillingOperations(
+        resolved_database,
+        _billing_runtime(resolved_settings, resolved_database),
+        exempt_user_ids=lambda: getattr(app.state, "credit_exempt_user_ids", ()),
+        phase_policies=resolved_settings.billing_phase_policies,
+    )
     app.state.model_provider = resolved_model_provider
     app.state.model_gateway = ModelGateway(
         provider=resolved_model_provider,
@@ -626,14 +648,19 @@ def create_app(
     def knowledge_import_scope():
         with resolved_database.session() as session:
             libraries = SharedKnowledgeApplication(
-                SqliteSharedKnowledgeRepository(session), parser=parse_material,
+                SqliteSharedKnowledgeRepository(session),
+                parser=parse_material,
                 max_file_bytes=resolved_settings.max_file_bytes,
                 max_storage_bytes=resolved_settings.max_storage_bytes,
                 max_libraries=resolved_settings.max_libraries,
-                max_documents_per_library=resolved_settings.max_documents_per_library)
+                max_documents_per_library=resolved_settings.max_documents_per_library,
+            )
             yield KnowledgeImportApplication(
-                SqliteImportRepository(session), libraries, parse_files,
-                app.state.import_fetch_text, app.state.media_import_gateway,
+                SqliteImportRepository(session),
+                libraries,
+                parse_files,
+                app.state.import_fetch_text,
+                app.state.media_import_gateway,
             )
 
     def run_import_once():
@@ -648,13 +675,17 @@ def create_app(
     def personal_graph_scope():
         with resolved_database.session() as session:
             namer = (
-                GraphTopicNamer(app.state.model_router)
-                if app.state.model_endpoints and resolved_settings.runtime_mode != "mock"
+                GraphTopicNamer(app.state.model_router, billing=app.state.billing_operations)
+                if app.state.model_endpoints
+                and resolved_settings.runtime_mode != "mock"
+                and app.state.billing_operations.runtime is not None
+                and resolved_settings.billing_phase_policies.get("graph_topic_naming") == "operator"
                 else None
             )
             yield PersonalGraphApplication(
                 SqlitePersonalGraphRepository(
-                    session, mock=resolved_settings.runtime_mode == "mock",
+                    session,
+                    mock=resolved_settings.runtime_mode == "mock",
                     embedding_model=resolved_settings.embedding_model,
                 ),
                 name_topic=namer,
@@ -669,18 +700,30 @@ def create_app(
     app.state.personal_graph_scope = personal_graph_scope
     app.state.run_graph_once = run_graph_once
     vision = None
-    if (resolved_settings.runtime_mode != "mock" and resolved_settings.vision_base_url
-            and resolved_settings.vision_model):
+    if (
+        resolved_settings.runtime_mode != "mock"
+        and resolved_settings.vision_base_url
+        and resolved_settings.vision_model
+    ):
         vision = OpenAICompatibleVisionProvider(
-            base_url=resolved_settings.vision_base_url, model=resolved_settings.vision_model,
-            api_key=(resolved_settings.vision_api_key.get_secret_value()
-                     if resolved_settings.vision_api_key else None))
+            base_url=resolved_settings.vision_base_url,
+            model=resolved_settings.vision_model,
+            api_key=(
+                resolved_settings.vision_api_key.get_secret_value()
+                if resolved_settings.vision_api_key
+                else None
+            ),
+        )
     app.state.media_import_gateway = MediaImportGateway(
         BilibiliFavoritesAdapter(),
-        VideoImportAdapter(audio=BilibiliTemporaryAudioProvider(),
-                           transcription=_build_transcription_provider(resolved_settings)
-                           if resolved_settings.runtime_mode != "mock" else None),
-        ImageImportAdapter(provider=vision))
+        VideoImportAdapter(
+            audio=BilibiliTemporaryAudioProvider(),
+            transcription=_build_transcription_provider(resolved_settings)
+            if resolved_settings.runtime_mode != "mock"
+            else None,
+        ),
+        ImageImportAdapter(provider=vision),
+    )
     app.state.knowledge_import_scope = knowledge_import_scope
     app.state.import_fetch_text = fetch_bookmark
     app.state.run_import_once = run_import_once
@@ -1028,6 +1071,7 @@ def create_app(
             agent_runtime_mode = _effective_model_runtime_mode(resolved_settings)
             use_real_agent = agent_runtime_mode != "mock"
             if resolved_settings.allow_model_fallback and not resolved_settings.has_model_api_key:
+                use_real_agent = False
                 runner = PydanticAIKnowledgeRunner(
                     base_url="http://model-unconfigured.invalid",
                     api_key=None,
@@ -1057,6 +1101,7 @@ def create_app(
                     extra_headers=primary_endpoint.extra_headers,
                     reasoning_effort=resolved_settings.model_reasoning_effort,
                     route_executor=app.state.model_router,
+                    require_billing=True,
                 )
             try:
                 yield DisciplinaryAgentApplication(
@@ -1077,6 +1122,7 @@ def create_app(
                     ),
                     conversations=conversations,
                     runner=runner,
+                    billing=app.state.billing_operations if use_real_agent else None,
                     credits=CreditService(
                         SqliteCreditRepository(session),
                         exempt_user_ids=getattr(
@@ -1141,8 +1187,10 @@ def create_app(
     @contextmanager
     def agent_profile_scope():
         with resolved_database.session() as session:
-            yield AgentProfileApplication(SqliteAgentProfileRepository(session),
-                                          MemoryService(SqliteMemoryRepository(session)))
+            yield AgentProfileApplication(
+                SqliteAgentProfileRepository(session),
+                MemoryService(SqliteMemoryRepository(session)),
+            )
 
     app.state.agent_profile_scope = agent_profile_scope
 
@@ -1150,7 +1198,9 @@ def create_app(
         with agent_profile_scope() as application:
             return application.get(user_id).persona()
 
-    app.state.memory_overview = MemoryOverview()
+    app.state.memory_overview = MemoryOverview(
+        billing=app.state.billing_operations if app.state.model_endpoints else None
+    )
     if app.state.model_endpoints:
         endpoint = app.state.model_endpoints[0]
         app.state.memory_overview.generate = PydanticMemoryOverview(
@@ -1179,6 +1229,7 @@ def create_app(
     app.state.memory_worker = MemoryLearningWorker(
         memory_learning_scope,
         extractor=memory_extractor,
+        billing=app.state.billing_operations if memory_extractor else None,
         idle_seconds=resolved_settings.memory_learning_idle_seconds,
         daily_calls=resolved_settings.memory_learning_daily_calls,
         daily_tokens=resolved_settings.memory_learning_daily_tokens,
@@ -1213,6 +1264,7 @@ def create_app(
         else None,
         embedder=course_embedder,
         embedding_model=resolved_settings.embedding_model,
+        billing=app.state.billing_operations,
     )
     app.include_router(shared_knowledge_router)
     app.include_router(memories_router)
@@ -1229,6 +1281,7 @@ def create_app(
     app.include_router(research_exchange_router)
     app.include_router(phenomena_router)
     app.include_router(material_intakes_router)
+
     @contextmanager
     def external_agents_scope():
         with resolved_database.session() as session:
@@ -1248,8 +1301,10 @@ def create_app(
         commerce_settings.stripe_enabled = False
     app.state.model_catalog = build_model_catalog(resolved_settings, commerce_settings)
     app.state.subscription_application = SubscriptionApplication(
-        subscription_repository_scope, StripeSubscriptionGateway(commerce_settings),
-        plans=commerce_settings.plans(), unavailable_reason=commerce_settings.unavailable_reason,
+        subscription_repository_scope,
+        StripeSubscriptionGateway(commerce_settings),
+        plans=commerce_settings.plans(),
+        unavailable_reason=commerce_settings.unavailable_reason,
         success_url=commerce_settings.stripe_success_url,
         cancel_url=commerce_settings.stripe_cancel_url,
         portal_return_url=commerce_settings.stripe_portal_return_url,
@@ -1588,6 +1643,7 @@ def _model_provider_from_settings(
 
     providers: tuple[ProbeableModelProvider, ...] = tuple(
         OpenAICompatibleModelProvider(
+            require_billing=True,
             base_url=endpoint.base_url,
             api_key=endpoint.api_key,
             model=endpoint.model,
@@ -1602,7 +1658,8 @@ def _model_provider_from_settings(
     )
     attempt_recorder = SqliteModelAttemptRecorder(database)
     router = ModelRouteExecutor(
-        endpoints=endpoints, recorder=attempt_recorder,
+        endpoints=endpoints,
+        recorder=attempt_recorder,
         max_retries=settings.model_max_retries,
         max_input_tokens=settings.model_max_input_tokens,
         max_output_tokens=settings.model_max_output_tokens,
@@ -1650,3 +1707,33 @@ def _model_headers_from_settings(settings: Settings) -> dict[str, str]:
             raise ValueError("SFT resource header duplicates a model extension header")
         headers[header_name] = settings.model_sft_resource_id.get_secret_value()
     return headers
+
+
+def _billing_runtime(settings, database):
+    from qunxue_api.adapters.sqlite.durable_billing import DurableBilling
+    from qunxue_api.modules.billing import PriceBook
+
+    fields = (
+        settings.billing_credits_per_usd,
+        settings.billing_price_version,
+        settings.billing_max_attempt_usd_micro,
+        settings.billing_max_operation_usd_micro,
+        settings.billing_daily_budget_usd_micro,
+    )
+    if any(value is None for value in fields):
+        return None
+    return DurableBilling(
+        database.engine,
+        price_book=PriceBook(
+            credits_per_usd=settings.billing_credits_per_usd,
+            version=settings.billing_price_version,
+            aliases=settings.billing_model_aliases,
+            usage_policies=settings.billing_usage_policies,
+            deepseek_time_basis=settings.billing_deepseek_time_basis,
+            calendar_version=settings.billing_calendar_version,
+        ),
+        max_attempt_pico=settings.billing_max_attempt_usd_micro * 10**6,
+        max_operation_pico=settings.billing_max_operation_usd_micro * 10**6,
+        daily_budget_pico=settings.billing_daily_budget_usd_micro * 10**6,
+        max_attempts=settings.billing_max_attempts,
+    )

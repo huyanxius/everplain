@@ -130,6 +130,7 @@ def get_account(
     response_model=CreditSummaryResponse,
 )
 def get_account_credits(
+    request: Request,
     current: CurrentSessionDependency,
     service: CreditServiceDependency,
     cursor: int = Query(default=0, ge=0),
@@ -145,7 +146,21 @@ def get_account_credits(
         credit_limit=WELCOME_GRANT,
         grant_amount=WELCOME_GRANT,
         is_unlimited=summary.is_unlimited,
+        frozen_points=summary.frozen_points,
+        available_balance=summary.available_balance,
+        operations=list(summary.operations),
         pricing=CreditPricingResponse(
+            mode="model_rates" if request.app.state.billing_operations.runtime else "unconfigured",
+            credits_per_usd=(
+                request.app.state.billing_operations.runtime.book.credits_per_usd
+                if request.app.state.billing_operations.runtime
+                else None
+            ),
+            price_version=(
+                request.app.state.billing_operations.runtime.book.version
+                if request.app.state.billing_operations.runtime
+                else None
+            ),
             input_tokens_per_credit=INPUT_TOKENS_PER_CREDIT,
             output_tokens_per_credit=OUTPUT_TOKENS_PER_CREDIT,
         ),
@@ -458,10 +473,13 @@ def update_admin_runtime_settings(
 ) -> AdminRuntimeSettingsResponse:
     service.require_admin_access(current.user.user_id)
     path = _runtime_config_path(request)
-    _replace_env_values(path, {
-        "EVERPLAIN_MODEL_NAME": payload.model.strip(),
-        "EVERPLAIN_MODEL_REASONING_EFFORT": payload.reasoning_effort,
-    })
+    _replace_env_values(
+        path,
+        {
+            "EVERPLAIN_MODEL_NAME": payload.model.strip(),
+            "EVERPLAIN_MODEL_REASONING_EFFORT": payload.reasoning_effort,
+        },
+    )
     return AdminRuntimeSettingsResponse(
         model=payload.model.strip(),
         reasoning_effort=payload.reasoning_effort,
