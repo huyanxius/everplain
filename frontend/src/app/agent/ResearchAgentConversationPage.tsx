@@ -1,3 +1,4 @@
+import { PersonalCompanion } from './PersonalCompanion'
 import { CourseReferenceSelector } from '../courses/CourseReferenceSelector'
 import { composeResearchDiscussion, latestResearchAsk, resolveResearchCitation, type ResearchDiscussion } from '../../modules/research-workspace'
 import {
@@ -2084,7 +2085,7 @@ export function ResearchAgentConversationPage({
     const reducedMotion = typeof window.matchMedia === 'function'
       && window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const homeBot = document.querySelector(
-      '.research-agent-conversation.is-empty .research-agent-page__empty-copy [data-research-agent-bot]',
+      '.research-agent-conversation.is-empty .research-agent-page__empty-copy :is([data-research-agent-bot], .agent-avatar)',
     )
     if (!homeBot || reducedMotion || !transitionDocument.startViewTransition) {
       if (isCurrent()) setStreamingTurn(turn)
@@ -3276,7 +3277,7 @@ export function ResearchAgentConversationPage({
             {isEmpty ? (
               <div className="research-agent-page__empty-state">
                 <div className="research-agent-page__empty-copy">
-                  <ResearchAgentBot />
+                  <PersonalCompanion userId={userId} fallback={<ResearchAgentBot />} />
                   <ResearchPromptCarousel onSelect={choosePrompt} />
                 </div>
               </div>

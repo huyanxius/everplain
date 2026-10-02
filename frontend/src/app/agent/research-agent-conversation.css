@@ -626,7 +626,7 @@
   animation: agent-page-conversation-enter 620ms 90ms cubic-bezier(.16, 1, .3, 1) both;
 }
 
-.research-agent-conversation.is-empty .research-agent-page__empty-copy .research-agent-bot,
+.research-agent-conversation.is-empty .research-agent-page__empty-copy :is(.research-agent-bot, .agent-avatar),
 .research-agent-conversation .new-research__turn.is-streaming .new-research__assistant-label .research-agent-bot {
   view-transition-name: research-agent-bot;
 }
@@ -2307,7 +2307,7 @@
     animation: none;
   }
 
-  .research-agent-conversation.is-empty .research-agent-page__empty-copy .research-agent-bot,
+  .research-agent-conversation.is-empty .research-agent-page__empty-copy :is(.research-agent-bot, .agent-avatar),
   .research-agent-conversation .new-research__turn.is-streaming .new-research__assistant-label .research-agent-bot {
     view-transition-name: none;
   }
@@ -2632,3 +2632,5 @@
 .research-agent-conversation .research-flow-card .deep-research-mock-card__options button b { color: light-dark(#68746b, #a7afa9); background: light-dark(rgb(104 116 107 / 11%), rgb(140 151 143 / 0.11)); }
 .research-agent-conversation .research-flow-card .deep-research-mock-card__options button.is-chosen b { color: light-dark(#fff, #212121); background: light-dark(#68746b, #8c978f); }
 .research-agent-conversation .research-flow-card .deep-research-mock-card__options button em { color: light-dark(#68746b, #a7afa9); }
+.ep-chat-companion { display: flex; flex-direction: column; align-items: center; text-align: center; margin: 0 auto 20px; max-width: 540px; }
+.ep-chat-companion p { font: 400 clamp(18px,2vw,24px)/1.7 var(--qx-font-reading); color: var(--qx-color-ink-soft); text-wrap: balance; margin: 18px 0 0; }

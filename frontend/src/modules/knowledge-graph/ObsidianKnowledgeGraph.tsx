@@ -12,6 +12,7 @@ interface ObsidianKnowledgeGraphProps {
   readonly onSelectEdge?: (edgeId: string) => void
   readonly onSelectKnowledge: (knowledgeId: string) => void
   readonly variant?: 'workspace' | 'preview'
+  readonly personal?: boolean
 }
 
 function graphElements(
@@ -43,6 +44,8 @@ function graphElements(
           id: node.id,
           label: node.label,
           nodeType,
+          level: node.level ?? 2,
+          image: node.image ?? '',
           focus: node.id === focusNodeId,
         },
       }
@@ -76,7 +79,13 @@ function layoutOptions(
   hasEdges: boolean,
   animate = false,
   animationDuration = 560,
+  personal = false,
 ) {
+  if (personal) return { name: 'concentric', animate: false, fit: true, padding: 80,
+    minNodeSpacing: 38, avoidOverlap: true, equidistant: true,
+    concentric: (node: cytoscape.NodeSingular) => 4 - (node.data('level') ?? 2),
+    levelWidth: () => 1,
+  }
   if (!hasFocus && !hasEdges) {
     return {
       name: 'circle',
@@ -590,6 +599,7 @@ export function ObsidianKnowledgeGraph({
   onSelectEdge,
   onSelectKnowledge,
   variant = 'workspace',
+  personal = false,
 }: ObsidianKnowledgeGraphProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const graphRef = useRef<Core | undefined>(undefined)
@@ -635,8 +645,9 @@ export function ObsidianKnowledgeGraph({
       hasEdges,
       !reduceMotion,
       layoutDuration,
+      personal,
     )).run()
-  }, [focusNodeId, hasEdges, layoutDuration, reduceMotion, variant])
+  }, [focusNodeId, hasEdges, layoutDuration, reduceMotion, variant, personal])
 
   useEffect(() => {
     if (!canvasRef.current || elements.length === 0) return
@@ -804,10 +815,15 @@ export function ObsidianKnowledgeGraph({
           hasEdges,
           animateLayout,
           layoutDuration,
+          personal,
         ),
         maxZoom: 3.2,
         minZoom: 0.16,
-        style: variant === 'preview' ? previewGraphStyle : workspaceGraphStyle,
+        style: personal ? [...workspaceGraphStyle,
+          { selector: 'node.node--self', style: { width: 70, height: 70, 'background-opacity': 0, 'border-width': 0, 'background-image': 'data(image)', 'background-fit': 'contain', 'text-margin-y': -5 } },
+          { selector: 'node.node--topic', style: { width: 18, height: 18, 'background-color': '#8f9e86', 'font-size': 12 } },
+          { selector: 'node.node--knowledge', style: { width: 6, height: 6, 'background-color': '#b9aea0', 'font-size': 9 } },
+        ] : variant === 'preview' ? previewGraphStyle : workspaceGraphStyle,
         userPanningEnabled: true,
         userZoomingEnabled: variant === 'workspace',
       })
@@ -834,7 +850,7 @@ export function ObsidianKnowledgeGraph({
             }, 520)
           }
         }
-        if (nodeType === 'entry') onSelectKnowledgeRef.current(nodeId)
+        if (nodeType === 'entry' || nodeType === 'document' || nodeType === 'knowledge') onSelectKnowledgeRef.current(nodeId)
         else onExpandNodeRef.current?.(nodeId)
       })
       graph.on('tap', 'edge', (event) => {
@@ -899,6 +915,7 @@ export function ObsidianKnowledgeGraph({
     }
   }, [
     animateLayout,
+    personal,
     elements,
     focusNodeId,
     hasEdges,
@@ -956,7 +973,7 @@ export function ObsidianKnowledgeGraph({
           七维入口已就绪。搜索条目，或选择维度节点开始探索。
         </p>
       ) : null}
-      {variant === 'workspace' && !focusNodeId && !hasEdges ? (
+      {variant === 'workspace' && !personal && !focusNodeId && !hasEdges ? (
         <div className="obsidian-knowledge-graph__start" role="status">
           <strong>选择一个维度开始</strong>
           <span>或在右侧搜索具体概念</span>

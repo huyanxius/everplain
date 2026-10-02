@@ -1,7 +1,9 @@
 export interface KnowledgeGraphNode {
   readonly id: string
   readonly label: string
-  readonly nodeType?: 'dimension' | 'category' | 'entry'
+  readonly nodeType?: 'dimension' | 'category' | 'entry' | 'self' | 'topic' | 'document' | 'knowledge'
+  readonly level?: number
+  readonly image?: string
   readonly reviewStatus?: string
 }
 

@@ -47,6 +47,7 @@ from qunxue_api.adapters.research_agent.course_organization import (
     CourseKnowledgeGenerator,
     CourseOrganizationWorker,
 )
+from qunxue_api.adapters.research_agent.graph_topic_namer import GraphTopicNamer
 from qunxue_api.adapters.research_agent.memory_extractor import PydanticMemoryExtractor
 from qunxue_api.adapters.research_agent.memory_overview import PydanticMemoryOverview
 from qunxue_api.adapters.research_agent.memory_tools import AgentMemoryTools
@@ -69,6 +70,7 @@ from qunxue_api.adapters.sqlite.identity_repository import SqliteIdentityReposit
 from qunxue_api.adapters.sqlite.knowledge_import import SqliteImportRepository
 from qunxue_api.adapters.sqlite.material_vector_cache import SqliteMaterialVectorCache
 from qunxue_api.adapters.sqlite.memory_learning_repository import SqliteMemoryLearningRepository
+from qunxue_api.adapters.sqlite.personal_graph import SqlitePersonalGraphRepository
 from qunxue_api.adapters.sqlite.phenomenon_repository import SqlitePhenomenonRepository
 from qunxue_api.adapters.sqlite.professional_material_repository import (
     SqliteProfessionalMaterialRepository,
@@ -123,6 +125,7 @@ from qunxue_api.api.routes.health import router as health_router
 from qunxue_api.api.routes.knowledge_import import router as knowledge_import_router
 from qunxue_api.api.routes.memories import MemoryValidationError
 from qunxue_api.api.routes.memories import router as memories_router
+from qunxue_api.api.routes.personal_graph import router as personal_graph_router
 from qunxue_api.api.routes.phenomena import material_router as material_intakes_router
 from qunxue_api.api.routes.phenomena import router as phenomena_router
 from qunxue_api.api.routes.professional_materials import (
@@ -161,6 +164,7 @@ from qunxue_api.application.agent_research_workflow import AgentResearchWorkflow
 from qunxue_api.application.knowledge_import import KnowledgeImportApplication
 from qunxue_api.application.memory_learning import MemoryLearningWorker
 from qunxue_api.application.memory_overview import MemoryOverview
+from qunxue_api.application.personal_graph import PersonalGraphApplication
 from qunxue_api.application.shared_knowledge import SharedKnowledgeApplication
 from qunxue_api.modules.agent_conversation import ConversationNotFound, ConversationService
 from qunxue_api.modules.agent_memory import MemoryService
@@ -271,6 +275,7 @@ def create_app(
                 if app.state.import_worker_enabled:
                     try:
                         worked = await asyncio.to_thread(app.state.run_import_once)
+                        await asyncio.to_thread(app.state.run_graph_once)
                     except asyncio.CancelledError:
                         raise
                     except Exception:
@@ -618,8 +623,35 @@ def create_app(
 
     def run_import_once():
         with knowledge_import_scope() as application:
-            return application.run_once()
+            worked = application.run_once()
+            if worked and application.last_user_id:
+                with personal_graph_scope() as graph:
+                    graph.repository.mark_dirty(application.last_user_id)
+            return worked
 
+    @contextmanager
+    def personal_graph_scope():
+        with resolved_database.session() as session:
+            namer = (
+                GraphTopicNamer(app.state.model_router)
+                if app.state.model_endpoints and resolved_settings.runtime_mode != "mock"
+                else None
+            )
+            yield PersonalGraphApplication(
+                SqlitePersonalGraphRepository(
+                    session, mock=resolved_settings.runtime_mode == "mock"
+                ),
+                name_topic=namer,
+            )
+
+    def run_graph_once():
+        with personal_graph_scope() as graph:
+            user_id = graph.repository.next_pending()
+            if user_id:
+                graph.refresh(user_id)
+
+    app.state.personal_graph_scope = personal_graph_scope
+    app.state.run_graph_once = run_graph_once
     app.state.knowledge_import_scope = knowledge_import_scope
     app.state.import_fetch_text = fetch_bookmark
     app.state.run_import_once = run_import_once
@@ -1178,6 +1210,7 @@ def create_app(
     app.include_router(research_exchange_router)
     app.include_router(phenomena_router)
     app.include_router(material_intakes_router)
+    app.include_router(personal_graph_router)
     app.include_router(knowledge_import_router)
     app.include_router(agent_profile_router)
     app.include_router(agent_router)

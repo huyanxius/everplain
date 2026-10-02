@@ -1,30 +1,36 @@
-import { Link, useSearchParams } from 'react-router'
-import { BooksIcon, PlusIcon } from '@phosphor-icons/react'
-import { MyResearchPage, RecentResearchPanel } from '../../modules/account'
+import { Link } from 'react-router'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { ArrowRightIcon, ArrowUpRightIcon, BooksIcon, FileTextIcon, MagnifyingGlassIcon, PlusIcon, ShareNetworkIcon } from '@phosphor-icons/react'
+import { useAccount } from '../../modules/account'
+import { AgentAvatar, type AgentAvatarId } from '../../modules/agent-avatar'
+import { readAgentProfile } from '../../modules/agent-profile'
+import { readPersonalGraph } from '../../modules/personal-graph'
 import { PageContent, PageShell } from '../ui/PageShell'
-import { RouterLinkAdapter } from '../ui/RouterLinkAdapter'
-import { useAppLocale } from '../i18n/AppLocaleProvider'
-import { ResearchPrompt } from '../foundation/ResearchPrompt'
+import { ErrorState } from '../ui/States'
+import './personal-home.css'
 
 export function AppHomePage() {
-  const { text } = useAppLocale()
-  const [searchParams] = useSearchParams()
-  const showingAllResearch = searchParams.get('research') === 'all'
-  return <PageShell wide><PageContent>
-    <div className="everplain-home">
-      <div className="everplain-start"><h1>Everplain</h1><p>{text('个人知识库与研究助手', 'Your personal library and research assistant')}</p><ResearchPrompt /></div>
-      <nav className="everplain-home__links" aria-label={text('快捷入口', 'Quick access')}><Link to="/library"><BooksIcon size={16} />{text('我的知识库', 'My library')}</Link><Link to="/research/new"><PlusIcon size={16} />{text('新建研究', 'New research')}</Link></nav>
-      <section className="everplain-home__recent">
-        <header><h2 id="work-home-recent-title">{showingAllResearch ? text('全部研究', 'All research') : text('最近研究', 'Recent research')}</h2>
-          <nav aria-label={text('研究视图', 'Research view')}>
-            {showingAllResearch ? <Link to="/app">{text('最近', 'Recent')}</Link> : <span aria-current="page">{text('最近', 'Recent')}</span>}
-            {showingAllResearch ? <span aria-current="page">{text('查看全部', 'View all')}</span> : <Link to="/app?research=all">{text('查看全部', 'View all')}</Link>}
-          </nav>
-        </header>
-        <div role="region" aria-label={showingAllResearch ? text('全部研究', 'All research') : text('最近研究', 'Recent research')}>
-          {showingAllResearch ? <MyResearchPage /> : <RecentResearchPanel LinkComponent={RouterLinkAdapter} />}
-        </div>
-      </section>
-    </div>
-  </PageContent></PageShell>
+  const account = useAccount()
+  const userId = account.sessionState.status === 'authenticated' ? account.sessionState.session.user.userId : null
+  const profile = useQuery({ queryKey: ['agent-profile', userId], queryFn: readAgentProfile })
+  const graph = useQuery({ queryKey: ['personal-graph', userId], queryFn: readPersonalGraph })
+  const [query, setQuery] = useState('')
+  const docs = (graph.data?.nodes ?? []).filter(n => n.nodeType === 'document' && n.label.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+  const p = profile.data
+  return <PageShell wide><PageContent><main className="ep-home">
+    <header className="ep-home-heading"><div><p>YOUR PERSONAL LIBRARY</p><h1>思绪有处安放，灵感自会生长。</h1><span>收藏、阅读、思考。把看过的世界，变成自己的理解。</span></div><Link to="/welcome/setup" className="ep-home-add"><PlusIcon size={16} />导入资料</Link></header>
+    {p && <section className="ep-home-companion"><AgentAvatar avatar={p.avatar_id as AgentAvatarId} color={p.color} size={62} /><div><strong>{p.name}</strong><p>{p.greeting}</p></div><Link to="/agent">开始对话 <ArrowRightIcon size={16} /></Link></section>}
+    <div className="ep-home-search"><MagnifyingGlassIcon size={19} /><input aria-label="搜索资料标题" value={query} onChange={e => setQuery(e.target.value)} placeholder="想起一个标题、一件感兴趣的事……" /><span>{graph.data?.document_count ?? 0} 份资料</span></div>
+    <nav className="ep-home-views" aria-label="知识空间视图"><span aria-current="page"><BooksIcon size={16} />我的资料</span><Link to="/my/graph"><ShareNetworkIcon size={16} />知识图谱</Link><Link to="/library">管理知识库 <ArrowUpRightIcon size={13} /></Link><Link to="/research/new">新建研究 <PlusIcon size={13} /></Link></nav>
+    {graph.isError ? <ErrorState detail={graph.error.message} onRetry={() => { void graph.refetch() }} /> : <div className="ep-home-grid" aria-label="资料卡片">
+      {graph.isPending ? Array.from({ length: 6 }, (_, i) => <div className="ep-note-card ep-note-card--loading" key={i} aria-label="正在读取资料"><i /><i /><i /></div>) : docs.map(n => {
+        const source = graph.data!.sources[n.id]
+        if (!source) return null
+        return <Link className="ep-note-card" key={n.id} to={`/library?kb_id=${encodeURIComponent(source.library_id)}&document_id=${encodeURIComponent(source.document_id)}`}><span className="ep-note-card__type"><FileTextIcon size={16} weight="light" />{source.source_url ? '网页收藏' : '我的笔记'}</span><h2>{n.label}</h2><p>{source.source_url ? '从收藏里拾起，回到原文继续阅读。' : '一段被留下的思考，等待新的联系。'}</p><footer><span>打开原文</span><ArrowUpRightIcon size={15} /></footer></Link>
+      })}
+      {!graph.isPending && !docs.length && <div className="ep-home-empty"><BooksIcon size={30} weight="light" /><h2>{query ? '还没找到这份资料。' : '把第一份资料，放进来。'}</h2><p>{query ? '换一个标题关键词试试。' : '从浏览器收藏、Obsidian 或一份 Markdown 开始。'}</p>{!query && <Link to="/welcome/setup">开始导入 <ArrowRightIcon size={15} /></Link>}</div>}
+    </div>}
+    <footer className="ep-home-footnote">默认仅你可见 · 每份资料保留来源 <Link to="/settings">偏好与账户设置</Link></footer>
+  </main></PageContent></PageShell>
 }

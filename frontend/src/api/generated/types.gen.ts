@@ -5628,6 +5628,136 @@ export type PasswordResetLinkResponse = {
 };
 
 /**
+ * PersonalGraphEdge
+ */
+export type PersonalGraphEdge = {
+    /**
+     * Direction
+     */
+    direction: string;
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Layer
+     */
+    layer: string;
+    /**
+     * Relationtype
+     */
+    relationType: string;
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Target
+     */
+    target: string;
+};
+
+/**
+ * PersonalGraphNode
+ */
+export type PersonalGraphNode = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Level
+     */
+    level: number;
+    /**
+     * Nodetype
+     */
+    nodeType: 'self' | 'topic' | 'document' | 'knowledge';
+};
+
+/**
+ * PersonalGraphResponse
+ */
+export type PersonalGraphResponse = {
+    /**
+     * Avatar Id
+     */
+    avatar_id: string;
+    /**
+     * Color
+     */
+    color: string;
+    /**
+     * Document Count
+     */
+    document_count: number;
+    /**
+     * Edges
+     */
+    edges: Array<PersonalGraphEdge>;
+    /**
+     * Mode
+     */
+    mode: 'mock' | 'semantic';
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Nodes
+     */
+    nodes: Array<PersonalGraphNode>;
+    /**
+     * Pending Count
+     */
+    pending_count: number;
+    /**
+     * Releaseid
+     */
+    releaseId: string;
+    /**
+     * Sources
+     */
+    sources: {
+        [key: string]: PersonalGraphSource;
+    };
+    /**
+     * Topic Count
+     */
+    topic_count: number;
+};
+
+/**
+ * PersonalGraphSource
+ */
+export type PersonalGraphSource = {
+    /**
+     * Document Id
+     */
+    document_id: string;
+    /**
+     * Library Id
+     */
+    library_id: string;
+    /**
+     * Segment Id
+     */
+    segment_id?: string | null;
+    /**
+     * Source Url
+     */
+    source_url?: string | null;
+    /**
+     * Title
+     */
+    title: string;
+};
+
+/**
  * PhenomenonCandidateAction
  */
 export type PhenomenonCandidateAction = 'update' | 'confirm';
@@ -12828,6 +12958,53 @@ export type ListMethodPlanVersionsResponses = {
 };
 
 export type ListMethodPlanVersionsResponse = ListMethodPlanVersionsResponses[keyof ListMethodPlanVersionsResponses];
+
+export type GetPersonalGraphData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/personal-graph';
+};
+
+export type GetPersonalGraphResponses = {
+    /**
+     * Successful Response
+     */
+    200: PersonalGraphResponse;
+};
+
+export type GetPersonalGraphResponse = GetPersonalGraphResponses[keyof GetPersonalGraphResponses];
+
+export type RefreshPersonalGraphData = {
+    body?: never;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/personal-graph/refresh';
+};
+
+export type RefreshPersonalGraphErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RefreshPersonalGraphError = RefreshPersonalGraphErrors[keyof RefreshPersonalGraphErrors];
+
+export type RefreshPersonalGraphResponses = {
+    /**
+     * Successful Response
+     */
+    200: PersonalGraphResponse;
+};
+
+export type RefreshPersonalGraphResponse = RefreshPersonalGraphResponses[keyof RefreshPersonalGraphResponses];
 
 export type ListPhenomenonExamplesData = {
     body?: never;
