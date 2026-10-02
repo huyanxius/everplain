@@ -1,5 +1,6 @@
 import json
 import re
+import sys
 from dataclasses import asdict, is_dataclass
 from datetime import datetime
 from enum import Enum
@@ -20,6 +21,7 @@ from qunxue_api.adapters.model.types import (
     ModelProviderResult,
     ModelScenario,
 )
+from qunxue_api.modules.billing import BillingFailure
 from qunxue_api.modules.research_framework import (
     AuditFindingDraft,
     AuditFindingSeverity,
@@ -567,6 +569,7 @@ class OpenAICompatibleModelProvider:
                     },
                 ],
                 "response_format": {"type": "json_object"},
+                "max_tokens": 5000,
                 **({"max_tokens": self._max_output_tokens} if self._max_output_tokens else {}),
             },
             ensure_ascii=False,
@@ -619,11 +622,13 @@ class OpenAICompatibleModelProvider:
         knowledge_release_id: str | None,
     ) -> bytes:
         from qunxue_api.adapters.model.metering import current_operation
+        from qunxue_api.adapters.model.routing import current_model_route_scope
 
         scope = current_operation(required=self._require_billing)
         attempt = (
             scope.before_attempt_payload(
-                json.loads(request_body), provider_host=urlsplit(self._endpoint).hostname
+                json.loads(request_body), current_model_route_scope(),
+                provider_host=urlsplit(self._endpoint).hostname
             )
             if scope
             else None
@@ -634,11 +639,14 @@ class OpenAICompatibleModelProvider:
             headers=self._request_headers(),
             method="POST",
         )
+        completion_called = False
         try:
             with urlopen(request, timeout=self._timeout_seconds) as response:
                 raw_response = response.read(_MAX_RESPONSE_BYTES + 1)
                 if scope:
-                    scope.complete(attempt, json.loads(raw_response), outcome="success")
+                    completion = json.loads(raw_response)
+                    completion_called = True
+                    scope.complete(attempt, completion, outcome="success")
                 declared_length = response.headers.get("Content-Length")
                 if declared_length is not None and int(declared_length) > len(raw_response):
                     raise ModelProviderFailure(
@@ -682,7 +690,7 @@ class OpenAICompatibleModelProvider:
                 knowledge_release_id=knowledge_release_id,
                 scenario=ModelScenario.PROVIDER_UNAVAILABLE,
             ) from error
-        except ModelProviderFailure:
+        except (ModelProviderFailure, BillingFailure):
             raise
         except (HTTPException, ConnectionError, OSError, ValueError) as error:
             raise ModelProviderFailure(
@@ -691,6 +699,12 @@ class OpenAICompatibleModelProvider:
                 knowledge_release_id=knowledge_release_id,
                 scenario=ModelScenario.PROVIDER_UNAVAILABLE,
             ) from error
+        finally:
+            if scope and sys.exc_info()[0] is not None:
+                if completion_called:
+                    scope.runtime.mark_attempt_error(attempt, "legacy_transport_failed")
+                else:
+                    scope.complete(attempt, failure_code="legacy_transport_failed")
 
         return raw_response
 
