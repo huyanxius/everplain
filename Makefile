@@ -2,7 +2,7 @@ UV_CACHE_DIR ?= .cache/uv
 
 .PHONY: bootstrap bootstrap-backend bootstrap-frontend contract check check-backend check-contract check-frontend dev-api dev-web
 
-bootstrap: bootstrap-backend bootstrap-frontend
+bootstrap: bootstrap-backend bootstrap-frontend bootstrap-clipper
 
 bootstrap-backend:
 	cd backend && uv --cache-dir $(UV_CACHE_DIR) sync
@@ -35,3 +35,9 @@ dev-api:
 
 dev-web:
 	cd frontend && npm run dev
+
+.PHONY: bootstrap-clipper build-clipper
+bootstrap-clipper:
+	cd extensions/clipper && npm ci --ignore-scripts
+build-clipper:
+	cd extensions/clipper && npm run build
