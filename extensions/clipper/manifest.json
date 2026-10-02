@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Everplain · 收藏助手",
+  "version": "0.1.0",
+  "description": "把当前网页和浏览器书签保存到你自己的 Everplain 知识库。",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "optional_permissions": ["bookmarks"],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "action": {"default_popup": "popup.html", "default_title": "收藏到 Everplain"},
+  "content_security_policy": {"extension_pages": "script-src 'self'; object-src 'self'"}
+}
