@@ -6,17 +6,19 @@ const css = readFileSync(resolve('src/app/foundation/everplain-website.css'), 'u
 const page = readFileSync(resolve('src/app/foundation/FoundationPage.tsx'), 'utf8')
 
 describe('landing system theme contract', () => {
-  it('inherits appearance and maps surfaces and text to global semantic tokens', () => {
+  it('maps every landing surface, ink, line and font to the global tokens', () => {
     expect(css).not.toMatch(/color-scheme\s*:\s*light\s*;/)
-    for (const token of ['--qx-paper-surface', '--qx-paper-sidebar', '--qx-color-surface-raised', '--qx-paper-ink', '--qx-color-muted', '--qx-paper-rule', '--qx-color-on-accent']) {
-      expect(css).toContain(`var(${token})`)
+    for (const [name, token] of [
+      ['--ep-paper', '--qx-color-canvas'], ['--ep-card', '--qx-color-surface'], ['--ep-ink', '--qx-color-ink'],
+      ['--ep-muted', '--qx-color-muted'], ['--ep-line', '--qx-color-rule'], ['--ep-on-ink', '--qx-color-on-accent'],
+      ['--ep-accent', '--qx-color-warning'], ['--ep-serif', '--qx-font-reading'], ['--ep-sans', '--qx-font-ui'],
+    ]) {
+      expect(css).toMatch(new RegExp(`${name}:\\s*var\\(${token}\\)`))
     }
-    expect(css).toMatch(/--ep-accent:\s*light-dark\(/)
-    expect(css).toMatch(/--ep-on-accent:\s*light-dark\(/)
   })
 
   it('does not hard-code surface or foreground colors outside the brand palette', () => {
-    const rules = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*--ep-(?:accent|accent-wash|on-accent|paper|panel|card|line):.*$/gm, '')
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, '')
     expect(rules).not.toMatch(/#[\da-f]{3,8}\b/i)
     expect(css).toContain('color: var(--ep-on-ink)')
     expect(css).toContain('color: var(--ep-on-accent)')
@@ -46,26 +48,13 @@ function contrast(a: string, b: string) {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
 }
 it.each([0, 1])('keeps main text, metadata, actions and citation text readable in theme %i', mode => {
-  const paper = mode === 1 ? '#1a1a1b' : palette('--qx-paper-surface')[mode]
-  const card = mode === 1 ? '#212121' : palette('--qx-color-surface-raised')[mode]
-  const ink = palette('--qx-paper-ink')[mode]
+  const paper = palette('--qx-color-canvas')[mode]
+  const card = palette('--qx-color-surface')[mode]
+  const ink = palette('--qx-color-ink')[mode]
   const muted = palette('--qx-color-muted')[mode]
   const onInk = palette('--qx-color-on-accent')[mode]
-  const brandPair = (name: string) => {
-    const match = css.match(new RegExp(`${name}: light-dark\\((#[0-9a-f]{6}), (#[0-9a-f]{6})\\)`))
-    if (!match) throw new Error(`Missing brand pair: ${name}`)
-    return match[mode + 1]
-  }
-  const accent = brandPair('--ep-accent'), onAccent = brandPair('--ep-on-accent')
-  for (const [foreground, background] of [[ink, paper], [muted, paper], [muted, card], [onInk, ink], [accent, card], [onAccent, accent]]) {
+  const accent = palette('--qx-color-warning')[mode]
+  for (const [foreground, background] of [[ink, paper], [muted, paper], [muted, card], [onInk, ink], [accent, card]]) {
     expect(contrast(foreground, background)).toBeGreaterThanOrEqual(4.5)
   }
-})
-
-it('only changes dark surfaces to the existing Qunxue knowledge palette', () => {
-  // 已核对群学生产 knowledge-library.css；Everplain 不依赖另一个仓库的文件。
-  expect(css).toContain('--ep-paper: light-dark(var(--qx-paper-surface), #1a1a1b)')
-  expect(css).toContain('--ep-panel: light-dark(var(--qx-paper-sidebar), #212121)')
-  expect(css).toContain('--ep-card: light-dark(var(--qx-color-surface-raised), #212121)')
-  expect(css).toContain('--ep-line: light-dark(var(--qx-paper-rule), rgb(158 158 158 / 16%))')
 })

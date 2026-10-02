@@ -11,6 +11,7 @@ export const defaultBoundaryPolicy = Object.freeze({
   moduleDependencies: Object.freeze({
     account: Object.freeze([]),
     'agent-avatar': Object.freeze([]),
+    companion: Object.freeze([]),
     'agent-profile': Object.freeze([]),
     'knowledge-import': Object.freeze([]),
     'personal-graph': Object.freeze([]),

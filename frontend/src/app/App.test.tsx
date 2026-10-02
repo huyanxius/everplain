@@ -882,7 +882,7 @@ describe('App routes', () => {
 
     expect(
       await screen.findByRole('heading', {
-        level: 1, name: 'Room for your mind.',
+        level: 1, name: /^Everplain，帮你/,
       }),
     ).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/')
@@ -927,7 +927,7 @@ describe('App routes', () => {
 
     expect(
       await screen.findByRole('heading', {
-        level: 1, name: 'Room for your mind.',
+        level: 1, name: /^Everplain，帮你/,
       }),
     ).toBeVisible()
     expect(screen.getByRole('link', { name: action })).toBeVisible()
@@ -1112,7 +1112,7 @@ describe('App routes', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '退出' }))
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Room for your mind.' })).toBeVisible()
+    expect(await screen.findByRole('heading', { level: 1, name: /^Everplain，帮你/ })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/')
   })
 
