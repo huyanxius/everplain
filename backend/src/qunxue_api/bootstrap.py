@@ -19,6 +19,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from qunxue_api.account_extension import install_account_management
 from qunxue_api.adapters.email import ResendEmailProvider
 from qunxue_api.adapters.empty_catalog import EmptyKnowledgeCatalog
+from qunxue_api.adapters.import_sources import parse_import
+from qunxue_api.adapters.import_sources.fetch import fetch_bookmark
 from qunxue_api.adapters.model import (
     BuiltInCaseCatalog,
     ModelEndpoint,
@@ -64,6 +66,7 @@ from qunxue_api.adapters.sqlite.agent_profile import SqliteAgentProfileRepositor
 from qunxue_api.adapters.sqlite.billing_repository import SqliteCreditRepository
 from qunxue_api.adapters.sqlite.database import Database
 from qunxue_api.adapters.sqlite.identity_repository import SqliteIdentityRepository
+from qunxue_api.adapters.sqlite.knowledge_import import SqliteImportRepository
 from qunxue_api.adapters.sqlite.material_vector_cache import SqliteMaterialVectorCache
 from qunxue_api.adapters.sqlite.memory_learning_repository import SqliteMemoryLearningRepository
 from qunxue_api.adapters.sqlite.phenomenon_repository import SqlitePhenomenonRepository
@@ -117,6 +120,7 @@ from qunxue_api.api.contracts.common import ErrorCode, ErrorDetail, ErrorRespons
 from qunxue_api.api.routes.agent import router as agent_router
 from qunxue_api.api.routes.agent_profile import router as agent_profile_router
 from qunxue_api.api.routes.health import router as health_router
+from qunxue_api.api.routes.knowledge_import import router as knowledge_import_router
 from qunxue_api.api.routes.memories import MemoryValidationError
 from qunxue_api.api.routes.memories import router as memories_router
 from qunxue_api.api.routes.phenomena import material_router as material_intakes_router
@@ -154,6 +158,7 @@ from qunxue_api.application import (
 )
 from qunxue_api.application.agent_profile import AgentProfileApplication
 from qunxue_api.application.agent_research_workflow import AgentResearchWorkflow
+from qunxue_api.application.knowledge_import import KnowledgeImportApplication
 from qunxue_api.application.memory_learning import MemoryLearningWorker
 from qunxue_api.application.memory_overview import MemoryOverview
 from qunxue_api.application.shared_knowledge import SharedKnowledgeApplication
@@ -259,6 +264,20 @@ def create_app(
         probe_task = None
         memory_task = None
         course_task = None
+
+        async def process_imports():
+            while True:
+                worked = False
+                if app.state.import_worker_enabled:
+                    try:
+                        worked = await asyncio.to_thread(app.state.run_import_once)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        logger.warning("Import processing will retry later.")
+                await asyncio.sleep(0.05 if worked else 1)
+
+        import_task = asyncio.create_task(process_imports(), name="everplain-imports")
         if _effective_model_runtime_mode(resolved_settings) != "mock":
 
             async def organize_courses():
@@ -299,6 +318,9 @@ def create_app(
         try:
             yield
         finally:
+            import_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await import_task
             if course_task is not None:
                 course_task.cancel()
                 with suppress(asyncio.CancelledError):
@@ -581,6 +603,28 @@ def create_app(
             )
 
     app.state.shared_knowledge_scope = shared_knowledge_scope
+
+    @contextmanager
+    def knowledge_import_scope():
+        with resolved_database.session() as session:
+            libraries = SharedKnowledgeApplication(
+                SqliteSharedKnowledgeRepository(session), parser=parse_material,
+                max_file_bytes=resolved_settings.max_file_bytes,
+                max_storage_bytes=resolved_settings.max_storage_bytes,
+                max_libraries=resolved_settings.max_libraries,
+                max_documents_per_library=resolved_settings.max_documents_per_library)
+            yield KnowledgeImportApplication(SqliteImportRepository(session), libraries,
+                                             parse_import, app.state.import_fetch_text)
+
+    def run_import_once():
+        with knowledge_import_scope() as application:
+            return application.run_once()
+
+    app.state.knowledge_import_scope = knowledge_import_scope
+    app.state.import_fetch_text = fetch_bookmark
+    app.state.run_import_once = run_import_once
+    app.state.import_worker_enabled = True
+
     transcription_provider = _build_transcription_provider(resolved_settings)
 
     @contextmanager
@@ -1134,6 +1178,7 @@ def create_app(
     app.include_router(research_exchange_router)
     app.include_router(phenomena_router)
     app.include_router(material_intakes_router)
+    app.include_router(knowledge_import_router)
     app.include_router(agent_profile_router)
     app.include_router(agent_router)
 

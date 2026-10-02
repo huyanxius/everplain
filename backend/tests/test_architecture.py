@@ -16,6 +16,7 @@ ALLOWED_MODULE_DEPENDENCIES = {
     "agent_conversation": set(),
     "agent_memory": set(),
     "agent_profile": set(),
+    "knowledge_import": set(),
     "shared_knowledge": set(),
     "billing": set(),
     "identity": set(),
