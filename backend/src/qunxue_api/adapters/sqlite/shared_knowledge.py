@@ -1,7 +1,7 @@
 """Thin standalone document storage on the existing SQLite database."""
 
 from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import (
@@ -15,12 +15,18 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     delete,
+    or_,
     select,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
 from qunxue_api.adapters.sqlite.base import Base
-from qunxue_api.modules.shared_knowledge import SharedDocument, SharedKnowledgeBase
+from qunxue_api.adapters.sqlite.identity_model import UserRow
+from qunxue_api.modules.shared_knowledge import (
+    PublicKnowledgePublication,
+    SharedDocument,
+    SharedKnowledgeBase,
+)
 
 
 class CourseProfileRow(Base):
@@ -43,6 +49,28 @@ class SharedKnowledgeBaseRow(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SharedKnowledgePublicationRow(Base):
+    __tablename__ = "shared_knowledge_publications"
+    knowledge_base_id: Mapped[str] = mapped_column(
+        ForeignKey("shared_knowledge_bases.id", ondelete="CASCADE"), primary_key=True
+    )
+    title: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(Text)
+    topics: Mapped[list] = mapped_column(JSON)
+    document_ids: Mapped[list] = mapped_column(JSON)
+    request_key: Mapped[str] = mapped_column(String(128))
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SharedKnowledgePublicationRequestRow(Base):
+    __tablename__ = "shared_knowledge_publication_requests"
+    knowledge_base_id: Mapped[str] = mapped_column(
+        ForeignKey("shared_knowledge_bases.id", ondelete="CASCADE"), primary_key=True
+    )
+    request_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
 
 
 class SharedKnowledgeSubscriptionRow(Base):
@@ -88,6 +116,18 @@ class SharedKnowledgeDocumentRow(Base):
     )
     document_id: Mapped[str] = mapped_column(
         ForeignKey("shared_documents.id"), primary_key=True, index=True
+    )
+
+
+def _publication(row):
+    return PublicKnowledgePublication(
+        UUID(row.knowledge_base_id),
+        row.title,
+        row.description,
+        tuple(row.topics),
+        tuple(UUID(value) for value in row.document_ids),
+        row.request_key,
+        row.published_at if row.published_at.tzinfo else row.published_at.replace(tzinfo=UTC),
     )
 
 
@@ -190,9 +230,17 @@ class SqliteSharedKnowledgeRepository:
         rows = self.session.scalars(
             select(SharedKnowledgeBaseRow)
             .where(
-                SharedKnowledgeBaseRow.owner_user_id == str(user_id),
+                or_(
+                    SharedKnowledgeBaseRow.owner_user_id == str(user_id),
+                    SharedKnowledgeBaseRow.id.in_(
+                        select(SharedKnowledgeSubscriptionRow.knowledge_base_id).where(
+                            SharedKnowledgeSubscriptionRow.user_id == str(user_id)
+                        )
+                    ),
+                ),
                 SharedKnowledgeBaseRow.deleted_at.is_(None),
             )
+            .execution_options(populate_existing=True)
             .order_by(SharedKnowledgeBaseRow.updated_at.desc())
         )
         return tuple(_kb(row) for row in rows)
@@ -253,7 +301,95 @@ class SqliteSharedKnowledgeRepository:
 
     def subscribed(self, user_id, kb_id):
         return (
-            self.session.get(SharedKnowledgeSubscriptionRow, (str(user_id), str(kb_id))) is not None
+            self.session.scalar(
+                select(SharedKnowledgeSubscriptionRow.user_id).where(
+                    SharedKnowledgeSubscriptionRow.user_id == str(user_id),
+                    SharedKnowledgeSubscriptionRow.knowledge_base_id == str(kb_id),
+                )
+            )
+            is not None
+        )
+
+    def owner_active(self, user_id):
+        return (
+            self.session.scalar(select(UserRow.status).where(UserRow.user_id == str(user_id)))
+            == "active"
+        )
+
+    def revoke_readers(self, kb_id):
+        self.session.execute(
+            delete(SharedKnowledgeSubscriptionRow).where(
+                SharedKnowledgeSubscriptionRow.knowledge_base_id == str(kb_id)
+            )
+        )
+
+    def publication(self, kb_id):
+        row = self.session.get(SharedKnowledgePublicationRow, str(kb_id), populate_existing=True)
+        return _publication(row) if row else None
+
+    def publish(self, publication):
+        self.session.merge(
+            SharedKnowledgePublicationRow(
+                knowledge_base_id=str(publication.knowledge_base_id),
+                title=publication.title,
+                description=publication.description,
+                topics=list(publication.topics),
+                document_ids=[str(value) for value in publication.document_ids],
+                request_key=publication.request_key,
+                published_at=publication.published_at,
+            )
+        )
+        self.session.flush()
+
+    def publication_request(self, kb_id, key):
+        return self.session.scalar(
+            select(SharedKnowledgePublicationRequestRow.fingerprint).where(
+                SharedKnowledgePublicationRequestRow.knowledge_base_id == str(kb_id),
+                SharedKnowledgePublicationRequestRow.request_key == key,
+            )
+        )
+
+    def record_publication_request(self, kb_id, key, fingerprint):
+        self.session.add(
+            SharedKnowledgePublicationRequestRow(
+                knowledge_base_id=str(kb_id),
+                request_key=key,
+                fingerprint=fingerprint,
+            )
+        )
+        self.session.flush()
+
+    def unpublish(self, kb_id):
+        self.session.execute(
+            delete(SharedKnowledgePublicationRow).where(
+                SharedKnowledgePublicationRow.knowledge_base_id == str(kb_id)
+            )
+        )
+
+    def public_directory(self, query, limit, offset):
+        statement = (
+            select(SharedKnowledgePublicationRow)
+            .join(SharedKnowledgeBaseRow)
+            .join(UserRow, UserRow.user_id == SharedKnowledgeBaseRow.owner_user_id)
+            .where(SharedKnowledgeBaseRow.deleted_at.is_(None), UserRow.status == "active")
+        )
+        if query:
+            statement = statement.where(
+                or_(
+                    SharedKnowledgePublicationRow.title.contains(query, autoescape=True),
+                    SharedKnowledgePublicationRow.description.contains(query, autoescape=True),
+                )
+            )
+        return tuple(
+            _publication(row)
+            for row in self.session.scalars(
+                statement.order_by(
+                    SharedKnowledgePublicationRow.published_at.desc(),
+                    SharedKnowledgePublicationRow.knowledge_base_id,
+                )
+                .limit(limit)
+                .offset(offset)
+            )
         )
 
     def subscribe(self, user_id, kb_id):
@@ -284,6 +420,7 @@ class SqliteSharedKnowledgeRepository:
                     SharedKnowledgeDocumentRow.document_id == SharedDocumentRow.id,
                 )
                 .where(SharedKnowledgeDocumentRow.knowledge_base_id == str(kb_id))
+                .execution_options(populate_existing=True)
                 .order_by(SharedDocumentRow.created_at.desc())
             )
         )

@@ -29,6 +29,7 @@ import { ResearchProjectWorkspacePage } from './research-workspace/ResearchProje
 import { legacyResearchWorkspaceDestination } from './research-workspace/researchProjectWorkspaceModel'
 import { FoundationPage } from './foundation/FoundationPage'
 import { AppHomePage } from './home/AppHomePage'
+import { SharingPage, PublicDirectoryPage, SharedReaderPage } from './integrations/IntegrationPages'
 import { ImportsPage } from './imports/ImportsPage'
 import { PersonalGraphPage } from './personal-graph/PersonalGraphPage'
 import { OnboardingGate, WelcomeSetupPage } from './welcome/WelcomeSetupPage'
@@ -251,6 +252,10 @@ export function AppRoutes({
       />
       <Route path="/welcome" element={productHome} />
       <Route path="/welcome/setup" element={protectedRoute(<WelcomeSetupPage userId={authenticatedUserId} />)} />
+      <Route path="/sharing" element={protectedRoute(<SharingPage />)} />
+      <Route path="/shared/:libraryId" element={protectedRoute(<SharedReaderPage />)} />
+      <Route path="/discover" element={<PublicDirectoryPage />} />
+      <Route path="/discover/:libraryId" element={<SharedReaderPage publicView />} />
       <Route path="/imports" element={protectedRoute(<ImportsPage userId={authenticatedUserId} />)} />
       <Route path="/my/graph" element={protectedRoute(<PersonalGraphPage userId={authenticatedUserId} />)} />
       <Route path="/app" element={protectedRoute(<AppHomePage />)} />

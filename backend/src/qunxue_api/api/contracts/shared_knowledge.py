@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from qunxue_api.api.contracts.research_materials import ResearchMaterialLocatorResponse
 
@@ -64,12 +64,49 @@ class SharedDocumentResponse(BaseModel):
     created_at: datetime
 
 
+class PublishKnowledgeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirm_public_content: Literal[True]
+
+    @field_validator("confirm_public_content", mode="before")
+    @classmethod
+    def explicit_public_confirmation(cls, value):
+        if value is not True:
+            raise ValueError("请明确确认公开当前资料及原文。")
+        return value
+
+    title: Name
+    description: Description = ""
+    topics: list[
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
+    ] = Field(default_factory=list, max_length=12)
+
+
+class PublicKnowledgePublicationResponse(BaseModel):
+    knowledge_base_id: UUID
+    title: str
+    description: str
+    topics: list[str]
+    document_count: int
+    published_at: datetime
+
+
+class PublicKnowledgeDetailResponse(BaseModel):
+    publication: PublicKnowledgePublicationResponse
+    documents: list[SharedDocumentResponse]
+
+
+class PublicKnowledgeDirectoryResponse(BaseModel):
+    items: list[PublicKnowledgePublicationResponse]
+
+
 class SharedKnowledgeResponse(BaseModel):
     id: UUID
     name: str | None = None
     description: str | None = None
     viewer_access: Literal["owner", "reader", "unavailable"]
     sharing_enabled: bool = False
+    publication: PublicKnowledgePublicationResponse | None = None
     share_token: str | None = Field(default=None, exclude_if=lambda value: value is None)
     ready_document_count: int = 0
     documents: list[SharedDocumentResponse] = Field(default_factory=list)

@@ -839,6 +839,20 @@ def _restore_citation(
 ) -> AgentCitation:
     citation = _citation(item)
     if citation.source_kind == "shared_material":
+        from qunxue_api.adapters.sqlite.shared_knowledge import SqliteSharedKnowledgeRepository
+        from qunxue_api.modules.shared_knowledge import (
+            SharedKnowledgeService,
+            SharedKnowledgeUnavailable,
+        )
+
+        try:
+            shared = SharedKnowledgeService(SqliteSharedKnowledgeRepository(session))
+            document = shared.source(user_id, UUID(citation.knowledge_base_id or ""),
+                                     UUID(citation.material_id or ""), citation.segment_id)
+            if str(document.parse_id) != citation.parse_id:
+                return _redact_deleted_material_citation(citation)
+        except (SharedKnowledgeUnavailable, ValueError):
+            return _redact_deleted_material_citation(citation)
         return citation
     if not citation.material_id:
         return citation

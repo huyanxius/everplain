@@ -68,6 +68,17 @@ class SharedKnowledgeReferences:
                 reverse=True,
             )
             selected = [key for score, key in ranked if score > 0][: max(1, min(limit, 20))]
+        # Retrieval may run slowly. Recheck revocation and document removal before
+        # handing fresh excerpts to the model, not just at the start of the call.
+        current_documents = {
+            (str(doc.id), str(doc.parse_id))
+            for doc in self.application.documents(user_id, kb_id, ready_only=True)
+        }
+        selected = [
+            key
+            for key in selected
+            if (str(coordinates[key][0].id), str(coordinates[key][0].parse_id)) in current_documents
+        ]
         items = []
         for key in selected:
             doc, segment = coordinates[key]

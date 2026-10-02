@@ -5438,6 +5438,79 @@ export type ProjectResearchFactsResponse = {
 };
 
 /**
+ * PublicKnowledgeDetailResponse
+ */
+export type PublicKnowledgeDetailResponse = {
+    /**
+     * Documents
+     */
+    documents: Array<SharedDocumentResponse>;
+    publication: PublicKnowledgePublicationResponse;
+};
+
+/**
+ * PublicKnowledgeDirectoryResponse
+ */
+export type PublicKnowledgeDirectoryResponse = {
+    /**
+     * Items
+     */
+    items: Array<PublicKnowledgePublicationResponse>;
+};
+
+/**
+ * PublicKnowledgePublicationResponse
+ */
+export type PublicKnowledgePublicationResponse = {
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Document Count
+     */
+    document_count: number;
+    /**
+     * Knowledge Base Id
+     */
+    knowledge_base_id: string;
+    /**
+     * Published At
+     */
+    published_at: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Topics
+     */
+    topics: Array<string>;
+};
+
+/**
+ * PublishKnowledgeRequest
+ */
+export type PublishKnowledgeRequest = {
+    /**
+     * Confirm Public Content
+     */
+    confirm_public_content: true;
+    /**
+     * Description
+     */
+    description?: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Topics
+     */
+    topics?: Array<string>;
+};
+
+/**
  * Questionnaire
  */
 export type Questionnaire = {
@@ -7543,6 +7616,7 @@ export type SharedKnowledgeResponse = {
      * Name
      */
     name?: string | null;
+    publication?: PublicKnowledgePublicationResponse | null;
     /**
      * Ready Document Count
      */
@@ -12018,6 +12092,149 @@ export type ListPhenomenonExamplesResponses = {
 
 export type ListPhenomenonExamplesResponse = ListPhenomenonExamplesResponses[keyof ListPhenomenonExamplesResponses];
 
+export type ListPublicKnowledgeDirectoryData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Query
+         */
+        query?: string;
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Offset
+         */
+        offset?: number;
+    };
+    url: '/api/public-knowledge-directory';
+};
+
+export type ListPublicKnowledgeDirectoryErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ListPublicKnowledgeDirectoryError = ListPublicKnowledgeDirectoryErrors[keyof ListPublicKnowledgeDirectoryErrors];
+
+export type ListPublicKnowledgeDirectoryResponses = {
+    /**
+     * Successful Response
+     */
+    200: PublicKnowledgeDirectoryResponse;
+};
+
+export type ListPublicKnowledgeDirectoryResponse = ListPublicKnowledgeDirectoryResponses[keyof ListPublicKnowledgeDirectoryResponses];
+
+export type GetPublicKnowledgeLibraryData = {
+    body?: never;
+    path: {
+        /**
+         * Kb Id
+         */
+        kb_id: string;
+    };
+    query?: never;
+    url: '/api/public-knowledge-directory/{kb_id}';
+};
+
+export type GetPublicKnowledgeLibraryErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetPublicKnowledgeLibraryError = GetPublicKnowledgeLibraryErrors[keyof GetPublicKnowledgeLibraryErrors];
+
+export type GetPublicKnowledgeLibraryResponses = {
+    /**
+     * Successful Response
+     */
+    200: PublicKnowledgeDetailResponse;
+};
+
+export type GetPublicKnowledgeLibraryResponse = GetPublicKnowledgeLibraryResponses[keyof GetPublicKnowledgeLibraryResponses];
+
+export type GetPublicKnowledgeSourceData = {
+    body?: never;
+    path: {
+        /**
+         * Kb Id
+         */
+        kb_id: string;
+        /**
+         * Document Id
+         */
+        document_id: string;
+    };
+    query?: {
+        /**
+         * Segment Id
+         */
+        segment_id?: string | null;
+    };
+    url: '/api/public-knowledge-directory/{kb_id}/documents/{document_id}/source';
+};
+
+export type GetPublicKnowledgeSourceErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetPublicKnowledgeSourceError = GetPublicKnowledgeSourceErrors[keyof GetPublicKnowledgeSourceErrors];
+
+export type GetPublicKnowledgeSourceResponses = {
+    /**
+     * Successful Response
+     */
+    200: SharedDocumentSourceResponse;
+};
+
+export type GetPublicKnowledgeSourceResponse = GetPublicKnowledgeSourceResponses[keyof GetPublicKnowledgeSourceResponses];
+
 export type GetResearchDocumentProposalData = {
     body?: never;
     path: {
@@ -15436,6 +15653,102 @@ export type GetSharedDocumentSourceResponses = {
 };
 
 export type GetSharedDocumentSourceResponse = GetSharedDocumentSourceResponses[keyof GetSharedDocumentSourceResponses];
+
+export type UnpublishKnowledgeMetadataData = {
+    body?: never;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Kb Id
+         */
+        kb_id: string;
+    };
+    query?: never;
+    url: '/api/shared-knowledge-bases/{kb_id}/publication';
+};
+
+export type UnpublishKnowledgeMetadataErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type UnpublishKnowledgeMetadataError = UnpublishKnowledgeMetadataErrors[keyof UnpublishKnowledgeMetadataErrors];
+
+export type UnpublishKnowledgeMetadataResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type UnpublishKnowledgeMetadataResponse = UnpublishKnowledgeMetadataResponses[keyof UnpublishKnowledgeMetadataResponses];
+
+export type PublishKnowledgeMetadataData = {
+    body: PublishKnowledgeRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Kb Id
+         */
+        kb_id: string;
+    };
+    query?: never;
+    url: '/api/shared-knowledge-bases/{kb_id}/publication';
+};
+
+export type PublishKnowledgeMetadataErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type PublishKnowledgeMetadataError = PublishKnowledgeMetadataErrors[keyof PublishKnowledgeMetadataErrors];
+
+export type PublishKnowledgeMetadataResponses = {
+    /**
+     * Successful Response
+     */
+    200: PublicKnowledgePublicationResponse;
+};
+
+export type PublishKnowledgeMetadataResponse = PublishKnowledgeMetadataResponses[keyof PublishKnowledgeMetadataResponses];
 
 export type GetConfirmedTheoryPlanData = {
     body?: never;
