@@ -22,6 +22,8 @@ from qunxue_api.api.contracts.agent import (
     AgentMaterialContextRequest,
     AgentMaterialContextResponse,
     AgentMessageResponse,
+    AgentModelCatalogResponse,
+    AgentModelChoiceResponse,
     AgentResearchJourneyResponse,
     AgentRunRecoveryResponse,
     AgentRunStopResponse,
@@ -42,6 +44,7 @@ from qunxue_api.api.routes.research_tasks import _match_status, _navigation_resp
 from qunxue_api.api.routes.stubs import IdempotencyKey
 from qunxue_api.modules.agent_conversation import (
     AgentInterrupted,
+    AgentModelSelectionUnavailable,
     AgentResearchEvent,
     AgentToolEvent,
     CanvasEditConflict,
@@ -49,6 +52,7 @@ from qunxue_api.modules.agent_conversation import (
     ConversationTaskBindingConflict,
     ResearchMaterialCitationUnavailable,
     RunAlreadyActive,
+    resolve_agent_model_selection,
 )
 from qunxue_api.modules.billing import BillingFailure, CreditRunInProgress, CreditsDepleted
 from qunxue_api.modules.knowledge_catalog import RetrievalPipelineUnavailable
@@ -363,6 +367,25 @@ def confirm_agent_research_start(
         )
 
 
+@router.get("/models", response_model=AgentModelCatalogResponse, operation_id="list_agent_models")
+def list_agent_models(
+    request: Request,
+    current: CurrentSessionDependency,
+) -> AgentModelCatalogResponse:
+    return AgentModelCatalogResponse(
+        runtime_mode=_effective_agent_runtime_mode(request),
+        items=[
+            AgentModelChoiceResponse(
+                model_id=choice.model_id,
+                label=choice.label,
+                reasoning_efforts=list(choice.reasoning_efforts),
+                default_reasoning_effort=choice.default_reasoning_effort,
+            )
+            for choice in getattr(request.app.state, "agent_model_choices", ())
+        ],
+    )
+
+
 @router.post(
     "/turns",
     status_code=status.HTTP_200_OK,
@@ -381,6 +404,14 @@ def stream_agent_turn(
     current: CurrentSessionDependency,
     idempotency_key: IdempotencyKey,
 ) -> StreamingResponse:
+    try:
+        resolve_agent_model_selection(
+            payload.model_id, payload.reasoning_effort,
+            getattr(request.app.state, "agent_model_choices", ()),
+        )
+    except AgentModelSelectionUnavailable as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
     async def events() -> AsyncIterator[str]:
         event_queue: queue.Queue[tuple[str, object]] = queue.Queue()
         cancel_event = threading.Event()
@@ -445,6 +476,8 @@ def stream_agent_turn(
                                 prompt=payload.message,
                                 idempotency_key=idempotency_key,
                                 workspace=payload.workspace,
+                                model_id=payload.model_id,
+                                reasoning_effort=payload.reasoning_effort,
                                 web_search=payload.web_search,
                                 task_id=payload.task_id,
                                 document_id=payload.document_id,
@@ -627,6 +660,10 @@ def stream_agent_turn(
                     "message": "积分不足，请前往账户设置查看用量。",
                 },
             )
+        except AgentModelSelectionUnavailable as error:
+            yield _event(
+                "turn_failed", {"code": "model_selection_unavailable", "message": str(error)}
+            )
         except BillingFailure as error:
             _, code, message = billing_error(error)
             yield _event("turn_failed", {"code": code, "message": message})
@@ -748,7 +785,10 @@ def _conversation(
                 run_id=run.run_id,
                 idempotency_key=run.idempotency_key,
                 status=run.status,
-                request=AgentTurnRequest.model_validate(run.request_snapshot),
+                request=AgentTurnRequest.model_validate({
+                    key: value for key, value in run.request_snapshot.items()
+                    if key in AgentTurnRequest.model_fields
+                }),
                 partial_answer=run.partial_answer,
                 tool_summary=list(run.tool_summary),
                 updated_at=run.updated_at,

@@ -32,7 +32,12 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 from pydantic_ai.models import Model, ModelRequestParameters, StreamedResponse
-from pydantic_ai.models.openai import OpenAIChatModel, OpenAIChatModelSettings
+from pydantic_ai.models.openai import (
+    OpenAIChatModel,
+    OpenAIChatModelSettings,
+    OpenAIResponsesModel,
+    OpenAIResponsesModelSettings,
+)
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings, merge_model_settings
 from pydantic_ai.usage import UsageLimits
@@ -45,7 +50,7 @@ from qunxue_api.adapters.model import (
     ModelRouteExecutor,
     ModelRoutesUnavailable,
 )
-from qunxue_api.adapters.model.metering import MeteredOpenAIChatModel
+from qunxue_api.adapters.model.metering import MeteredOpenAIChatModel, MeteredOpenAIResponsesModel
 from qunxue_api.adapters.research_agent.catalog_tools import (
     KnowledgeToolRegistry,
 )
@@ -605,6 +610,140 @@ class _RetryingOpenAIChatModel(MeteredOpenAIChatModel):
         return routed.value
 
 
+class _RetryingOpenAIResponsesModel(MeteredOpenAIResponsesModel):
+    """Bridge Pydantic AI serialization onto the shared route executor."""
+
+    def __init__(
+        self,
+        *args,
+        route_executor: ModelRouteExecutor | None,
+        fallback_models: Mapping[str, OpenAIResponsesModel] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._route_executor = route_executor
+        self._endpoint_models = {"primary": self, **(fallback_models or {})}
+
+    async def request(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+    ) -> ModelResponse:
+        settings_token = _agent_model_settings_overrides.set(
+            cast(OpenAIResponsesModelSettings, dict(model_settings or {}))
+        )
+        try:
+            return await super().request(
+                messages,
+                model_settings,
+                model_request_parameters,
+            )
+        finally:
+            _agent_model_settings_overrides.reset(settings_token)
+
+    @asynccontextmanager
+    async def request_stream(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+        run_context: RunContext[Any] | None = None,
+    ) -> AsyncGenerator[StreamedResponse]:
+        settings_token = _agent_model_settings_overrides.set(
+            cast(OpenAIResponsesModelSettings, dict(model_settings or {}))
+        )
+        try:
+            async with super().request_stream(
+                messages,
+                model_settings,
+                model_request_parameters,
+                run_context,
+            ) as response:
+                yield response
+        finally:
+            _agent_model_settings_overrides.reset(settings_token)
+
+    async def _responses_create(
+        self,
+        messages: list[ModelMessage],
+        stream: bool,
+        model_settings: OpenAIResponsesModelSettings,
+        model_request_parameters: ModelRequestParameters,
+    ):
+        if self._route_executor is None:
+            raise RuntimeError("a shared model route executor is required")
+        correlation = _agent_route_correlation.get() or {}
+        context = ModelRouteContext(
+            trace_id=uuid4(),
+            request_id=uuid4(),
+            operation="agent_completion",
+            task_id=_uuid_correlation(correlation.get("task_id")),
+            agent_run_id=_uuid_correlation(correlation.get("agent_run_id")),
+            capability="agent_completion",
+        )
+        runtime_overrides = _runtime_model_settings(
+            primary_defaults=cast(OpenAIResponsesModelSettings, self.settings or {}),
+            prepared_settings=model_settings,
+        )
+
+        async def attempt(endpoint: ModelEndpoint) -> ModelAttemptResult[object]:
+            try:
+                model = self._endpoint_models[endpoint.endpoint_id]
+            except KeyError as error:
+                raise RuntimeError(
+                    f"no Agent model configured for endpoint {endpoint.endpoint_id}"
+                ) from error
+            # Match Pydantic AI's shallow merge contract: endpoint defaults are
+            # the base and per-call settings take precedence without mutation.
+            endpoint_settings = cast(
+                OpenAIResponsesModelSettings,
+                merge_model_settings(model.settings, runtime_overrides) or {},
+            )
+            if self._route_executor.max_input_tokens is not None:
+                serialized = ModelMessagesTypeAdapter.dump_json(messages)
+                contracts = json.dumps(
+                    model_request_parameters.__dict__, default=str, ensure_ascii=False
+                ).encode()
+                if len(serialized) + len(contracts) + 4096 > self._route_executor.max_input_tokens:
+                    raise ModelAttemptFailure(code="model_input_limit", retryable=False)
+            if self._route_executor.max_output_tokens is not None:
+                endpoint_settings["max_tokens"] = min(
+                    endpoint_settings.get("max_tokens") or self._route_executor.max_output_tokens,
+                    self._route_executor.max_output_tokens,
+                )
+            try:
+                value = await MeteredOpenAIResponsesModel._responses_create(
+                    model,
+                    messages,
+                    stream,
+                    endpoint_settings,
+                    model_request_parameters,
+                )
+            except (ModelHTTPError, ModelAPIError) as error:
+                raise ModelAttemptFailure(
+                    code=_model_attempt_failure_code(error),
+                    retryable=_is_retryable_model_error(error),
+                ) from error
+            input_tokens, output_tokens = _completion_usage(value)
+            return ModelAttemptResult(
+                value=value,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+
+        try:
+            routed = await self._route_executor.execute_async(
+                context=context,
+                invoke=attempt,
+            )
+        except ModelAttemptFailure as failure:
+            raise AgentModelRouteError.from_attempt(failure) from None
+        except ModelRoutesUnavailable:
+            raise AgentModelRouteError("agent_model_unavailable") from None
+        return routed.value
+
+
 class AgentModelRouteError(RuntimeError):
     """Safe, stable failure raised after an Agent model route cannot complete."""
 
@@ -669,7 +808,10 @@ class PydanticAIKnowledgeRunner:
         route_executor: ModelRouteExecutor | None = None,
         model_api_mock: bool = False,
         require_billing: bool = False,
+        protocol: Literal["chat_completions", "responses"] = "chat_completions",
     ) -> None:
+        if protocol == "responses" and fallback_endpoints:
+            raise ValueError("explicit model selections require strict-model routing")
         self._model = MODEL_API_MOCK_NAME if model_api_mock else model
         self.runtime_identity = AgentRuntimeIdentity(
             provider="pydantic-ai",
@@ -684,6 +826,8 @@ class PydanticAIKnowledgeRunner:
                 "timeout": timeout_seconds,
                 "max_tokens": 2400,
             }
+            if protocol == "responses":
+                endpoint_settings["openai_store"] = False
             if extra_headers:
                 endpoint_settings["extra_headers"] = dict(extra_headers)
             if reasoning_effort is not None:
@@ -738,7 +882,11 @@ class PydanticAIKnowledgeRunner:
             if route_executor is not None and route_executor.endpoint_ids != expected_endpoint_ids:
                 raise ValueError("Agent model endpoints must match the shared route executor")
 
-            model_instance = _RetryingOpenAIChatModel(
+            routed_model_class = (
+                _RetryingOpenAIResponsesModel
+                if protocol == "responses" else _RetryingOpenAIChatModel
+            )
+            model_instance = routed_model_class(
                 model,
                 provider=OpenAIProvider(
                     openai_client=AsyncOpenAI(

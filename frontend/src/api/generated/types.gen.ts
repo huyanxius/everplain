@@ -590,6 +590,42 @@ export type AgentMessageResponse = {
 };
 
 /**
+ * AgentModelCatalogResponse
+ */
+export type AgentModelCatalogResponse = {
+    /**
+     * Items
+     */
+    items: Array<AgentModelChoiceResponse>;
+    /**
+     * Runtime Mode
+     */
+    runtime_mode: 'mock' | 'base' | 'sft';
+};
+
+/**
+ * AgentModelChoiceResponse
+ */
+export type AgentModelChoiceResponse = {
+    /**
+     * Default Reasoning Effort
+     */
+    default_reasoning_effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Model Id
+     */
+    model_id: string;
+    /**
+     * Reasoning Efforts
+     */
+    reasoning_efforts: Array<'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
+};
+
+/**
  * AgentProfileResponse
  */
 export type AgentProfileResponse = {
@@ -918,6 +954,14 @@ export type AgentTurnRequest = {
      * Mode
      */
     mode?: 'standard' | 'deep_research';
+    /**
+     * Model Id
+     */
+    model_id?: string | null;
+    /**
+     * Reasoning Effort
+     */
+    reasoning_effort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
     /**
      * Reference Knowledge Base Id
      */
@@ -2439,6 +2483,22 @@ export type CreditPricingResponse = {
      */
     credits_per_usd?: number | null;
     /**
+     * Fx As Of
+     */
+    fx_as_of?: string | null;
+    /**
+     * Fx Cny Per Usd Micro
+     */
+    fx_cny_per_usd_micro?: number | null;
+    /**
+     * Fx Snapshot Id
+     */
+    fx_snapshot_id?: string | null;
+    /**
+     * Fx Source
+     */
+    fx_source?: string | null;
+    /**
      * Input Tokens Per Credit
      */
     input_tokens_per_credit: number;
@@ -2451,6 +2511,10 @@ export type CreditPricingResponse = {
      */
     output_tokens_per_credit: number;
     /**
+     * Points Per Cny
+     */
+    points_per_cny?: number | null;
+    /**
      * Price Version
      */
     price_version?: string | null;
@@ -2458,6 +2522,10 @@ export type CreditPricingResponse = {
      * Reference Currency
      */
     reference_currency?: string;
+    /**
+     * Retail Rate Ppm
+     */
+    retail_rate_ppm?: number | null;
 };
 
 /**
@@ -2488,6 +2556,10 @@ export type CreditRedemptionResponse = {
  * CreditSummaryResponse
  */
 export type CreditSummaryResponse = {
+    /**
+     * Active Usage Buckets
+     */
+    active_usage_buckets?: Array<CreditUsageBucketResponse>;
     /**
      * Available Balance
      */
@@ -2528,9 +2600,43 @@ export type CreditSummaryResponse = {
     }>;
     pricing: CreditPricingResponse;
     /**
+     * Quota Status
+     */
+    quota_status?: 'known' | 'unavailable';
+    /**
      * Total Entries
      */
     total_entries: number;
+    /**
+     * Total Granted Points
+     */
+    total_granted_points?: number | null;
+};
+
+/**
+ * CreditUsageBucketResponse
+ */
+export type CreditUsageBucketResponse = {
+    /**
+     * Available Points
+     */
+    available_points: number;
+    /**
+     * Bucket Id
+     */
+    bucket_id: string;
+    /**
+     * Expires At
+     */
+    expires_at?: string | null;
+    /**
+     * Kind
+     */
+    kind: 'subscription' | 'top_up' | 'welcome';
+    /**
+     * Limit Points
+     */
+    limit_points: number;
 };
 
 /**
@@ -10182,6 +10288,39 @@ export type ListAgentMaterialsResponses = {
 };
 
 export type ListAgentMaterialsResponse = ListAgentMaterialsResponses[keyof ListAgentMaterialsResponses];
+
+export type ListAgentModelsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/agent/models';
+};
+
+export type ListAgentModelsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ListAgentModelsError = ListAgentModelsErrors[keyof ListAgentModelsErrors];
+
+export type ListAgentModelsResponses = {
+    /**
+     * Successful Response
+     */
+    200: AgentModelCatalogResponse;
+};
+
+export type ListAgentModelsResponse = ListAgentModelsResponses[keyof ListAgentModelsResponses];
 
 export type ConfirmAgentResearchStartData = {
     body: ConfirmResearchStartRequest;

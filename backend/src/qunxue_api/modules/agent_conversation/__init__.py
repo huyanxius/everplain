@@ -38,8 +38,24 @@ from qunxue_api.modules.agent_conversation.research_map import (
 from qunxue_api.modules.agent_conversation.service import ConversationService
 
 from .canvas_editing import CanvasEditConflict, apply_canvas_edits, prepare_canvas_edit
+from .model_selection import (
+    LUNA_REASONING_EFFORTS,
+    MOCK_AGENT_MODEL_CHOICES,
+    AgentModelChoice,
+    AgentModelSelection,
+    AgentModelSelectionUnavailable,
+    AgentReasoningEffort,
+    resolve_agent_model_selection,
+)
 
 __all__ = [
+    "AgentModelChoice",
+    "AgentModelSelection",
+    "AgentModelSelectionUnavailable",
+    "AgentReasoningEffort",
+    "LUNA_REASONING_EFFORTS",
+    "MOCK_AGENT_MODEL_CHOICES",
+    "resolve_agent_model_selection",
     "CanvasEditConflict",
     "apply_canvas_edits",
     "prepare_canvas_edit",

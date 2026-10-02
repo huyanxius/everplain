@@ -179,7 +179,7 @@ from qunxue_api.application.shared_knowledge import SharedKnowledgeApplication
 from qunxue_api.application.subscriptions import SubscriptionApplication
 from qunxue_api.modules.agent_conversation import ConversationNotFound, ConversationService
 from qunxue_api.modules.agent_memory import MemoryService
-from qunxue_api.modules.billing import CreditService
+from qunxue_api.modules.billing import SIGNUP_GRANT, CreditService
 from qunxue_api.modules.external_agents import ExternalAgentService
 from qunxue_api.modules.identity import (
     EmailAlreadyRegistered,
@@ -459,6 +459,31 @@ def create_app(
     app.state.model_endpoints = model_endpoints
     app.state.model_router = model_router
     app.state.model_attempt_recorder = model_attempt_recorder
+    from qunxue_api.adapters.research_agent.model_selection import selectable_agent_model
+    from qunxue_api.modules.agent_conversation import MOCK_AGENT_MODEL_CHOICES
+
+    selected_choices, selected_endpoint = selectable_agent_model(
+        model_endpoints[0] if model_endpoints else None,
+        protocol=resolved_settings.agent_model_protocol,
+        supported_efforts=resolved_settings.agent_model_supported_efforts,
+        default_effort=resolved_settings.model_reasoning_effort,
+    )
+    app.state.agent_model_choices = (
+        MOCK_AGENT_MODEL_CHOICES
+        if _effective_model_runtime_mode(resolved_settings) == "mock"
+        else selected_choices
+    )
+    selected_agent_router = (
+        ModelRouteExecutor(
+            endpoints=(selected_endpoint,),
+            recorder=model_attempt_recorder,
+            max_retries=resolved_settings.model_max_retries,
+            max_input_tokens=resolved_settings.model_max_input_tokens,
+            max_output_tokens=resolved_settings.model_max_output_tokens,
+        )
+        if selected_endpoint is not None else None
+    )
+
     from qunxue_api.adapters.model.billing_operations import SqliteBillingOperations
 
     app.state.billing_operations = SqliteBillingOperations(
@@ -483,7 +508,14 @@ def create_app(
     def identity_service_scope() -> Iterator[IdentityService]:
         with resolved_database.session() as session:
             yield IdentityService(
-                SqliteIdentityRepository(session),
+                SqliteIdentityRepository(
+                    session,
+                    on_user_created=lambda user: (
+                        SqliteCreditRepository(session).ensure_welcome_grant(
+                        user_id=user.user_id, points=SIGNUP_GRANT, now=user.created_at,
+                        )
+                    ),
+                ),
                 password_hasher,
                 invalid_password_hash=invalid_password_hash,
                 session_ttl=timedelta(seconds=resolved_settings.session_ttl_seconds),
@@ -518,8 +550,9 @@ def create_app(
                 yield PhenomenonService(
                     SqlitePhenomenonRepository(session), SqliteResearchTaskRepository(session),
                 )
-            if scope is not None:
-                scope.finish("success")
+                if scope is not None:
+                    session.flush()
+                    scope.finish("success", connection=session.connection())
 
     def build_research_analysis_application(
         session,
@@ -558,7 +591,8 @@ def create_app(
                 matching_requests=SqliteMatchingRequestRepository(session),
                 research_tasks=SqliteResearchTaskRepository(session),
                 rollback=session.rollback,
-                billing=app.state.billing_operations if not descriptor.demonstration else None,
+                billing=app.state.billing_operations.bound_to(session)
+                if not descriptor.demonstration else None,
                 commit=session.commit,
                 invalidate_method_plan=(
                     lambda task_id, reason: method_plan_service.mark_stale_for_task(
@@ -1123,6 +1157,26 @@ def create_app(
                     route_executor=app.state.model_router,
                     require_billing=True,
                 )
+            def runner_for_selection(selection):
+                if not use_real_agent:
+                    return runner
+                if selected_endpoint is None or selected_agent_router is None:
+                    from qunxue_api.modules.agent_conversation import (
+                        AgentModelSelectionUnavailable,
+                    )
+                    raise AgentModelSelectionUnavailable("当前服务尚未接通所选模型路由。")
+                return PydanticAIKnowledgeRunner(
+                    base_url=selected_endpoint.base_url,
+                    api_key=selected_endpoint.api_key,
+                    model=selected_endpoint.model,
+                    timeout_seconds=selected_endpoint.timeout_seconds,
+                    extra_headers=selected_endpoint.extra_headers,
+                    reasoning_effort=selection.reasoning_effort,
+                    protocol="responses",
+                    route_executor=selected_agent_router,
+                    require_billing=True,
+                )
+
             try:
                 yield DisciplinaryAgentApplication(
                     shared_references=SharedKnowledgeReferences(
@@ -1142,7 +1196,12 @@ def create_app(
                     ),
                     conversations=conversations,
                     runner=runner,
-                    billing=app.state.billing_operations if use_real_agent else None,
+                    model_choices=app.state.agent_model_choices,
+                    runner_for_selection=runner_for_selection,
+                    billing=(
+                        app.state.billing_operations.bound_to(session) if use_real_agent else None
+                    ),
+                    rollback=session.rollback,
                     credits=CreditService(
                         SqliteCreditRepository(session),
                         exempt_user_ids=getattr(
@@ -1151,7 +1210,10 @@ def create_app(
                             (),
                         ),
                     ),
-                    atomic=session.begin_nested,
+                    atomic=(
+                        app.state.billing_operations.bound_to(session).atomic
+                        if use_real_agent else session.begin_nested
+                    ),
                     ensure_research_draft=(
                         lambda **payload: (
                             research_start_application.ensure_draft_project(**payload).task_id
@@ -1734,7 +1796,6 @@ def _billing_runtime(settings, database):
     from qunxue_api.modules.billing import PriceBook
 
     fields = (
-        settings.billing_credits_per_usd,
         settings.billing_price_version,
         settings.billing_max_attempt_usd_micro,
         settings.billing_max_operation_usd_micro,
@@ -1742,10 +1803,28 @@ def _billing_runtime(settings, database):
     )
     if any(value is None for value in fields):
         return None
+    fx_fields = (
+        settings.billing_fx_cny_per_usd_micro, settings.billing_fx_snapshot_id,
+        settings.billing_fx_as_of, settings.billing_fx_source,
+    )
+    if any(value is not None for value in fx_fields):
+        if any(value is None for value in fx_fields):
+            return None
+        conversion = dict(
+            credits_per_usd=None, points_per_cny=100, retail_rate_ppm=100000,
+            fx_cny_per_usd_micro=settings.billing_fx_cny_per_usd_micro,
+            fx_snapshot_id=settings.billing_fx_snapshot_id,
+            fx_as_of=settings.billing_fx_as_of, fx_source=settings.billing_fx_source,
+        )
+    elif settings.billing_credits_per_usd is not None:
+        # Compatibility for explicit legacy snapshots; no inferred conversion.
+        conversion = dict(credits_per_usd=settings.billing_credits_per_usd)
+    else:
+        return None
     return DurableBilling(
         database.engine,
         price_book=PriceBook(
-            credits_per_usd=settings.billing_credits_per_usd,
+            **conversion,
             version=settings.billing_price_version,
             aliases=settings.billing_model_aliases,
             usage_policies=settings.billing_usage_policies,
