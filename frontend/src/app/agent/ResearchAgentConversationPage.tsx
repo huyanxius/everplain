@@ -629,6 +629,11 @@ function persistDraft(userId: string | null, value: string) {
   }
 }
 
+/** 首页输入框把问题交给 /agent：写进独立对话的草稿，进入后问题已在输入框里，由用户确认发送。 */
+export function seedAgentDraft(userId: string, value: string) {
+  persistDraft(conversationStorageScope(userId, null, null, 'agent'), value.slice(0, MAX_AGENT_MESSAGE_LENGTH))
+}
+
 function readPendingTurnAttempt(userId: string | null): PendingTurnAttempt | null {
   if (typeof window === 'undefined') return null
   try {

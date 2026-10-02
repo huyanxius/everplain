@@ -280,7 +280,7 @@ describe('App routes', () => {
   it('retires the sociology research tools route and navigation', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
     renderRoute('/research/tools', { status: 'authenticated' })
-    expect(await screen.findByRole('heading', { level: 1, name: '思绪有处安放，灵感自会生长。' })).toBeVisible()
+    expect(await screen.findByRole('heading', { level: 1, name: /今天想弄清楚什么？/ })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/app')
     expect(screen.queryByRole('link', { name: '研究工具' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: '研究工具列表' })).not.toBeInTheDocument()
@@ -300,7 +300,7 @@ describe('App routes', () => {
 
   it('renders the personal home with source cards and private-library actions', async () => {
     renderRoute('/app', { status: 'authenticated' })
-    expect(await screen.findByRole('heading', { level: 1, name: '思绪有处安放，灵感自会生长。' })).toBeVisible()
+    expect(await screen.findByRole('heading', { level: 1, name: /今天想弄清楚什么？/ })).toBeVisible()
     expect(screen.getByRole('navigation', { name: '知识空间视图' })).toBeVisible()
     expect(await screen.findByRole('heading', { name: '把第一份资料，放进来。' })).toBeVisible()
     expect(within(screen.getByRole('navigation', { name: '知识空间视图' })).getByRole('link', { name: '新建研究' })).toHaveAttribute('href', '/research/new')
@@ -317,7 +317,7 @@ describe('App routes', () => {
 
   it('links the personal home to its four-level knowledge graph', async () => {
     renderRoute('/app', { status: 'authenticated' })
-    await screen.findByRole('heading', { level: 1, name: '思绪有处安放，灵感自会生长。' })
+    await screen.findByRole('heading', { level: 1, name: /今天想弄清楚什么？/ })
     expect(screen.getByRole('link', { name: '知识图谱' })).toHaveAttribute('href', '/my/graph')
     expect(screen.getByRole('link', { name: /管理知识库/ })).toHaveAttribute('href', '/library')
   })
@@ -410,12 +410,12 @@ describe('App routes', () => {
 
   it('preserves the legacy my redirect into the personal home', async () => {
     renderRoute('/my', { status: 'authenticated' })
-    expect(await screen.findByRole('heading', { level: 1, name: '思绪有处安放，灵感自会生长。' })).toBeVisible()
+    expect(await screen.findByRole('heading', { level: 1, name: /今天想弄清楚什么？/ })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/app?research=all')
   })
 
   it.each([
-    ['/app', '思绪有处安放，灵感自会生长。'],
+    ['/app', /今天想弄清楚什么？/],
     ['/agent', '你想研究什么？'],
     ['/research/new', '从一个问题开始'],
     ['/research/task-1/phenomenon', '理论判断文档'],
@@ -892,7 +892,7 @@ describe('App routes', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
     renderRoute('/', { status: 'authenticated' })
 
-    expect(await screen.findByRole('heading', { name: '思绪有处安放，灵感自会生长。' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: /今天想弄清楚什么？/ })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/app')
   })
 
