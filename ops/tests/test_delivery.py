@@ -156,7 +156,7 @@ class DatabaseBackupTests(unittest.TestCase):
             self.assertFalse(target.exists())
 
 
-class ExplicitMockDemoTests(ProductionPreflightTests):
+class ExplicitModelFallbackTests(ProductionPreflightTests):
     def demo_env(self):
         env = production_env()
         for name in list(env):
@@ -164,15 +164,15 @@ class ExplicitMockDemoTests(ProductionPreflightTests):
                 "MODEL", "EMBEDDING", "RERANKER", "WEB_SEARCH", "ACCOUNT_INITIAL_ADMIN",
             )):
                 del env[name]
-        env["EVERPLAIN_DEMO_MODE"] = "true"
-        env["EVERPLAIN_RUNTIME_MODE"] = "mock"
+        env["EVERPLAIN_ALLOW_MODEL_FALLBACK"] = "true"
+        env["EVERPLAIN_RUNTIME_MODE"] = "base"
         return env
 
     def test_explicit_demo_starts_without_ai_credentials_or_invented_administrator(self):
         result = self.run_preflight(self.demo_env())
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
-        self.assertEqual(report["status"], "configuration_ready_mock")
+        self.assertEqual(report["status"], "configuration_ready")
         self.assertEqual(report["registration_email"], "not_configured")
         self.assertEqual(report["administrator"], "not_provisioned")
 

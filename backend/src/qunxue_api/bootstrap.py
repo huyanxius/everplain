@@ -296,7 +296,7 @@ def create_app(
                 await asyncio.sleep(0.05 if worked else 1)
 
         import_task = asyncio.create_task(process_imports(), name="everplain-imports")
-        if _effective_model_runtime_mode(resolved_settings) != "mock":
+        if resolved_settings.runtime_mode != "mock":
 
             async def organize_courses():
                 while True:
@@ -1027,7 +1027,15 @@ def create_app(
             # as the zero-config development default.
             agent_runtime_mode = _effective_model_runtime_mode(resolved_settings)
             use_real_agent = agent_runtime_mode != "mock"
-            if not use_real_agent:
+            if resolved_settings.allow_model_fallback and not resolved_settings.has_model_api_key:
+                runner = PydanticAIKnowledgeRunner(
+                    base_url="http://model-unconfigured.invalid",
+                    api_key=None,
+                    model="unconfigured-model-fallback",
+                    timeout_seconds=resolved_settings.model_timeout_seconds,
+                    model_api_mock=True,
+                )
+            elif not use_real_agent:
                 runner = DeterministicKnowledgeRunner()
             else:
                 agent_endpoints = app.state.model_endpoints
@@ -1523,6 +1531,9 @@ def _retriever_from_settings(settings: Settings) -> HybridRetriever | None:
         settings.reranker_api_key,
         settings.reranker_model,
     )
+    if settings.allow_model_fallback and not all(configured_values):
+        # Real lexical search remains available; do not invent embeddings/rankings.
+        return None
     has_partial_configuration = any(value is not None for value in configured_values)
     if not has_partial_configuration and (
         settings.runtime_mode == "mock" or settings.has_model_api_key
@@ -1622,6 +1633,8 @@ def _model_endpoints_from_settings(settings: Settings) -> tuple[ModelEndpoint, .
 def _effective_model_runtime_mode(settings: Settings) -> str:
     """Resolve the runtime selected by the actual model credentials."""
 
+    if settings.allow_model_fallback and not settings.has_model_api_key:
+        return "mock"
     if settings.runtime_mode == "mock" and settings.has_model_api_key:
         return "base"
     return settings.runtime_mode

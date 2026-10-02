@@ -27,7 +27,7 @@ def get_health(request: Request) -> HealthResponse | JSONResponse:
     runtime_mode = descriptor.capability_tier
     model_router = request.app.state.model_router
     if runtime_mode == "mock":
-        model_status = "healthy"
+        model_status = "degraded" if settings.allow_model_fallback else "healthy"
     elif model_router is None:
         model_status = "unknown"
     else:
