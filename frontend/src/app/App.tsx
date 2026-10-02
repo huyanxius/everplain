@@ -18,6 +18,7 @@ import {
   LoginPage,
   PasswordResetPage,
   RegisterPage,
+  RuntimeModeNotice,
   useAccount,
 } from '../modules/account'
 import { ResearchTaskNavigationRoute } from './ResearchTaskNavigationRoute'
@@ -311,6 +312,7 @@ export function AppRoutes({
 export function App() {
   return (
     <BrowserRouter useTransitions={false}>
+      <RuntimeModeNotice />
       <AppRoutes />
     </BrowserRouter>
   )

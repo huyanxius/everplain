@@ -156,5 +156,40 @@ class DatabaseBackupTests(unittest.TestCase):
             self.assertFalse(target.exists())
 
 
+class ExplicitMockDemoTests(ProductionPreflightTests):
+    def demo_env(self):
+        env = production_env()
+        for name in list(env):
+            if name.startswith("EVERPLAIN_") and any(part in name for part in (
+                "MODEL", "EMBEDDING", "RERANKER", "WEB_SEARCH", "ACCOUNT_INITIAL_ADMIN",
+            )):
+                del env[name]
+        env["EVERPLAIN_DEMO_MODE"] = "true"
+        env["EVERPLAIN_RUNTIME_MODE"] = "mock"
+        return env
+
+    def test_explicit_demo_starts_without_ai_credentials_or_invented_administrator(self):
+        result = self.run_preflight(self.demo_env())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["status"], "configuration_ready_mock")
+        self.assertEqual(report["registration_email"], "not_configured")
+        self.assertEqual(report["administrator"], "not_provisioned")
+
+    def test_demo_still_requires_secure_independent_sessions(self):
+        env = self.demo_env()
+        env["EVERPLAIN_SESSION_COOKIE_SECURE"] = "false"
+        result = self.run_preflight(env)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("EVERPLAIN_SESSION_COOKIE_SECURE", json.loads(result.stdout)["invalid_fields"])
+
+    def test_demo_requires_complete_real_email_config_when_supplied(self):
+        env = self.demo_env()
+        env["EVERPLAIN_EMAIL_FROM"] = "Everplain <hello@example.invalid>"
+        result = self.run_preflight(env)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("EVERPLAIN_RESEND_API_KEY", json.loads(result.stdout)["invalid_fields"])
+
+
 if __name__ == "__main__":
     unittest.main()

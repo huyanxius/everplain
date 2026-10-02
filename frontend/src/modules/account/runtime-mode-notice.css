@@ -1,0 +1,17 @@
+.runtime-mode-notice {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 16px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--qx-color-notice-line);
+  background: var(--qx-color-notice-soft);
+  color: var(--qx-color-notice);
+  font-family: var(--qx-font-ui);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+}

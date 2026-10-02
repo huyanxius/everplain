@@ -48,6 +48,8 @@ export function FoundationPage({ authenticated = false }: { authenticated?: bool
           <h1 id="ep-hero-title">Room for your mind.</h1>
           <p className="ep-hero-chinese">给思绪一处空间。</p>
           <Composer id="ep-thought" authenticated={authenticated} />
+          <a className="ep-text-link" href="#gather">免登录查看静态演示<ArrowUpRightIcon size={16} aria-hidden="true" /></a>
+          <p className="ep-demo-disclosure">下方演示使用预设示例，不读取个人资料，也不调用真实 AI。进入工作台仍需登录。</p>
         </div>
       </section>
 
@@ -97,7 +99,7 @@ export function FoundationPage({ authenticated = false }: { authenticated?: bool
         <ActAgent avatar="you" state="greet" side="center" />
         <h2 id="ep-closing-title">Room for your mind.</h2>
         <Composer id="ep-thought-closing" authenticated={authenticated} />
-        <Link className="ep-text-link" to="/app">先逛逛当前版本<ArrowUpRightIcon size={16} aria-hidden="true" /></Link>
+        <a className="ep-text-link" href="#gather">再看静态演示<ArrowUpRightIcon size={16} aria-hidden="true" /></a>
       </section>
     </main>
 

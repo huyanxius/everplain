@@ -4,6 +4,7 @@
  * 不要拿它做按钮、大字或大面积底色，一旦铺开就成了装饰。
  */
 .ep-site {
+  position: relative;
   --ep-paper: #f7f5ef; --ep-panel: #efece4; --ep-card: #fbfaf6;
   --ep-ink: #24231f; --ep-ink-2: #56534b; --ep-muted: #8b877c; --ep-line: #e0dbcf;
   --ep-accent: #a4472d; --ep-accent-wash: #ecd3c4;
@@ -301,3 +302,5 @@
 @media (prefers-reduced-motion: reduce) {
   .ep-crew-member, .ep-act-agent { opacity: 1 !important; transform: none !important; }
 }
+
+.ep-demo-disclosure { max-width: 480px; margin: 12px auto 0 !important; color: var(--ep-ink-2); font-size: 13px; line-height: 1.7; }

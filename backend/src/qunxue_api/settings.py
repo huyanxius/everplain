@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal, cast
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -113,6 +113,7 @@ class Settings(BaseSettings):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
     )
     runtime_mode: Literal["mock", "base", "sft"] = "mock"
+    demo_mode: bool = False
     database_url: str = DEFAULT_DATABASE_URL
     memory_learning_enabled: bool = True
     memory_learning_idle_seconds: int = Field(default=600, ge=60)
@@ -201,6 +202,46 @@ class Settings(BaseSettings):
         hide_input_in_errors=True,
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def isolate_demo_provider_inputs(cls, values):
+        """Ignore even blank/stale provider config before URL/credential validation."""
+        if not isinstance(values, dict) or str(values.get("demo_mode", False)).lower() not in {
+            "true",
+            "1",
+            "yes",
+            "on",
+        }:
+            return values
+        values = dict(values)
+        for prefix in ("model", "embedding", "reranker", "vision", "transcription"):
+            for suffix in ("base_url", "api_key", "model"):
+                name = f"{prefix}_{suffix}"
+                if name in cls.model_fields:
+                    values[name] = None
+        values.update(
+            model_name=None,
+            model_fallbacks=[],
+            model_extra_headers={},
+            web_search_api_key=None,
+            web_search_base_url=None,
+            memory_learning_enabled=False,
+        )
+        return values
+
+    @model_validator(mode="after")
+    def limit_demo_runtime(self):
+        """Authentication and real verification email are deliberately unchanged."""
+        if not self.demo_mode:
+            return self
+        if self.runtime_mode != "mock":
+            raise ValueError("demo mode requires runtime_mode=mock")
+        self.max_file_bytes = min(self.max_file_bytes, 5 * 1024 * 1024)
+        self.max_storage_bytes = min(self.max_storage_bytes, 50 * 1024 * 1024)
+        self.max_libraries = min(self.max_libraries, 3)
+        self.max_documents_per_library = min(self.max_documents_per_library, 20)
+        return self
+
     @field_validator("model_base_url")
     @classmethod
     def validate_model_base_url(cls, value: str | None) -> str | None:
@@ -239,9 +280,7 @@ class Settings(BaseSettings):
         primary_base_url = self.model_base_url or (
             DEFAULT_MODEL_BASE_URL if self.has_model_api_key else None
         )
-        primary_model = self.model_name or (
-            DEFAULT_MODEL_NAME if self.has_model_api_key else None
-        )
+        primary_model = self.model_name or (DEFAULT_MODEL_NAME if self.has_model_api_key else None)
         if primary_base_url is None and primary_model is None and not self.model_fallbacks:
             return ()
         if primary_base_url is None or primary_model is None:
