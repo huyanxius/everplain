@@ -16,7 +16,7 @@ describe('landing system theme contract', () => {
   })
 
   it('does not hard-code surface or foreground colors outside the brand palette', () => {
-    const rules = css.replace(/^\s*--ep-(?:accent|accent-wash|on-accent):.*$/gm, '')
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*--ep-(?:accent|accent-wash|on-accent|paper|panel|card|line):.*$/gm, '')
     expect(rules).not.toMatch(/#[\da-f]{3,8}\b/i)
     expect(css).toContain('color: var(--ep-on-ink)')
     expect(css).toContain('color: var(--ep-on-accent)')
@@ -46,8 +46,8 @@ function contrast(a: string, b: string) {
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
 }
 it.each([0, 1])('keeps main text, metadata, actions and citation text readable in theme %i', mode => {
-  const paper = palette('--qx-paper-surface')[mode]
-  const card = palette('--qx-color-surface-raised')[mode]
+  const paper = mode === 1 ? '#1a1a1b' : palette('--qx-paper-surface')[mode]
+  const card = mode === 1 ? '#212121' : palette('--qx-color-surface-raised')[mode]
   const ink = palette('--qx-paper-ink')[mode]
   const muted = palette('--qx-color-muted')[mode]
   const onInk = palette('--qx-color-on-accent')[mode]
@@ -60,4 +60,12 @@ it.each([0, 1])('keeps main text, metadata, actions and citation text readable i
   for (const [foreground, background] of [[ink, paper], [muted, paper], [muted, card], [onInk, ink], [accent, card], [onAccent, accent]]) {
     expect(contrast(foreground, background)).toBeGreaterThanOrEqual(4.5)
   }
+})
+
+it('only changes dark surfaces to the existing Qunxue knowledge palette', () => {
+  // 已核对群学生产 knowledge-library.css；Everplain 不依赖另一个仓库的文件。
+  expect(css).toContain('--ep-paper: light-dark(var(--qx-paper-surface), #1a1a1b)')
+  expect(css).toContain('--ep-panel: light-dark(var(--qx-paper-sidebar), #212121)')
+  expect(css).toContain('--ep-card: light-dark(var(--qx-color-surface-raised), #212121)')
+  expect(css).toContain('--ep-line: light-dark(var(--qx-paper-rule), rgb(158 158 158 / 16%))')
 })
