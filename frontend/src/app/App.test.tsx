@@ -1,3 +1,4 @@
+import { readPersonalGraph } from '../modules/personal-graph'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
@@ -279,7 +280,7 @@ describe('App routes', () => {
   it('retires the sociology research tools route and navigation', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
     renderRoute('/research/tools', { status: 'authenticated' })
-    expect(await screen.findByRole('heading', { level: 1, name: 'Everplain' })).toBeVisible()
+    expect(await screen.findByRole('heading', { level: 1, name: '思绪有处安放，灵感自会生长。' })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/app')
     expect(screen.queryByRole('link', { name: '研究工具' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: '研究工具列表' })).not.toBeInTheDocument()
@@ -297,87 +298,28 @@ describe('App routes', () => {
     expect(await screen.findByRole('button', { name: '展开侧栏' })).toBeVisible()
   })
 
-  it('renders the work home as a focused research library instead of a dashboard card grid', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
-
+  it('renders the personal home with source cards and private-library actions', async () => {
     renderRoute('/app', { status: 'authenticated' })
-
-    expect(await screen.findByRole('heading', { level: 1, name: 'Everplain' })).toBeVisible()
-    expect(screen.getByRole('navigation', { name: '研究视图' })).toBeVisible()
-    expect(screen.getByRole('region', { name: '最近研究' })).toBeVisible()
-    expect(await screen.findByRole('heading', { level: 2, name: '还没有研究任务' })).toBeVisible()
-    expect(
-      within(screen.getByRole('main')).getByRole('link', { name: '新建研究' }),
-    ).toHaveAttribute('href', '/research/new')
-    expect(screen.queryByRole('region', { name: '研究资料' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '从现象到框架' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: '思绪有处安放，灵感自会生长。' })).toBeVisible()
+    expect(screen.getByRole('navigation', { name: '知识空间视图' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '把第一份资料，放进来。' })).toBeVisible()
+    expect(within(screen.getByRole('navigation', { name: '知识空间视图' })).getByRole('link', { name: '新建研究' })).toHaveAttribute('href', '/research/new')
+    expect(screen.getByText(/默认仅你可见/)).toBeVisible()
   })
 
-  it('uses the same empty research guidance in recent and complete views', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
-
+  it('filters the personal library without leaving the home route', async () => {
     renderRoute('/app', { status: 'authenticated' })
-    const guidance = '从一个问题或一份资料开始。研究进度、依据和下一步会保存在这里。'
-
-    expect(await screen.findByText(guidance)).toBeVisible()
-    expect(screen.getByRole('link', { name: '开始第一项研究' })).toBeVisible()
-    fireEvent.click(screen.getByRole('link', { name: '查看全部' }))
-
-    expect(await screen.findByRole('region', { name: '全部研究' })).toBeVisible()
-    expect(screen.getByText(guidance)).toBeVisible()
-    expect(screen.getByRole('link', { name: '开始第一项研究' })).toHaveAttribute(
-      'href',
-      '/research/new',
-    )
-    expect(screen.queryByText('从一个具体的社会现象开始，研究过程会持续保存在这里。')).not.toBeInTheDocument()
-  })
-
-  it('switches the workbench right column to complete research management', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => json({
-      items: [{
-        adopted_theory_count: 2,
-        allowed_actions: ['confirm_phenomenon'],
-        blocker: null,
-        created_at: '2026-08-08T08:00:00Z',
-        current_framework_id: null,
-        current_match_run_id: null,
-        current_material_intake_run_id: null,
-        current_phenomenon_candidate_id: 'candidate-1',
-        current_stage: 'phenomenon_confirmation',
-        entry_type: 'direct',
-        next_action_label: '确认现象',
-        phenomenon_summary: {
-          phenomenon: '同一社区中的互助为何逐渐减少？',
-          research_intent: '比较关系持续性与制度规范的解释',
-        },
-        seed_theory_id: null,
-        seed_theory_name: null,
-        resume_path: '/research/task-1/phenomenon',
-        retry: null,
-        stage_label: '现象待确认',
-        status: 'active',
-        task_id: 'task-1',
-        updated_at: '2026-08-09T08:00:00Z',
-        version: 1,
-      }],
-      next_cursor: null,
-    })))
-
-    renderRoute('/app', { status: 'authenticated' })
-    fireEvent.click(await screen.findByRole('link', { name: '查看全部' }))
-
-    const researchColumn = await screen.findByRole('region', { name: '全部研究' })
-    expect(screen.getByRole('heading', { level: 1, name: 'Everplain' })).toBeVisible()
-    expect(screen.queryByRole('dialog', { name: '全部研究' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: '最近研究' })).not.toBeInTheDocument()
-    expect(within(researchColumn).getByText('2 个理论')).toBeVisible()
-    fireEvent.click(within(researchColumn).getByRole('button', { name: /打开研究操作/ }))
-    expect(within(researchColumn).getByRole('menuitem', { name: '删除研究' })).toBeVisible()
-    expect(screen.getByTestId('route-location')).toHaveTextContent('/app?research=all')
-
-    fireEvent.click(screen.getByRole('link', { name: '最近' }))
-    expect(await screen.findByRole('region', { name: '最近研究' })).toBeVisible()
+    await screen.findByRole('heading', { name: '把第一份资料，放进来。' })
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索资料标题' }), { target: { value: '不存在' } })
+    expect(await screen.findByRole('heading', { name: '还没找到这份资料。' })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/app')
+  })
+
+  it('links the personal home to its four-level knowledge graph', async () => {
+    renderRoute('/app', { status: 'authenticated' })
+    await screen.findByRole('heading', { level: 1, name: '思绪有处安放，灵感自会生长。' })
+    expect(screen.getByRole('link', { name: '知识图谱' })).toHaveAttribute('href', '/my/graph')
+    expect(screen.getByRole('link', { name: /管理知识库/ })).toHaveAttribute('href', '/library')
   })
 
   it('resumes a task-only research entry inside the unified project workspace', async () => {
@@ -466,18 +408,14 @@ describe('App routes', () => {
     expect(screen.queryByRole('heading', { name: '页面没有安全地完成渲染。' })).not.toBeInTheDocument()
   })
 
-  it('opens the work-home complete research column from the legacy /my address', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
+  it('preserves the legacy my redirect into the personal home', async () => {
     renderRoute('/my', { status: 'authenticated' })
-
-    expect(await screen.findByRole('heading', { level: 1, name: 'Everplain' })).toBeVisible()
-    expect(screen.getByRole('region', { name: '全部研究' })).toBeVisible()
-    expect(screen.queryByRole('dialog', { name: '全部研究' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: '思绪有处安放，灵感自会生长。' })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/app?research=all')
   })
 
   it.each([
-    ['/app', 'Everplain'],
+    ['/app', '思绪有处安放，灵感自会生长。'],
     ['/agent', '你想研究什么？'],
     ['/research/new', '从一个问题开始'],
     ['/research/task-1/phenomenon', '理论判断文档'],
@@ -954,68 +892,31 @@ describe('App routes', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
     renderRoute('/', { status: 'authenticated' })
 
-    expect(await screen.findByRole('heading', { name: 'Everplain' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '思绪有处安放，灵感自会生长。' })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/app')
   })
 
-  it('shows the latest research and its next action on the work home', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => json({
-      items: [{
-        adopted_theory_count: 0,
-        allowed_actions: ['confirm_phenomenon'],
-        blocker: null,
-        created_at: '2026-08-08T08:00:00Z',
-        current_framework_id: null,
-        current_match_run_id: null,
-        current_material_intake_run_id: null,
-        current_phenomenon_candidate_id: 'candidate-1',
-        current_stage: 'phenomenon_confirmation',
-        entry_type: 'direct',
-        next_action_label: '确认现象',
-        phenomenon_summary: {
-          phenomenon: '同一社区中的互助为何逐渐减少？',
-          research_intent: '比较关系持续性与制度规范的解释',
-        },
-        seed_theory_id: null,
-        seed_theory_name: null,
-        resume_path: '/research/task-1/phenomenon',
-        retry: null,
-        stage_label: '现象待确认',
-        status: 'active',
-        task_id: 'task-1',
-        updated_at: '2026-08-09T08:00:00Z',
-        version: 1,
-      }],
-      next_cursor: null,
-    })))
-
+  it('opens each personal document card at its original library source', async () => {
+    vi.mocked(readPersonalGraph).mockResolvedValueOnce({ nodes: [{ id: 'n1', label: '读书笔记', nodeType: 'document' }], edges: [], sources: { n1: { library_id: 'kb-1', document_id: 'doc-1', source_url: null } }, document_count: 1, pending_count: 0, mode: 'mock' } as unknown as Awaited<ReturnType<typeof readPersonalGraph>>)
     renderRoute('/app', { status: 'authenticated' })
-
-    expect(await screen.findByText('同一社区中的互助为何逐渐减少？')).toBeVisible()
-    expect(screen.getByText('下一步：确认现象')).toBeVisible()
-    expect(screen.getByRole('link', { name: /现象待确认.*同一社区中的互助为何逐渐减少/ })).toHaveAttribute(
-      'href',
-      '/research/task-1/phenomenon',
-    )
+    const card = await screen.findByRole('link', { name: /我的笔记.*读书笔记/ })
+    expect(card).toHaveAttribute('href', '/library?kb_id=kb-1&document_id=doc-1')
+    expect(screen.getByText('1 份资料')).toBeVisible()
   })
 
-  it('offers a real starting path when the work home has no research', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
-
+  it('offers a real import path when the personal library is empty', async () => {
     renderRoute('/app', { status: 'authenticated' })
-
-    expect(await screen.findByText('还没有研究任务')).toBeVisible()
-    expect(screen.getAllByRole('link', { name: '新建研究' })).toHaveLength(2)
+    expect(await screen.findByRole('heading', { name: '把第一份资料，放进来。' })).toBeVisible()
+    expect(screen.getByRole('link', { name: /开始导入/ })).toHaveAttribute('href', '/welcome/setup')
     expect(screen.queryByRole('link', { name: /内置案例/ })).not.toBeInTheDocument()
   })
 
-  it('lets the user retry when the work home cannot load research', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => json({ error: { code: 'offline' } }, 503)))
-
+  it('lets the user retry a failed personal-library read', async () => {
+    vi.mocked(readPersonalGraph).mockRejectedValueOnce(new Error('资料读取暂时失败'))
     renderRoute('/app', { status: 'authenticated' })
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('暂时无法读取最近研究')
-    expect(screen.getByRole('button', { name: '重新加载研究' })).toBeVisible()
+    expect(await screen.findByRole('alert')).toHaveTextContent('资料读取暂时失败')
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    expect(await screen.findByRole('heading', { name: '把第一份资料，放进来。' })).toBeVisible()
   })
 
   it.each([
@@ -1236,3 +1137,7 @@ it('opens private knowledge in the library and links each topic to its original 
   expect(await screen.findByText('追问具体经历。')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: /阅读原文.*访谈.pptx/ })).toHaveAttribute('href', '/library?kb_id=kb-course&document_id=doc-course&segment_id=segment-course')
 })
+
+vi.mock('../modules/agent-profile', () => ({ readAgentProfile: vi.fn(async () => ({ name: 'Everplain', avatar_id: 'cheng', color: '#b8c5b0', greeting: '你想研究什么？', speaking_style: 'clear', setup_step: 4, setup_completed: true, questionnaire: { occupation: '', industry: '', goals: [], interests: [], additional: '' }, version: 1 })) }))
+
+vi.mock('../modules/personal-graph', () => ({ readPersonalGraph: vi.fn(async () => ({ nodes: [], edges: [], sources: {}, document_count: 0, pending_count: 0, mode: 'mock' })) }))
