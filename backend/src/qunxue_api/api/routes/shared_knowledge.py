@@ -2,13 +2,17 @@ from dataclasses import asdict
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 
 from qunxue_api.api.contracts.common import ErrorResponse
 from qunxue_api.api.contracts.shared_knowledge import (
     CreateSharedKnowledgeRequest,
     JoinSharedKnowledgeRequest,
     KnowledgeStorageResponse,
+    PublicKnowledgeDetailResponse,
+    PublicKnowledgeDirectoryResponse,
+    PublicKnowledgePublicationResponse,
+    PublishKnowledgeRequest,
     SharedDocumentResponse,
     SharedDocumentSourceResponse,
     SharedKnowledgeJoinResponse,
@@ -34,7 +38,8 @@ router = APIRouter(
 )
 
 
-def get_application(request: Request):
+def get_application(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-store"
     with request.app.state.shared_knowledge_scope() as application:
         yield application
 
@@ -44,6 +49,13 @@ Application = Annotated[SharedKnowledgeApplication, Depends(get_application)]
 
 def document_response(doc):
     return SharedDocumentResponse(**asdict(doc))
+
+
+def publication_response(application, publication):
+    return PublicKnowledgePublicationResponse(
+        **asdict(publication),
+        document_count=len(application.public_documents(publication.knowledge_base_id)),
+    )
 
 
 def projection(application, user_id, kb, *, detail=False):
@@ -57,9 +69,14 @@ def projection(application, user_id, kb, *, detail=False):
         id=kb.id,
         name=kb.name,
         description=kb.description,
-        sharing_enabled=False,
+        sharing_enabled=kb.sharing_enabled,
+        publication=(
+            publication_response(application, publication)
+            if owner and (publication := application.repository.publication(kb.id))
+            else None
+        ),
         viewer_access="owner" if owner else "reader",
-        share_token=None,
+        share_token=kb.share_token if owner and kb.sharing_enabled else None,
         ready_document_count=sum(doc.status == "ready" for doc in docs),
         documents=[document_response(doc) for doc in docs] if detail else [],
     )
@@ -274,4 +291,87 @@ def update_document_knowledge(
 ):
     return document_response(
         application.update_knowledge(current.user.user_id, kb_id, document_id, payload.model_dump())
+    )
+
+
+@router.get(
+    "/public-knowledge-directory",
+    operation_id="list_public_knowledge_directory",
+    response_model=PublicKnowledgeDirectoryResponse,
+)
+def public_directory(
+    application: Application,
+    query: Annotated[str, Query(max_length=100)] = "",
+    limit: Annotated[int, Query(ge=1, le=100)] = 24,
+    offset: Annotated[int, Query(ge=0)] = 0,
+):
+    return PublicKnowledgeDirectoryResponse(
+        items=[
+            publication_response(application, item)
+            for item in application.public_directory(query=query, limit=limit, offset=offset)
+        ]
+    )
+
+
+@router.put(
+    "/shared-knowledge-bases/{kb_id}/publication",
+    operation_id="publish_knowledge_metadata",
+    response_model=PublicKnowledgePublicationResponse,
+)
+def publish_knowledge(
+    kb_id: UUID,
+    payload: PublishKnowledgeRequest,
+    current: CurrentSessionDependency,
+    application: Application,
+    _idempotency_key: IdempotencyKey,
+):
+    return publication_response(
+        application, application.publish(current.user.user_id, kb_id, **payload.model_dump())
+    )
+
+
+@router.delete(
+    "/shared-knowledge-bases/{kb_id}/publication",
+    operation_id="unpublish_knowledge_metadata",
+    status_code=204,
+)
+def unpublish_knowledge(
+    kb_id: UUID,
+    current: CurrentSessionDependency,
+    application: Application,
+    _idempotency_key: IdempotencyKey,
+):
+    application.unpublish(current.user.user_id, kb_id)
+
+
+@router.get(
+    "/public-knowledge-directory/{kb_id}",
+    operation_id="get_public_knowledge_library",
+    response_model=PublicKnowledgeDetailResponse,
+)
+def public_knowledge_detail(kb_id: UUID, application: Application):
+    return PublicKnowledgeDetailResponse(
+        publication=publication_response(application, application.public_publication(kb_id)),
+        documents=[document_response(doc) for doc in application.public_documents(kb_id)],
+    )
+
+
+@router.get(
+    "/public-knowledge-directory/{kb_id}/documents/{document_id}/source",
+    operation_id="get_public_knowledge_source",
+    response_model=SharedDocumentSourceResponse,
+)
+def public_knowledge_source(
+    kb_id: UUID,
+    document_id: UUID,
+    application: Application,
+    segment_id: Annotated[str | None, Query(max_length=128)] = None,
+):
+    doc = application.public_source(kb_id, document_id, segment_id)
+    publication = application.public_publication(kb_id)
+    return SharedDocumentSourceResponse(
+        document=document_response(doc),
+        knowledge_base_id=kb_id,
+        knowledge_base_name=publication.title,
+        segments=list(doc.segments),
     )

@@ -73,9 +73,9 @@ def test_revocation_blocks_bound_conversation_before_model_and_cannot_switch_in_
     owner_cookies = dict(client.cookies)
     kb = create_library(client)
     upload(client, kb["id"])
-    mutation(
+    kb = mutation(
         client, "patch", f"/api/shared-knowledge-bases/{kb['id']}", json={"sharing_enabled": True}
-    )
+    ).json()
     client.cookies.clear()
     reader = _authenticate(client)
     mutation(
@@ -112,10 +112,11 @@ def test_revocation_blocks_bound_conversation_before_model_and_cannot_switch_in_
     assert len(runner.inputs) == 1
     client.cookies.clear()
     client.cookies.update(reader_cookies)
-    assert (
-        client.get(f"/api/agent/conversations/{execution.conversation.conversation_id}").status_code
-        == 200
-    )
+    restored = client.get(f"/api/agent/conversations/{execution.conversation.conversation_id}")
+    assert restored.status_code == 200
+    citation = restored.json()["turns"][0]["assistant"]["citations"][0]
+    assert citation["deleted"] is True
+    assert citation["excerpt"] is None
 
 
 def test_foreign_user_cannot_select_unsubscribed_library(client):
@@ -183,12 +184,11 @@ def test_removed_document_is_not_replayed_as_model_history(client):
             idempotency_key=str(uuid4()),
         )
     assert "QX-A17" not in str(runner.inputs[-1])
-    assert (
-        client.get(f"/api/agent/conversations/{first.conversation.conversation_id}").json()[
-            "turns"
-        ][0]["assistant"]["content"]
-        == "资料中使用 QX-A17。"
-    )
+    restored = client.get(
+        f"/api/agent/conversations/{first.conversation.conversation_id}"
+    ).json()["turns"][0]["assistant"]
+    assert "QX-A17" not in restored["content"]
+    assert restored["citations"][0]["deleted"] is True
 
 
 def test_shared_turn_does_not_store_revocable_teacher_content_in_personal_memory(client):
@@ -211,7 +211,8 @@ def test_shared_turn_does_not_store_revocable_teacher_content_in_personal_memory
             idempotency_key=str(uuid4()),
             reference_knowledge_base_id=UUID(kb["id"]),
         )
-    assert runner.memory is None
+    assert runner.memory is not None
+    assert runner.memory.user_text_only is True
 
 
 def test_reference_uses_existing_lexical_retriever_without_vector_cache_argument(client):

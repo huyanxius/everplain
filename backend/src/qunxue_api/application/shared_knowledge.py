@@ -39,7 +39,7 @@ class SharedKnowledgeApplication(SharedKnowledgeService):
             "used_bytes": self.repository.storage_usage(user_id),
             "max_bytes": self.max_storage_bytes,
             "max_file_bytes": self.max_file_bytes,
-            "library_count": len(self.libraries(user_id)),
+            "library_count": sum(kb.owner_user_id == user_id for kb in self.libraries(user_id)),
             "max_libraries": self.max_libraries,
             "max_documents_per_library": self.max_documents_per_library,
             "max_document_characters": self.max_document_characters,

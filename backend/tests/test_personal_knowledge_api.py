@@ -1,4 +1,4 @@
-"""Private libraries reject legacy sharing and enforce storage and source boundaries."""
+"""Libraries remain private by default and enforce storage and source boundaries."""
 
 from uuid import uuid4
 
@@ -6,14 +6,14 @@ from test_research_material_api import _authenticate
 from test_shared_knowledge_api import create_library, mutation, upload
 
 
-def test_personal_library_never_shares_even_with_a_legacy_subscription(plain_client):
+def test_private_library_ignores_membership_without_explicit_sharing(plain_client):
     client = plain_client
     _authenticate(client)
     kb = create_library(client)
     doc = upload(client, kb["id"])
     path = f"/api/shared-knowledge-bases/{kb['id']}"
     assert not kb.get("share_token")
-    assert mutation(client, "patch", path, json={"sharing_enabled": True}).status_code == 422
+    assert kb["sharing_enabled"] is False
     client.cookies.clear()
     reader = _authenticate(client)
     from qunxue_api.adapters.sqlite.shared_knowledge import (
@@ -23,7 +23,7 @@ def test_personal_library_never_shares_even_with_a_legacy_subscription(plain_cli
 
     with client.app.state.shared_knowledge_scope() as application:
         row = application.repository.session.get(SharedKnowledgeBaseRow, kb["id"])
-        row.sharing_enabled = True
+        row.sharing_enabled = False
         application.repository.session.add(
             SharedKnowledgeSubscriptionRow(
                 user_id=reader["user"]["user_id"], knowledge_base_id=kb["id"]
