@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Link, MemoryRouter, Route, Routes } from 'react-router'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ConnectionsPage, SharedReaderPage, SharingPage } from './IntegrationPages'
+import { ConnectionsPage, SharedReaderPage, SharingPage, SubscriptionPage } from './IntegrationPages'
 import * as api from '../../modules/product-integrations'
 
 const identity = vi.hoisted(() => ({ userId: 'owner' }))
@@ -23,6 +23,8 @@ beforeEach(() => {
   vi.resetAllMocks(); identity.userId = 'owner'
   vi.mocked(api.libraries).mockResolvedValue([library] as Awaited<ReturnType<typeof api.libraries>>)
   vi.mocked(api.connections).mockResolvedValue({ connections: [], mcp_endpoint: '/api/mcp' } as Awaited<ReturnType<typeof api.connections>>)
+  vi.mocked(api.models).mockResolvedValue([])
+  vi.mocked(api.subscription).mockResolvedValue({ available: false, unavailable_reason: '支付服务尚未配置', plans: [], subscription: null } as Awaited<ReturnType<typeof api.subscription>>)
 })
 
 describe('integration surfaces', () => {
@@ -72,5 +74,11 @@ describe('integration surfaces', () => {
     expect(screen.queryByText('第一份原文')).not.toBeInTheDocument()
     expect(screen.getByText('选择一份资料开始阅读。')).toBeInTheDocument()
     expect(api.publicSource).toHaveBeenCalledTimes(1)
+  })
+  it('does not offer a live checkout when payments are unconfigured', async () => {
+    setup(<SubscriptionPage />, '/subscription')
+    expect(await screen.findByText('支付服务尚未配置')).toBeInTheDocument()
+    expect(screen.queryByRole('button', {name: '查看正式结算'})).not.toBeInTheDocument()
+    expect(api.checkout).not.toHaveBeenCalled()
   })
 })
