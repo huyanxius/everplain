@@ -122,6 +122,10 @@ from qunxue_api.adapters.sqlite.research_project_audit_model import (
 from qunxue_api.adapters.sqlite.research_start_proposal import (
     SqliteResearchStartProposalRepository,
 )
+from qunxue_api.adapters.sqlite.shared_knowledge import (
+    SharedKnowledgePublicationRequestRow,
+    SharedKnowledgePublicationRow,
+)
 from qunxue_api.adapters.sqlite.theory_matching_model import (
     ConfirmedTheoryPlanRow,
     MatchRunRow,
@@ -132,6 +136,8 @@ from qunxue_api.adapters.sqlite.theory_matching_model import (
 )
 
 __all__ = [
+    "SharedKnowledgePublicationRow",
+    "SharedKnowledgePublicationRequestRow",
     "PersonalGraphRow",
     "ImportBatchRow", "ImportItemRow", "ImportSourceRow",
     "AgentProfileRow",

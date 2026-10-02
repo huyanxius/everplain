@@ -1,0 +1,12 @@
+import * as api from './productIntegrationsApi'
+export const libraries = (...args: Parameters<typeof api.libraries>) => api.libraries(...args)
+export const library = (...args: Parameters<typeof api.library>) => api.library(...args)
+export const sharing = (...args: Parameters<typeof api.sharing>) => api.sharing(...args)
+export const join = (...args: Parameters<typeof api.join>) => api.join(...args)
+export const leave = (...args: Parameters<typeof api.leave>) => api.leave(...args)
+export const publish = (...args: Parameters<typeof api.publish>) => api.publish(...args)
+export const unpublish = (...args: Parameters<typeof api.unpublish>) => api.unpublish(...args)
+export const directory = (...args: Parameters<typeof api.directory>) => api.directory(...args)
+export const publicLibrary = (...args: Parameters<typeof api.publicLibrary>) => api.publicLibrary(...args)
+export const publicSource = (...args: Parameters<typeof api.publicSource>) => api.publicSource(...args)
+export const privateSource = (...args: Parameters<typeof api.privateSource>) => api.privateSource(...args)
