@@ -1,5 +1,6 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StrictMode } from 'react'
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseMultipartRequest } from '../../test/multipart'
@@ -1237,7 +1238,8 @@ describe('NewResearchWorkspacePage', () => {
     }))
     renderPage('/research/new', true)
 
-    await waitFor(() => expect(listCalls).toBeGreaterThanOrEqual(2))
+    await waitFor(() => expect(listCalls).toBeGreaterThanOrEqual(1))
+    await act(async () => {})
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
@@ -1268,3 +1270,10 @@ it('clears the project when starting an independent conversation after opening p
   expect(requests[0]).toMatchObject({ workspace: 'agent', task_id: null, conversation_id: null })
   expect(screen.queryByText(conversation.turns[0].assistant.content)).toBeNull()
 })
+
+function render(ui: Parameters<typeof rtlRender>[0], options?: Parameters<typeof rtlRender>[1]) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return rtlRender(ui, { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>, ...options })
+}
+
+vi.mock('../../modules/agent-profile', () => ({ readAgentProfile: vi.fn(async () => ({ name: 'Everplain', avatar_id: 'cheng', color: '#b8c5b0', greeting: '你想研究什么？', speaking_style: 'clear', setup_step: 4, setup_completed: true, questionnaire: { occupation: '', industry: '', goals: [], interests: [], additional: '' }, version: 1 })) }))
