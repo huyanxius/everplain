@@ -16,7 +16,7 @@ const METHOD_LABELS: Record<MethodKind, string> = {
 
 const METHOD_DESCRIPTIONS: Record<MethodKind, string> = {
   undecided: '保留路径比较与下一次决定所需信息，暂不把方法选择写成既定事实。',
-  qualitative: '围绕材料、编码、备忘、跨案例比较与理论检验建立解释性设计。',
+  qualitative: '围绕材料、批注、备忘、跨案例比较与理论检验建立解释性设计。',
   quantitative: '把理论概念落实为变量、测量、样本与可检验的统计分析计划。',
   mixed: '说明两类证据为何结合、如何排序整合，以及冲突时共同结论的边界。',
 }

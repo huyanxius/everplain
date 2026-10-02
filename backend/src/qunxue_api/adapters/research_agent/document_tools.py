@@ -132,21 +132,6 @@ class ResearchAnalysisAgentFacade(Protocol):
 
     def get_for_agent(self, *, user_id: UUID, task_id: UUID) -> dict[str, object]: ...
 
-    def propose_code_from_agent(
-        self,
-        *,
-        user_id: UUID,
-        task_id: UUID,
-        label: str,
-        definition: str,
-        annotation_ids: tuple[UUID, ...],
-        rationale: str,
-        conversation_id: UUID,
-        agent_run_id: UUID,
-        agent_turn_id: UUID,
-        tool_call_id: str,
-    ) -> object: ...
-
     def propose_memo_from_agent(
         self,
         *,
@@ -162,31 +147,6 @@ class ResearchAnalysisAgentFacade(Protocol):
         agent_turn_id: UUID,
         tool_call_id: str,
     ) -> object: ...
-
-    def propose_coding_plan_from_agent(
-        self,
-        *,
-        user_id: UUID,
-        task_id: UUID,
-        title: str,
-        rationale: str,
-        items: tuple[Mapping[str, object], ...],
-        conversation_id: UUID,
-        agent_run_id: UUID,
-        agent_turn_id: UUID,
-        tool_call_id: str,
-    ) -> object: ...
-
-    def retrieve_coded_segments(
-        self,
-        *,
-        user_id: UUID,
-        task_id: UUID,
-        code_ids: tuple[UUID, ...] = (),
-        material_id: UUID | None = None,
-        query: str | None = None,
-        limit: int = 50,
-    ) -> Sequence[Mapping[str, object]]: ...
 
     def get_comparison_context_for_agent(
         self,
@@ -479,33 +439,7 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
         result = _json_safe(analysis.get_for_agent(user_id=user_id, task_id=task_id))
         if not isinstance(result, dict):
             raise TypeError("research analysis snapshot must be an object")
-        return result
-
-    def propose_analysis_code(
-        self,
-        *,
-        label: str,
-        definition: str,
-        annotation_ids: Sequence[str],
-        rationale: str,
-        tool_call_id: str,
-    ) -> dict[str, object]:
-        """Persist an Agent-authored code candidate for explicit user review."""
-
-        user_id, task_id, conversation_id, run_id, turn_id, analysis = self._analysis_context()
-        result = analysis.propose_code_from_agent(
-            user_id=user_id,
-            task_id=task_id,
-            label=label,
-            definition=definition,
-            annotation_ids=_uuid_tuple(annotation_ids),
-            rationale=rationale,
-            conversation_id=conversation_id,
-            agent_run_id=run_id,
-            agent_turn_id=turn_id,
-            tool_call_id=_required_tool_call_id(tool_call_id),
-        )
-        return _candidate_analysis_payload(result)
+        return _public_analysis_snapshot(result)
 
     def propose_analysis_memo(
         self,
@@ -514,7 +448,6 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
         content: str,
         memo_kind: str,
         annotation_ids: Sequence[str],
-        code_ids: Sequence[str],
         tool_call_id: str,
     ) -> dict[str, object]:
         """Persist an Agent-authored memo candidate for explicit user review."""
@@ -527,62 +460,13 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
             content=content,
             memo_kind=memo_kind,
             annotation_ids=_uuid_tuple(annotation_ids),
-            code_ids=_uuid_tuple(code_ids),
+            code_ids=(),
             conversation_id=conversation_id,
             agent_run_id=run_id,
             agent_turn_id=turn_id,
             tool_call_id=_required_tool_call_id(tool_call_id),
         )
         return _candidate_analysis_payload(result)
-
-    def propose_coding_plan(
-        self,
-        *,
-        title: str,
-        rationale: str,
-        items: Sequence[Mapping[str, object]],
-        tool_call_id: str,
-    ) -> dict[str, object]:
-        """Persist an Agent plan; every item remains pending user review."""
-
-        user_id, task_id, conversation_id, run_id, turn_id, analysis = self._analysis_context()
-        result = analysis.propose_coding_plan_from_agent(
-            user_id=user_id,
-            task_id=task_id,
-            title=title,
-            rationale=rationale,
-            items=tuple(items),
-            conversation_id=conversation_id,
-            agent_run_id=run_id,
-            agent_turn_id=turn_id,
-            tool_call_id=_required_tool_call_id(tool_call_id),
-        )
-        return _candidate_analysis_payload(result)
-
-    def retrieve_coded_segments(
-        self,
-        *,
-        code_ids: Sequence[str] = (),
-        material_id: str | None = None,
-        query: str | None = None,
-        limit: int = 50,
-    ) -> list[dict[str, object]] | dict[str, object]:
-        """Return confirmed code assignments with original source anchors."""
-
-        user_id, task_id, _, _, _, analysis = self._analysis_context()
-        parsed_material = UUID(material_id) if material_id else None
-        result = analysis.retrieve_coded_segments(
-            user_id=user_id,
-            task_id=task_id,
-            code_ids=_uuid_tuple(code_ids),
-            material_id=parsed_material,
-            query=query,
-            limit=limit,
-        )
-        payload = _json_safe(result)
-        if not isinstance(payload, list):
-            raise TypeError("retrieved coding segments must be a list")
-        return payload
 
     def get_research_comparison_context(
         self,
@@ -606,7 +490,7 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
         payload = _json_safe(result)
         if not isinstance(payload, dict):
             raise TypeError("research comparison context must be an object")
-        return payload
+        return _public_analysis_snapshot(payload)
 
     def propose_case_comparison(
         self,
@@ -1639,6 +1523,7 @@ def _candidate_analysis_payload(value: object) -> dict[str, object]:
     payload = _json_safe(value)
     if not isinstance(payload, dict):
         raise TypeError("research analysis candidate must be an object")
+    payload.pop("code_ids", None)
     payload["status"] = "candidate"
     payload["requires_user_confirmation"] = True
     return payload
@@ -1859,3 +1744,22 @@ def _start_proposal_content(proposal: ResearchStartProposal) -> tuple[object, ..
 
 def _json_datetime(value) -> str:
     return value.isoformat().replace("+00:00", "Z")
+
+
+def _public_analysis_snapshot(value: dict[str, object]) -> dict[str, object]:
+    """Keep archived coding records outside the active Agent tool contract."""
+    result = {
+        key: item
+        for key, item in value.items()
+        if key in {
+            "schema_version", "task_id", "case_labels", "time_labels",
+            "annotations", "memos", "comparisons",
+        }
+    }
+    if isinstance(result.get("memos"), list):
+        result["memos"] = [
+            {key: item for key, item in memo.items() if key != "code_ids"}
+            if isinstance(memo, dict) else memo
+            for memo in result["memos"]
+        ]
+    return result

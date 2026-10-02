@@ -18,7 +18,7 @@ import { researchWorkspaceDestination } from '../research-workspace/researchProj
 import { PageContent, PageShell } from '../ui/PageShell'
 import './existing-research-entry.css'
 
-const PROJECT_STAGES = ['材料整理', '研究设计', '田野进行中', '分析与编码', '写作与修订'] as const
+const PROJECT_STAGES = ['材料整理', '研究设计', '田野进行中', '资料分析', '写作与修订'] as const
 
 function entryRequestKey() {
   return globalThis.crypto?.randomUUID?.()

@@ -45,6 +45,6 @@ tests/test_web_research_tools.py
 tests/test_knowledge_tool_chain.py
 tests/test_transcription_provider.py
 tests/test_transcription_policy.py
-tests/test_transcription_api.py
+tests/test_everplain_research_surface.py
 tests/test_transcript_import.py
 tests/test_architecture.py

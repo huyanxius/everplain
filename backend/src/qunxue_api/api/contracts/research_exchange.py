@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -40,21 +39,3 @@ class ResearchAuditEventResponse(BaseModel):
 class ResearchAuditEventListResponse(BaseModel):
     task_id: UUID
     items: list[ResearchAuditEventResponse]
-
-
-class QdpxProjectPreviewResponse(BaseModel):
-    name: str
-    origin: str
-    source_count: int
-    code_count: int
-    memo_count: int
-    case_count: int
-
-
-class QdpxImportPreviewResponse(BaseModel):
-    exchange_id: UUID
-    valid: Literal[True] = True
-    validation_scope: Literal["official-xsd"] = "official-xsd"
-    specification_version: Literal["1.0"] = "1.0"
-    project: QdpxProjectPreviewResponse
-    restored: Literal[False] = False

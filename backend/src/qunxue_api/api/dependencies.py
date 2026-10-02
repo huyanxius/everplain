@@ -7,7 +7,6 @@ from fastapi import Depends, Request
 from qunxue_api.application import (
     ProfessionalMaterialsApplication,
     ResearchAnalysisApplication,
-    ResearchBatchCodingApplication,
     ResearchCycleApplication,
     ResearchDocumentApplication,
     ResearchDocumentProposalApplication,
@@ -15,7 +14,6 @@ from qunxue_api.application import (
     ResearchMethodPlanApplication,
     ResearchProjectExchangeApplication,
     TheoryMatchingApplication,
-    TranscriptionApplication,
 )
 from qunxue_api.modules.identity import AuthenticatedSession, IdentityService
 from qunxue_api.modules.research_intake import PhenomenonService, ResearchTask, ResearchTaskService
@@ -135,19 +133,6 @@ ProfessionalMaterialsApplicationDependency = Annotated[
 ]
 
 
-def get_transcription_application(
-    request: Request,
-) -> Iterator[TranscriptionApplication]:
-    with request.app.state.transcription_application_scope() as application:
-        yield application
-
-
-TranscriptionApplicationDependency = Annotated[
-    TranscriptionApplication,
-    Depends(get_transcription_application),
-]
-
-
 def get_research_analysis_application(
     request: Request,
 ) -> Iterator[ResearchAnalysisApplication]:
@@ -158,19 +143,6 @@ def get_research_analysis_application(
 ResearchAnalysisApplicationDependency = Annotated[
     ResearchAnalysisApplication,
     Depends(get_research_analysis_application),
-]
-
-
-def get_research_batch_coding_application(
-    request: Request,
-) -> Iterator[ResearchBatchCodingApplication]:
-    with request.app.state.research_batch_coding_application_scope() as application:
-        yield application
-
-
-ResearchBatchCodingApplicationDependency = Annotated[
-    ResearchBatchCodingApplication,
-    Depends(get_research_batch_coding_application),
 ]
 
 

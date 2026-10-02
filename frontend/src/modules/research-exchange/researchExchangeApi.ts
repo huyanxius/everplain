@@ -1,10 +1,5 @@
 import { apiClient } from '../../api/client'
-import { createMultipartBody } from '../../api/multipart'
-import {
-  exportResearchProjectArchive,
-  listResearchProjectAuditEvents,
-  previewResearchProjectQdpxImport,
-} from '../../api/generated'
+import { exportResearchProjectArchive, listResearchProjectAuditEvents } from '../../api/generated'
 
 type GeneratedResult<T> = {
   data?: T
@@ -22,22 +17,6 @@ export type ResearchAuditEvent = {
   actor_id: string | null
   payload: Record<string, unknown>
   occurred_at: string
-}
-
-export type QdpxImportPreview = {
-  exchange_id: string
-  valid?: true
-  validation_scope?: 'official-xsd'
-  specification_version?: '1.0'
-  project: {
-    name: string
-    origin: string
-    source_count: number
-    code_count: number
-    memo_count: number
-    case_count: number
-  }
-  restored?: false
 }
 
 export type ResearchArchiveDownload = {
@@ -114,22 +93,4 @@ export async function exportResearchArchive(taskId: string): Promise<ResearchArc
       'X-Qunxue-Exchange-Blocking-Loss-Count',
     ),
   }
-}
-
-export async function previewQdpxImport(
-  taskId: string,
-  file: File,
-): Promise<QdpxImportPreview> {
-  const multipart = await createMultipartBody([{ name: 'file', file }])
-  const result = await previewResearchProjectQdpxImport({
-    client: apiClient,
-    path: { task_id: taskId },
-    headers: {
-      'Content-Type': multipart.contentType,
-      'Idempotency-Key': exchangeKey(),
-    },
-    body: { file },
-    bodySerializer: () => multipart.body,
-  })
-  return unwrap(result)
 }
