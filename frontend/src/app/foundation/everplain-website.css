@@ -6,13 +6,16 @@
 .ep-site {
   position: relative;
   /* 沿用全局纸面主题，系统外观切换时无需另一个 provider 或本地偏好。 */
-  --ep-paper: var(--qx-paper-surface);
-  --ep-panel: var(--qx-paper-sidebar);
-  --ep-card: var(--qx-color-surface-raised);
+  /* 暗色对齐群学知识页的中性底（knowledge-library.css），不使用灰绿纸面层。
+   * #212121 复用群学知识页控件的中性 canvas fallback；浅色继续使用原来的全局 token。 */
+  --ep-paper: light-dark(var(--qx-paper-surface), #1a1a1b);
+  --ep-panel: light-dark(var(--qx-paper-sidebar), #212121);
+  --ep-card: light-dark(var(--qx-color-surface-raised), #212121);
   --ep-ink: var(--qx-paper-ink);
   --ep-ink-2: var(--qx-color-ink-soft);
   --ep-muted: var(--qx-color-muted);
-  --ep-line: var(--qx-paper-rule);
+  /* 群学官网 --foundation-rule 的暗色中性分隔线。 */
+  --ep-line: light-dark(var(--qx-paper-rule), rgb(158 158 158 / 16%));
   --ep-on-ink: var(--qx-color-on-accent);
   /* 赭红只表达品牌与引用，不借用错误状态色。 */
   --ep-accent: light-dark(#a4472d, #e5a58d);
