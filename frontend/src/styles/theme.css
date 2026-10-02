@@ -64,6 +64,7 @@
   --text-eyebrow: var(--qx-text-eyebrow);
   --text-eyebrow--line-height: var(--qx-text-eyebrow--line-height);
 
+  --radius-mark: var(--qx-radius-mark);
   --radius-tag: var(--qx-radius-tag);
   --radius-item: var(--qx-radius-item);
   --radius-card: var(--qx-radius-card);

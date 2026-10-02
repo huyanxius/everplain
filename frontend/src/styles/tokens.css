@@ -60,6 +60,33 @@
   --qx-color-notice-soft: light-dark(#f2f2f2, #2a2e29);
 
   /*
+   * 有色相的状态色。取值沿用各页原来写死的那组颜色，收拢之后界面不变色。
+   * info 是链接与"正在进行"，warning 是需要留意但不致命（待确认、费用接近上限），
+   * success 是完成，highlight 是阅读里的标注与选中原文。淡底一律现场混：
+   * `color-mix(in srgb, var(--qx-color-info) 12%, transparent)`，不再单开 soft 档。
+   * 它们和 danger 一样只表达状态，不拿来当按钮主色。
+   */
+  --qx-color-info: light-dark(#315f91, #90aac6);
+  --qx-color-warning: light-dark(#a56b2a, #bfa07d);
+  --qx-color-success: light-dark(#5b9866, #7fa386);
+  --qx-color-highlight: light-dark(#6b568f, #a79db8);
+
+  /*
+   * 类别色：只用来让同一组里的几类东西互相分开——研究地图的节点类型、研究维度 D1–D7、
+   * 资料分类、图谱图例。八个互不相同，别拿来表达状态（那是上面 info/warning/success 的事），
+   * 也别当按钮色。取值来自各页原先的分类色。类别卡片的淡底和边框现场混：
+   * 淡底 `color-mix(in srgb, var(--qx-color-data-blue) 7%, var(--qx-color-surface))`。
+   */
+  --qx-color-data-blue: light-dark(#43639a, #95a5c0);
+  --qx-color-data-green: light-dark(#44745f, #9db9ad);
+  --qx-color-data-teal: light-dark(#367083, #94b6c2);
+  --qx-color-data-rose: light-dark(#985067, #bc9aa5);
+  --qx-color-data-amber: light-dark(#8a6b2f, #c6b390);
+  --qx-color-data-violet: light-dark(#695b91, #a59eb7);
+  --qx-color-data-rust: light-dark(#925c49, #bda299);
+  --qx-color-data-olive: light-dark(#718a72, #a7afa9);
+
+  /*
    * 界面字体保持无衬线；衬线承担"人文"那一半：页面题目、展示句、Agent 正文和原文阅读。
    * 西文衬线放在中文宋体前面，否则英文会落到宋体自带的拉丁字形上，显得廉价。
    */
@@ -143,6 +170,8 @@
    * - field 与 pill：单行输入、按钮、标签页切换都是 pill；只有多行文本框是 field（24），
    *   多行框做成胶囊，三行以后两端会切掉文字。
    */
+  /* mark 只给行内高亮、滚动条、进度条这类细小元素，可点的东西不用它。 */
+  --qx-radius-mark: 4px;
   --qx-radius-tag: 10px;
   --qx-radius-item: 14px;
   --qx-radius-card: 20px;
