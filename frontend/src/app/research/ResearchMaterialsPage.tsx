@@ -3,19 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 
 import { listMyResearchViaApi, type MyResearchItem } from '../../modules/account'
-import {
-  addResearchLibraryMaterial,
-  formatMaterialSize,
-  listResearchLibraryMaterials,
-  removeResearchLibraryMaterial,
-  materialMediaLabel,
-  materialStatusLabel,
-  isSupportedResearchMaterialFile,
-  RESEARCH_MATERIAL_ACCEPT,
-  uploadInitialResearchMaterials,
-  startResearchBatchCoding,
-  type ResearchMaterial,
-} from '../../modules/research-materials'
+import { addResearchLibraryMaterial, formatMaterialSize, listResearchLibraryMaterials, removeResearchLibraryMaterial, materialMediaLabel, materialStatusLabel, isSupportedResearchMaterialFile, RESEARCH_MATERIAL_ACCEPT, uploadInitialResearchMaterials, type ResearchMaterial } from '../../modules/research-materials'
 import { createMaterialFirstResearchProject } from '../../modules/socio-match-workspace'
 import { PageContent, PageShell } from '../ui/PageShell'
 import { ResearchLibraryBot } from './ResearchLibraryBot'
@@ -41,7 +29,6 @@ function MaterialTypeIcon({ material }: { material: ResearchMaterial }) {
   return <FileTextIcon size={24} />
 }
 
-
 /**
  * 材料始终属于一个 ResearchTask；页面只负责让用户找到该研究的材料面板。
  * 不在这里复制上传、解析或分析逻辑，避免出现第二套材料系统。
@@ -55,9 +42,6 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
   const selectedTaskId = searchParams.get('task_id')
   const selectedMaterialId = searchParams.get('material_id')
   const previewFiles = import.meta.env.DEV && searchParams.get('preview') === 'files'
-  const interviewView = searchParams.get('view') === 'interviews'
-  const batchCodingEntry = searchParams.get('entry') === 'batch-coding'
-  const batchRunId = searchParams.get('batch_run_id')
   const [projectQuery, setProjectQuery] = useState('')
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<'all' | 'documents' | 'media'>('all')
@@ -136,16 +120,6 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
   }, [selectedTaskId])
 
   useEffect(() => {
-    if (batchCodingEntry && !loading && research.length === 0) emptyUploadInputRef.current?.click()
-    if (batchCodingEntry && !loading && research.length > 0 && !selectedTaskId) setUploadOpen(true)
-  }, [batchCodingEntry, loading, research.length, selectedTaskId])
-
-  useEffect(() => {
-    if (batchCodingEntry && uploadOpen && research.length > 0 && !selectedTaskId) uploadInputRef.current?.click()
-  }, [batchCodingEntry, uploadOpen, research.length, selectedTaskId])
-
-
-  useEffect(() => {
     if (!uploadOpen) return undefined
     function closeUpload(event: KeyboardEvent | PointerEvent) {
       if (event instanceof KeyboardEvent) {
@@ -180,8 +154,7 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
 
   const visibleMaterials = displayedMaterials.filter(({ material, research: owner }) => {
     const media = material.mediaType.startsWith('audio/') || material.mediaType.startsWith('video/')
-    return (!interviewView || media || material.materialKind === 'interview_transcript')
-      && (category === 'all' || (category === 'media' ? media : !media))
+    return (category === 'all' || (category === 'media' ? media : !media))
       && (!(selectedTaskId || ownerFilter) || material.taskId === (selectedTaskId || ownerFilter))
       && `${material.filename} ${researchTitle(owner)}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
   }).sort((a, b) => sortBy === 'name' ? a.material.filename.localeCompare(b.material.filename, 'zh-CN') : b.material.updatedAt.localeCompare(a.material.updatedAt))
@@ -234,14 +207,7 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
       await uploadInitialResearchMaterials(taskId, files)
       setResearch(await listMyResearchViaApi())
       setUploadTaskId(taskId)
-      const imported = await listResearchLibraryMaterials(taskId)
-      const material = imported.items[0]
-      if (batchCodingEntry && material) {
-        const run = await startResearchBatchCoding(taskId, material.materialId)
-        navigate(`/research/materials?task_id=${encodeURIComponent(taskId)}&material_id=${encodeURIComponent(material.materialId)}&batch_run_id=${encodeURIComponent(run.runId)}`, { replace: true })
-      } else {
-        navigate(`/research/materials?task_id=${encodeURIComponent(taskId)}`, { replace: true })
-      }
+      navigate(`/research/materials?task_id=${encodeURIComponent(taskId)}`, { replace: true })
     } catch (cause: unknown) {
       setEmptyUploadError(cause instanceof Error ? cause.message : '材料暂时无法导入，请重试。')
     } finally {
@@ -249,26 +215,10 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
     }
   }
 
-  async function addBatchMaterial(file: File) {
-    const targetTaskId = selectedTaskId || uploadTaskId
-    if (!targetTaskId) return
-    setUploading(true)
-    setUploadError(null)
-    try {
-      const material = await addResearchLibraryMaterial(targetTaskId, file)
-      const run = await startResearchBatchCoding(targetTaskId, material.materialId)
-      navigate(`/research/materials?task_id=${encodeURIComponent(targetTaskId)}&material_id=${encodeURIComponent(material.materialId)}&batch_run_id=${encodeURIComponent(run.runId)}`, { replace: true })
-    } catch (cause: unknown) {
-      setUploadError(cause instanceof Error ? cause.message : '批量编码启动失败，请重试。')
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  if (selectedResearch && selectedMaterialId) return <Navigate replace to={`/research/${encodeURIComponent(selectedResearch.taskId)}/workspace/materials${selectedMaterialId ? `?material_id=${encodeURIComponent(selectedMaterialId)}${batchRunId ? `&batch_run_id=${encodeURIComponent(batchRunId)}` : ''}` : ''}`} />
+  if (selectedResearch && selectedMaterialId) return <Navigate replace to={`/research/${encodeURIComponent(selectedResearch.taskId)}/workspace/materials${selectedMaterialId ? `?material_id=${encodeURIComponent(selectedMaterialId)}` : ''}`} />
 
   const activeTab = searchParams.get('tab') === 'memory' ? 'memory'
-    : selectedTaskId || searchParams.get('tab') === 'files' || interviewView || batchCodingEntry ? 'files' : 'projects'
+    : selectedTaskId || searchParams.get('tab') === 'files' ? 'files' : 'projects'
   const tabs = selectedResearch
     ? [{ id: 'files', label: '研究材料' }, { id: 'memory', label: '项目记忆' }]
     : [{ id: 'projects', label: '研究项目' }, { id: 'files', label: '全部文件' }, { id: 'memory', label: '个人记忆' }]
@@ -321,11 +271,11 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
           <section className="research-hub__panel research-hub__panel--scroll material-files" onScroll={(event) => event.currentTarget.style.setProperty('--scroll-fade', `${Math.min(36, event.currentTarget.scrollTop)}px`)} role="tabpanel" id="research-panel-files" aria-labelledby="research-tab-files" hidden={activeTab !== 'files'}>
             <ResearchHubToolbar query={query} onQueryChange={setQuery} searchLabel="搜索研究材料" placeholder={selectedResearch ? '搜索项目内的材料' : '搜索文件或研究名称'}>
       <div className="material-files__upload-anchor" ref={uploadPopoverRef}>
-      <button type="button" className="research-hub__new" aria-expanded={uploadOpen} aria-controls="research-materials-upload-popover" disabled={previewFiles || uploading || emptyUploading} onClick={() => research.length ? setUploadOpen((open) => !open) : emptyUploadInputRef.current?.click()}><PlusIcon size={17} aria-hidden="true" />{uploading || emptyUploading ? '正在导入…' : batchCodingEntry ? '选择材料并批量编码' : '添加材料'}</button>
+      <button type="button" className="research-hub__new" aria-expanded={uploadOpen} aria-controls="research-materials-upload-popover" disabled={previewFiles || uploading || emptyUploading} onClick={() => research.length ? setUploadOpen((open) => !open) : emptyUploadInputRef.current?.click()}><PlusIcon size={17} aria-hidden="true" />{uploading || emptyUploading ? '正在导入…' : '添加材料'}</button>
         {uploadOpen && research.length ? <div id="research-materials-upload-popover" className="qx-popover-surface research-materials-page__upload" role="dialog" aria-label="添加材料">
           {!selectedResearch ? <label>保存到研究<select aria-label="材料所属研究" value={uploadTaskId} onChange={(event) => setUploadTaskId(event.target.value)}>{research.map((item) => <option key={item.taskId} value={item.taskId}>{researchTitle(item)}</option>)}</select></label> : <span>添加到「{researchTitle(selectedResearch)}」</span>}
           <button type="button" disabled={uploading} onClick={() => uploadInputRef.current?.click()}>选择文件</button>
-          <input ref={uploadInputRef} hidden type="file" accept={RESEARCH_MATERIAL_ACCEPT} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void (batchCodingEntry ? addBatchMaterial(file) : addMaterial(file)) }} />
+          <input ref={uploadInputRef} hidden type="file" accept={RESEARCH_MATERIAL_ACCEPT} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMaterial(file) }} />
           {uploadError ? <span role="alert">{uploadError}</span> : null}
         </div> : null}
       </div>
@@ -346,7 +296,7 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
         <td><Link className="material-files__filename" to={`/research/${encodeURIComponent(material.taskId)}/workspace/materials?material_id=${encodeURIComponent(material.materialId)}`} aria-label={`打开材料 ${material.filename}`} aria-disabled={previewFiles || undefined} onClick={previewFiles ? (event) => event.preventDefault() : undefined}><span className="material-files__file-icon" aria-hidden="true"><MaterialTypeIcon material={material} /></span><span className="material-files__file-copy"><strong>{material.filename}</strong></span><ArrowUpRightIcon className="material-files__open-icon" size={15} aria-hidden="true" /></Link></td>
         <td title={researchTitle(owner)}>{researchTitle(owner)}</td><td><time dateTime={material.updatedAt}>{new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(material.updatedAt))}</time></td><td>{formatMaterialSize(material.sizeBytes)}</td><td><span className={`material-files__status is-${material.status}`}>{material.status === 'ready' ? <CheckCircleIcon size={14} aria-hidden="true" /> : null}{materialStatusLabel(material.status)}</span></td><td className="material-files__actions"><button type="button" aria-label={`删除文件 ${material.filename}`} title="删除文件" disabled={previewFiles || !!removingMaterialId} onClick={() => void removeMaterial(material)}><TrashIcon size={16} /></button></td>
       </tr>)}</tbody></table></div> : null}
-      {!loading && !currentLibraryLoading && !failedProjects.length && !visibleMaterials.length ? <div className="material-files__empty" role="region" aria-label={!research.length ? '还没有研究' : '材料列表为空'}><FileTextIcon size={34} aria-hidden="true" /><h2>{query || ownerFilter ? '没有匹配的材料' : '从材料开始研究'}</h2><p>{query || ownerFilter ? '调整搜索词或分类，材料仍保存在所属研究中。' : '导入文档、访谈录音或视频，打开文件即可阅读和编码。'}</p>{!research.length ? <button type="button" className="qx-button" disabled={emptyUploading} onClick={() => emptyUploadInputRef.current?.click()}>{emptyUploading ? '正在导入…' : '导入研究材料'}</button> : null}</div> : null}
+      {!loading && !currentLibraryLoading && !failedProjects.length && !visibleMaterials.length ? <div className="material-files__empty" role="region" aria-label={!research.length ? '还没有研究' : '材料列表为空'}><FileTextIcon size={34} aria-hidden="true" /><h2>{query || ownerFilter ? '没有匹配的材料' : '从材料开始研究'}</h2><p>{query || ownerFilter ? '调整搜索词或分类，材料仍保存在所属研究中。' : '导入文档、音频或视频，整理原文并与 Agent 讨论。'}</p>{!research.length ? <button type="button" className="qx-button" disabled={emptyUploading} onClick={() => emptyUploadInputRef.current?.click()}>{emptyUploading ? '正在导入…' : '导入研究材料'}</button> : null}</div> : null}
             </div>
       <input ref={emptyUploadInputRef} hidden type="file" multiple accept={RESEARCH_MATERIAL_ACCEPT} onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void startFromMaterials(files) }} />
           </section>

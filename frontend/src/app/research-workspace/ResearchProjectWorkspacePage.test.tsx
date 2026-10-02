@@ -146,7 +146,7 @@ describe('ResearchProjectWorkspacePage', () => {
   it('preserves conversation identity when locating a material segment', async () => {
     renderWorkspace('/research/task-1/workspace/materials?material_id=material-1&conversation_id=conversation-b&batch_run_id=batch-1')
     fireEvent.click(await screen.findByRole('button', { name: '定位材料' }))
-    expect(screen.getByLabelText('当前地址')).toHaveTextContent('/research/task-1/workspace/materials?material_id=material-2&parse_id=parse-2&segment_id=segment-2&batch_run_id=batch-1&conversation_id=conversation-b')
+    expect(screen.getByLabelText('当前地址')).toHaveTextContent('/research/task-1/workspace/materials?material_id=material-2&parse_id=parse-2&segment_id=segment-2&conversation_id=conversation-b')
   })
 
   it('records the first conversation before completion without remounting the active Agent', async () => {
@@ -159,15 +159,14 @@ describe('ResearchProjectWorkspacePage', () => {
     expect(screen.getByRole('complementary', { name: '研究 Agent 对话栏' })).toHaveTextContent('conversation-created:task-1')
   })
 
-  it('opens the document full screen with the project Agent and analysis inside the reader', async () => {
+  it('opens ordinary material reading beside the project Agent without coding', async () => {
     renderWorkspace('/research/task-1/workspace/materials?material_id=material-1&segment_id=segment-1')
     const reader = await screen.findByRole('region', { name: '材料中心' })
     expect(reader).toHaveTextContent('material-1:segment-1')
-    expect(within(reader).getByRole('complementary', { name: '研究 Agent 对话栏' })).toHaveTextContent('conversation-1:task-1')
-    expect(within(reader).getByRole('region', { name: '分析中心' })).toBeVisible()
-    expect(within(reader).getByRole('link', { name: '返回材料库' })).toHaveAttribute('href', '/research/materials')
-    expect(screen.queryByRole('navigation', { name: '桌面主导航' })).not.toBeInTheDocument()
-    expect(screen.queryByTestId('research-workspace-layout')).not.toBeInTheDocument()
+    expect(screen.getByRole('complementary', { name: '研究 Agent 对话栏' })).toHaveTextContent('conversation-1:task-1')
+    expect(within(reader).queryByRole('region', { name: '分析中心' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('research-workspace-layout')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: '研究编码工作区' })).not.toBeInTheDocument()
   })
 
   it('uses the project lifecycle central tool when opening the workspace without a tool', async () => {

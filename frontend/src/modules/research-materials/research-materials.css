@@ -1425,3 +1425,6 @@ audio.media-transcript__player { min-height: 54px; background: var(--qx-color-su
 .qx-reader__panel-content .research-analysis__header { flex-direction: column; }
 .coding-workspace__gaps { padding: 10px 0; border-bottom: 1px solid var(--qx-color-rule); color: var(--qx-color-muted); font-size: var(--qx-text-meta); }
 .coding-workspace__gaps summary { cursor: pointer; }
+
+/* The ordinary reader has no retired coding rail or evidence-inspector column. */
+.qx-reader.is-source-reading { --qx-reader-rail: 20px; --qx-reader-inspector: 0px; }

@@ -1,21 +1,7 @@
-import {
-  ArchiveBoxIcon,
-  CheckCircleIcon,
-  DownloadSimpleIcon,
-  FileArrowUpIcon,
-  ShieldCheckIcon,
-  WarningCircleIcon,
-} from '@phosphor-icons/react'
-import { useCallback, useEffect, useState, type ChangeEvent } from 'react'
+import { ArchiveBoxIcon, CheckCircleIcon, DownloadSimpleIcon, ShieldCheckIcon, WarningCircleIcon } from '@phosphor-icons/react'
+import { useCallback, useEffect, useState } from 'react'
 
-import {
-  exportResearchArchive,
-  listResearchAuditEvents,
-  previewQdpxImport,
-  type ResearchArchiveDownload,
-  type QdpxImportPreview,
-  type ResearchAuditEvent,
-} from './researchExchangeApi'
+import { exportResearchArchive, listResearchAuditEvents, type ResearchArchiveDownload, type ResearchAuditEvent } from './researchExchangeApi'
 import './research-exchange.css'
 
 type ResearchArchivePanelProps = {
@@ -46,9 +32,7 @@ export function ResearchArchivePanel({ taskId }: ResearchArchivePanelProps) {
   const [events, setEvents] = useState<ResearchAuditEvent[]>([])
   const [auditLoading, setAuditLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
-  const [previewing, setPreviewing] = useState(false)
   const [exported, setExported] = useState<ResearchArchiveDownload | null>(null)
-  const [preview, setPreview] = useState<QdpxImportPreview | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const loadAudit = useCallback(async (signal?: AbortSignal) => {
@@ -85,23 +69,6 @@ export function ResearchArchivePanel({ taskId }: ResearchArchivePanelProps) {
     }
   }
 
-  async function handlePreview(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    setPreviewing(true)
-    setPreview(null)
-    setError(null)
-    try {
-      setPreview(await previewQdpxImport(taskId, file))
-      await loadAudit()
-    } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : 'QDPX 文件校验失败。')
-    } finally {
-      setPreviewing(false)
-    }
-  }
-
   return (
     <section className="research-exchange" role="region" aria-label="项目归档与交换">
       <header className="research-exchange__header">
@@ -125,23 +92,6 @@ export function ResearchArchivePanel({ taskId }: ResearchArchivePanelProps) {
           </button>
         </article>
 
-        <article>
-          <FileArrowUpIcon size={22} aria-hidden="true" />
-          <div>
-            <h3>QDPX 导入预览</h3>
-            <p>按官方 XSD 校验并清点项目内容，不自动合并、重绑或写入当前研究。</p>
-          </div>
-          <label className={`qx-button${previewing ? ' is-disabled' : ''}`}>
-            <span>{previewing ? '正在校验…' : '选择 QDPX 文件'}</span>
-            <input
-              type="file"
-              accept=".qdpx,application/vnd.qdpx,application/zip"
-              aria-label="选择 QDPX 文件"
-              disabled={previewing}
-              onChange={(event) => void handlePreview(event)}
-            />
-          </label>
-        </article>
       </div>
 
       {error && (
@@ -159,23 +109,6 @@ export function ResearchArchivePanel({ taskId }: ResearchArchivePanelProps) {
             完整说明已写入归档。
           </span>
         </div>
-      )}
-
-      {preview && (
-        <article className="research-exchange__preview">
-          <div>
-            <span>QDPX {preview.specification_version}</span>
-            <h3>{preview.project.name}</h3>
-            <p>{preview.project.origin}</p>
-          </div>
-          <dl>
-            <div><dt>材料</dt><dd>{preview.project.source_count}</dd></div>
-            <div><dt>编码</dt><dd>{preview.project.code_count}</dd></div>
-            <div><dt>备忘</dt><dd>{preview.project.memo_count}</dd></div>
-            <div><dt>案例</dt><dd>{preview.project.case_count}</dd></div>
-          </dl>
-          <p>只完成校验与预览，未写入当前研究。</p>
-        </article>
       )}
 
       <section className="research-exchange__audit" aria-labelledby="research-exchange-audit-title">

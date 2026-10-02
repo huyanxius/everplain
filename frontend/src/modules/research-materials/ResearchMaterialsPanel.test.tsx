@@ -1,5 +1,4 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ResearchMaterialsPanel } from './ResearchMaterialsPanel'
@@ -171,6 +170,25 @@ describe('ResearchMaterialsPanel', () => {
     expect(await within(dialog).findByText('可继续阅读的材料正文。')).toBeVisible()
   })
 
+  it('reads existing media source text without exposing transcription or coding controls', async () => {
+    const media = { ...material, filename: 'recording.mp4', media_type: 'video/mp4' }
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(requestOf(input, init).url).pathname
+      if (path.endsWith('/materials/material-1')) return response({ ...media, segments: [{
+        segment_id: 'media-source', material_id: 'material-1', parse_id: 'parse-1', ordinal: 0,
+        kind: 'paragraph', text: 'Existing source text remains readable.',
+        locator: { time_start_ms: 1000, time_end_ms: 3000 },
+      }] })
+      return response({ task_id: 'task-1', items: [media] })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<ResearchMaterialsPanel taskId="task-1" initialMaterialId="material-1" />)
+    expect(await screen.findByText('Existing source text remains readable.')).toBeVisible()
+    expect(screen.queryByRole('button', { name: /自动转写|新建编码|原词编码/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tree', { name: '代码系统' })).not.toBeInTheDocument()
+    expect(fetchMock.mock.calls.every(([input, init]) => !new URL(requestOf(input, init).url).pathname.includes('/transcription'))).toBe(true)
+  })
+
   it('renders as a persistent workspace without modal semantics', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => response({ task_id: 'task-1', items: [] })))
 
@@ -209,7 +227,7 @@ describe('ResearchMaterialsPanel', () => {
 
     const workspace = await screen.findByRole('region', { name: '研究材料' })
     const reader = await within(workspace).findByRole('region', { name: '材料阅读台' })
-    expect(within(reader).queryByRole('heading', { name: '社区访谈.docx' })).not.toBeInTheDocument()
+    expect(within(reader).getByRole('heading', { name: '社区访谈.docx' })).toBeVisible()
     expect(within(reader).getByRole('button', { name: '在材料中查找' })).toBeVisible()
     expect(within(reader).getByText('受访者描述了工作时间的变化。')).toBeVisible()
     await waitFor(() => expect(onWorkspaceLocationChange).toHaveBeenLastCalledWith({
@@ -250,111 +268,6 @@ describe('ResearchMaterialsPanel', () => {
       parseId: null,
       segmentId: null,
     }))
-  })
-
-  it('opens media materials in the transcript timeline instead of the document reader', async () => {
-    const onWorkspaceLocationChange = vi.fn()
-    const mediaMaterial = {
-      ...material,
-      material_id: 'media-1',
-      filename: '社区访谈.wav',
-      media_type: 'audio/wav',
-      status: 'uploaded',
-      parse_version: null,
-      segment_count: 0,
-    }
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = new URL(requestOf(input, init).url).pathname
-      if (path.endsWith('/materials/media-1/transcription')) {
-        return response({
-          material_id: 'media-1', status: 'ready', automatic_available: false,
-          automatic_provider: null, error_code: null,
-          current_version: {
-            version_id: 'parse-media-1', material_id: 'media-1', version: 1,
-            source: 'imported', provider: null, created_from_version_id: null,
-            created_at: '2026-09-01T00:00:00Z', is_current: true,
-            segments: [{ segment_id: 'media-segment-1', ordinal: 0, speaker: '主持人', start_ms: 1250, end_ms: 3800, text: '请介绍一下。' }],
-          },
-          versions: [{
-            version_id: 'parse-media-1', material_id: 'media-1', version: 1,
-            source: 'imported', provider: null, created_from_version_id: null,
-            created_at: '2026-09-01T00:00:00Z', is_current: true,
-            segments: [{ segment_id: 'media-segment-1', ordinal: 0, speaker: '主持人', start_ms: 1250, end_ms: 3800, text: '请介绍一下。' }],
-          }],
-        })
-      }
-      if (path.endsWith('/materials/media-1')) return response({ ...mediaMaterial, segments: [] })
-      return response({ task_id: 'task-1', items: [mediaMaterial] })
-    }))
-
-    render(<ResearchMaterialsPanel taskId="task-1" onClose={() => undefined} onWorkspaceLocationChange={onWorkspaceLocationChange} />)
-    const dialog = await screen.findByRole('dialog', { name: '研究材料' })
-    fireEvent.click(within(dialog).getByRole('button', { name: '查看材料：社区访谈.wav' }))
-
-    expect(await within(dialog).findByRole('region', { name: '媒体转录时间轴' })).toBeVisible()
-    expect(within(dialog).queryByRole('region', { name: '文档阅读器' })).not.toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: '材料档案' })).not.toHaveTextContent('档案')
-    fireEvent.click(await within(dialog).findByRole('button', { name: /00:01\.250.*主持人/ }))
-    await waitFor(() => expect(onWorkspaceLocationChange).toHaveBeenLastCalledWith({
-      materialId: 'media-1', parseId: 'parse-media-1', segmentId: 'media-segment-1',
-    }))
-  })
-
-  it('keeps a completed media transcript stable when its version is reflected in the route', async () => {
-    const mediaMaterial = {
-      ...material,
-      material_id: 'media-route',
-      filename: '社区访谈.wav',
-      media_type: 'audio/wav',
-      status: 'ready',
-      parse_version: 1,
-      segment_count: 1,
-    }
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = new URL(requestOf(input, init).url).pathname
-      if (path.endsWith('/materials/media-route/transcription')) {
-        return response({
-          material_id: 'media-route', status: 'ready', automatic_available: true,
-          automatic_provider: 'dashscope:filetrans', error_code: null,
-          current_version: {
-            version_id: 'parse-route', material_id: 'media-route', version: 1,
-            source: 'automatic', provider: 'dashscope:filetrans', created_from_version_id: null,
-            created_at: '2026-09-03T00:22:49+08:00', is_current: true,
-            segments: [{ segment_id: 'media-segment', ordinal: 0, speaker: '受访者', start_ms: 0, end_ms: 3000, text: '转录内容已经生成。' }],
-          },
-          versions: [{
-            version_id: 'parse-route', material_id: 'media-route', version: 1,
-            source: 'automatic', provider: 'dashscope:filetrans', created_from_version_id: null,
-            created_at: '2026-09-03T00:22:49+08:00', is_current: true,
-            segments: [{ segment_id: 'media-segment', ordinal: 0, speaker: '受访者', start_ms: 0, end_ms: 3000, text: '转录内容已经生成。' }],
-          }],
-        })
-      }
-      if (path.endsWith('/materials/media-route')) return response({ ...mediaMaterial, segments: [] })
-      return response({ task_id: 'task-1', items: [mediaMaterial] })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    function RoutedPanel() {
-      const [parseId, setParseId] = useState<string | null>(null)
-      return <ResearchMaterialsPanel
-        taskId="task-1"
-        presentation="workspace"
-        initialMaterialId="media-route"
-        initialParseId={parseId}
-        onWorkspaceLocationChange={({ parseId: nextParseId }) => setParseId(nextParseId)}
-      />
-    }
-
-    render(<RoutedPanel />)
-
-    expect(await screen.findByText('转录内容已经生成。')).toBeVisible()
-    await new Promise((resolve) => window.setTimeout(resolve, 100))
-    const transcriptionRequests = fetchMock.mock.calls.filter(([input, init]) => (
-      new URL(requestOf(input, init).url).pathname.endsWith('/materials/media-route/transcription')
-    ))
-    expect(transcriptionRequests).toHaveLength(1)
-    expect(screen.queryByText('正在加载转录时间轴……')).not.toBeInTheDocument()
   })
 
   it('shows persisted materials and opens an exact source locator in the detail view', async () => {

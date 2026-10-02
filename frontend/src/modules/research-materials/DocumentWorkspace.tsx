@@ -2,7 +2,7 @@ import { CaretRightIcon, CircleNotchIcon, MagnifyingGlassIcon, WarningCircleIcon
 import type { ReactNode, Ref, MouseEventHandler } from 'react'
 import { formatMaterialLocator, type ResearchMaterialSegment } from './researchMaterialsModel'
 
-/** Shared reading surface. Coding and course controllers supply their own tools and evidence panels. */
+/** Shared reading surface. Research and library controllers supply their own tools and evidence panels. */
 export function DocumentWorkspace({ children, frameRef, narrow = false, workspace = true, zoom = 100, className = '' }: {
   children: ReactNode; frameRef?: Ref<HTMLElement>; narrow?: boolean; workspace?: boolean; zoom?: number; className?: string
 }) {
@@ -28,7 +28,7 @@ export function DocumentOutline({ headings, selectedId, open, onSelect }: {
   </nav>
 }
 
-export function DocumentSourceView({ children, scrollRef, loading = false, note = null, error, empty = false, query = '', page = 0, pageCount = 1, onPageChange, railLabel = '编码条' }: {
+export function DocumentSourceView({ children, scrollRef, loading = false, note = null, error, empty = false, query = '', page = 0, pageCount = 1, onPageChange, railLabel = '' }: {
   children: ReactNode; scrollRef?: Ref<HTMLElement>; loading?: boolean; note?: { tone: 'plain' | 'error'; text: string } | null; error?: ReactNode; empty?: boolean; query?: string; page?: number; pageCount?: number; onPageChange: (page: number) => void; railLabel?: string
 }) {
   return <main className="qx-reader__scroll" ref={scrollRef} role="region" aria-label="文档阅读器">

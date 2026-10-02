@@ -123,7 +123,6 @@ from qunxue_api.adapters.theory_evidence import (
 from qunxue_api.adapters.transcription import (
     DashScopeTranscriptionProvider,
     OpenAICompatibleTranscriptionProvider,
-    parse_imported_transcript,
 )
 from qunxue_api.api.contracts.common import ErrorCode, ErrorDetail, ErrorResponse
 from qunxue_api.api.routes.agent import router as agent_router
@@ -139,7 +138,6 @@ from qunxue_api.api.routes.professional_materials import (
     router as professional_materials_router,
 )
 from qunxue_api.api.routes.research_analysis import router as research_analysis_router
-from qunxue_api.api.routes.research_batch_coding import router as research_batch_coding_router
 from qunxue_api.api.routes.research_cycle import router as research_cycle_router
 from qunxue_api.api.routes.research_documents import router as research_documents_router
 from qunxue_api.api.routes.research_exchange import router as research_exchange_router
@@ -148,12 +146,10 @@ from qunxue_api.api.routes.research_method import router as research_method_rout
 from qunxue_api.api.routes.research_tasks import router as research_tasks_router
 from qunxue_api.api.routes.session import router as session_router
 from qunxue_api.api.routes.shared_knowledge import router as shared_knowledge_router
-from qunxue_api.api.routes.transcription import router as transcription_router
 from qunxue_api.application import (
     DisciplinaryAgentApplication,
     ProfessionalMaterialsApplication,
     ResearchAnalysisApplication,
-    ResearchBatchCodingApplication,
     ResearchCycleApplication,
     ResearchDocumentApplication,
     ResearchDocumentProposalApplication,
@@ -164,7 +160,6 @@ from qunxue_api.application import (
     ResearchProjectExchangeApplication,
     ResearchStartApplication,
     TheoryMatchingApplication,
-    TranscriptionApplication,
 )
 from qunxue_api.application.agent_profile import AgentProfileApplication
 from qunxue_api.application.agent_research_workflow import AgentResearchWorkflow
@@ -680,41 +675,12 @@ def create_app(
     app.state.run_import_once = run_import_once
     app.state.import_worker_enabled = True
 
-    transcription_provider = _build_transcription_provider(resolved_settings)
-
-    @contextmanager
-    def transcription_application_scope() -> Iterator[TranscriptionApplication]:
-        with resolved_database.session() as session:
-            yield TranscriptionApplication(
-                materials=SqliteResearchMaterialRepository(session),
-                archive=SqliteProfessionalMaterialRepository(session),
-                research_tasks=SqliteResearchTaskRepository(session),
-                provider=transcription_provider,
-                importer=parse_imported_transcript,
-                commit=session.commit,
-            )
-
-    app.state.transcription_application_scope = transcription_application_scope
-
     @contextmanager
     def research_analysis_application_scope() -> Iterator[ResearchAnalysisApplication]:
         with resolved_database.session() as session:
             yield build_research_analysis_application(session)
 
     app.state.research_analysis_application_scope = research_analysis_application_scope
-
-    @contextmanager
-    def research_batch_coding_application_scope() -> Iterator[ResearchBatchCodingApplication]:
-        with resolved_database.session() as session:
-            materials = SqliteResearchMaterialRepository(session)
-            yield ResearchBatchCodingApplication(
-                analysis=ResearchAnalysisService(SqliteResearchAnalysisRepository(session)),
-                materials=materials,
-                research_tasks=SqliteResearchTaskRepository(session),
-                batches=SqliteResearchAnalysisRepository(session),
-            )
-
-    app.state.research_batch_coding_application_scope = research_batch_coding_application_scope
 
     @contextmanager
     def research_project_exchange_application_scope() -> Iterator[
@@ -1224,11 +1190,9 @@ def create_app(
     app.include_router(research_tasks_router)
     app.include_router(research_documents_router)
     app.include_router(research_materials_router)
-    app.include_router(transcription_router)
     app.include_router(professional_materials_router)
     app.include_router(research_method_router)
     app.include_router(research_analysis_router)
-    app.include_router(research_batch_coding_router)
     app.include_router(research_cycle_router)
     app.include_router(research_exchange_router)
     app.include_router(phenomena_router)

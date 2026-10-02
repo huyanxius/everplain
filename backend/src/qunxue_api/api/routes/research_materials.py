@@ -49,7 +49,7 @@ MAX_MATERIAL_BYTES = MAX_DOCUMENT_BYTES
 
 
 def _upload_limit(*, filename: str, media_type: str | None) -> int:
-    """Bound in-memory uploads while allowing ordinary interview recordings."""
+    """Bound in-memory uploads while allowing ordinary audio and video materials."""
 
     try:
         material_format = MaterialFormat.resolve(

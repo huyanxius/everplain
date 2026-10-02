@@ -760,16 +760,11 @@ class PydanticAIKnowledgeRunner:
                 "需要解释个人材料中的片段时，先调用"
                 " read_research_material_context 获取目标位置及有限前后文，"
                 "不得脱离原文上下文或编造页码、章节和段落。"
-                "当质性分析工具可用时，先调用 get_research_analysis 读取用户已有标注、编码和备忘；"
+                "当研究分析工具可用时，先调用 get_research_analysis 读取用户已有标注和备忘；"
                 "跨材料、案例或时间比较时，先调用 get_research_comparison_context，"
                 "再用 propose_case_comparison 提出支持证据、反例、矛盾材料、竞争解释、"
-                "证据缺口与下一步行动；你只能调用 propose_analysis_code、"
-                "propose_analysis_memo 或 propose_case_comparison 提出候选，"
-                "需要把新片段归入既有确认编码时，必须先读材料原文和代码本，"
-                "再调用 propose_coding_plan；计划的每一项都必须带 material_id、parse_id、"
-                "segment_id、quote 范围、确认的 code_id、置信度和理由；计划永远等待用户逐条确认，"
-                "不能调用工具替用户应用或撤销编码；确认后可用 retrieve_coded_segments "
-                "返回原文和定位。"
+                "证据缺口与下一步行动；可调用 propose_analysis_memo 或 propose_case_comparison "
+                "提出候选，候选永远等待用户确认。"
                 "不能静默决定、确认或拒绝主题、理论与结论。候选必须等待用户在界面明确确认，"
                 "相关原文仍用 search_research_materials 与 read_research_material_context 核对。"
                 "用户询问工具调用规则、检索策略或调用条件，或者只是在问候、控制流程、询问能力边界时，"
@@ -1382,37 +1377,14 @@ class PydanticAIKnowledgeRunner:
         def get_research_analysis(
             ctx: RunContext[KnowledgeToolRegistry],
         ) -> dict[str, object]:
-            """读取当前研究任务已有的标注、编码、备忘与比较，不产生写入。"""
+            """读取当前研究任务已有的标注、备忘与比较，不产生写入。"""
 
             return self._run_analysis_tool(
                 ctx,
                 "get_research_analysis",
                 {},
-                "正在读取质性分析",
+                "正在读取研究分析",
                 candidate=False,
-            )
-
-        @self._agent.tool(prepare=_prepare_analysis_tool)
-        def propose_analysis_code(
-            ctx: RunContext[KnowledgeToolRegistry],
-            label: str,
-            definition: str,
-            annotation_ids: list[str],
-            rationale: str,
-        ) -> dict[str, object]:
-            """基于用户已有标注提出待确认编码；不会确认主题、理论或结论。"""
-
-            return self._run_analysis_tool(
-                ctx,
-                "propose_analysis_code",
-                {
-                    "label": label,
-                    "definition": definition,
-                    "annotation_ids": annotation_ids,
-                    "rationale": rationale,
-                },
-                "正在生成编码候选",
-                candidate=True,
             )
 
         @self._agent.tool(prepare=_prepare_analysis_tool)
@@ -1422,7 +1394,6 @@ class PydanticAIKnowledgeRunner:
             content: str,
             memo_kind: str,
             annotation_ids: list[str],
-            code_ids: list[str],
         ) -> dict[str, object]:
             """基于已有材料与分析提出待确认备忘；不会写入最终研究判断。"""
 
@@ -1434,45 +1405,9 @@ class PydanticAIKnowledgeRunner:
                     "content": content,
                     "memo_kind": memo_kind,
                     "annotation_ids": annotation_ids,
-                    "code_ids": code_ids,
                 },
                 "正在生成分析备忘候选",
                 candidate=True,
-            )
-
-        @self._agent.tool(prepare=_prepare_analysis_tool)
-        def propose_coding_plan(
-            ctx: RunContext[KnowledgeToolRegistry],
-            title: str,
-            rationale: str,
-            items: list[dict[str, object]],
-        ) -> dict[str, object]:
-            """提出把新材料片段归入既有确认编码的待审计划。"""
-
-            return self._run_analysis_tool(
-                ctx,
-                "propose_coding_plan",
-                {"title": title, "rationale": rationale, "items": items},
-                "正在生成编码计划候选",
-                candidate=True,
-            )
-
-        @self._agent.tool(prepare=_prepare_analysis_tool)
-        def retrieve_coded_segments(
-            ctx: RunContext[KnowledgeToolRegistry],
-            code_ids: list[str],
-            material_id: str | None = None,
-            query: str | None = None,
-            limit: int = 50,
-        ) -> list[dict[str, object]] | dict[str, object]:
-            """读取已确认编码对应的原文片段，不产生写入。"""
-
-            return self._run_analysis_tool(
-                ctx,
-                "retrieve_coded_segments",
-                {"code_ids": code_ids, "material_id": material_id, "query": query, "limit": limit},
-                "正在检索已确认编码片段",
-                candidate=False,
             )
 
         @self._agent.tool(prepare=_prepare_analysis_tool)
@@ -3500,7 +3435,7 @@ _worker_event_loop = threading.local()
 
 
 _REPLAYABLE_WRITES = frozenset({
-    "propose_analysis_code", "propose_analysis_memo", "propose_coding_plan",
+    "propose_analysis_memo",
     "propose_case_comparison", "propose_document_revision", "propose_document_creation",
     "start_theory_matching", "save_confirmed_theory_plan",
 })

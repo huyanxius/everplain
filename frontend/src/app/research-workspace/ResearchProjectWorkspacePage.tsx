@@ -206,8 +206,6 @@ export function ResearchProjectWorkspacePage({ userId = null }: ResearchProjectW
   }) => {
     if (!next.materialId) { navigate('/research/materials'); return }
     const params = new URLSearchParams(researchWorkspaceDestination(taskId, 'materials', next).split('?')[1])
-    const batchRunId = new URLSearchParams(location.search).get('batch_run_id')
-    if (batchRunId) params.set('batch_run_id', batchRunId)
     const destination = preserveConversation(`${researchWorkspaceDestination(taskId, 'materials')}?${params}`)
     if (`${location.pathname}${location.search}` !== destination) navigate(destination, { replace: true })
   }, [location.pathname, location.search, navigate, preserveConversation, taskId])
@@ -270,44 +268,8 @@ export function ResearchProjectWorkspacePage({ userId = null }: ResearchProjectW
       : null,
   }
 
-  const codingWorkspace = (tool === 'materials' || tool === 'analysis') && Boolean(position.materialId)
-  const agentPanel = <ResearchAgentConversationPage
-    embedded
-    userId={userId}
-    conversationId={requestedConversationId ?? knownConversationId ?? navigationData.conversation_id}
-    knowledgeReleaseId={navigationData.knowledge_release_id}
-    workspace="research"
-    taskId={taskId}
-    documentId={documentContext?.documentId ?? null}
-    sectionId={documentContext?.sectionId ?? null}
-    documentVersion={documentContext?.documentVersion ?? null}
-    theoryPlanId={navigationData.current_theory_plan_id}
-    onConversationStarted={syncConversationIdentity}
-    onConversationChange={syncConversation}
-    onTurnCompleted={() => setCenterRefreshKey((value) => value + 1)}
-    composerAriaLabel="和 Agent 讨论当前研究材料与编码"
-  />
-  if (codingWorkspace) return <PageShell immersive wide><section className="coding-workspace" aria-label="研究编码工作区">
-    <ResearchMaterialsPanel
-      key={`${taskId}:coding`}
-      taskId={taskId}
-      presentation="workspace"
-      initialMaterialId={position.materialId ?? null}
-      initialParseId={position.parseId ?? null}
-      initialSegmentId={position.segmentId ?? null}
-      refreshKey={centerRefreshKey}
-      onWorkspaceLocationChange={updateMaterialLocation}
-      agentPanel={agentPanel}
-      analysisPanel={<ResearchAnalysisPanel taskId={taskId} refreshKey={centerRefreshKey} embedded onChanged={() => setCenterRefreshKey((value) => value + 1)} />}
-      workspaceNavigation={<div className="coding-workspace__navigation">
-        <Link to="/research/materials" aria-label="返回材料库" title="返回材料库">‹</Link>
-        <details><summary>{projectTitle(taskData, navigationData)}</summary><nav aria-label="研究工具">{tools.filter(({ id }) => id !== 'materials' && id !== 'analysis').map(({ id, label }) => <Link key={id} to={preserveConversation(researchWorkspaceDestination(taskId, id))}>{label}</Link>)}</nav></details>
-      </div>}
-    />
-  </section></PageShell>
-
   const center = tool === 'materials'
-    ? <ResearchMaterialsPanel taskId={taskId} presentation="workspace" onWorkspaceLocationChange={updateMaterialLocation} />
+    ? <ResearchMaterialsPanel taskId={taskId} presentation="workspace" initialMaterialId={position.materialId ?? null} initialParseId={position.parseId ?? null} initialSegmentId={position.segmentId ?? null} refreshKey={centerRefreshKey} onWorkspaceLocationChange={updateMaterialLocation} />
     : tool === 'analysis'
       ? <ResearchAnalysisPanel taskId={taskId} refreshKey={centerRefreshKey} />
       : tool === 'method'

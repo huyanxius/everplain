@@ -9,15 +9,6 @@ afterEach(cleanup)
 const snapshot: ResearchAnalysisSnapshot = {
   task_id: 'task-1',
   comparisons: [],
-  method_presets: [{
-    method: 'thematic_analysis', label: '主题分析', primary_view: 'themes',
-    matrix_axes: ['个案', '主题'], prompts: '发展共享意义模式。', guardrails: '代码不等于主题。',
-  }],
-  workspace: {
-    schema_version: 'qualitative-workspace-v1', content_hash: 'e'.repeat(64),
-    method_preset: { method: 'thematic_analysis', version: 0, updated_at: '1970-01-01T00:00:00Z' },
-    codebook_entries: [], memo_links: [], case_profiles: [], formal_themes: [], candidate_themes: [], matrix_cells: [],
-  },
   annotations: [{
     annotation_id: 'annotation-1', task_id: 'task-1', material_id: 'material-1', parse_id: 'parse-1',
     segment_id: 'segment-1', segment_content_hash: 'a'.repeat(64), quote: '姐姐承担了大部分照护',
@@ -27,24 +18,10 @@ const snapshot: ResearchAnalysisSnapshot = {
     note: '照护责任集中到姐姐', reflection: '检查性别分工的先验假设', created_at: '2026-08-30T00:00:00Z',
     source_available: true, unavailable_reason: null,
   }],
-  codes: [
-    {
-      code_id: 'code-confirmed', task_id: 'task-1', label: '照护责任性别化', definition: '照护劳动按性别集中分配。',
-      annotation_ids: ['annotation-1'], rationale: '研究者核对原文后建立。', source: 'user', status: 'confirmed', version: 1,
-      created_at: '2026-08-30T00:00:00Z', decided_at: '2026-08-30T00:00:00Z', decision_reason: null,
-      conversation_id: null, agent_run_id: null, agent_turn_id: null, tool_call_id: null,
-    },
-    {
-      code_id: 'code-candidate', task_id: 'task-1', label: '家庭责任重组', definition: '迁移后责任重新分配。',
-      annotation_ids: ['annotation-1'], rationale: '还需要研究者判断是否过度概括。', source: 'agent', status: 'candidate', version: 2,
-      created_at: '2026-08-30T00:00:00Z', decided_at: null, decision_reason: null,
-      conversation_id: 'conversation-1', agent_run_id: 'run-1', agent_turn_id: 'turn-1', tool_call_id: 'tool-1',
-    },
-  ],
   memos: [
     {
       memo_id: 'memo-confirmed', task_id: 'task-1', title: '竞争解释', content: '经济资源差异也可能解释责任安排。', memo_kind: 'analytic',
-      annotation_ids: ['annotation-1'], code_ids: ['code-confirmed'], source: 'user', status: 'confirmed', version: 1,
+      annotation_ids: ['annotation-1'], source: 'user', status: 'confirmed', version: 1,
       created_at: '2026-08-30T00:00:00Z', decided_at: '2026-08-30T00:00:00Z', decision_reason: null,
       conversation_id: null, agent_run_id: null, agent_turn_id: null, tool_call_id: null,
     },
@@ -85,152 +62,38 @@ const comparisonSnapshot: ResearchAnalysisSnapshot = {
 }
 
 describe('ResearchAnalysisWorkspace', () => {
-  it('requires a reason and submits every coding-plan item through the existing review rail', () => {
-    const decidePlan = vi.fn(async () => undefined)
-    render(
-      <ResearchAnalysisWorkspace
-        snapshot={{ ...snapshot, coding_plans: [{
-          plan_id: 'plan-1', task_id: 'task-1', title: '归入既有照护代码',
-          rationale: '相邻片段与代码定义一致。', source: 'agent', status: 'candidate', version: 4,
-          created_at: '2026-08-30T00:00:00Z', conversation_id: 'conversation-1', agent_run_id: 'run-1', agent_turn_id: 'turn-1', tool_call_id: 'tool-plan', decided_at: null, decision_reason: null,
-          items: [{
-            item_id: 'item-1', material_id: 'material-1', parse_id: 'parse-1', segment_id: 'segment-1', segment_content_hash: 'a'.repeat(64),
-            quote: '姐姐承担了大部分照护', quote_hash: 'b'.repeat(64), quote_start: 5, quote_end: 16,
-            locator: snapshot.annotations[0].locator, code_id: 'code-confirmed', code_label: '照护责任性别化', code_definition: '照护劳动按性别集中分配。', codebook_version: null, confidence: 0.86, rationale: '与定义一致。', status: 'candidate', annotation_id: null, decision_reason: null,
-          }],
-        }]}}
-        selectedMaterialId="material-1"
-        onCreateCode={vi.fn()}
-        onCreateMemo={vi.fn()}
-        onDecideCode={vi.fn()}
-        onDecideMemo={vi.fn()}
-        onDecideCodingPlan={decidePlan}
-      />,
-    )
-    const card = screen.getByRole('article', { name: '编码计划候选：归入既有照护代码' })
-    expect(within(card).getByRole('button', { name: '确认此项' })).toBeDisabled()
-    fireEvent.change(within(card).getByRole('textbox', { name: '编码计划判断依据' }), { target: { value: '已回到原文核对' } })
-    fireEvent.click(within(card).getByRole('button', { name: '确认此项' }))
-    expect(decidePlan).toHaveBeenCalledWith('plan-1', {
-      expected_version: 4,
-      decisions: [{ item_id: 'item-1', decision: 'confirmed', reason: '已回到原文核对' }],
-    })
-  })
-
-  it('keeps an applied plan reversible without changing the original confirmed code', () => {
-    const revokePlan = vi.fn(async () => undefined)
-    const item = {
-      item_id: 'item-applied', material_id: 'material-1', parse_id: 'parse-1', segment_id: 'segment-1', segment_content_hash: 'a'.repeat(64),
-      quote: '姐姐承担了大部分照护', quote_hash: 'b'.repeat(64), quote_start: 5, quote_end: 16,
-      locator: snapshot.annotations[0].locator, code_id: 'code-confirmed', code_label: '照护责任性别化', code_definition: '照护劳动按性别集中分配。', codebook_version: null, confidence: 0.86, rationale: '与定义一致。', status: 'applied', annotation_id: 'annotation-applied', decision_reason: '已核对',
-    }
-    render(
-      <ResearchAnalysisWorkspace
-        snapshot={{ ...snapshot, coding_plans: [{ plan_id: 'plan-applied', task_id: 'task-1', title: '已应用批次', rationale: '已确认。', items: [item], source: 'agent', status: 'applied', version: 5, created_at: '2026-08-30T00:00:00Z', conversation_id: null, agent_run_id: null, agent_turn_id: null, tool_call_id: null, decided_at: '2026-08-30T00:00:00Z', decision_reason: '已核对' }] }}
-        selectedMaterialId="material-1"
-        onCreateCode={vi.fn()}
-        onCreateMemo={vi.fn()}
-        onDecideCode={vi.fn()}
-        onDecideMemo={vi.fn()}
-        onRevokeCodingPlan={revokePlan}
-      />,
-    )
-    const row = screen.getByRole('article', { name: '已应用编码计划：已应用批次' })
-    fireEvent.change(within(row).getByRole('textbox', { name: '撤销编码计划理由' }), { target: { value: '误点确认' } })
-    fireEvent.click(within(row).getByRole('button', { name: '撤销本批次' }))
-    expect(revokePlan).toHaveBeenCalledWith('plan-applied', { expected_version: 5, reason: '误点确认' })
-  })
-
-  it('opens the source-grounded qualitative workspace from the analysis record', () => {
-    render(
-      <ResearchAnalysisWorkspace
-        snapshot={snapshot}
-        selectedMaterialId="material-1"
-        onCreateCode={vi.fn()}
-        onCreateMemo={vi.fn()}
-        onDecideCode={vi.fn()}
-        onDecideMemo={vi.fn()}
-        onConfigureCodebook={vi.fn()}
-        onTransitionCodebook={vi.fn()}
-        onCreateTheme={vi.fn()}
-        onConfirmTheme={vi.fn()}
-        onAttachMemo={vi.fn()}
-        onSaveCaseProfile={vi.fn()}
-        onSaveMatrixCell={vi.fn()}
-        onSetMethod={vi.fn()}
-      />,
-    )
-
-    expect(screen.getByRole('region', { name: '材料分析工作区' })).toBeVisible()
-    expect(screen.getByRole('combobox', { name: '方法取向' })).toHaveValue('thematic_analysis')
-    expect(screen.getByText('代码不等于主题。')).toBeVisible()
-  })
 
   it('shows confirmed user records separately from Agent candidates', () => {
     render(
       <ResearchAnalysisWorkspace
         snapshot={snapshot}
         selectedMaterialId="material-1"
-        onCreateCode={vi.fn()}
         onCreateMemo={vi.fn()}
-        onDecideCode={vi.fn()}
         onDecideMemo={vi.fn()}
       />,
     )
 
-    const analysis = screen.getByRole('region', { name: '质性分析' })
-    expect(within(analysis).getByText('照护责任性别化')).toBeVisible()
+    const analysis = screen.getByRole('region', { name: '研究分析' })
     expect(within(analysis).getByText('竞争解释')).toBeVisible()
-    expect(within(analysis).getByRole('article', { name: '候选编码：家庭责任重组' })).toBeVisible()
-    expect(within(analysis).getAllByText(/^研究者确认/)).toHaveLength(2)
+    expect(within(analysis).queryByRole('button', { name: '建立编码' })).not.toBeInTheDocument()
+    expect(within(analysis).queryByRole('combobox', { name: '方法取向' })).not.toBeInTheDocument()
+    expect(within(analysis).getAllByText(/^研究者确认/)).toHaveLength(1)
   })
 
-  it('creates a user code only from explicitly selected annotations', () => {
-    const createCode = vi.fn(async () => undefined)
-    render(
-      <ResearchAnalysisWorkspace
-        snapshot={snapshot}
-        selectedMaterialId="material-1"
-        onCreateCode={createCode}
-        onCreateMemo={vi.fn()}
-        onDecideCode={vi.fn()}
-        onDecideMemo={vi.fn()}
-      />,
-    )
-    const analysis = screen.getByRole('region', { name: '质性分析' })
-    fireEvent.click(within(analysis).getByRole('button', { name: '建立编码' }))
-    const form = within(analysis).getByRole('form', { name: '建立编码' })
-    fireEvent.click(within(form).getByRole('checkbox', { name: /姐姐承担了大部分照护/ }))
-    fireEvent.change(within(form).getByRole('textbox', { name: '编码名称' }), { target: { value: '照护责任重组' } })
-    fireEvent.change(within(form).getByRole('textbox', { name: '编码定义' }), { target: { value: '责任在家庭成员之间重新分配' } })
-    fireEvent.change(within(form).getByRole('textbox', { name: '建立依据' }), { target: { value: '核对原文后建立' } })
-    fireEvent.click(within(form).getByRole('button', { name: '保存编码' }))
-
-    expect(createCode).toHaveBeenCalledWith({
-      label: '照护责任重组',
-      definition: '责任在家庭成员之间重新分配',
-      rationale: '核对原文后建立',
-      annotation_ids: ['annotation-1'],
-    })
-  })
-
-  it('creates a typed user memo with explicit annotation and code links', () => {
+  it('creates a typed user memo with explicit annotation links', () => {
     const createMemo = vi.fn(async () => undefined)
     render(
       <ResearchAnalysisWorkspace
         snapshot={snapshot}
         selectedMaterialId="material-1"
-        onCreateCode={vi.fn()}
         onCreateMemo={createMemo}
-        onDecideCode={vi.fn()}
         onDecideMemo={vi.fn()}
       />,
     )
-    const analysis = screen.getByRole('region', { name: '质性分析' })
+    const analysis = screen.getByRole('region', { name: '研究分析' })
     fireEvent.click(within(analysis).getByRole('button', { name: '写分析备忘' }))
     const form = within(analysis).getByRole('form', { name: '写分析备忘' })
     fireEvent.click(within(form).getByRole('checkbox', { name: /姐姐承担了大部分照护/ }))
-    fireEvent.click(within(form).getByRole('checkbox', { name: /照护责任性别化/ }))
     fireEvent.change(within(form).getByRole('textbox', { name: '备忘标题' }), { target: { value: '并非唯一解释' } })
     fireEvent.change(within(form).getByRole('textbox', { name: '备忘内容' }), { target: { value: '还需检查经济资源差异' } })
     fireEvent.change(within(form).getByRole('combobox', { name: '备忘类型' }), { target: { value: 'reflexive' } })
@@ -241,7 +104,6 @@ describe('ResearchAnalysisWorkspace', () => {
       content: '还需检查经济资源差异',
       memo_kind: 'reflexive',
       annotation_ids: ['annotation-1'],
-      code_ids: ['code-confirmed'],
     })
   })
 
@@ -252,9 +114,7 @@ describe('ResearchAnalysisWorkspace', () => {
         snapshot={comparisonSnapshot}
         selectedMaterialId="material-1"
         materialNames={{ 'material-1': '家庭 A 访谈.docx', 'material-2': '家庭 B 田野笔记.md' }}
-        onCreateCode={vi.fn()}
         onCreateMemo={vi.fn()}
-        onDecideCode={vi.fn()}
         onDecideMemo={vi.fn()}
         onCreateComparison={vi.fn()}
         onDecideComparison={decideComparison}
@@ -283,9 +143,7 @@ describe('ResearchAnalysisWorkspace', () => {
         snapshot={{ ...comparisonSnapshot, comparisons: [] }}
         selectedMaterialId="material-1"
         materialNames={{ 'material-1': '家庭 A 访谈.docx', 'material-2': '家庭 B 田野笔记.md' }}
-        onCreateCode={vi.fn()}
         onCreateMemo={vi.fn()}
-        onDecideCode={vi.fn()}
         onDecideMemo={vi.fn()}
         onCreateComparison={createComparison}
         onDecideComparison={vi.fn()}
