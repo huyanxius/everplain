@@ -1,3 +1,4 @@
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -7,6 +8,7 @@ from qunxue_api.adapters.model.routing import (
     ModelEndpoint,
     ModelRouteExecutor,
 )
+from qunxue_api.adapters.research_agent.course_cost import CourseCostLimits
 from qunxue_api.adapters.research_agent.course_organization import (
     CourseKnowledgeGenerator,
     CourseOrganizationError,
@@ -54,7 +56,19 @@ def generator(invoke, count=2):
         async def _generate_at_endpoint(self, endpoint, batch):
             return await invoke(endpoint, batch)
 
-    return Controlled(endpoints, route_executor=router, max_concurrency=1), recorder
+    return Controlled(
+        endpoints,
+        route_executor=router,
+        max_concurrency=1,
+        cost_limits=CourseCostLimits(
+            concurrency=3,
+            retries=10,
+            budget=Decimal("100"),
+            input_rate=Decimal("1"),
+            output_rate=Decimal("1"),
+            currency="credits",
+        ),
+    ), recorder
 
 
 @pytest.mark.parametrize("invalid_source", [False, True])
@@ -237,7 +251,7 @@ def test_extraction_uses_short_source_aliases_and_restores_original_ids(monkeypa
         gen._generate_at_endpoint(endpoint, [{"segment_id": source_id, "text": "课程原文"}])
     )
     assert captured["batch"] == [{"segment_id": "0", "text": "课程原文"}]
-    assert result["topics"][0]["segment_ids"] == [source_id]
+    assert result.value["topics"][0]["segment_ids"] == [source_id]
     assert captured["model_settings"]["openai_reasoning_effort"] == "low"
 
 

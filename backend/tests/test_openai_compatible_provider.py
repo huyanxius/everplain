@@ -975,3 +975,35 @@ def test_extension_headers_cannot_override_transport_security(headers: dict[str,
             capability_tier="base",
             extra_headers=headers,
         )
+
+
+def test_business_input_limit_blocks_transport(monkeypatch):
+    provider = model.OpenAICompatibleModelProvider(
+        base_url='https://provider.invalid/v1', api_key=None, model='model',
+        timeout_seconds=30, capability_tier='base', max_input_tokens=10,
+        max_output_tokens=700,
+    )
+    monkeypatch.setattr(provider, '_send', lambda **kwargs: pytest.fail('transport was invoked'))
+    with pytest.raises(model.ModelProviderFailure) as error:
+        provider.extract_phenomenon(raw_input='长原文', research_intent=None, context=None)
+    assert error.value.code == 'model_input_limit'
+
+
+def test_business_output_limit_is_sent_to_provider(monkeypatch):
+    provider = model.OpenAICompatibleModelProvider(
+        base_url='https://provider.invalid/v1', api_key=None, model='model',
+        timeout_seconds=30, capability_tier='base', max_output_tokens=700,
+    )
+    captured = {}
+
+    def send(**kwargs):
+        captured.update(json.loads(kwargs['request_body']))
+        raise model.ModelProviderFailure(
+            code='model_unavailable', message='test transport', knowledge_release_id=None,
+            scenario=model.ModelScenario.PROVIDER_UNAVAILABLE,
+        )
+
+    monkeypatch.setattr(provider, '_send', send)
+    with pytest.raises(model.ModelProviderFailure):
+        provider.extract_phenomenon(raw_input='原文', research_intent=None, context=None)
+    assert captured['max_tokens'] == 700

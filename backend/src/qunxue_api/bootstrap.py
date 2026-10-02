@@ -51,6 +51,7 @@ from qunxue_api.adapters.research_agent import (
     ResearchDocumentToolRegistry,
     SiliconFlowRerankerProvider,
 )
+from qunxue_api.adapters.research_agent.course_cost import CourseCostLimits
 from qunxue_api.adapters.research_agent.course_organization import (
     CourseKnowledgeGenerator,
     CourseOrganizationWorker,
@@ -1185,7 +1186,20 @@ def create_app(
     app.state.course_organization_worker = CourseOrganizationWorker(
         resolved_database,
         generate=CourseKnowledgeGenerator(
-            app.state.model_endpoints, route_executor=app.state.model_router
+            app.state.model_endpoints,
+            route_executor=app.state.model_router,
+            cost_limits=CourseCostLimits(
+                input_tokens=resolved_settings.organization_max_input_tokens,
+                output_tokens=resolved_settings.organization_max_output_tokens,
+                batch_chars=resolved_settings.organization_batch_chars,
+                max_batches=resolved_settings.organization_max_batches,
+                concurrency=resolved_settings.organization_max_concurrency,
+                retries=resolved_settings.organization_max_retries,
+                budget=resolved_settings.organization_budget,
+                input_rate=resolved_settings.organization_input_rate_per_million,
+                output_rate=resolved_settings.organization_output_rate_per_million,
+                currency=resolved_settings.organization_cost_currency,
+            ),
         )
         if app.state.model_endpoints
         else None,
@@ -1570,11 +1584,18 @@ def _model_provider_from_settings(
             capability_tier=runtime_mode,
             extra_headers=dict(endpoint.extra_headers),
             probe_transport=probe_transport,
+            max_input_tokens=settings.model_max_input_tokens,
+            max_output_tokens=settings.model_max_output_tokens,
         )
         for endpoint in endpoints
     )
     attempt_recorder = SqliteModelAttemptRecorder(database)
-    router = ModelRouteExecutor(endpoints=endpoints, recorder=attempt_recorder)
+    router = ModelRouteExecutor(
+        endpoints=endpoints, recorder=attempt_recorder,
+        max_retries=settings.model_max_retries,
+        max_input_tokens=settings.model_max_input_tokens,
+        max_output_tokens=settings.model_max_output_tokens,
+    )
     return (
         RoutedModelProvider(providers=providers, router=router),
         router,

@@ -164,10 +164,20 @@ class ModelRouteExecutor:
         recorder: ModelAttemptRecorder | None = None,
         id_factory: Callable[[], UUID] = uuid4,
         wall_clock: Callable[[], datetime] | None = None,
+        max_retries: int | None = None,
+        max_input_tokens: int | None = None,
+        max_output_tokens: int | None = None,
         failure_threshold: int = 3,
         cooldown_seconds: float = 30,
         clock: Callable[[], float] = monotonic,
     ) -> None:
+        if max_retries is not None and max_retries < 0:
+            raise ValueError("max_retries must not be negative")
+        if any(value is not None and value <= 0 for value in (max_input_tokens, max_output_tokens)):
+            raise ValueError("token limits must be positive")
+        self.max_retries = max_retries
+        self.max_input_tokens = max_input_tokens
+        self.max_output_tokens = max_output_tokens
         if failure_threshold < 1:
             raise ValueError("failure_threshold must be positive")
         if cooldown_seconds < 0:
@@ -205,6 +215,8 @@ class ModelRouteExecutor:
         last_failure: ModelAttemptFailure | None = None
         attempt_number = 0
         for endpoint in self._endpoints:
+            if self.max_retries is not None and attempt_number > self.max_retries:
+                raise ModelAttemptFailure(code="model_retry_limit", retryable=False)
             if not self._admit_endpoint(endpoint):
                 continue
             attempt_number += 1
@@ -274,6 +286,8 @@ class ModelRouteExecutor:
         last_failure: ModelAttemptFailure | None = None
         attempt_number = 0
         for endpoint in self._endpoints:
+            if self.max_retries is not None and attempt_number > self.max_retries:
+                raise ModelAttemptFailure(code="model_retry_limit", retryable=False)
             if not self._admit_endpoint(endpoint):
                 continue
             attempt_number += 1

@@ -180,6 +180,8 @@ class OpenAICompatibleModelProvider:
         capability_tier: str,
         extra_headers: dict[str, str] | None = None,
         probe_transport: httpx.AsyncBaseTransport | None = None,
+        max_input_tokens: int | None = None,
+        max_output_tokens: int | None = None,
     ) -> None:
         parsed_url = urlsplit(base_url)
         if (
@@ -204,6 +206,8 @@ class OpenAICompatibleModelProvider:
         self._model = model.strip()
         self._timeout_seconds = timeout_seconds
         self._probe_transport = probe_transport
+        self._max_input_tokens = max_input_tokens
+        self._max_output_tokens = max_output_tokens
         self._descriptor = ModelProviderDescriptor(
             provider="openai-compatible",
             model_version=self._model,
@@ -557,10 +561,17 @@ class OpenAICompatibleModelProvider:
                     },
                 ],
                 "response_format": {"type": "json_object"},
+                **({"max_tokens": self._max_output_tokens} if self._max_output_tokens else {}),
             },
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode()
+        if self._max_input_tokens and len(request_body) + 1024 > self._max_input_tokens:
+            raise ModelProviderFailure(
+                code="model_input_limit", message="Model input exceeds the configured limit.",
+                knowledge_release_id=knowledge_release_id,
+                scenario=ModelScenario.PROVIDER_UNAVAILABLE,
+            )
         raw_response = self._send(
             request_body=request_body,
             knowledge_release_id=knowledge_release_id,
