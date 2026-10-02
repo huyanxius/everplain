@@ -2964,6 +2964,63 @@
         "title": "CaseComparisonResponse",
         "type": "object"
       },
+      "CatalogModelResponse": {
+        "properties": {
+          "availability": {
+            "enum": [
+              "configured",
+              "unavailable"
+            ],
+            "title": "Availability",
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "provider",
+          "model",
+          "capabilities",
+          "availability",
+          "unavailable_reason"
+        ],
+        "title": "CatalogModelResponse",
+        "type": "object"
+      },
       "ChangePasswordRequest": {
         "properties": {
           "current_password": {
@@ -8794,6 +8851,22 @@
         "title": "ModelCapability",
         "type": "string"
       },
+      "ModelCatalogResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogModelResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ModelCatalogResponse",
+        "type": "object"
+      },
       "ModelMetadata": {
         "properties": {
           "capability": {
@@ -14221,6 +14294,188 @@
           "resolutions"
         ],
         "title": "SubmitAuditResolutionsRequest",
+        "type": "object"
+      },
+      "SubscriptionCheckoutRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "plan_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "title": "Plan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_id"
+        ],
+        "title": "SubscriptionCheckoutRequest",
+        "type": "object"
+      },
+      "SubscriptionCheckoutResponse": {
+        "properties": {
+          "checkout_url": {
+            "title": "Checkout Url",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "checkout_url",
+          "session_id"
+        ],
+        "title": "SubscriptionCheckoutResponse",
+        "type": "object"
+      },
+      "SubscriptionOverviewResponse": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionPlanResponse"
+            },
+            "title": "Plans",
+            "type": "array"
+          },
+          "subscription": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubscriptionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          }
+        },
+        "required": [
+          "available",
+          "unavailable_reason",
+          "plans",
+          "subscription"
+        ],
+        "title": "SubscriptionOverviewResponse",
+        "type": "object"
+      },
+      "SubscriptionPlanResponse": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description"
+        ],
+        "title": "SubscriptionPlanResponse",
+        "type": "object"
+      },
+      "SubscriptionPortalRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "SubscriptionPortalRequest",
+        "type": "object"
+      },
+      "SubscriptionPortalResponse": {
+        "properties": {
+          "portal_url": {
+            "title": "Portal Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "portal_url"
+        ],
+        "title": "SubscriptionPortalResponse",
+        "type": "object"
+      },
+      "SubscriptionResponse": {
+        "properties": {
+          "cancel_at_period_end": {
+            "title": "Cancel At Period End",
+            "type": "boolean"
+          },
+          "current_period_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Period End"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_id",
+          "status",
+          "current_period_end",
+          "cancel_at_period_end"
+        ],
+        "title": "SubscriptionResponse",
+        "type": "object"
+      },
+      "SubscriptionWebhookResponse": {
+        "properties": {
+          "duplicate": {
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "received": {
+            "title": "Received",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "received",
+          "duplicate"
+        ],
+        "title": "SubscriptionWebhookResponse",
         "type": "object"
       },
       "TheoryCandidateAction": {
@@ -21905,6 +22160,27 @@
         ]
       }
     },
+    "/api/models": {
+      "get": {
+        "operationId": "get_model_catalog",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCatalogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Model Catalog",
+        "tags": [
+          "commerce"
+        ]
+      }
+    },
     "/api/personal-graph": {
       "get": {
         "operationId": "get_personal_graph",
@@ -28586,6 +28862,173 @@
         "summary": "Publish Knowledge",
         "tags": [
           "shared-knowledge"
+        ]
+      }
+    },
+    "/api/subscription": {
+      "get": {
+        "operationId": "get_subscription",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionOverviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Subscription",
+        "tags": [
+          "commerce"
+        ]
+      }
+    },
+    "/api/subscription/checkout": {
+      "post": {
+        "operationId": "create_subscription_checkout",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionCheckoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionCheckoutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Subscription Checkout",
+        "tags": [
+          "commerce"
+        ]
+      }
+    },
+    "/api/subscription/portal": {
+      "post": {
+        "operationId": "create_subscription_portal",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SubscriptionPortalRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionPortalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Subscription Portal",
+        "tags": [
+          "commerce"
+        ]
+      }
+    },
+    "/api/subscription/webhook": {
+      "post": {
+        "operationId": "receive_subscription_webhook",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Stripe-Signature",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 4096,
+              "title": "Stripe-Signature",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionWebhookResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Receive Subscription Webhook",
+        "tags": [
+          "commerce"
         ]
       }
     },

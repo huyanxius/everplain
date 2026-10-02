@@ -127,6 +127,11 @@ from qunxue_api.adapters.sqlite.shared_knowledge import (
     SharedKnowledgePublicationRequestRow,
     SharedKnowledgePublicationRow,
 )
+from qunxue_api.adapters.sqlite.subscriptions import (
+    SubscriptionCheckoutRow,
+    SubscriptionRow,
+    SubscriptionWebhookRow,
+)
 from qunxue_api.adapters.sqlite.theory_matching_model import (
     ConfirmedTheoryPlanRow,
     MatchRunRow,
@@ -140,6 +145,9 @@ __all__ = [
     "ExternalAgentConnectionRow",
     "SharedKnowledgePublicationRow",
     "SharedKnowledgePublicationRequestRow",
+    "SubscriptionCheckoutRow",
+    "SubscriptionRow",
+    "SubscriptionWebhookRow",
     "PersonalGraphRow",
     "ImportBatchRow", "ImportItemRow", "ImportSourceRow",
     "AgentProfileRow",
