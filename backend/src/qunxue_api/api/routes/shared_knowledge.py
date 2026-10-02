@@ -323,10 +323,13 @@ def publish_knowledge(
     payload: PublishKnowledgeRequest,
     current: CurrentSessionDependency,
     application: Application,
-    _idempotency_key: IdempotencyKey,
+    idempotency_key: IdempotencyKey,
 ):
     return publication_response(
-        application, application.publish(current.user.user_id, kb_id, **payload.model_dump())
+        application,
+        application.publish(
+            current.user.user_id, kb_id, request_key=idempotency_key, **payload.model_dump()
+        ),
     )
 
 

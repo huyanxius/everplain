@@ -205,3 +205,30 @@ def test_migration_does_not_activate_ignored_legacy_grants(tmp_path, monkeypatch
         assert library.name == "Private data"
         assert session.scalar(select(func.count()).select_from(SharedKnowledgeSubscriptionRow)) == 0
     database.engine.dispose()
+
+
+def test_publication_retry_preserves_snapshot_and_cannot_restore_revoked_publication(plain_client):
+    from uuid import uuid4
+
+    client = plain_client
+    _authenticate(client)
+    kb = create_library(client)
+    upload(client, kb["id"], "First public source")
+    path = f"/api/shared-knowledge-bases/{kb['id']}/publication"
+    headers = {"Idempotency-Key": str(uuid4())}
+    payload = {"title": "Public", "confirm_public_content": True}
+    first = client.put(path, headers=headers, json=payload)
+    assert first.status_code == 200
+    later = upload(client, kb["id"], "Later private source")
+    retry = client.put(path, headers=headers, json=payload)
+    assert retry.json()["document_count"] == 1
+    assert retry.json()["published_at"] == first.json()["published_at"]
+    assert (
+        client.put(path, headers=headers, json={**payload, "title": "Different"}).status_code == 422
+    )
+    public = f"/api/public-knowledge-directory/{kb['id']}"
+    assert client.get(f"{public}/documents/{later['id']}/source").status_code == 404
+    mutation(client, "delete", path)
+    assert client.put(path, headers=headers, json=payload).status_code == 404
+    assert client.get(public).status_code == 404
+    assert mutation(client, "put", path, json=payload).json()["document_count"] == 2

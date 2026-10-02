@@ -26,11 +26,24 @@ def upgrade():
         sa.Column("description", sa.Text(), nullable=False),
         sa.Column("topics", sa.JSON(), nullable=False),
         sa.Column("document_ids", sa.JSON(), nullable=False),
+        sa.Column("request_key", sa.String(128), nullable=False),
         sa.Column("published_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    op.create_table(
+        "shared_knowledge_publication_requests",
+        sa.Column(
+            "knowledge_base_id",
+            sa.String(36),
+            sa.ForeignKey("shared_knowledge_bases.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column("request_key", sa.String(128), primary_key=True),
+        sa.Column("fingerprint", sa.String(64), nullable=False),
     )
 
 
 def downgrade():
+    op.drop_table("shared_knowledge_publication_requests")
     op.drop_table("shared_knowledge_publications")
     op.execute("UPDATE shared_knowledge_bases SET sharing_enabled = 0")
     op.execute("DELETE FROM shared_knowledge_subscriptions")

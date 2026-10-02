@@ -1,5 +1,7 @@
 """Private by default; explicitly invited readers have revocable read-only access."""
 
+import hashlib
+import json
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from secrets import token_urlsafe
@@ -41,6 +43,7 @@ class PublicKnowledgePublication:
     description: str
     topics: tuple[str, ...]
     document_ids: tuple[UUID, ...] = ()
+    request_key: str = ""
     published_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -84,6 +87,8 @@ class SharedKnowledgeRepository(Protocol):
     def revoke_readers(self, kb_id: UUID) -> None: ...
     def publication(self, kb_id: UUID) -> PublicKnowledgePublication | None: ...
     def publish(self, publication: PublicKnowledgePublication) -> None: ...
+    def publication_request(self, kb_id: UUID, key: str) -> str | None: ...
+    def record_publication_request(self, kb_id: UUID, key: str, fingerprint: str) -> None: ...
     def unpublish(self, kb_id: UUID) -> None: ...
     def public_directory(
         self, query: str, limit: int, offset: int
@@ -194,8 +199,10 @@ class SharedKnowledgeService:
         title,
         description,
         topics,
+        request_key,
         confirm_public_content=False,
     ):
+        self.repository.quota_guard(user_id)
         self.require_manage(user_id, kb_id)
         if confirm_public_content is not True:
             raise SharedKnowledgeValidationError("发布前须明确确认公开当前资料及原文。")
@@ -209,13 +216,28 @@ class SharedKnowledgeService:
             or any(not topic or len(topic) > 60 for topic in topics)
         ):
             raise SharedKnowledgeValidationError("请填写有效的公开标题、简介和主题。")
+        fingerprint = hashlib.sha256(
+            json.dumps(
+                [title, description, topics], ensure_ascii=False, separators=(",", ":")
+            ).encode()
+        ).hexdigest()
+        previous = self.repository.publication_request(kb_id, request_key)
+        if previous:
+            if previous != fingerprint:
+                raise SharedKnowledgeValidationError("相同请求标识不能发布不同内容。")
+            publication = self.repository.publication(kb_id)
+            if publication is None or publication.request_key != request_key:
+                raise SharedKnowledgeUnavailable("先前发布已撤销或替换，请重新确认发布。")
+            return publication
         publication = PublicKnowledgePublication(
             kb_id,
             title,
             description,
             topics,
             tuple(doc.id for doc in self.documents(user_id, kb_id, ready_only=True)),
+            request_key,
         )
+        self.repository.record_publication_request(kb_id, request_key, fingerprint)
         self.repository.publish(publication)
         self.repository.commit()
         return publication

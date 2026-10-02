@@ -1,7 +1,7 @@
 """Thin standalone document storage on the existing SQLite database."""
 
 from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import (
@@ -60,7 +60,17 @@ class SharedKnowledgePublicationRow(Base):
     description: Mapped[str] = mapped_column(Text)
     topics: Mapped[list] = mapped_column(JSON)
     document_ids: Mapped[list] = mapped_column(JSON)
+    request_key: Mapped[str] = mapped_column(String(128))
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SharedKnowledgePublicationRequestRow(Base):
+    __tablename__ = "shared_knowledge_publication_requests"
+    knowledge_base_id: Mapped[str] = mapped_column(
+        ForeignKey("shared_knowledge_bases.id", ondelete="CASCADE"), primary_key=True
+    )
+    request_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
 
 
 class SharedKnowledgeSubscriptionRow(Base):
@@ -116,7 +126,8 @@ def _publication(row):
         row.description,
         tuple(row.topics),
         tuple(UUID(value) for value in row.document_ids),
-        row.published_at,
+        row.request_key,
+        row.published_at if row.published_at.tzinfo else row.published_at.replace(tzinfo=UTC),
     )
 
 
@@ -324,7 +335,26 @@ class SqliteSharedKnowledgeRepository:
                 description=publication.description,
                 topics=list(publication.topics),
                 document_ids=[str(value) for value in publication.document_ids],
+                request_key=publication.request_key,
                 published_at=publication.published_at,
+            )
+        )
+        self.session.flush()
+
+    def publication_request(self, kb_id, key):
+        return self.session.scalar(
+            select(SharedKnowledgePublicationRequestRow.fingerprint).where(
+                SharedKnowledgePublicationRequestRow.knowledge_base_id == str(kb_id),
+                SharedKnowledgePublicationRequestRow.request_key == key,
+            )
+        )
+
+    def record_publication_request(self, kb_id, key, fingerprint):
+        self.session.add(
+            SharedKnowledgePublicationRequestRow(
+                knowledge_base_id=str(kb_id),
+                request_key=key,
+                fingerprint=fingerprint,
             )
         )
         self.session.flush()
