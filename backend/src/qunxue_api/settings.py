@@ -147,6 +147,9 @@ class Settings(BaseSettings):
     web_search_timeout_seconds: float = Field(default=12, gt=0)
     model_sft_resource_header: str = "X-LoRA-ID"
     model_sft_resource_id: SecretStr | None = None
+    vision_base_url: str | None = None
+    vision_model: str | None = None
+    vision_api_key: SecretStr | None = None
     transcription_base_url: str | None = None
     transcription_api_key: SecretStr | None = None
     transcription_model: str | None = None

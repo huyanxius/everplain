@@ -113,3 +113,105 @@ def test_web_fetch_rejects_private_dns_and_credential_urls(monkeypatch):
     ):
         with pytest.raises(ValueError):
             public_url(url)
+
+
+def test_reimport_after_delete_creates_fresh_source_without_resurrecting_empty_file(plain_client):
+    c = plain_client
+    c.app.state.import_worker_enabled = False
+    _authenticate(c)
+    first = start(c, [("note.md", b"# A note\nOriginal source")])
+    drain(c)
+    item = c.get("/api/imports/" + first["id"]).json()["items"][0]
+    c.delete(
+        f"/api/shared-knowledge-bases/{first['library_id']}/documents/{item['document_id']}",
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    second = start(c, [("note.md", b"# A note\nOriginal source")])
+    drain(c)
+    restored = c.get("/api/imports/" + second["id"]).json()["items"][0]
+    assert restored["status"] == "imported"
+    assert restored["document_id"] != item["document_id"]
+
+
+def test_image_keeps_owner_only_asset_and_erases_on_document_delete(plain_client):
+    from qunxue_api.adapters.media_import import ImageImportAdapter
+
+    c = plain_client
+    c.app.state.import_worker_enabled = False
+    _authenticate(c)
+
+    class Vision:
+        def describe(self, **kwargs):
+            return {"text": "图片中的文字", "description": "一张测试图片"}
+
+    c.app.state.media_import_gateway.image = ImageImportAdapter(provider=Vision())
+    batch = start(c, [("image.png", b"fake-image-fixture")], "image")
+    drain(c)
+    item = c.get("/api/imports/" + batch["id"]).json()["items"][0]
+    assert item["status"] == "imported"
+    asset = "/api/imports/assets/" + item["document_id"]
+    assert c.get(asset).content == b"fake-image-fixture"
+    c.delete(
+        f"/api/shared-knowledge-bases/{batch['library_id']}/documents/{item['document_id']}",
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert c.get(asset).status_code == 404
+
+
+def test_clip_preserves_url_identity_and_deduplicates_repeated_capture(plain_client):
+    c = plain_client
+    c.app.state.import_worker_enabled = False
+    _authenticate(c)
+    payload = {
+        "url": "https://example.org/article",
+        "title": "An article",
+        "html": "<article><h1>Title</h1><p>A saved article body.</p></article>",
+    }
+    first = c.post("/api/imports/clip", json=payload, headers={"Idempotency-Key": str(uuid4())})
+    assert first.status_code == 202, first.text
+    drain(c)
+    second = c.post("/api/imports/clip", json=payload, headers={"Idempotency-Key": str(uuid4())})
+    drain(c)
+    batch = c.get("/api/imports/" + second.json()["id"]).json()
+    assert batch["duplicates"] == 1
+
+
+def test_public_bilibili_discovery_expands_durable_batch_and_imports_transcript(plain_client):
+    from qunxue_api.adapters.media_import import FavoritesReport, ImportItem, ImportResult
+
+    c = plain_client
+    c.app.state.import_worker_enabled = False
+    _authenticate(c)
+    item = ImportItem(
+        source_key="bilibili:BV123",
+        title="Public video",
+        filename="video.txt",
+        content=b"metadata only",
+        source_url="https://www.bilibili.com/video/BV123",
+        relative_path="video",
+    )
+
+    class Favorites:
+        def enumerate_public_favorites(self, uid):
+            return FavoritesReport(items=(item,))
+
+    class Video:
+        def import_video(self, url):
+            from dataclasses import replace
+
+            return ImportResult(item=replace(item, content=b"Real subtitle fixture text."))
+
+    c.app.state.media_import_gateway.favorites = Favorites()
+    c.app.state.media_import_gateway.video = Video()
+    created = c.post(
+        "/api/imports/bilibili", json={"uid": "123"}, headers={"Idempotency-Key": str(uuid4())}
+    )
+    assert created.status_code == 202, created.text
+    drain(c)
+    batch = c.get("/api/imports/" + created.json()["id"]).json()
+    assert batch["imported"] == 1 and batch["total"] == 1
+    source = c.get(
+        f"/api/shared-knowledge-bases/{batch['library_id']}/documents/{batch['items'][0]['document_id']}/source"
+    ).json()
+    assert "Real subtitle fixture" in str(source["segments"])
+    assert "metadata only" not in str(source["segments"])

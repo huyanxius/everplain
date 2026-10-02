@@ -3259,6 +3259,32 @@
         "title": "BatchUploadResponse",
         "type": "object"
       },
+      "BilibiliImportRequest": {
+        "properties": {
+          "library_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Id"
+          },
+          "uid": {
+            "pattern": "^[0-9]{1,20}$",
+            "title": "Uid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid"
+        ],
+        "title": "BilibiliImportRequest",
+        "type": "object"
+      },
       "Body_batch_upload_materials": {
         "properties": {
           "files": {
@@ -3306,7 +3332,13 @@
             "enum": [
               "chrome",
               "markdown",
-              "obsidian"
+              "obsidian",
+              "enex",
+              "notion",
+              "flomo",
+              "keep",
+              "apple_notes",
+              "image"
             ],
             "title": "Source Type",
             "type": "string"
@@ -3831,6 +3863,46 @@
           "revoked_session_count"
         ],
         "title": "ChangePasswordResponse",
+        "type": "object"
+      },
+      "ClipImportRequest": {
+        "properties": {
+          "html": {
+            "maxLength": 1500000,
+            "minLength": 1,
+            "title": "Html",
+            "type": "string"
+          },
+          "library_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Id"
+          },
+          "title": {
+            "maxLength": 512,
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "maxLength": 4096,
+            "pattern": "^https?://",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "title",
+          "html"
+        ],
+        "title": "ClipImportRequest",
         "type": "object"
       },
       "CodebookEntryResponse": {
@@ -10164,6 +10236,17 @@
       },
       "PersonalGraphSource": {
         "properties": {
+          "asset_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Url"
+          },
           "document_id": {
             "title": "Document Id",
             "type": "string"
@@ -20770,6 +20853,155 @@
           }
         },
         "summary": "Create Batch",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/imports/assets/{document_id}": {
+      "get": {
+        "operationId": "get_import_image_asset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Asset",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/imports/bilibili": {
+      "post": {
+        "operationId": "create_bilibili_import",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BilibiliImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Bilibili",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/imports/clip": {
+      "post": {
+        "operationId": "create_clip_import",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClipImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Clip",
         "tags": [
           "imports"
         ]

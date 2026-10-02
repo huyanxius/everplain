@@ -23,8 +23,9 @@ class PersonalGraphRow(Base):
 
 
 class SqlitePersonalGraphRepository:
-    def __init__(self, session, *, mock=False):
+    def __init__(self, session, *, mock=False, embedding_model=None):
         self.session, self.mock = session, mock
+        self.embedding_model = embedding_model
 
     def load(self, user_id):
         row = self.session.get(PersonalGraphRow, str(user_id))
@@ -92,7 +93,13 @@ class SqlitePersonalGraphRepository:
                 None,
             )
             title = first_heading or title
-            vectors = [v for model in (doc.vectors or {}).values() for v in model.values() if v]
+            cached = doc.vectors or {}
+            selected = (
+                cached.get(self.embedding_model, {})
+                if self.embedding_model
+                else next(iter(cached.values()), {})
+            )
+            vectors = [v for v in selected.values() if v]
             vector = (
                 [sum(v[i] for v in vectors) / len(vectors) for i in range(len(vectors[0]))]
                 if vectors and all(len(v) == len(vectors[0]) for v in vectors)
@@ -104,11 +111,30 @@ class SqlitePersonalGraphRepository:
                 {
                     "id": doc.id,
                     "title": title,
-                    "hash": doc.content_hash,
+                    "hash": doc.content_hash
+                    + ":"
+                    + ("mock" if self.mock else self.embedding_model or "unknown"),
                     "vector": vector,
                     "library_id": library_id,
-                    "knowledge": doc.knowledge or {},
+                    "knowledge": doc.knowledge
+                    or (
+                        {
+                            "topics": [
+                                {"title": s["text"].strip()[:48], "segment_ids": [s["segment_id"]]}
+                                for s in doc.segments[:2]
+                                if s["text"].strip()
+                            ]
+                        }
+                        if self.mock
+                        else {}
+                    ),
                     "source_url": source.source_url if source else None,
+                    "asset_url": f"/api/imports/assets/{doc.id}"
+                    if source
+                    and source.details.get("metadata", {})
+                    .get("original_media_type", "")
+                    .startswith("image/")
+                    else None,
                     "relative_path": source.relative_path if source else doc.filename,
                     "wiki_links": source.details.get("wiki_links", []) if source else [],
                 }

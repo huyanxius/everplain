@@ -2,12 +2,23 @@ from uuid import UUID, uuid4
 
 
 class KnowledgeImportApplication:
-    def __init__(self, repository, libraries, parser, fetch_text):
+    def __init__(self, repository, libraries, parser, fetch_text, media=None):
         self.repository, self.libraries = repository, libraries
         self.parser, self.fetch_text = parser, fetch_text
+        self.media = media
 
     def start(self, user_id, source_type, files, library_id=None):
         items = self.parser(source_type, files)
+        return self.start_items(user_id, source_type, items, library_id)
+
+    def start_items(self, user_id, source_type, items, library_id=None):
+        storage = self.libraries.storage(user_id)
+        retained = self.repository.retained_bytes(user_id)
+        if (
+            storage["used_bytes"] + retained + sum(len(i["content"]) for i in items)
+            > storage["max_bytes"]
+        ):
+            raise ValueError("存储空间不足，请先清理不再需要的资料")
         if library_id:
             self.libraries.require_manage(user_id, library_id)
         else:
@@ -23,6 +34,12 @@ class KnowledgeImportApplication:
             )
         return self.repository.create(user_id, library_id, source_type, items)
 
+    def start_clip(self, user_id, url, title, html, library_id=None):
+        return self.start_items(user_id, "chrome", [self.media.clip(url, title, html)], library_id)
+
+    def start_bilibili(self, user_id, uid, library_id=None):
+        return self.start_items(user_id, "bilibili", [self.media.discovery(uid)], library_id)
+
     def run_once(self):
         item = self.repository.claim()
         self.last_user_id = item["user_id"] if item else None
@@ -30,11 +47,20 @@ class KnowledgeImportApplication:
             return False
         try:
             self.libraries.require_manage(item["user_id"], item["library_id"])
+            if item["details"].get("metadata", {}).get("enumerate_uid"):
+                candidates = self.media.enumerate(item["details"]["metadata"]["enumerate_uid"])
+                self.repository.expand(item, candidates)
+                return True
             existing = self.repository.existing(item)
             if existing:
                 self.repository.complete(item, existing, duplicate=True)
                 return True
             content = item["content"]
+            filename, media_type = item["filename"], item["media_type"]
+            if item["source_type"] in {"bilibili", "image"}:
+                converted = self.media.convert(item)
+                content = converted["content"]
+                filename, media_type = converted["filename"], converted["media_type"]
             if not content and item.get("source_url"):
                 text = self.fetch_text(item["source_url"])
                 if not text:
@@ -45,8 +71,8 @@ class KnowledgeImportApplication:
             doc = self.libraries.upload(
                 item["user_id"],
                 item["library_id"],
-                filename=item["filename"],
-                media_type=item["media_type"],
+                filename=filename,
+                media_type=media_type,
                 content=content,
                 request_key=f"import:{item['id']}",
             )
@@ -62,6 +88,9 @@ class KnowledgeImportApplication:
                 else "读取或导入失败，请检查来源是否可访问后重试",
             )
         return True
+
+    def asset(self, user_id, document_id):
+        return self.repository.asset(user_id, document_id)
 
     def get(self, user_id, batch_id):
         return self.repository.get(user_id, batch_id)

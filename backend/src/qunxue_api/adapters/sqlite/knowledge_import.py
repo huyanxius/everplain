@@ -9,6 +9,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
+    func,
     select,
     update,
 )
@@ -89,6 +90,29 @@ class SqliteImportRepository:
     def __init__(self, session):
         self.session = session
 
+    def retained_bytes(self, user_id):
+        return self.session.scalar(
+            select(func.coalesce(func.sum(func.length(ImportItemRow.content)), 0)).where(
+                ImportItemRow.user_id == str(user_id)
+            )
+        )
+
+    def asset(self, user_id, document_id):
+        doc = self.session.get(SharedDocumentRow, str(document_id))
+        if not doc or doc.owner_user_id != str(user_id) or not doc.segments:
+            raise ImportUnavailable("图片不存在")
+        row = self.session.scalar(
+            select(ImportItemRow).where(
+                ImportItemRow.user_id == str(user_id),
+                ImportItemRow.document_id == str(document_id),
+                ImportItemRow.media_type.like("image/%"),
+                func.length(ImportItemRow.content) > 0,
+            )
+        )
+        if row is None:
+            raise ImportUnavailable("图片不存在")
+        return row.content, row.media_type
+
     def create(self, user_id, library_id, source_type, items):
         now = datetime.now(UTC)
         batch = ImportBatchRow(
@@ -100,11 +124,17 @@ class SqliteImportRepository:
         )
         self.session.add(batch)
         self.session.flush()
+        self.add_items(batch.id, user_id, items)
+        self.session.commit()
+        return self.get(user_id, batch.id)
+
+    def add_items(self, batch_id, user_id, items):
+        now = datetime.now(UTC)
         for item in items:
             self.session.add(
                 ImportItemRow(
                     id=str(uuid4()),
-                    batch_id=batch.id,
+                    batch_id=batch_id,
                     user_id=str(user_id),
                     source_key=item["source_key"],
                     title=item["title"][:512],
@@ -125,8 +155,12 @@ class SqliteImportRepository:
                     created_at=now,
                 )
             )
+
+    def expand(self, item, items):
+        row = self.session.get(ImportItemRow, item["id"])
+        self.add_items(row.batch_id, item["user_id"], items)
+        self.session.delete(row)
         self.session.commit()
-        return self.get(user_id, batch.id)
 
     def get(self, user_id, batch_id):
         batch = self.session.get(ImportBatchRow, str(batch_id))
@@ -211,7 +245,12 @@ class SqliteImportRepository:
     def existing(self, item):
         source = self.session.get(ImportSourceRow, (str(item["user_id"]), item["source_key"]))
         doc = self.session.get(SharedDocumentRow, source.document_id) if source else None
-        if doc is None or doc.owner_user_id != str(item["user_id"]) or doc.status != "ready":
+        if (
+            doc is None
+            or doc.owner_user_id != str(item["user_id"])
+            or doc.status != "ready"
+            or not doc.segments
+        ):
             return None
         key = (str(item["library_id"]), doc.id)
         if self.session.get(SharedKnowledgeDocumentRow, key) is None:
@@ -226,7 +265,7 @@ class SqliteImportRepository:
             ("duplicate" if duplicate else "imported"),
             str(document_id),
             None,
-            b"",
+            row.content if item["source_type"] == "image" and not duplicate else b"",
         )
         self.session.merge(
             ImportSourceRow(

@@ -41,6 +41,11 @@ class PersonalGraphApplication:
         docs = self.repository.documents(user_id)
         state = self.repository.load(user_id)
         live = {d["id"]: d for d in docs}
+        assignments = {
+            key: value
+            for key, value in state["assignments"].items()
+            if key in live and value["hash"] == live[key]["hash"]
+        }
         nodes = [{"id": "self", "label": profile.name, "nodeType": "self", "level": 0}]
         edges, sources = [], {}
 
@@ -56,7 +61,7 @@ class PersonalGraphApplication:
                 }
             )
 
-        topic_ids = {a["topic_id"] for id, a in state["assignments"].items() if id in live}
+        topic_ids = {a["topic_id"] for id, a in assignments.items() if id in live}
         for tid in sorted(topic_ids):
             nodes.append(
                 {"id": tid, "label": state["topics"][tid]["label"], "nodeType": "topic", "level": 1}
@@ -66,7 +71,7 @@ class PersonalGraphApplication:
             tid = "interest:" + hashlib.sha256(interest.encode()).hexdigest()[:12]
             nodes.append({"id": tid, "label": interest, "nodeType": "topic", "level": 1})
             edge("self", tid, "兴趣")
-        pending = sum(d["id"] not in state["assignments"] for d in docs)
+        pending = sum(d["id"] not in assignments for d in docs)
         if pending:
             nodes.append({"id": "pending", "label": "待归类资料", "nodeType": "topic", "level": 1})
             edge("self", "pending")
@@ -78,8 +83,9 @@ class PersonalGraphApplication:
                 "document_id": doc["id"],
                 "title": doc["title"],
                 "source_url": doc["source_url"],
+                "asset_url": doc.get("asset_url"),
             }
-            edge(state["assignments"].get(doc["id"], {}).get("topic_id", "pending"), id)
+            edge(assignments.get(doc["id"], {}).get("topic_id", "pending"), id)
             for topic in doc["knowledge"].get("topics", []):
                 pid = (
                     "point:"

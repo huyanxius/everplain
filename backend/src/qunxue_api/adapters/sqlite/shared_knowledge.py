@@ -315,6 +315,15 @@ class SqliteSharedKnowledgeRepository:
                 continue
             row = self.session.get(SharedDocumentRow, removed_id)
             if row is not None:
+                from sqlalchemy import update
+
+                from .knowledge_import import ImportItemRow
+
+                self.session.execute(
+                    update(ImportItemRow)
+                    .where(ImportItemRow.document_id == removed_id)
+                    .values(content=b"")
+                )
                 row.content = b""
                 row.segments = []
                 row.vectors = {}

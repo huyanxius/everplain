@@ -1761,6 +1761,20 @@ export type BatchUploadResponse = {
 };
 
 /**
+ * BilibiliImportRequest
+ */
+export type BilibiliImportRequest = {
+    /**
+     * Library Id
+     */
+    library_id?: string | null;
+    /**
+     * Uid
+     */
+    uid: string;
+};
+
+/**
  * Body_batch_upload_materials
  */
 export type BodyBatchUploadMaterials = {
@@ -1786,7 +1800,7 @@ export type BodyCreateImportBatch = {
     /**
      * Source Type
      */
-    source_type: 'chrome' | 'markdown' | 'obsidian';
+    source_type: 'chrome' | 'markdown' | 'obsidian' | 'enex' | 'notion' | 'flomo' | 'keep' | 'apple_notes' | 'image';
 };
 
 /**
@@ -2074,6 +2088,28 @@ export type ChangePasswordResponse = {
      * Revoked Session Count
      */
     revoked_session_count: number;
+};
+
+/**
+ * ClipImportRequest
+ */
+export type ClipImportRequest = {
+    /**
+     * Html
+     */
+    html: string;
+    /**
+     * Library Id
+     */
+    library_id?: string | null;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Url
+     */
+    url: string;
 };
 
 /**
@@ -5735,6 +5771,10 @@ export type PersonalGraphResponse = {
  * PersonalGraphSource
  */
 export type PersonalGraphSource = {
+    /**
+     * Asset Url
+     */
+    asset_url?: string | null;
     /**
      * Document Id
      */
@@ -11536,6 +11576,96 @@ export type CreateImportBatchResponses = {
 };
 
 export type CreateImportBatchResponse = CreateImportBatchResponses[keyof CreateImportBatchResponses];
+
+export type GetImportImageAssetData = {
+    body?: never;
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+    };
+    query?: never;
+    url: '/api/imports/assets/{document_id}';
+};
+
+export type GetImportImageAssetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetImportImageAssetError = GetImportImageAssetErrors[keyof GetImportImageAssetErrors];
+
+export type GetImportImageAssetResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type CreateBilibiliImportData = {
+    body: BilibiliImportRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/imports/bilibili';
+};
+
+export type CreateBilibiliImportErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateBilibiliImportError = CreateBilibiliImportErrors[keyof CreateBilibiliImportErrors];
+
+export type CreateBilibiliImportResponses = {
+    /**
+     * Successful Response
+     */
+    202: ImportBatchResponse;
+};
+
+export type CreateBilibiliImportResponse = CreateBilibiliImportResponses[keyof CreateBilibiliImportResponses];
+
+export type CreateClipImportData = {
+    body: ClipImportRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/imports/clip';
+};
+
+export type CreateClipImportErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateClipImportError = CreateClipImportErrors[keyof CreateClipImportErrors];
+
+export type CreateClipImportResponses = {
+    /**
+     * Successful Response
+     */
+    202: ImportBatchResponse;
+};
+
+export type CreateClipImportResponse = CreateClipImportResponses[keyof CreateClipImportResponses];
 
 export type GetImportBatchData = {
     body?: never;
