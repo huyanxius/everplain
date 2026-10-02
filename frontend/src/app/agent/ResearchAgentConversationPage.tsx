@@ -2085,7 +2085,7 @@ export function ResearchAgentConversationPage({
     const reducedMotion = typeof window.matchMedia === 'function'
       && window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const homeBot = document.querySelector(
-      '.research-agent-conversation.is-empty .research-agent-page__empty-copy [data-research-agent-bot]',
+      '.research-agent-conversation.is-empty .research-agent-page__empty-copy :is([data-research-agent-bot], .agent-avatar)',
     )
     if (!homeBot || reducedMotion || !transitionDocument.startViewTransition) {
       if (isCurrent()) setStreamingTurn(turn)
