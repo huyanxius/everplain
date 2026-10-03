@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import signal
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -23,6 +24,7 @@ from pathlib import Path
 
 from artifact import MAX_BYTES, digest, tree_hash, unpack, validate_manifest
 from deploy import Controller, atomic_bytes, copy_index, expected_runtime_mode
+from repair_existing_web import repair as repair_web
 
 REVISION = "0dae10baff6a78cb0e12f67cc6f5ad153336a8a4"
 ARCHIVE_SHA256 = "85f2b033ed68e94d9d0563800d3d5b078c4b4e2d7b6ad868c4a3fa2e0cf3ec03"
@@ -101,7 +103,7 @@ def run(args, timeout=180, report=None, prefix=""):
     return result.stdout
 
 
-def reusable_stage(base):
+def reusable_stage(base, *, inputs_only=False):
     for stage in sorted(
         base.glob(REVISION[:8] + "-*"), key=lambda p: p.stat().st_mtime_ns, reverse=True
     ):
@@ -110,9 +112,12 @@ def reusable_stage(base):
             or stage.is_symlink()
             or stage.stat().st_uid != os.geteuid()
             or stage.stat().st_mode & 0o077
-            or any(
-                (stage / name).exists() or (stage / name).is_symlink()
-                for name in ("transaction.json", "data", "backups")
+            or (
+                not inputs_only
+                and any(
+                    (stage / name).exists() or (stage / name).is_symlink()
+                    for name in ("transaction.json", "data", "backups", "online-validation")
+                )
             )
         ):
             continue
@@ -128,6 +133,57 @@ def reusable_stage(base):
         require(tree_hash(release / "backend") == manifest["migration_tree"])
         return stage, manifest
     return None
+
+
+def link_verified_payload(source_stage, stage, manifest):
+    """Reuse only immutable public inputs; never link runtime config, data or backups."""
+    source = source_stage / "releases" / REVISION
+    target = stage / "releases" / REVISION
+    target.mkdir(parents=True)
+    for name in {"manifest.json", *manifest["files"]}:
+        destination = target / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        os.link(source / name, destination)
+    os.link(source_stage / "release.tar.gz", stage / "release.tar.gz")
+
+
+def copy_preserving_sidecar_owner(source, target):
+    owner = source.stat()
+    paths = [source.with_name(source.name + suffix) for suffix in ("-wal", "-shm")]
+    existed = {path: path.exists() for path in paths}
+    try:
+        copy_index(source, target)
+    finally:
+        for path in paths:
+            if not existed[path] and path.exists():
+                info = path.lstat()
+                require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1)
+                if info.st_uid == os.geteuid():
+                    os.chown(path, owner.st_uid, owner.st_gid)
+
+
+def copy_primary(source, target, report, prefix="primary_backup_"):
+    try:
+        # mode=ro prohibits database writes while allowing SQLite's required WAL
+        # coordination sidecars on the host. A read-only bind mount prevented this.
+        copy_preserving_sidecar_owner(source, target)
+        with contextlib.closing(
+            sqlite3.connect(target.resolve().as_uri() + "?mode=ro", uri=True)
+        ) as db:
+            tables = {
+                row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+            require({"users", "alembic_version"} <= tables)
+        report[prefix + "complete"] = True
+    except sqlite3.Error:
+        report[prefix + "sqlite_error"] = True
+        raise
+    except OSError:
+        report[prefix + "io_error"] = True
+        raise
+    except (ValueError, RuntimeError):
+        report[prefix + "validation_error"] = True
+        raise
 
 
 def inspect_image_archive(path, expected, report, role):
@@ -410,6 +466,18 @@ class ExistingRelease:
             run(["docker", "start", NAMES["web"]])
             for attempt in range(12):
                 try:
+                    direct = json.loads(http("http://127.0.0.1:8297/api/health"))
+                    require(direct.get("status") == "ok")
+                    require(direct.get("release_revision") == self.old_revision)
+                    break
+                except Exception:
+                    if attempt == 11:
+                        raise RuntimeError("previous API readiness failed") from None
+                    time.sleep(2)
+            repair_web()
+            self.report["old_web_upstream_repaired"] = True
+            for attempt in range(12):
+                try:
                     restored = json.loads(http("http://127.0.0.1:5196/api/health"))
                     require(restored.get("status") == "ok")
                     require(restored.get("release_revision") == self.old_revision)
@@ -444,18 +512,28 @@ class ExistingRelease:
             frozen = self.stage / "release.tar.gz"
             release = self.stage / "releases" / REVISION
         else:
-            # Reserve the entire bounded unpack allowance before copying or extracting.
-            require(
-                shutil.disk_usage(self.base).free
-                > archive_bytes + MAX_BYTES + data_bytes * 3 + reserve
-            )
-            self.report["copy_budget_verified"] = True
-            self.stage = Path(tempfile.mkdtemp(prefix=REVISION[:8] + "-", dir=self.base))
-            frozen = self.stage / "release.tar.gz"
-            shutil.copyfile(self.archive, frozen)
-            release = self.stage / "releases" / REVISION
-            release.parent.mkdir()
-            manifest = unpack(frozen, release, REVISION, ARCHIVE_SHA256)
+            # A used candidate is never resumed. Only its checksum-verified immutable
+            # input files may seed a fresh stage, with separate new data/config paths.
+            inputs = reusable_stage(self.base, inputs_only=True)
+            if inputs:
+                source_stage, manifest = inputs
+                self.stage = Path(tempfile.mkdtemp(prefix=REVISION[:8] + "-", dir=self.base))
+                link_verified_payload(source_stage, self.stage, manifest)
+                frozen = self.stage / "release.tar.gz"
+                release = self.stage / "releases" / REVISION
+                self.report["immutable_payload_reused"] = True
+            else:
+                require(
+                    shutil.disk_usage(self.base).free
+                    > archive_bytes + MAX_BYTES + data_bytes * 3 + reserve
+                )
+                self.report["copy_budget_verified"] = True
+                self.stage = Path(tempfile.mkdtemp(prefix=REVISION[:8] + "-", dir=self.base))
+                frozen = self.stage / "release.tar.gz"
+                shutil.copyfile(self.archive, frozen)
+                release = self.stage / "releases" / REVISION
+                release.parent.mkdir()
+                manifest = unpack(frozen, release, REVISION, ARCHIVE_SHA256)
         self.old_names = {role: NAMES[role] + "-before-" + self.stage.name for role in NAMES}
         require(manifest["images"] == {"api": API_IMAGE, "web": WEB_IMAGE})
         self.report["artifact_verified"] = True
@@ -514,6 +592,20 @@ class ExistingRelease:
             > frozen.stat().st_size * 3 + sum(p.stat().st_size for p in source.iterdir()) * 3
         )
         self.report["backup_budget_verified"] = True
+        validation = self.stage / "online-validation"
+        validation.mkdir(mode=0o700)
+        copy_primary(
+            source / "everplain.db",
+            validation / "everplain.db",
+            self.report,
+            prefix="online_backup_",
+        )
+        # The online snapshot only proves capability. Final cutover data is backed
+        # up independently after stopping writers, never copied from this snapshot.
+        require(
+            shutil.disk_usage(self.base).free
+            > sum(p.stat().st_size for p in source.iterdir()) * 2 + reserve
+        )
         self.record()
         if (
             self.old_revision == REVISION
@@ -542,37 +634,21 @@ class ExistingRelease:
             backups.mkdir(mode=0o700)
             data.mkdir(mode=stat.S_IMODE(source.stat().st_mode))
             os.chown(data, source.stat().st_uid, source.stat().st_gid)
-            # Use the already checked API image's existing SQLite Online Backup helper.
-            run(
-                [
-                    "docker",
-                    "run",
-                    "--rm",
-                    "--network",
-                    "none",
-                    "--user",
-                    "0:0",
-                    "--mount",
-                    f"type=bind,src={source},dst=/source,readonly",
-                    "--mount",
-                    f"type=bind,src={backups},dst=/backups",
-                    "--entrypoint",
-                    "python",
-                    self.images["api"],
-                    "/app/ops/database.py",
-                    "backup",
-                    "/source/everplain.db",
-                    "/backups/everplain.db",
-                ]
-            )
+            copy_primary(source / "everplain.db", backups / "everplain.db", self.report)
             for name in ("everplain.db", "everplain-retrieval.db"):
                 origin, target = source / name, data / name
                 if not origin.exists():
                     continue
                 backup = backups / name
                 if name != "everplain.db":
-                    copy_index(origin, backup)
+                    copy_preserving_sidecar_owner(origin, backup)
+                    self.report["retrieval_backup_complete"] = True
                 copy_index(backup, target)
+                self.report[
+                    "primary_candidate_copied"
+                    if name == "everplain.db"
+                    else "retrieval_candidate_copied"
+                ] = True
                 info = origin.stat()
                 os.chown(target, info.st_uid, info.st_gid)
                 target.chmod(stat.S_IMODE(info.st_mode))

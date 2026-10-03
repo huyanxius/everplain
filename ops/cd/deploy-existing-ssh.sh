@@ -89,7 +89,8 @@ if [[ "$mode" == trial ]]; then
   exit 0
 fi
 tar -czf "$private/code.tar.gz" -C "$root" \
-  ops/cd/deploy-existing.py ops/cd/artifact.py ops/cd/deploy.py ops/database.py ops/nginx.conf
+  ops/cd/deploy-existing.py ops/cd/artifact.py ops/cd/deploy.py ops/database.py ops/nginx.conf \
+  ops/cd/repair_existing_web.py
 printf 'put "%s" "%s/code.tar.gz"\n' "$private/code.tar.gz" "$upload" > "$private/batch"
 if ! timeout --signal=TERM 120s sftp -q "${opts[@]}" -P "$port" \
   -b "$private/batch" "$target" > "$private/transfer.log" 2>&1; then
