@@ -17,7 +17,6 @@ import {
   FileTextIcon,
   FolderOpenIcon,
   GlobeHemisphereWestIcon,
-  LinkSimpleIcon,
   ListIcon,
   SidebarSimpleIcon,
   WarningCircleIcon,
@@ -2675,13 +2674,18 @@ export function ResearchAgentConversationPage({
               onRemoveAttachment={id => setAttachedMaterials(items => items.filter(item => item.materialId !== id))}
               attachments={attachedMaterials.map(material => ({ id: material.materialId, title: material.filename,
                 status: material.status === 'ready' ? text('已添加', 'Added') : attachmentStatusLabel(material, locale), removable: !isBusy }))}
-              toolbar={composerMode === 'deep-research' ? <div className="cv-work-tools" role="group" aria-label={text('研究工具栏', 'Research tools')}>
-      <ProjectScopeMenu projects={projects} taskId={taskId} disabled={isBusy || materialUploading} onChange={switchComposerProject} />
-      {!embedded ? <CourseReferenceSelector value={activeConversation ? activeConversation.reference_knowledge_base_id ?? '' : searchParams.get('reference_knowledge_base_id') ?? ''} hasConversation={Boolean(activeConversation)} disabled={isBusy}
-        onChange={value => { newConversation(); setSearchParams(value ? { reference_knowledge_base_id: value } : {}) }} /> : null}
-      <button type="button" className="qx-btn qx-btn--secondary" aria-label={text('联网搜索', 'Web search')} aria-pressed={webSearchEnabled} disabled={isBusy} onClick={() => setWebSearchEnabled(enabled => !enabled)}><GlobeHemisphereWestIcon size={16} /><span>{webSearchEnabled ? text('联网已开启', 'Web on') : text('联网搜索', 'Web search')}</span></button>
-      <button type="button" className="qx-btn qx-btn--secondary" aria-label={text('查看材料库', 'Open material library')} onClick={openResearchMaterials}><FolderOpenIcon size={16} /><span>{text('材料库', 'Materials')}</span></button>
-    </div> : null}
+              toolbar={<>
+                <ModelSelectionSettings state={modelSelection} disabled={isBusy || materialUploading}
+                  activeRequest={isBusy ? activeTurnAttempt.current?.request : null} />
+                <div className="cv-work-tools" role="group" aria-label={text('研究工具栏', 'Research tools')}>
+                  <ProjectScopeMenu projects={projects} taskId={taskId} disabled={isBusy || materialUploading} onChange={switchComposerProject} />
+                  {!embedded ? <CourseReferenceSelector value={activeConversation ? activeConversation.reference_knowledge_base_id ?? '' : searchParams.get('reference_knowledge_base_id') ?? ''} hasConversation={Boolean(activeConversation)} disabled={isBusy}
+                    onChange={value => { newConversation(); setSearchParams(value ? { reference_knowledge_base_id: value } : {}) }} /> : null}
+                  <button type="button" className="qx-btn qx-btn--secondary" aria-label={text('联网搜索', 'Web search')} aria-pressed={webSearchEnabled} disabled={isBusy} onClick={() => setWebSearchEnabled(enabled => !enabled)}><GlobeHemisphereWestIcon size={16} /><span>{webSearchEnabled ? text('联网已开启', 'Web on') : text('联网搜索', 'Web search')}</span></button>
+                  <button type="button" className="qx-btn qx-btn--secondary" aria-label={text('查看材料库', 'Open material library')} onClick={openResearchMaterials}><FolderOpenIcon size={16} /><span>{text('材料库', 'Materials')}</span></button>
+                  <ConversationSuggestions onSelect={choosePrompt} />
+                </div>
+              </>}
               context={composerPrefix}
               attachmentPicker={materialPickerOpen ? <AgentMaterialAttachmentPicker inline loading={materialPickerLoading}
                 materials={materialPickerLoading ? [] : availableMaterials} selectedIds={new Set(attachedMaterials.map(item => item.materialId))}
@@ -2694,22 +2698,6 @@ export function ResearchAgentConversationPage({
                     <button className="qx-btn qx-btn--secondary" type="button" role="menuitem" disabled={isBusy} onClick={() => { void openMaterialAttachmentPicker() }}><FolderOpenIcon size={18} /><span>{text('从研究材料添加', 'Add from research materials')}</span></button>
                   </div>
                 </section>
-                {composerMode === 'standard' ? <section className="cv-tool-group" aria-label={text('对话范围', 'Conversation scope')}>
-                  <h3 className="qx-meta">{text('对话范围', 'Conversation scope')}</h3>
-                  {!embedded ? <CourseReferenceSelector value={activeConversation ? activeConversation.reference_knowledge_base_id ?? '' : searchParams.get('reference_knowledge_base_id') ?? ''}
-                    hasConversation={Boolean(activeConversation)} disabled={status === 'thinking' || status === 'answering'}
-                    onChange={value => { newConversation(); setSearchParams(value ? { reference_knowledge_base_id: value } : {}) }} /> : null}
-                  <div className="cv-tool-setting"><span className="qx-meta">{text('所属项目', 'Project')}</span><ProjectScopeMenu projects={projects} taskId={taskId} disabled={isBusy || materialUploading} onChange={switchComposerProject} /></div>
-                  <button type="button" className="qx-btn qx-btn--ghost cv-tool-web" aria-label={text('联网搜索', 'Web search')} aria-pressed={webSearchEnabled} disabled={isBusy} onClick={() => setWebSearchEnabled(enabled => !enabled)}>
-                    <GlobeHemisphereWestIcon size={16} /><span>{text('联网搜索', 'Web search')}</span><span className="qx-meta">{webSearchEnabled ? text('已开启', 'On') : text('已关闭', 'Off')}</span>
-                  </button>
-                </section> : null}
-                <ModelSelectionSettings state={modelSelection} disabled={isBusy || materialUploading}
-                  activeRequest={isBusy ? activeTurnAttempt.current?.request : null} />
-                <div className="cv-tool-secondary">
-                  <button className="qx-btn qx-btn--ghost" type="button" role="menuitem" onClick={openResearchMaterials}><LinkSimpleIcon size={16} /><span>{text('查看材料库', 'Open material library')}</span></button>
-                  <ConversationSuggestions onSelect={question => { choosePrompt(question); setMaterialMenuOpen(false) }} />
-                </div>
               </>}
             />
 </>}

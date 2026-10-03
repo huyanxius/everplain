@@ -238,7 +238,8 @@ describe('ResearchAgentConversationPage', () => {
     const menu = within(agent).getByRole('menu', { name: '添加研究材料' })
     expect(within(menu).getByRole('menuitem', { name: '上传文件' })).toBeVisible()
     expect(within(menu).getByRole('menuitem', { name: '从研究材料添加' })).toBeVisible()
-    expect(within(menu).getByRole('menuitem', { name: '查看材料库' })).toBeVisible()
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(2)
+    expect(within(agent).getByRole('button', { name: '查看材料库' })).toBeVisible()
 
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(within(agent).queryByRole('menu', { name: '添加研究材料' })).not.toBeInTheDocument()
@@ -355,8 +356,7 @@ describe('ResearchAgentConversationPage', () => {
     fireEvent.click(within(agent).getByRole('button', { name: '添加研究材料' }))
     const webSearchButton = within(agent).getByRole('button', { name: '联网搜索' })
     expect(webSearchButton).toHaveAttribute('aria-pressed', 'true')
-    expect(webSearchButton).toHaveTextContent('联网搜索')
-    expect(webSearchButton).toHaveTextContent('已开启')
+    expect(webSearchButton).toHaveTextContent('联网已开启')
     fireEvent.change(within(agent).getByRole('textbox', { name: '问 Everplain' }), {
       target: { value: '查找近期青年就业政策。' },
     })
@@ -666,7 +666,7 @@ describe('ResearchAgentConversationPage', () => {
     const agent = await screen.findByRole('complementary', { name: '研究 Agent 对话栏' })
     expect(within(agent).queryByRole('button', { name: '研究材料' })).not.toBeInTheDocument()
     fireEvent.click(within(agent).getByRole('button', { name: '添加研究材料' }))
-    fireEvent.click(within(agent).getByRole('menuitem', { name: '查看材料库' }))
+    fireEvent.click(within(agent).getByRole('button', { name: '查看材料库' }))
     expect(await screen.findByRole('dialog', { name: '研究材料' })).toBeVisible()
     embedded.unmount()
 
@@ -1023,7 +1023,7 @@ describe('ResearchAgentConversationPage', () => {
     expect(within(basis).getByText(excerpt)).toBeVisible()
 
     fireEvent.click(within(agent).getByRole('button', { name: '添加研究材料' }))
-    fireEvent.click(within(agent).getByRole('menuitem', { name: '查看材料库' }))
+    fireEvent.click(within(agent).getByRole('button', { name: '查看材料库' }))
     const materials = await screen.findByRole('dialog', { name: '研究材料' })
     await within(materials).findByRole('button', { name: '查看材料：待删除访谈.docx' })
     fireEvent.click(within(materials).getByRole('button', { name: /^删除材料：/ }))
@@ -1099,7 +1099,7 @@ describe('ResearchAgentConversationPage', () => {
       expect(await within(agent).findByRole('button', { name: '查看证据：流式访谈.txt' })).toBeVisible()
 
       fireEvent.click(within(agent).getByRole('button', { name: '添加研究材料' }))
-      fireEvent.click(within(agent).getByRole('menuitem', { name: '查看材料库' }))
+      fireEvent.click(within(agent).getByRole('button', { name: '查看材料库' }))
       const materials = await screen.findByRole('dialog', { name: '研究材料' })
       await within(materials).findByRole('button', { name: '查看材料：流式访谈.txt' })
       fireEvent.click(within(materials).getByRole('button', { name: /^删除材料：/ }))
@@ -1825,6 +1825,39 @@ describe('ResearchAgentConversationPage', () => {
     expect(within(region).queryByText('SFT 模型运行')).not.toBeInTheDocument()
     expect(within(region).queryByText('预览 Agent')).not.toBeInTheDocument()
   })
+})
+
+it.each(['standalone', 'embedded'] as const)('shows model and effort outside the attachment menu in %s conversation', async surface => {
+  const requests: Record<string, unknown>[] = []
+  const saved = conversationFixture()
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = urlFor(input).pathname
+    if (path === '/api/agent/models') return json({ runtime_mode: 'base', items: [{ model_id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoning_efforts: ['low', 'medium', 'high'], default_reasoning_effort: 'medium' }] })
+    if (path === '/api/agent/turns') { requests.push(JSON.parse(init?.body as string)); return streamResponse(saved) }
+    return json({ items: [] })
+  }))
+  render(<MemoryRouter><ResearchAgentConversationPage userId="toolbar-owner" embedded={surface === 'embedded'} workspace={surface === 'embedded' ? 'research' : undefined} /></MemoryRouter>)
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  const composer = input.closest('form')!
+  expect(await within(composer).findByRole('combobox', { name: '模型' })).toBeVisible()
+  const slider = within(composer).getByRole('slider', { name: '思考强度' })
+  expect(slider).toHaveAttribute('max', '2')
+  fireEvent.change(slider, { target: { value: '2' } })
+  const webSearch = within(composer).getByRole('button', { name: '联网搜索' })
+  expect(webSearch).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(webSearch)
+  expect(webSearch).toHaveAttribute('aria-pressed', 'false')
+  fireEvent.click(within(composer).getByRole('button', { name: '添加研究材料' }))
+  const attachments = within(composer).getByRole('menu', { name: '添加研究材料' })
+  expect(within(attachments).getAllByRole('menuitem')).toHaveLength(2)
+  expect(within(attachments).queryByRole('combobox')).not.toBeInTheDocument()
+  expect(within(attachments).queryByRole('slider')).not.toBeInTheDocument()
+  expect(within(attachments).queryByRole('button', { name: '联网搜索' })).not.toBeInTheDocument()
+  fireEvent.click(within(composer).getByRole('button', { name: '添加研究材料' }))
+  fireEvent.change(input, { target: { value: saved.title } })
+  fireEvent.submit(composer)
+  await waitFor(() => expect(requests).toHaveLength(1))
+  expect(requests[0]).toMatchObject({ model_id: 'gpt-6-luna', reasoning_effort: 'high', web_search: false })
 })
 
 it('opens the native file chooser from the standalone composer without navigating', async () => {

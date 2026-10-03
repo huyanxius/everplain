@@ -4,6 +4,7 @@ import { ArrowRightIcon, ArrowUpIcon, BooksIcon, CompassIcon, FileTextIcon, Fold
 import { AgentAvatar, type AgentAvatarId } from '../../modules/agent-avatar'
 import type { MyResearchItem } from '../../modules/account'
 import { PageContent, PageShell } from '../ui/PageShell'
+import { ModelSelectionSettings } from '../model-selection'
 import { homeGreeting, useAppHome } from './useAppHome'
 import './personal-home.css'
 
@@ -107,6 +108,7 @@ function HomeComposer({ home }: { home: Home }) {
       }} />
       <button className="qx-btn qx-btn--primary qx-btn--icon qx-btn--lg" type="submit" aria-label="开始对话"><ArrowUpIcon weight="bold" /></button>
     </div>
+    <div className="personal-start__composer-toolbar"><ModelSelectionSettings state={home.modelSelection} disabled={false} /></div>
   </form>
 }
 

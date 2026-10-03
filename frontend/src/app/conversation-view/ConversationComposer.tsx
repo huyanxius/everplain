@@ -108,8 +108,8 @@ export function ConversationComposer(props: ConversationComposerProps) {
         {props.toolsOpen && <ComposerTools anchor={props.toolsButtonRef}>{props.tools}</ComposerTools>}
       </div>
       <textarea ref={props.inputRef} aria-label={props.label} placeholder={props.placeholder} maxLength={props.maxLength} rows={1} disabled={props.busy} value={props.value} onChange={event => props.onChange(event.target.value)} onKeyDown={props.onKeyDown} />
-      {props.toolbar && <div className="conversation-composer__toolbar">{props.toolbar}</div>}
       <button type={props.canStop ? 'button' : 'submit'} className="qx-btn qx-btn--primary qx-btn--icon conversation-composer__send" aria-label={props.canStop ? '停止生成' : props.busy ? 'Agent 正在加载' : '发送给 Everplain'} disabled={props.busy ? !props.canStop : !props.canSend} onClick={props.canStop ? props.onStop : undefined}>{props.canStop ? <StopIcon weight="fill" /> : <ArrowUpIcon />}</button>
     </div>
+    {props.toolbar && <div className="conversation-composer__toolbar">{props.toolbar}</div>}
   </form>
 }

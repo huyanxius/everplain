@@ -570,8 +570,7 @@ describe('NewResearchWorkspacePage', () => {
 
     const workspace = await screen.findByRole('region', { name: '新建研究工作区' })
     await within(workspace).findByRole('region', { name: '研究已建立' })
-    fireEvent.click(within(workspace).getByRole('button', { name: '添加研究材料' }))
-    expect(within(workspace).getByRole('menuitem', { name: '查看材料库' })).toBeVisible()
+    expect(within(workspace).getByRole('button', { name: '查看材料库' })).toBeVisible()
   })
 
   it('loads the proposal persisted by a completed Agent turn', async () => {

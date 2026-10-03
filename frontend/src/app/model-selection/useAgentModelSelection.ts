@@ -15,6 +15,16 @@ const emptyState = (owner: string | null): SelectionState => ({
   owner, status: owner ? 'loading' : 'unavailable', catalog: [], runtimeMode: null, selection: null,
 })
 const knownEfforts = new Set(['none', 'low', 'medium', 'high', 'xhigh', 'max'])
+const preferenceKey = (owner: string) => `everplain.agent-model-selection.v1.${encodeURIComponent(owner)}`
+
+function savedSelection(owner: string, catalog: readonly ModelDefinition[]): ModelSelection | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(preferenceKey(owner)) ?? 'null')
+    return value && typeof value.modelId === 'string' && typeof value.reasoningEffort === 'string'
+      && isModelSelectionValid(value, catalog)
+      ? { modelId: value.modelId, reasoningEffort: value.reasoningEffort } : null
+  } catch { return null }
+}
 
 function validateCatalog(value: AgentModelCatalog) {
   if (!['mock', 'base', 'sft'].includes(value.runtimeMode) || !Array.isArray(value.models)) throw new Error('Invalid model catalog')
@@ -29,7 +39,7 @@ function validateCatalog(value: AgentModelCatalog) {
   return value
 }
 
-/** Owner-scoped in-memory state only. Never use the static model catalog for live requests. */
+/** Save only the owner’s product choice; always revalidate against the live catalog. */
 export function useAgentModelSelection(userId: string | null) {
   const [state, setState] = useState<SelectionState>(() => emptyState(userId))
   const [revision, setRevision] = useState(0)
@@ -46,7 +56,7 @@ export function useAgentModelSelection(userId: string | null) {
         const first = result.models[0]
         setState({ owner: userId, status: first ? 'ready' : 'unavailable', catalog: result.models,
           runtimeMode: result.runtimeMode,
-          selection: first ? { modelId: first.id, reasoningEffort: first.defaultReasoningEffort } : null })
+          selection: first ? savedSelection(userId, result.models) ?? { modelId: first.id, reasoningEffort: first.defaultReasoningEffort } : null })
       } catch {
         if (!controller.signal.aborted) setState({ ...emptyState(userId), status: 'error' })
       }
@@ -54,6 +64,11 @@ export function useAgentModelSelection(userId: string | null) {
     void load()
     return () => controller.abort()
   }, [userId, revision])
+
+  useEffect(() => {
+    if (!userId || state.owner !== userId || state.status !== 'ready' || !state.selection) return
+    try { localStorage.setItem(preferenceKey(userId), JSON.stringify(state.selection)) } catch { /* Storage may be unavailable; the current selection still works. */ }
+  }, [state, userId])
 
   const onChange = useCallback((selection: ModelSelection) => {
     setState(previous => previous.owner === userId && previous.status === 'ready' && isModelSelectionValid(selection, previous.catalog)

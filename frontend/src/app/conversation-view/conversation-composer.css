@@ -1,5 +1,5 @@
 .conversation-composer { position: relative; display: grid; gap: var(--qx-space-2); padding: var(--qx-space-2); border-radius: var(--qx-radius-pill); background: var(--qx-color-surface); box-shadow: var(--qx-shadow-composer); }
-.conversation-composer[data-multiline='true'], .conversation-composer[data-mode='deep-research'], .conversation-composer:has(.conversation-composer__attachments), .conversation-composer:has(.conversation-composer__context), .conversation-composer:has(.conversation-composer__picker) { border-radius: var(--qx-radius-panel); }
+.conversation-composer[data-multiline='true'], .conversation-composer[data-mode='deep-research'], .conversation-composer:has(.conversation-composer__attachments), .conversation-composer:has(.conversation-composer__context), .conversation-composer:has(.conversation-composer__picker), .conversation-composer:has(.conversation-composer__toolbar) { border-radius: var(--qx-radius-panel); }
 .conversation-composer__row { display: grid; grid-template-columns: var(--qx-control-height) minmax(0, 1fr) var(--qx-control-height); align-items: end; gap: var(--qx-space-1); }
 .conversation-composer__row > textarea { display: block; width: 100%; min-width: 0; min-height: var(--qx-control-height); max-height: min(240px, 25cqh); margin: 0; padding: var(--qx-space-2); border: 0; border-radius: 0; outline: none; resize: none; color: var(--qx-color-ink); background: transparent; font-family: var(--qx-font-ui); font-size: var(--qx-text-body); line-height: var(--qx-text-body--line-height); }
 .conversation-composer__row > textarea::placeholder { color: var(--qx-color-faint); }
@@ -59,10 +59,10 @@
   .conversation-composer__attachment .qx-btn { min-width: 44px; min-height: 44px; }
 }
 
-.conversation-composer__toolbar { grid-column: 2; grid-row: 2; min-width: 0; align-self: center; }
-.conversation-composer__toolbar .cv-work-tools { margin: 0; padding: 0; flex-wrap: nowrap; gap: var(--qx-space-1); overflow-x: auto; }
+.conversation-composer__toolbar { display: grid; gap: var(--qx-space-1); min-width: 0; padding: var(--qx-space-1) var(--qx-space-2); border-top: 1px solid var(--qx-color-rule); }
+.conversation-composer__toolbar .cv-work-tools { margin: 0; padding: 0; flex-wrap: wrap; gap: var(--qx-space-1); }
 .conversation-composer__toolbar .cv-work-tools > .cv-project-selector,
-.conversation-composer__toolbar .cv-work-tools > .cv-library-selector { flex: 0 0 auto; max-width: 180px; }
+.conversation-composer__toolbar .cv-work-tools > .cv-library-selector { flex: 0 1 180px; max-width: 180px; }
 .conversation-composer__toolbar .cv-work-tools > button { flex: none; }
 .conversation-composer__toolbar .cv-work-tools .qx-select__trigger { max-width: 180px; font-size: var(--qx-text-meta); }
 .conversation-composer__toolbar .cv-work-tools .qx-btn,
@@ -71,3 +71,12 @@
 .conversation-composer__toolbar .cv-work-tools .qx-select__trigger:hover { background: var(--qx-color-surface-muted); }
 
 .conversation-composer__toolbar .cv-work-tools > button[aria-pressed='true'] { background: var(--qx-color-surface-strong); box-shadow: var(--qx-shadow-ring); color: var(--qx-color-ink); }
+.conversation-composer__toolbar .cv-suggestions { position: relative; min-width: 0; }
+.conversation-composer__toolbar .cv-suggestions > summary { display: flex; align-items: center; min-height: var(--qx-control-height); padding: 0 var(--qx-space-2); font-size: var(--qx-text-meta); }
+.conversation-composer__toolbar .cv-suggestions > div { position: absolute; bottom: 100%; right: 0; z-index: 60; width: min(288px, calc(100vw - var(--qx-space-8))); max-height: min(320px, 50dvh); overflow-y: auto; border-radius: var(--qx-radius-panel); background: var(--qx-color-surface-raised); box-shadow: var(--qx-shadow-menu); }
+@media (max-width: 480px) {
+  .conversation-composer__toolbar .cv-work-tools > .cv-project-selector,
+  .conversation-composer__toolbar .cv-work-tools > .cv-library-selector { flex: 1 1 calc(50% - var(--qx-space-1)); max-width: none; }
+  .conversation-composer__toolbar .cv-work-tools .qx-select__trigger { max-width: none; }
+  .conversation-composer__toolbar .cv-suggestions > summary { min-height: 44px; }
+}

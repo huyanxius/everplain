@@ -7,24 +7,31 @@ import { listMyResearchViaApi, useAccount, type MyResearchItem } from '../../mod
 import { readAgentProfile } from '../../modules/agent-profile'
 import { readPersonalGraph, type PersonalGraph } from '../../modules/personal-graph'
 import { seedAgentDraft } from '../agent/ResearchAgentConversationPage'
+import { getAgentModelCatalog } from '../../modules/research-agent'
+import { useAgentModelSelection } from '../model-selection'
 import { AppHomePage } from './AppHomePage'
 
 vi.mock('../../modules/account', () => ({ listMyResearchViaApi: vi.fn(), useAccount: vi.fn() }))
 vi.mock('../../modules/agent-profile', () => ({ readAgentProfile: vi.fn() }))
 vi.mock('../../modules/personal-graph', () => ({ readPersonalGraph: vi.fn() }))
 vi.mock('../agent/ResearchAgentConversationPage', () => ({ seedAgentDraft: vi.fn() }))
+vi.mock('../../modules/research-agent', () => ({ getAgentModelCatalog: vi.fn() }))
 vi.mock('../ui/PageShell', () => ({ PageShell: ({ children }: { children: ReactNode }) => children, PageContent: ({ children }: { children: ReactNode }) => children }))
 vi.mock('../../modules/agent-avatar', () => ({ AgentAvatar: () => <span data-testid="home-agent" /> }))
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); localStorage.clear() })
 let graph: PersonalGraph
 function project(id: string, title: string, updated: string): MyResearchItem {
   return { taskId: id, projectTitle: title, stageLabel: '研究方案', nextActionLabel: '继续完善问题', entryPath: `/research/${id}`, blocker: null, retry: null, phenomenonSummary: `${title}的问题`, adoptedTheoryCount: 0, createdAt: updated, updatedAt: updated }
 }
 function Location() { const location = useLocation(); return <output data-testid="location">{location.pathname}</output> }
+function AgentDraft() {
+  const selection = useAgentModelSelection('reader-1')
+  return <><p>Agent 草稿页</p><output data-testid="agent-selection">{JSON.stringify(selection.requestFields())}</output></>
+}
 function show() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/app']}><Routes><Route path="/app" element={<AppHomePage />} /><Route path="/agent" element={<p>Agent 草稿页</p>} /></Routes><Location /></MemoryRouter></QueryClientProvider>)
+  return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/app']}><Routes><Route path="/app" element={<AppHomePage />} /><Route path="/agent" element={<AgentDraft />} /></Routes><Location /></MemoryRouter></QueryClientProvider>)
 }
 beforeEach(() => {
   vi.resetAllMocks()
@@ -33,9 +40,23 @@ beforeEach(() => {
   graph = { name: '小叶', avatar_id: 'cheng', color: '#5d8fe6', releaseId: 'r1', nodes: [], edges: [], sources: {}, document_count: 0, topic_count: 0, pending_count: 0, mode: 'mock' }
   vi.mocked(readPersonalGraph).mockImplementation(async () => graph)
   vi.mocked(listMyResearchViaApi).mockResolvedValue([])
+  vi.mocked(getAgentModelCatalog).mockResolvedValue({ runtimeMode: 'base', models: [{ id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoningEfforts: ['low', 'medium', 'high'], defaultReasoningEffort: 'medium' }] })
 })
 
 describe('personal home rebuilt from Home mock', () => {
+  it('offers model controls directly and hands the choice and question to the new conversation', async () => {
+    show()
+    const composer = screen.getByRole('form', { name: '开始 Agent 对话' })
+    expect(await within(composer).findByRole('combobox', { name: '模型' })).toBeVisible()
+    fireEvent.change(within(composer).getByRole('slider', { name: '思考强度' }), { target: { value: '2' } })
+    const input = await screen.findByRole('textbox', { name: '问小叶' })
+    fireEvent.change(input, { target: { value: '我的新问题' } })
+    fireEvent.click(within(composer).getByRole('button', { name: '开始对话' }))
+    expect(seedAgentDraft).toHaveBeenCalledExactlyOnceWith('reader-1', '我的新问题')
+    await waitFor(() => expect(screen.getByTestId('agent-selection')).toHaveTextContent('"reasoning_effort":"high"'))
+    expect(screen.getByTestId('agent-selection')).toHaveTextContent('"model_id":"gpt-6-luna"')
+  })
+
   it('shows one greeting and real project and source rows with exact navigation', async () => {
     const older = project('older', '城市研究', '2026-09-01T00:00:00Z')
     const newer = project('newer', '阅读研究', '2026-10-01T00:00:00Z')
