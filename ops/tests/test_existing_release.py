@@ -74,6 +74,8 @@ class ExistingReleaseTests(unittest.TestCase):
             db.executescript(
                 "CREATE TABLE writes(value TEXT); CREATE TABLE schema_marker(value TEXT);"
                 "INSERT INTO schema_marker VALUES ('old');"
+                "CREATE TABLE users(id TEXT PRIMARY KEY);"
+                "CREATE TABLE alembic_version(version_num TEXT);"
             )
         self.archive = self.root / "candidate.tar.gz"
         self.archive.write_bytes(b"synthetic archive")
@@ -106,6 +108,10 @@ class ExistingReleaseTests(unittest.TestCase):
     def command(self, args, **_kwargs):
         self.calls.append(args)
         self.assertNotIn("synthetic-private-value", " ".join(map(str, args)))
+        if args[:2] == ["docker", "stop"] and getattr(self, "write_before_stop", False):
+            self.write_before_stop = False
+            with sqlite3.connect(self.source / "everplain.db") as db:
+                db.execute("INSERT INTO writes VALUES ('arrived-before-stop')")
         if args[:2] == ["docker", "info"]:
             return str(self.root)
         if args[:3] == ["docker", "image", "inspect"]:
@@ -155,11 +161,21 @@ class ExistingReleaseTests(unittest.TestCase):
         return SimpleNamespace(free=2**60)
 
     def execute(self):
+        primary = release.copy_primary
+
+        def backup(source, target, report, **kwargs):
+            self.calls.append(["online-backup" if kwargs.get("prefix") else "backup"])
+            if kwargs.get("prefix") and self.failure == "online-backup":
+                raise sqlite3.OperationalError("synthetic failure")
+            return primary(source, target, report, **kwargs)
+
         with (
             patch.object(release.shutil, "disk_usage", side_effect=self.disk_usage),
             patch.object(release, "metadata", side_effect=self.metadata),
             patch.object(release, "unpack", side_effect=self.unpack),
             patch.object(release, "reusable_stage", return_value=None),
+            patch.object(release, "copy_primary", side_effect=backup),
+            patch.object(release, "repair_web"),
             patch.object(release, "inspect_image_archive"),
             patch.object(
                 release,
@@ -223,6 +239,26 @@ class ExistingReleaseTests(unittest.TestCase):
         )
         saved = json.loads((self.updater.stage / "transaction.json").read_text())
         self.assertEqual(saved["images"]["api"], self.resolved_images[release.API_IMAGE])
+
+    def test_online_snapshot_failure_never_stops_existing_services(self):
+        self.failure = "online-backup"
+        with self.assertRaises(sqlite3.OperationalError):
+            self.execute()
+        self.assertFalse(any(call[:2] == ["docker", "stop"] for call in self.calls))
+        self.assertFalse(self.updater.started)
+
+    def test_cutover_uses_final_backup_not_earlier_online_snapshot(self):
+        self.write_before_stop = True
+        self.execute()
+        online = self.updater.stage / "online-validation/everplain.db"
+        self.assertEqual(self.snapshot(online, "writes"), [])
+        self.assertIn(
+            ("arrived-before-stop",),
+            self.snapshot(self.updater.stage / "data/everplain.db", "writes"),
+        )
+        online_index = next(i for i, call in enumerate(self.calls) if call == ["online-backup"])
+        stop_index = next(i for i, call in enumerate(self.calls) if call[:2] == ["docker", "stop"])
+        self.assertLess(online_index, stop_index)
 
     def test_migration_failure_restores_untouched_old_containers_and_data(self):
         self.failure = "migration"
@@ -319,14 +355,61 @@ class ExistingReleaseTests(unittest.TestCase):
             patch.object(release, "validate_manifest", return_value=manifest),
         ):
             self.assertEqual(release.reusable_stage(base)[0], stage)
-            for item in ("data", "backups", "transaction.json"):
+            for item in ("data", "backups", "transaction.json", "online-validation"):
                 marker = stage / item
                 marker.touch()
                 self.assertIsNone(release.reusable_stage(base))
+                self.assertEqual(release.reusable_stage(base, inputs_only=True)[0], stage)
                 marker.unlink()
             (target / "payload").write_bytes(b"changed")
             with self.assertRaises(RuntimeError):
                 release.reusable_stage(base)
+
+    def test_new_stage_links_only_verified_immutable_inputs_never_data_or_env(self):
+        source = self.root / "source-stage"
+        old = source / "releases" / release.REVISION
+        old.mkdir(parents=True)
+        (old / "manifest.json").write_text("fixture")
+        (old / "image.tar").write_bytes(b"public-image")
+        (old / "runtime.env").write_text("private-config")
+        (source / "release.tar.gz").write_bytes(b"public-archive")
+        (source / "data").mkdir()
+        (source / "data/everplain.db").write_bytes(b"private-user-data")
+        target = self.root / "fresh-stage"
+        target.mkdir()
+        release.link_verified_payload(source, target, {"files": {"image.tar": "fixture"}})
+        fresh = target / "releases" / release.REVISION
+        self.assertEqual((old / "image.tar").stat().st_ino, (fresh / "image.tar").stat().st_ino)
+        self.assertFalse((fresh / "runtime.env").exists())
+        self.assertFalse((target / "data").exists())
+        self.assertEqual((source / "data/everplain.db").read_bytes(), b"private-user-data")
+
+    def test_host_readonly_sqlite_backup_preserves_wal_source_and_rejects_existing_target(self):
+        source = self.source / "everplain.db"
+        with sqlite3.connect(source) as db:
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("INSERT INTO users VALUES ('fixture-owner')")
+        db.close()
+        before = source.read_bytes()
+        target = self.root / "wal-backup.db"
+        report = {}
+        release.copy_primary(source, target, report)
+        self.assertTrue(report["primary_backup_complete"])
+        self.assertEqual(source.read_bytes(), before)
+        for suffix in ("-wal", "-shm"):
+            sidecar = source.with_name(source.name + suffix)
+            if sidecar.exists():
+                self.assertEqual(
+                    (sidecar.stat().st_uid, sidecar.stat().st_gid),
+                    (source.stat().st_uid, source.stat().st_gid),
+                )
+        with sqlite3.connect(target) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM users").fetchone()[0], 1)
+            self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+        frozen = target.read_bytes()
+        with self.assertRaises(ValueError):
+            release.copy_primary(source, target, {})
+        self.assertEqual(target.read_bytes(), frozen)
 
     def test_archive_format_and_image_identity_are_only_boolean_diagnostics(self):
         path = self.root / "image.tar"
