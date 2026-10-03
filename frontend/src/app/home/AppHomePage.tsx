@@ -98,9 +98,9 @@ function HomeComposer({ home }: { home: Home }) {
   useEffect(() => {
     if (!input.current) return
     input.current.style.height = 'auto'
-    input.current.style.height = `${Math.min(input.current.scrollHeight, 208)}px`
+    input.current.style.height = `${Math.min(input.current.scrollHeight, 240)}px`
   }, [home.question])
-  return <form className="personal-start__composer" data-multiline={home.question.includes('\n') || home.question.length > 60} aria-label="开始 Agent 对话" onSubmit={event => { event.preventDefault(); home.ask() }}>
+  return <form className="personal-start__composer" data-multiline={home.question.includes('\n') || home.question.length > 40} aria-label="开始 Agent 对话" onSubmit={event => { event.preventDefault(); home.ask() }}>
     <div className="personal-start__composer-row">
       <Link className="qx-btn qx-btn--ghost qx-btn--icon qx-btn--lg" aria-label="导入资料" to="/imports"><PlusIcon /></Link>
       <textarea ref={input} rows={1} aria-label={`问${home.profile.data?.name ?? 'Agent'}`} placeholder={`问${home.profile.data?.name ?? 'Agent'}，或者丢一个链接进来`} value={home.question} onChange={event => home.setQuestion(event.target.value)} onKeyDown={event => {

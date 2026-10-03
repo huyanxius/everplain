@@ -1,4 +1,4 @@
-import { ArrowUpIcon, PlusIcon, StopIcon, XIcon } from '@phosphor-icons/react'
+import { ArrowUpIcon, FileTextIcon, PlusIcon, StopIcon, XIcon } from '@phosphor-icons/react'
 import { useLayoutEffect, useRef, type ChangeEvent, type FormEvent, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import './conversation-composer.css'
 
@@ -51,7 +51,7 @@ function ComposerTools({ anchor, children }: { anchor: RefObject<HTMLButtonEleme
       const below = height - rect.bottom - 16
       const openAbove = above >= below
       const available = Math.max(64, openAbove ? above : below)
-      const menuWidth = Math.min(320, width - 32)
+      const menuWidth = Math.min(240, width - 32)
       menu.style.width = `${menuWidth}px`
       menu.style.maxHeight = `${Math.min(420, available)}px`
       menu.style.left = `${Math.max(16, Math.min(rect.left, width - menuWidth - 16))}px`
@@ -78,7 +78,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
       if (form) {
         const narrow = form.clientWidth > 0 && form.clientWidth < 480
         // Use stable content/container inputs: changing textarea width must not toggle this back and forth.
-        form.dataset.multiline = String(props.value.includes('\n') || props.value.length > 60 || (narrow && props.value.length > 0))
+        form.dataset.multiline = String(props.value.includes('\n') || props.value.length > 40 || (narrow && props.value.length > 0))
       }
       input.style.height = 'auto'
       input.style.height = `${Math.min(input.scrollHeight, 240)}px`
@@ -102,7 +102,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
     {props.attachmentPicker && <div className="conversation-composer__picker">{props.attachmentPicker}</div>}
     {(props.attachments.length > 0 || props.uploading) && <div className="conversation-composer__attachments" aria-label="本轮附件">
       {props.attachments.map(attachment => <div className="qx-tag conversation-composer__attachment" key={attachment.id}>
-        <span title={attachment.title}>{attachment.title}</span><span className="qx-meta">{attachment.status}</span>
+        <FileTextIcon aria-hidden="true" /><span title={attachment.title}>{attachment.title}</span><span className="qx-meta">{attachment.status}</span>
         <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" disabled={!attachment.removable} aria-label={`移除附件 ${attachment.title}`} onClick={() => props.onRemoveAttachment(attachment.id)}><XIcon /></button>
       </div>)}
       {props.uploading && <span className="qx-meta" role="status">正在上传…</span>}
@@ -115,7 +115,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
       </div>
       <textarea ref={props.inputRef} aria-label={props.label} placeholder={props.placeholder} maxLength={props.maxLength} rows={1} disabled={props.busy} value={props.value} onChange={event => props.onChange(event.target.value)} onKeyDown={props.onKeyDown} />
       {props.modelSelector && <div className="conversation-composer__model">{props.modelSelector}</div>}
-      <button type={props.canStop ? 'button' : 'submit'} className="qx-btn qx-btn--primary qx-btn--icon conversation-composer__send" aria-label={props.canStop ? '停止生成' : props.busy ? 'Agent 正在加载' : '发送给 Everplain'} disabled={props.busy ? !props.canStop : !props.canSend} onClick={props.canStop ? props.onStop : undefined}>{props.canStop ? <StopIcon weight="fill" /> : <ArrowUpIcon />}</button>
+      <button type={props.canStop ? 'button' : 'submit'} className="qx-btn qx-btn--primary qx-btn--icon conversation-composer__send" aria-label={props.canStop ? '停止生成' : props.busy ? 'Agent 正在加载' : '发送给 Everplain'} disabled={props.busy ? !props.canStop : !props.canSend} onClick={props.canStop ? props.onStop : undefined}>{props.canStop ? <StopIcon weight="fill" /> : <ArrowUpIcon weight="bold" />}</button>
     </div>
     {props.toolbar && <div className="conversation-composer__toolbar">{props.toolbar}</div>}
   </form>

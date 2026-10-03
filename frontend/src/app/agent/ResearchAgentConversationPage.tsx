@@ -2484,9 +2484,7 @@ export function ResearchAgentConversationPage({
 
   const conversationActions = (<>
                 <section className="cv-conversation-settings" aria-label={text('对话设置', 'Conversation settings')} onClick={event => event.stopPropagation()}>
-                  <h3 className="qx-meta">{text('知识来源与联网', 'Knowledge sources and web')}</h3>
-                  {!embedded ? <CourseReferenceSelector value={activeConversation ? activeConversation.reference_knowledge_base_id ?? '' : searchParams.get('reference_knowledge_base_id') ?? ''} hasConversation={Boolean(activeConversation)} disabled={isBusy}
-                    onChange={value => { newConversation(); setSearchParams(value ? { reference_knowledge_base_id: value } : {}) }} /> : null}
+                  <h3 className="qx-meta">{text('联网搜索', 'Web search')}</h3>
                   <button type="button" className="qx-btn qx-btn--ghost" aria-label={text('联网搜索', 'Web search')} aria-pressed={webSearchEnabled} disabled={isBusy} onClick={() => setWebSearchEnabled(enabled => !enabled)}><GlobeHemisphereWestIcon size={16} /><span>{webSearchEnabled ? text('联网已开启', 'Web on') : text('联网搜索', 'Web search')}</span></button>
                 </section>
 
@@ -2693,12 +2691,13 @@ export function ResearchAgentConversationPage({
                 locale={locale} onToggle={toggleAttachedMaterial} onClose={() => setMaterialPickerOpen(false)} /> : null}
               tools={<>
                 <section className="cv-tool-group" aria-label={text('添加内容', 'Add content')}>
-                  <h3 className="qx-meta">{text('添加内容', 'Add content')}</h3>
                   <div className="cv-tool-attachments">
                     <button className="qx-btn qx-btn--secondary" type="button" role="menuitem" disabled={isBusy} onClick={() => { setMaterialMenuOpen(false); materialFileInputRef.current?.click() }}><FilePlusIcon size={18} /><span>{text('上传文件', 'Upload a file')}</span></button>
                     <button className="qx-btn qx-btn--secondary" type="button" role="menuitem" disabled={isBusy} onClick={() => { void openMaterialAttachmentPicker() }}><FolderOpenIcon size={18} /><span>{text('从研究材料添加', 'Add from research materials')}</span></button>
                   </div>
                 </section>
+                  {!embedded ? <CourseReferenceSelector menu value={activeConversation ? activeConversation.reference_knowledge_base_id ?? '' : searchParams.get('reference_knowledge_base_id') ?? ''} hasConversation={Boolean(activeConversation)} disabled={isBusy}
+                    onChange={value => { newConversation(); setSearchParams(value ? { reference_knowledge_base_id: value } : {}) }} /> : null}
               </>}
             />
             {researchToolsVisible && <>
