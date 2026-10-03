@@ -1,4 +1,5 @@
 /* 基础重置放在 base 层：组件层（components.css）要能盖过它，页面自己的未分层样式又能盖过组件。 */
+@layer theme, base, components, utilities;
 @layer base {
   * {
     box-sizing: border-box;
