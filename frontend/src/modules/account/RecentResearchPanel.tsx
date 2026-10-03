@@ -86,7 +86,7 @@ export function RecentResearchPanel({
         <p className="recent-research__label">{text('最近研究', 'Recent research')}</p>
         <h2>{text('暂时无法读取最近研究', 'Recent research is unavailable')}</h2>
         <p>{text('你的研究内容没有丢失，可以重新请求列表。', 'Your research is safe. You can request the list again.')}</p>
-        <button
+        <button className="qx-btn qx-btn--ghost"
           type="button"
           disabled={research.isFetching}
           onClick={() => research.refetch()}

@@ -1,4 +1,5 @@
 import {
+  getAgentModelCatalog as getModelCatalog,
   saveCanvasNode as saveNode,
   confirmResearchStartProposal as confirmStartProposal,
   deleteAgentConversation as deleteConversation,
@@ -65,4 +66,8 @@ export function streamAgentTurn(
 
 export function saveCanvasNode(...args: Parameters<typeof saveNode>) {
   return saveNode(...args)
+}
+
+export function getAgentModelCatalog(signal?: AbortSignal) {
+  return getModelCatalog(signal)
 }

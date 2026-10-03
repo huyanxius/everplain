@@ -129,13 +129,22 @@ describe('research report content', () => {
   })
 
   it('报告沿用对话本身：一轮问答一节，正文里的引用锚点被摘掉', () => {
-    const report = buildResearchReport({ conversation, elapsedSeconds: 267 })
+    const localConversation = { ...conversation, updated_at: new Date(2026, 8, 5, 4, 23).toISOString() }
+    const report = buildResearchReport({ conversation: localConversation, elapsedSeconds: 267 })
     expect(report.title).toBe('困惑人类的不平等从哪里来')
     expect(report.meta).toEqual(['2026 年 9 月 5 日', '研究用时 4 分 27 秒', '知识库 1 条', '网页资料 1 条', '研究材料 1 份'])
     expect(report.sections).toHaveLength(2)
     expect(report.sections[0].question).toBe('不平等的社会根源是什么？')
     expect(report.sections[0].answer).not.toContain('[knowledge:D1:C213]')
     expect(report.sections[0].answer).toContain('结构位置的产物')
+  })
+
+  it.each([
+    [new Date(2026, 8, 4, 23, 59), '2026 年 9 月 4 日'],
+    [new Date(2026, 8, 5, 0, 1), '2026 年 9 月 5 日'],
+  ])('uses the browser-local calendar date across midnight: %s', (date, expected) => {
+    const report = buildResearchReport({ conversation: { ...conversation, updated_at: date.toISOString() } })
+    expect(report.meta[0]).toBe(expected)
   })
 
   it('文件名去掉路径字符并挂上品牌前缀', () => {

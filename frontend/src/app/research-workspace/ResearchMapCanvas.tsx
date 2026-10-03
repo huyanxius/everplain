@@ -33,11 +33,11 @@ import type {
   ResearchCanvasNodeKind,
   ResearchCanvasProjection,
 } from '../../modules/research-workspace'
+import { resolveCssColor } from '../../styles/resolveCssColor'
 import { arrangeResearchCanvas, researchCanvasStages, CANVAS_CARD_SIZE, CANVAS_COLUMN_GAP } from '../../modules/research-workspace'
 import { canvasSuggestions, type AgentConversation } from '../../modules/research-agent'
 import { CanvasCardEditor, type CanvasCardDraft } from './CanvasCardEditor'
 import { ResearchAgentBot } from '../agent/ResearchAgentBot'
-import { ResearchMapIdleShader } from './ResearchMapIdleShader'
 import '@xyflow/react/dist/style.css'
 import './research-map-canvas.css'
 
@@ -114,7 +114,7 @@ function ArgumentNode({ data, selected }: NodeProps<ArgumentFlowNode>) {
   const Icon = kindIcons[node.kind]
   if (data.stage !== undefined) {
     const stage = researchCanvasStages[data.stage]
-    return <div className="research-map__stage"><span>0{data.stage + 1}</span><div><h2>{stage.title}</h2><p>{stage.description}</p></div></div>
+    return <div className="ep-map__stage"><span>0{data.stage + 1}</span><div><h2>{stage.title}</h2><p>{stage.description}</p></div></div>
   }
   if (expandedContent) {
     return (
@@ -126,12 +126,12 @@ function ArgumentNode({ data, selected }: NodeProps<ArgumentFlowNode>) {
     )
   }
   return (
-    <article className={`research-argument-node is-${node.kind} ${selected ? 'is-selected' : ''}`}>
+    <article className={`qx-card research-argument-node is-${node.kind} ${selected ? 'is-selected' : ''}`}>
       <CardHandles />
       <NodeToolbar isVisible={selected} position={Position.Top} offset={10}>
         <div className="research-argument-node__toolbar">
-          <button type="button" className="nodrag" onClick={() => data.onFocus(node)}><CrosshairIcon size={13} />聚焦</button>
-          <button type="button" className="nodrag" onClick={() => data.onContinue(node)}>继续研究<ArrowUpRightIcon size={13} /></button>
+          <button type="button" className="qx-btn qx-btn--ghost nodrag" onClick={() => data.onFocus(node)}><CrosshairIcon size={13} />聚焦</button>
+          <button type="button" className="qx-btn qx-btn--ghost nodrag" onClick={() => data.onContinue(node)}>继续研究<ArrowUpRightIcon size={13} /></button>
         </div>
       </NodeToolbar>
       <div className="research-argument-node__meta"><span><Icon size={16} />{kindLabels[node.kind]}</span></div>
@@ -148,11 +148,11 @@ const nodeTypes = { argument: ArgumentNode }
 
 function MapIdleNote({ actions }: { readonly actions?: ReactNode }) {
   return (
-    <div className="research-map__idle-state">
-      <div className="research-map__idle-content">
+    <div className="ep-map__idle-state">
+      <div className="ep-map__idle-content">
         <ResearchAgentBot />
-        <div className="research-map__idle-note" aria-label="画布说明">
-          <h1>从一个问题开始</h1>
+        <div className="ep-map__idle-note" aria-label="画布说明">
+          <h2 className="qx-section-title">从一个问题开始</h2>
           <p>对话中形成的研究结构会在这里展开。</p>
           {actions}
         </div>
@@ -267,11 +267,30 @@ export function ResearchMapCanvas({
   }
 
   return (
-    <section ref={canvasRef} className="research-map" aria-label="研究论证地图">
-      <div className={`research-map__canvas-wrap${projection.nodes.length ? '' : ' is-empty'}`}>
-        {!projection.nodes.length ? <ResearchMapIdleShader /> : null}
+    <section ref={canvasRef} className="ep-map" aria-label="研究论证地图">
+      {!focusedDocumentContent && projection.nodes.length > 0 ? <header className="ep-map__header"><h2 className="qx-heading">研究地图</h2>            <div className="ep-map__toolbar">
+              <nav className="ep-map__depth" aria-label="画布聚焦层级">
+                <span>关联范围</span>
+                {([1, 2, 'all'] as const).map((depth) => (
+                  <button
+                    key={depth}
+                    type="button"
+                    className={["qx-btn qx-btn--ghost", focusDepth === depth ? 'is-active' : ''].filter(Boolean).join(' ')}
+                    disabled={depth !== 'all' && !selectedNode}
+                    aria-pressed={focusDepth === depth}
+                    onClick={() => setFocusDepth(depth)}
+                  >{depth === 'all' ? '全部' : depth === 1 ? '直接相关' : '延伸关联'}</button>
+                ))}
+              </nav>
+              <button type="button" className="qx-btn qx-btn--ghost ep-map__directory-toggle" aria-label="显示全部关系" aria-pressed={allRelations} onClick={() => setAllRelations(value => !value)}>关系</button>
+              <button type="button" className="qx-btn qx-btn--ghost ep-map__directory-toggle" aria-label="展开画布" onClick={() => { void canvasRef.current?.requestFullscreen?.().catch(() => undefined) }}><ArrowsOutIcon size={16} /></button>
+              <button type="button" className="qx-btn qx-btn--ghost ep-map__directory-toggle" aria-label="重新整理画布" onClick={() => { positionsRef.current.clear(); hasFitted.current = false; setLayoutRevision(value => value + 1) }}><ArrowsClockwiseIcon size={16} /></button>
+              <button className="qx-btn qx-btn--ghost ep-map__directory-toggle" type="button" title="节点目录" aria-label="打开节点目录" aria-pressed={listOpen} onClick={() => setListOpen((value) => !value)}><ListBulletsIcon size={16} /></button>
+            </div>
+</header> : null}
+      <div className={`ep-map__canvas-wrap${projection.nodes.length ? '' : ' is-empty'}`}>
         {focusedDocumentContent ? (
-          <div className="research-map__document-focus">
+          <div className="ep-map__document-focus">
             <article className="research-document-map-node is-expanded nodrag nowheel">
               {focusedDocumentContent}
             </article>
@@ -298,7 +317,7 @@ export function ResearchMapCanvas({
           proOptions={{ hideAttribution: true }}
           aria-label={projection.nodes.length ? '可缩放、可拖动的研究画布' : '空白研究画布'}
         >
-          {projection.nodes.length ? <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#d8d6cf" /> : null}
+          {projection.nodes.length ? <Background variant={BackgroundVariant.Dots} gap={24} size={1} color={resolveCssColor('var(--qx-color-rule-strong)')} /> : null}
           {projection.nodes.length ? <Controls position="bottom-left" showInteractive={false} /> : null}
           {!hasDocumentNodes && projection.nodes.length >= 16 ? (
             <MiniMap
@@ -306,7 +325,7 @@ export function ResearchMapCanvas({
               pannable
               zoomable
               nodeColor={(node) => minimapColor((node.data as ArgumentNodeData).node.kind)}
-              maskColor="rgb(247 247 244 / 72%)"
+              maskColor={resolveCssColor('color-mix(in srgb, var(--qx-color-canvas) 72%, transparent)')}
             />
           ) : null}
         </ReactFlow>
@@ -315,58 +334,39 @@ export function ResearchMapCanvas({
         {!projection.nodes.length ? <MapIdleNote actions={idleActions} /> : null}
         {projection.nodes.length && !focusedDocumentContent ? (
           <>
-            {['thinking', 'retrieving', 'answering'].includes(projection.status) ? <div className="research-map__layout-status" role="status">{projection.status === 'retrieving' ? 'Agent 正在查找依据…' : 'Agent 正在推进研究…'}{selectedNode ? ` · ${selectedNode.title}` : ''}</div> : null}
+            {['thinking', 'retrieving', 'answering'].includes(projection.status) ? <div className="ep-map__layout-status" role="status">{projection.status === 'retrieving' ? 'Agent 正在查找依据…' : 'Agent 正在推进研究…'}{selectedNode ? ` · ${selectedNode.title}` : ''}</div> : null}
 
-            <div className="research-map__toolbar">
-              <nav className="research-map__depth" aria-label="画布聚焦层级">
-                <span>关联范围</span>
-                {([1, 2, 'all'] as const).map((depth) => (
-                  <button
-                    key={depth}
-                    type="button"
-                    className={focusDepth === depth ? 'is-active' : ''}
-                    disabled={depth !== 'all' && !selectedNode}
-                    aria-pressed={focusDepth === depth}
-                    onClick={() => setFocusDepth(depth)}
-                  >{depth === 'all' ? '全部' : depth === 1 ? '直接相关' : '延伸关联'}</button>
-                ))}
-              </nav>
-              <button type="button" className="research-map__directory-toggle" aria-label="显示全部关系" aria-pressed={allRelations} onClick={() => setAllRelations(value => !value)}>关系</button>
-              <button type="button" className="research-map__directory-toggle" aria-label="展开画布" onClick={() => { void canvasRef.current?.requestFullscreen?.().catch(() => undefined) }}><ArrowsOutIcon size={16} /></button>
-              <button type="button" className="research-map__directory-toggle" aria-label="重新整理画布" onClick={() => { positionsRef.current.clear(); hasFitted.current = false; setLayoutRevision(value => value + 1) }}><ArrowsClockwiseIcon size={16} /></button>
-              <button className="research-map__directory-toggle" type="button" title="节点目录" aria-label="打开节点目录" aria-pressed={listOpen} onClick={() => setListOpen((value) => !value)}><ListBulletsIcon size={16} /></button>
-            </div>
 
             {selectedNode && selectedNode.kind !== 'document' ? (
-              <aside className="research-map__inspector" aria-label="节点检查器">
-                <header><span>{kindLabels[selectedNode.kind]}</span><button type="button" aria-label="关闭节点检查器" onClick={clearSelection}><XIcon size={15} /></button></header>
-                <div className={`research-map__inspector-mark is-${selectedNode.kind}`}>{(() => { const Icon = kindIcons[selectedNode.kind]; return <Icon size={17} /> })()}</div>
-                <h3>{selectedNode.title}</h3>
-                <p>{selectedNode.summary || '这个节点暂时没有补充说明。你可以让 Agent 继续拆解或补证。'}</p>
+              <aside className="qx-card ep-map__inspector" aria-label="节点检查器">
+                <header><span>{kindLabels[selectedNode.kind]}</span><button className="qx-btn qx-btn--ghost" type="button" aria-label="关闭节点检查器" onClick={clearSelection}><XIcon size={15} /></button></header>
+                <div className={`ep-map__inspector-mark is-${selectedNode.kind}`}>{(() => { const Icon = kindIcons[selectedNode.kind]; return <Icon size={17} /> })()}</div>
+                <h3 className="qx-card__title">{selectedNode.title}</h3>
+                <p className="qx-card__body">{selectedNode.summary || '这个节点暂时没有补充说明。你可以让 Agent 继续拆解或补证。'}</p>
                 <dl>
                   <div><dt>状态</dt><dd>{nodeStatusLabels[selectedNode.status]}</dd></div>
                   <div><dt>连接</dt><dd>{connectionCount(projection.edges, selectedNode.id)} 条关系</dd></div>
                   <div><dt>依据</dt><dd>{selectedNode.citationIds.length ? `${selectedNode.citationIds.length} 条` : '尚未绑定'}</dd></div>
                 </dl>
                 {selectedNode.citationIds.length ? (
-                  <div className="research-map__inspector-citations">
-                    {selectedNode.citationIds.map((id, index) => <button type="button" key={id} onClick={() => onOpenCitation?.(id)}>依据 {index + 1}<ArrowUpRightIcon size={12} /></button>)}
+                  <div className="ep-map__inspector-citations">
+                    {selectedNode.citationIds.map((id, index) => <button className="qx-btn qx-btn--ghost" type="button" key={id} onClick={() => onOpenCitation?.(id)}>依据 {index + 1}<ArrowUpRightIcon size={12} /></button>)}
                   </div>
                 ) : null}
-                {conversation && onConversationChange && conversation.research_map?.nodes.some(node => node.id === selectedNode.id) ? <CanvasCardEditor key={`${conversation.conversation_id}:${selectedNode.id}`} draftCache={draftCache.current} conversation={conversation} node={conversation.research_map.nodes.find(node => node.id === selectedNode.id)!} onSaved={onConversationChange} /> : <p className="research-map__formal-note">此卡来自正式研究记录，可与 Agent 讨论后在对应研究环节修改。</p>}
-                <button type="button" className="research-map__inspector-primary" onClick={() => onContinueNode?.(selectedNode)}>让 Agent 继续推进<ArrowUpRightIcon size={14} /></button>
+                {conversation && onConversationChange && conversation.research_map?.nodes.some(node => node.id === selectedNode.id) ? <CanvasCardEditor key={`${conversation.conversation_id}:${selectedNode.id}`} draftCache={draftCache.current} conversation={conversation} node={conversation.research_map.nodes.find(node => node.id === selectedNode.id)!} onSaved={onConversationChange} /> : <p className="ep-map__formal-note">此卡来自正式研究记录，可与 Agent 讨论后在对应研究环节修改。</p>}
+                <button type="button" className="qx-btn qx-btn--primary ep-map__inspector-primary" onClick={() => onContinueNode?.(selectedNode)}>让 Agent 继续推进<ArrowUpRightIcon size={14} /></button>
               </aside>
             ) : null}
 
             {listOpen ? (
-              <aside className="research-map__list" role="region" aria-label="研究节点目录">
-                <div className="research-map__list-header"><div><span>结构目录</span><strong>{projection.nodes.length} 个研究节点</strong></div><button type="button" aria-label="关闭节点目录" onClick={() => setListOpen(false)}><XIcon size={15} /></button></div>
-                <div className="research-map__list-groups">
+              <aside className="ep-map__list qx-card" role="region" aria-label="研究节点目录">
+                <div className="ep-map__list-header"><h3 className="qx-heading">结构目录 <span className="qx-meta">{projection.nodes.length}</span></h3><button className="qx-btn qx-btn--ghost" type="button" aria-label="关闭节点目录" onClick={() => setListOpen(false)}><XIcon size={15} /></button></div>
+                <div className="ep-map__list-groups">
                   {(Object.keys(kindLabels) as ResearchCanvasNodeKind[]).map((kind) => counts[kind] ? (
                     <section key={kind}>
                       <h3>{kindLabels[kind]}<span>{counts[kind]}</span></h3>
                       {projection.nodes.filter((node) => node.kind === kind).map((node) => (
-                        <button type="button" key={node.id} className={node.id === selectedNodeId ? 'is-selected' : ''} onClick={() => { selectNode(node); setListOpen(false); void flowRef.current?.fitView({ nodes: [{ id: node.id }], padding: .4, maxZoom: .95, duration: 250 }) }}><i className={`is-${kind}`} /><span>{node.title}</span></button>
+                        <button type="button" key={node.id} className={["qx-item", node.id === selectedNodeId ? 'is-selected' : ''].filter(Boolean).join(' ')} onClick={() => { selectNode(node); setListOpen(false); void flowRef.current?.fitView({ nodes: [{ id: node.id }], padding: .4, maxZoom: .95, duration: 250 }) }}><i className={`is-${kind}`} /><span>{node.title}</span></button>
                       ))}
                     </section>
                   ) : null)}
@@ -400,7 +400,7 @@ function ResearchCurve(props: EdgeProps) {
   }
   return <g onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
     <BaseEdge {...props} path={path} />
-    {(data.visible || hovered) && data.label ? <EdgeLabelRenderer><span className="research-map__relation-label" style={{ transform: `translate(-50%, -50%) translate(${x}px, ${y}px)` }}>{data.label}</span></EdgeLabelRenderer> : null}
+    {(data.visible || hovered) && data.label ? <EdgeLabelRenderer><span className="ep-map__relation-label" style={{ transform: `translate(-50%, -50%) translate(${x}px, ${y}px)` }}>{data.label}</span></EdgeLabelRenderer> : null}
   </g>
 }
 const edgeTypes = { researchCurve: ResearchCurve }
@@ -433,21 +433,18 @@ function connectionCount(edges: ResearchCanvasEdge[], nodeId: string) {
   return edges.filter((edge) => edge.source === nodeId || edge.target === nodeId).length
 }
 
+// 关系与节点类别的颜色和 research-map-canvas.css 里卡片用的是同一组类别色 token。
+// React Flow 把颜色写进 SVG 属性，属性不认 var()，所以要先解析成具体色值。
+const relationToken: Record<string, string> = { supports: 'data-green', challenges: 'data-rust', derives: 'data-blue', refines: 'data-amber' }
+const kindToken: Record<string, string> = {
+  question: 'accent', phenomenon: 'data-amber', theory: 'data-blue', claim: 'data-green',
+  evidence: 'data-olive', gap: 'data-rust', document: 'ink-soft',
+}
+
 function relationColor(relation: ResearchCanvasEdge['relation']) {
-  if (relation === 'supports') return '#5d7869'
-  if (relation === 'challenges') return '#a75b49'
-  if (relation === 'derives') return '#5c7184'
-  if (relation === 'refines') return '#9a7742'
-  return '#9a9a92'
+  return resolveCssColor(`var(--qx-color-${relationToken[relation] ?? 'faint'})`)
 }
 
 function minimapColor(kind: ResearchCanvasNodeKind) {
-  if (kind === 'question') return '#292d2a'
-  if (kind === 'phenomenon') return '#9a7742'
-  if (kind === 'theory') return '#6c7b89'
-  if (kind === 'claim') return '#4f6f60'
-  if (kind === 'evidence') return '#8b988e'
-  if (kind === 'gap') return '#aa6755'
-  if (kind === 'document') return '#2f312e'
-  return '#765f84'
+  return resolveCssColor(`var(--qx-color-${kindToken[kind] ?? 'data-violet'})`)
 }

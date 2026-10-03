@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { useState } from 'react'
 
 import { ResearchMaterialsPanel } from './ResearchMaterialsPanel'
 
@@ -56,6 +57,7 @@ describe('ResearchMaterialsPanel', () => {
 
     render(<ResearchMaterialsPanel taskId="task-1" presentation="workspace" />)
     const workspace = await screen.findByRole('region', { name: '研究材料' })
+    expect(within(workspace).getByRole('list', { name: '研究材料卡片' })).toBeVisible()
     fireEvent.change(within(workspace).getByRole('searchbox', { name: '检索全部材料' }), {
       target: { value: '照护安排' },
     })
@@ -416,6 +418,7 @@ describe('ResearchMaterialsPanel', () => {
   })
 
   it('stays in the library after upload and carries the fetched source segments into the new row', async () => {
+    const onMaterialsChange = vi.fn()
     const uploaded = {
       ...material,
       material_id: 'uploaded-material',
@@ -441,7 +444,7 @@ describe('ResearchMaterialsPanel', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<ResearchMaterialsPanel taskId="task-1" onClose={() => undefined} />)
+    render(<ResearchMaterialsPanel taskId="task-1" onClose={() => undefined} onMaterialsChange={onMaterialsChange} />)
 
     const dialog = await screen.findByRole('dialog', { name: '研究材料' })
     const input = within(dialog).getByLabelText('选择研究材料文件') as HTMLInputElement
@@ -449,6 +452,7 @@ describe('ResearchMaterialsPanel', () => {
       target: { files: [new File(['观察记录'], '观察记录.txt', { type: 'text/plain' })] },
     })
 
+    await waitFor(() => expect(onMaterialsChange).toHaveBeenCalledTimes(1))
     // 上传是材料库这一层的动作，加完仍然停在库里；补详情是为了这一行立刻说得清自己有多少
     // 可引用位置，而不是把人推进一份可能还在解析的文档。
     expect(await within(dialog).findByRole('button', { name: '查看材料：观察记录.txt' })).toBeVisible()
@@ -622,7 +626,7 @@ describe('ResearchMaterialsPanel', () => {
 
       const dialog = await screen.findByRole('dialog', { name: '研究材料' })
       const targetText = await within(dialog).findByText('需要自动滚动到这里的目标片段。')
-      const targetSegment = targetText.closest('.qx-segment')
+      const targetSegment = targetText.closest('[data-segment-id]')
       expect(targetSegment).not.toBeNull()
       await waitFor(() => expect(scrolledElements).toContain(targetSegment))
       expect(targetSegment).toHaveAttribute('aria-current', 'location')
@@ -647,6 +651,7 @@ describe('ResearchMaterialsPanel', () => {
   })
 
   it('retries a failed parse and removes a material after explicit confirmation', async () => {
+    const onMaterialsChange = vi.fn()
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const request = requestOf(input, init)
       const path = new URL(request.url).pathname
@@ -656,11 +661,35 @@ describe('ResearchMaterialsPanel', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     vi.stubGlobal('confirm', vi.fn(() => true))
-    render(<ResearchMaterialsPanel taskId="task-1" onClose={() => undefined} />)
+    render(<ResearchMaterialsPanel taskId="task-1" onClose={() => undefined} onMaterialsChange={onMaterialsChange} />)
     const dialog = await screen.findByRole('dialog', { name: '研究材料' })
     fireEvent.click(within(dialog).getByRole('button', { name: /^重新解析：/ }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => new URL(requestOf(input, init).url).pathname.endsWith('/reparse'))).toBe(true))
+    await waitFor(() => expect(onMaterialsChange).toHaveBeenCalledTimes(1))
     fireEvent.click(within(dialog).getByRole('button', { name: /^删除材料：/ }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([input, init]) => requestOf(input, init).method === 'DELETE')).toBe(true))
+    await waitFor(() => expect(onMaterialsChange).toHaveBeenCalledTimes(2))
   })
+})
+
+
+it('places the live source outline in the workspace rail without nesting a second reading column', async () => {
+  const segment = { segment_id: 'heading-1', material_id: 'material-1', parse_id: 'parse-1', ordinal: 0, kind: 'heading', text: '访谈背景', locator: { page: 1, paragraph: 1 } }
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = new URL(requestOf(input, init).url).pathname
+    return path.endsWith('/materials/material-1') ? response({ ...material, segments: [segment] }) : response({ task_id: 'task-1', items: [material] })
+  }))
+  const locate = vi.fn()
+  function WorkspaceReader() {
+    const [outlineTarget, setOutlineTarget] = useState<HTMLDivElement | null>(null)
+    return <><div ref={setOutlineTarget} data-testid="external-material-outline" /><ResearchMaterialsPanel taskId="task-1" presentation="workspace" initialMaterialId="material-1" outlineTarget={outlineTarget} onWorkspaceLocationChange={locate} /></>
+  }
+  render(<WorkspaceReader />)
+  const outline = await screen.findByRole('navigation', { name: '章节导航' })
+  expect(screen.getByTestId('external-material-outline')).toContainElement(outline)
+  const reader = screen.getByRole('region', { name: '材料阅读台' })
+  expect(within(reader).queryByRole('navigation', { name: '章节导航' })).not.toBeInTheDocument()
+  const heading = await within(outline).findByRole('button', { name: /访谈背景/ })
+  fireEvent.click(heading)
+  await waitFor(() => expect(locate).toHaveBeenLastCalledWith(expect.objectContaining({ materialId: 'material-1', segmentId: 'heading-1' })))
 })

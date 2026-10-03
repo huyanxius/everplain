@@ -1,0 +1,5 @@
+
+.ep-soul-editor { display: grid; gap: var(--qx-space-3); min-width: 0; }
+.ep-soul-editor__field { display: grid; gap: var(--qx-space-2); }
+.ep-soul-editor__field textarea { resize: vertical; min-height: 180px; width: 100%; border-radius: var(--qx-radius-field); white-space: pre-wrap; font-family: var(--qx-font-mono); }
+.ep-soul-editor__latest { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; margin: 0; }

@@ -83,8 +83,8 @@ export function NewResearchPage({ onStarted, seedTheory = null }: NewResearchPag
     <section className="research-entry">
       {seedTheory?.name ? <p className="seed-clue">起始线索：{seedTheory.name}</p> : null}
       <nav className="entry-methods" aria-label="研究进入方式">
-        <button type="button" aria-pressed={method === 'direct'} onClick={() => setMethod('direct')}>直接输入</button>
-        <button type="button" aria-pressed={method === 'material'} onClick={() => setMethod('material')}>单份材料</button>
+        <button className="qx-btn qx-btn--ghost" type="button" aria-pressed={method === 'direct'} onClick={() => setMethod('direct')}>直接输入</button>
+        <button className="qx-btn qx-btn--ghost" type="button" aria-pressed={method === 'material'} onClick={() => setMethod('material')}>单份材料</button>
       </nav>
 
       {method === 'direct' ? (
@@ -116,7 +116,7 @@ export function NewResearchPage({ onStarted, seedTheory = null }: NewResearchPag
             </span>
             <p>{exampleSource ? '当前内容来自内置案例' : '当前内容由你输入'}</p>
           </article>
-          <button type="submit" disabled={directStart.isPending || !phenomenon.trim()}>
+          <button className="qx-btn qx-btn--primary" type="submit" disabled={directStart.isPending || !phenomenon.trim()}>
             {directStart.isPending ? '正在生成候选…' : '生成可编辑候选'}
           </button>
           {directStart.isError ? <p role="alert">暂时无法生成候选，输入内容仍未丢失。</p> : null}
@@ -124,7 +124,7 @@ export function NewResearchPage({ onStarted, seedTheory = null }: NewResearchPag
             <h2>也可以从内置案例开始</h2>
             {examples.isPending ? <p role="status">正在加载案例…</p> : null}
             {examples.data?.map((example) => (
-              <button key={example.exampleId} type="button" onClick={() => fillExample(example)}>{example.title}</button>
+              <button className="qx-btn qx-btn--ghost" key={example.exampleId} type="button" onClick={() => fillExample(example)}>{example.title}</button>
             ))}
           </section>
         </form>
@@ -143,7 +143,7 @@ export function NewResearchPage({ onStarted, seedTheory = null }: NewResearchPag
             <label><input type="checkbox" checked={consents[2]} onChange={(event) => setConsent(2, event.target.checked)} />我知悉材料可能由外部模型服务处理</label>
             <label><input type="checkbox" checked={consents[3]} onChange={(event) => setConsent(3, event.target.checked)} />我同意当前处理政策版本</label>
           </fieldset>
-          <button type="submit" disabled={materialStart.isPending || (!pastedText.trim() && !file) || !consents.every(Boolean)}>
+          <button className="qx-btn qx-btn--primary" type="submit" disabled={materialStart.isPending || (!pastedText.trim() && !file) || !consents.every(Boolean)}>
             {materialStart.isPending ? '正在提取候选…' : '提取现象候选'}
           </button>
           {materialStart.isError ? <p role="alert">材料处理失败，请检查文件与确认项。</p> : null}
@@ -227,7 +227,7 @@ export function PhenomenonWorkspace({ taskId }: { readonly taskId: string }) {
       {restored.data.candidates.length > 1 ? (
         <nav className="candidate-tabs" aria-label="现象候选">
           {restored.data.candidates.map((item, index) => (
-            <button type="button" key={item.candidateId} aria-pressed={item.candidateId === selected.candidateId} onClick={() => setSelectedId(item.candidateId)}>候选 {index + 1}</button>
+            <button className="qx-btn qx-btn--ghost" type="button" key={item.candidateId} aria-pressed={item.candidateId === selected.candidateId} onClick={() => setSelectedId(item.candidateId)}>候选 {index + 1}</button>
           ))}
         </nav>
       ) : null}
@@ -252,10 +252,10 @@ export function PhenomenonWorkspace({ taskId }: { readonly taskId: string }) {
           {selected.missingInformation.length ? <p>仍缺：{selected.missingInformation.join('、')}</p> : null}
           <p>来源追溯：{selected.sourceTraceability === 'traceable' ? '可追溯' : '不完整'}</p>
         </section>
-        <button type="submit" disabled={confirmation.isPending || !phenomenon.trim()}>{confirmation.isPending ? '正在确认…' : '确认这个现象'}</button>
+        <button className="qx-btn qx-btn--primary" type="submit" disabled={confirmation.isPending || !phenomenon.trim()}>{confirmation.isPending ? '正在确认…' : '确认这个现象'}</button>
         {confirmation.isError ? <p role="alert">确认失败，修改内容仍保留在页面中。</p> : null}
         <div className="next-step-gate">
-          <button type="button" disabled>进入理论匹配</button>
+          <button className="qx-btn qx-btn--ghost" type="button" disabled>进入理论匹配</button>
           <p>确认现象后才能进入理论匹配</p>
         </div>
       </form>

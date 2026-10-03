@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -170,12 +170,18 @@ describe('ResearchAgentConversationPage', () => {
 
     const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     const source = within(agent).getByRole('button', { name: '查看来源 1：产品研究.pdf' })
-    expect(source).toHaveTextContent('[1]')
+    expect(source).toHaveTextContent('1')
     expect(agent).not.toHaveTextContent('material:document-owned')
     expect(within(agent).getByRole('status', { name: '本轮证据来源' })).toHaveTextContent('知识库资料 1')
     expect(within(agent).getByRole('status', { name: '本轮证据来源' })).not.toHaveTextContent('你的研究材料')
+    source.focus()
     fireEvent.click(source)
 
+    const sourceDetails = await screen.findByRole('region', { name: '依据' })
+    expect(sourceDetails).toHaveTextContent('已有资料支持这一结论。')
+    expect(sourceDetails).toHaveFocus()
+    expect(within(sourceDetails).getByRole('link', { name: '打开资料原文' })).toHaveAttribute('href', '/library?kb_id=library-owned&document_id=document-owned&segment_id=segment-owned')
+    fireEvent.click(screen.getByRole('button', { name: '依据' }))
     const panel = await screen.findByRole('region', { name: '研究面板' })
     const library = within(panel).getByRole('group', { name: '知识库' })
     expect(library).toHaveTextContent('产品研究.pdf')
@@ -183,6 +189,8 @@ describe('ResearchAgentConversationPage', () => {
     expect(within(panel).getByRole('group', { name: '用户文件' })).not.toHaveTextContent('产品研究.pdf')
     fireEvent.click(within(library).getByRole('button', { name: /产品研究.pdf/ }))
     expect(await screen.findByRole('link', { name: '打开资料原文' })).toHaveAttribute('href', '/library?kb_id=library-owned&document_id=document-owned&segment_id=segment-owned')
+    fireEvent.click(screen.getByRole('button', { name: '关闭研究面板' }))
+    expect(source).toHaveFocus()
   })
 
   it('opens standalone history from the mobile entry', async () => {
@@ -203,20 +211,19 @@ describe('ResearchAgentConversationPage', () => {
     const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     const intro = within(agent).getByRole('dialog', { name: '深入研究介绍' })
     expect(within(intro).getByRole('heading', { name: '深入研究' })).toBeVisible()
-    expect(within(intro).getByText('让 Agent 多轮检索知识库与网页，整理出一份带证据的研究结果。')).toBeVisible()
+    expect(within(intro).getByText('检索你的资料与网页，核对来源，整理成有依据的研究结果。')).toBeVisible()
 
     fireEvent.click(within(intro).getByRole('button', { name: '稍后再说' }))
     expect(within(agent).queryByRole('dialog', { name: '深入研究介绍' })).not.toBeInTheDocument()
 
-    fireEvent.click(within(agent).getByRole('button', { name: '选择 Agent 模式' }))
-    fireEvent.click(within(agent).getByRole('menuitemradio', { name: /深入研究/ }))
+    fireEvent.click(within(agent).getByRole('tab', { name: 'Research' }))
     expect(within(agent).queryByRole('dialog', { name: '深入研究介绍' })).not.toBeInTheDocument()
 
     cleanup()
     renderPage('user-agent-second')
     const secondAgent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     expect(within(secondAgent).getByRole('dialog', { name: '深入研究介绍' })).toBeVisible()
-    await vi.advanceTimersByTimeAsync(5000)
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
     expect(within(secondAgent).queryByRole('dialog', { name: '深入研究介绍' })).not.toBeInTheDocument()
   })
 
@@ -225,45 +232,43 @@ describe('ResearchAgentConversationPage', () => {
     renderPage()
 
     const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
-    const addButton = within(agent).getByRole('button', { name: '添加研究材料' })
+    const addButton = within(agent).getByRole('button', { name: '添加附件' })
     fireEvent.click(addButton)
 
-    const menu = within(agent).getByRole('menu', { name: '添加研究材料' })
+    const menu = within(agent).getByRole('menu', { name: '添加附件' })
     expect(within(menu).getByRole('menuitem', { name: '上传文件' })).toBeVisible()
     expect(within(menu).getByRole('menuitem', { name: '从研究材料添加' })).toBeVisible()
-    expect(within(menu).getByRole('menuitem', { name: '查看材料库' })).toBeVisible()
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(2)
+    expect(within(agent).queryByRole('button', { name: '查看材料库' })).not.toBeInTheDocument()
 
     fireEvent.keyDown(document, { key: 'Escape' })
-    expect(within(agent).queryByRole('menu', { name: '添加研究材料' })).not.toBeInTheDocument()
+    expect(within(agent).queryByRole('menu', { name: '添加附件' })).not.toBeInTheDocument()
     expect(addButton).toHaveFocus()
   })
 
-  it('selects deep research from the composer mode menu and returns focus on Escape', async () => {
+  it('switches Chat and Research from the top tabs with keyboard support', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [] })))
     renderPage()
-
     const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
-    const modeButton = within(agent).getByRole('button', { name: '选择 Agent 模式' })
-    expect(modeButton).toHaveTextContent('标准')
-
-    fireEvent.click(modeButton)
-    const menu = within(agent).getByRole('menu', { name: '选择 Agent 模式' })
-    fireEvent.click(within(menu).getByRole('menuitemradio', { name: /深入研究/ }))
-
-    expect(modeButton).toHaveTextContent('深入研究')
-    const composer = within(agent).getByRole('textbox', { name: '问 Everplain' }).closest('.research-agent-composer')
-    expect(composer).toHaveClass('is-awaiting-first-message')
-    expect(within(agent).queryByRole('menu', { name: '选择 Agent 模式' })).not.toBeInTheDocument()
-
-    fireEvent.click(modeButton)
-    fireEvent.keyDown(document, { key: 'Escape' })
-    expect(within(agent).queryByRole('menu', { name: '选择 Agent 模式' })).not.toBeInTheDocument()
-    expect(modeButton).toHaveFocus()
+    const chatTab = within(agent).getByRole('tab', { name: 'Chat' })
+    const researchTab = within(agent).getByRole('tab', { name: 'Research' })
+    expect(chatTab).toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(researchTab)
+    expect(researchTab).toHaveAttribute('aria-selected', 'true')
+    const composer = within(agent).getByRole('textbox', { name: '问 Everplain' }).closest('form')
+    expect(agent).toHaveAttribute('data-empty', 'true')
+    expect(composer).toHaveAttribute('data-mode', 'deep-research')
+    fireEvent.keyDown(researchTab, { key: 'ArrowLeft' })
+    expect(chatTab).toHaveFocus()
+    expect(chatTab).toHaveAttribute('aria-selected', 'true')
+    fireEvent.keyDown(chatTab, { key: 'ArrowRight' })
+    expect(researchTab).toHaveFocus()
+    expect(researchTab).toHaveAttribute('aria-selected', 'true')
 
     const input = within(agent).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(input, { target: { value: '比较为何持续发生？' } })
     fireEvent.submit(input.closest('form') as HTMLFormElement)
-    await waitFor(() => expect(composer).not.toHaveClass('is-awaiting-first-message'))
+    await waitFor(() => expect(agent).toHaveAttribute('data-empty', 'false'))
   })
 
   it('keeps a completed deep-research answer in the standard conversation flow', async () => {
@@ -288,14 +293,13 @@ describe('ResearchAgentConversationPage', () => {
     renderPage()
 
     const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
-    fireEvent.click(within(agent).getByRole('button', { name: '选择 Agent 模式' }))
-    fireEvent.click(within(agent).getByRole('menuitemradio', { name: /深入研究/ }))
+    fireEvent.click(within(agent).getByRole('tab', { name: 'Research' }))
     const input = within(agent).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(input, { target: { value: completed.turns[0].user.content } })
     fireEvent.submit(input.closest('form') as HTMLFormElement)
 
     const resultCard = await within(agent).findByRole('region', { name: '研究结论' })
-    expect(within(resultCard).getByRole('heading', { name: '已经整理好一份带证据的结论' })).toBeVisible()
+    expect(within(resultCard).getByRole('heading', { name: '研究结论' })).toBeVisible()
     // 卡片摘一句结论，正文照旧留在对话流里，两边不重复。
     expect(within(resultCard).getByText(/^这是一段需要正常换行展示的深入研究正文.+…$/)).toBeVisible()
     expect(within(resultCard).queryByText(body)).not.toBeInTheDocument()
@@ -304,7 +308,7 @@ describe('ResearchAgentConversationPage', () => {
     expect(within(resultCard).getByRole('button', { name: '下载 PDF' })).toBeVisible()
     expect(within(resultCard).queryByText('拆解研究问题')).not.toBeInTheDocument()
     expect(within(resultCard).getByRole('button', { name: '继续形成研究' })).toBeEnabled()
-    expect(within(agent).getByRole('heading', { name: '研究结论' })).toBeVisible()
+    expect(within(agent.querySelector('[data-role="assistant-response"]') as HTMLElement).getByRole('heading', { name: '研究结论' })).toBeVisible()
     expect(within(agent).getByText(body)).toBeVisible()
   })
 
@@ -321,8 +325,7 @@ describe('ResearchAgentConversationPage', () => {
     renderPage()
 
     const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
-    fireEvent.click(within(agent).getByRole('button', { name: '选择 Agent 模式' }))
-    fireEvent.click(within(agent).getByRole('menuitemradio', { name: /深入研究/ }))
+    fireEvent.click(within(agent).getByRole('tab', { name: 'Research' }))
     const input = within(agent).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(input, { target: { value: '研究社区互助的变化。' } })
     fireEvent.submit(input.closest('form') as HTMLFormElement)
@@ -350,6 +353,7 @@ describe('ResearchAgentConversationPage', () => {
     renderPage()
 
     const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
+    fireEvent.click(within(agent).getByRole('button', { name: '更多对话操作' }))
     const webSearchButton = within(agent).getByRole('button', { name: '联网搜索' })
     expect(webSearchButton).toHaveAttribute('aria-pressed', 'true')
     expect(webSearchButton).toHaveTextContent('联网已开启')
@@ -392,15 +396,15 @@ describe('ResearchAgentConversationPage', () => {
     )
 
     const resultCard = await screen.findByRole('region', { name: '研究结论' })
-    expect(within(resultCard).getByRole('heading', { name: '已经整理好一份带证据的结论' })).toBeVisible()
+    expect(within(resultCard).getByRole('heading', { name: '研究结论' })).toBeVisible()
     expect(within(resultCard).getByText('用时 4 分 27 秒')).toBeVisible()
-    expect(within(resultCard).getByText('知识库 7 条')).toBeVisible()
+    expect(within(resultCard).getByText('知识库 7 条 · 网页资料 1 条')).toBeVisible()
     expect(within(resultCard).queryByText('拆解研究问题')).not.toBeInTheDocument()
     fireEvent.click(within(resultCard).getByRole('button', { name: '继续形成研究' }))
     await waitFor(() => expect(screen.getByLabelText('当前测试路径')).toHaveTextContent('/research/new?conversation_id=conversation-deep-research-reopen&knowledge_release_id=release-pinned'))
     expect(within(resultCard).getByRole('button', { name: '下载 Word' })).toBeVisible()
     // 输入器也要留在深入研究，不能悄悄退回标准。
-    expect(screen.getByRole('button', { name: '选择 Agent 模式' })).toHaveTextContent('深入研究')
+    expect(screen.getByRole('tab', { name: 'Research' })).toHaveAttribute('aria-selected', 'true')
   })
 
   it.each(['standard', 'deep_research'])('prepares an entry through the standard tool flow from %s before navigating', async (mode) => {
@@ -522,7 +526,8 @@ describe('ResearchAgentConversationPage', () => {
     const historyRail = screen.getByRole('region', { name: 'Agent 对话记录' })
     expect(historyRail).toBeVisible()
     expect(within(historyRail).getByRole('button', { name: '开始新对话' })).toBeVisible()
-    expect(screen.getByRole('button', { name: '打开研究记录' })).toHaveClass('mobile-only')
+    expect(screen.getByRole('button', { name: '打开研究记录' })).toHaveClass('cv-layout__history-button')
+    fireEvent.click(screen.getByRole('button', { name: '更多对话操作' }))
     expect(screen.getByRole('button', { name: '研究面板' })).toBeVisible()
   })
 
@@ -660,8 +665,8 @@ describe('ResearchAgentConversationPage', () => {
 
     const agent = await screen.findByRole('complementary', { name: '研究 Agent 对话栏' })
     expect(within(agent).queryByRole('button', { name: '研究材料' })).not.toBeInTheDocument()
-    fireEvent.click(within(agent).getByRole('button', { name: '添加研究材料' }))
-    fireEvent.click(within(agent).getByRole('menuitem', { name: '查看材料库' }))
+    fireEvent.click(within(agent).getByRole('button', { name: '添加附件' }))
+    fireEvent.click(within(agent).getByRole('button', { name: '查看材料库' }))
     expect(await screen.findByRole('dialog', { name: '研究材料' })).toBeVisible()
     embedded.unmount()
 
@@ -707,7 +712,7 @@ describe('ResearchAgentConversationPage', () => {
     )
 
     const agent = await screen.findByRole('complementary', { name: '研究 Agent 对话栏' })
-    fireEvent.click(within(agent).getByRole('button', { name: '添加研究材料' }))
+    fireEvent.click(within(agent).getByRole('button', { name: '添加附件' }))
     fireEvent.click(within(agent).getByRole('menuitem', { name: '从研究材料添加' }))
     const picker = await screen.findByRole('dialog', { name: '选择本轮材料' })
     fireEvent.click(await within(picker).findByRole('checkbox', { name: /社区访谈\.docx/ }))
@@ -757,9 +762,9 @@ describe('ResearchAgentConversationPage', () => {
       </MemoryRouter>,
     )
     const agent = await screen.findByRole('complementary', { name: '研究 Agent 对话栏' })
-    fireEvent.click(within(agent).getByRole('button', { name: '添加研究材料' }))
+    fireEvent.click(within(agent).getByRole('button', { name: '添加附件' }))
     fireEvent.click(within(agent).getByRole('menuitem', { name: '上传文件' }))
-    const fileInput = rendered.container.querySelector<HTMLInputElement>('.research-agent-composer__file-input')
+    const fileInput = rendered.container.querySelector<HTMLInputElement>('.conversation-composer input[type="file"]')
     expect(fileInput).not.toBeNull()
     fireEvent.change(fileInput!, {
       target: { files: [new File(['field notes'], '田野笔记.txt', { type: 'text/plain' })] },
@@ -830,12 +835,14 @@ describe('ResearchAgentConversationPage', () => {
     )
 
     const agent = await screen.findByRole('complementary', { name: '研究 Agent 对话栏' })
-    expect(within(agent).getByText('研究材料')).toBeVisible()
+    expect(within(agent).getByRole('status', { name: '本轮证据来源' })).toHaveTextContent('你的研究材料 1')
     fireEvent.click(within(agent).getByRole('button', { name: '查看证据：社区访谈.docx' }))
+    expect(await screen.findByRole('region', { name: '依据' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '依据' }))
     const sources = await screen.findByRole('region', { name: '研究面板' })
     fireEvent.click(within(sources).getByRole('button', { name: /社区访谈\.docx/ }))
     const basis = await screen.findByRole('region', { name: '依据' })
-    expect(within(basis).getByText('第 4 页 · 第 12 段')).toBeVisible()
+    expect(within(basis).getByText('引用位置：第 4 页 · 第 12 段')).toBeVisible()
     fireEvent.click(within(basis).getByRole('button', { name: '打开原文位置' }))
     const materials = await screen.findByRole('dialog', { name: '研究材料' })
     expect(await within(materials).findByText('受访者描述了工作时间的变化。')).toBeVisible()
@@ -870,6 +877,8 @@ describe('ResearchAgentConversationPage', () => {
     const agent = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     expect(within(agent).getByRole('status', { name: '本轮证据来源' })).toHaveTextContent('公开网页')
     fireEvent.click(within(agent).getByRole('button', { name: '查看证据：高校毕业生就业政策' }))
+    expect(await screen.findByRole('region', { name: '依据' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '依据' }))
     const sources = await screen.findByRole('region', { name: '研究面板' })
     fireEvent.click(within(sources).getByRole('button', { name: /高校毕业生就业政策/ }))
 
@@ -942,6 +951,8 @@ describe('ResearchAgentConversationPage', () => {
 
     const agent = await screen.findByRole('complementary', { name: '研究 Agent 对话栏' })
     fireEvent.click(within(agent).getByRole('button', { name: '查看证据：已删除的访谈.docx' }))
+    expect(await screen.findByRole('region', { name: '依据' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '依据' }))
     const sources = await screen.findByRole('region', { name: '研究面板' })
     fireEvent.click(within(sources).getByRole('button', { name: /已删除的访谈.docx/ }))
     const basis = await screen.findByRole('region', { name: '依据' })
@@ -1004,13 +1015,15 @@ describe('ResearchAgentConversationPage', () => {
     const agent = await screen.findByRole('complementary', { name: '研究 Agent 对话栏' })
     expect(within(agent).getByText(leakedAnswer)).toBeVisible()
     fireEvent.click(within(agent).getByRole('button', { name: '查看证据：待删除访谈.docx' }))
+    expect(await screen.findByRole('region', { name: '依据' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '依据' }))
     const sources = await screen.findByRole('region', { name: '研究面板' })
     fireEvent.click(within(sources).getByRole('button', { name: /待删除访谈\.docx/ }))
     const basis = await screen.findByRole('region', { name: '依据' })
     expect(within(basis).getByText(excerpt)).toBeVisible()
 
-    fireEvent.click(within(agent).getByRole('button', { name: '添加研究材料' }))
-    fireEvent.click(within(agent).getByRole('menuitem', { name: '查看材料库' }))
+    fireEvent.click(within(agent).getByRole('button', { name: '添加附件' }))
+    fireEvent.click(within(agent).getByRole('button', { name: '查看材料库' }))
     const materials = await screen.findByRole('dialog', { name: '研究材料' })
     await within(materials).findByRole('button', { name: '查看材料：待删除访谈.docx' })
     fireEvent.click(within(materials).getByRole('button', { name: /^删除材料：/ }))
@@ -1085,8 +1098,8 @@ describe('ResearchAgentConversationPage', () => {
       expect(await within(agent).findByText(leakedAnswer)).toBeVisible()
       expect(await within(agent).findByRole('button', { name: '查看证据：流式访谈.txt' })).toBeVisible()
 
-      fireEvent.click(within(agent).getByRole('button', { name: '添加研究材料' }))
-      fireEvent.click(within(agent).getByRole('menuitem', { name: '查看材料库' }))
+      fireEvent.click(within(agent).getByRole('button', { name: '添加附件' }))
+      fireEvent.click(within(agent).getByRole('button', { name: '查看材料库' }))
       const materials = await screen.findByRole('dialog', { name: '研究材料' })
       await within(materials).findByRole('button', { name: '查看材料：流式访谈.txt' })
       fireEvent.click(within(materials).getByRole('button', { name: /^删除材料：/ }))
@@ -1224,13 +1237,13 @@ describe('ResearchAgentConversationPage', () => {
     const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     expect(region).not.toHaveTextContent('未审核')
     const knowledgeCard = await within(region).findByRole('region', { name: '知识库建议' })
-    const graphCard = within(region).getByRole('region', { name: '知识图谱建议' })
+    // Both version-pinned destinations share the new knowledge handoff card.
     expect(within(knowledgeCard).getByText(citation.label)).toBeVisible()
     expect(within(knowledgeCard).getByRole('link', { name: '打开知识条目' })).toHaveAttribute(
       'href',
       '/knowledge/D5%3AE087?knowledge_release_id=release-pinned-knowledge&return_to=%2Fagent%3Fconversation_id%3Dconversation-knowledge-handoffs%26knowledge_release_id%3Drelease-pinned-knowledge',
     )
-    expect(within(graphCard).getByRole('link', { name: '查看知识节点' })).toHaveAttribute(
+    expect(within(knowledgeCard).getByRole('link', { name: '查看知识节点' })).toHaveAttribute(
       'href',
       '/knowledge/graph?knowledge_release_id=release-pinned-knowledge&center=D5%3AE087&query=%E9%9B%86%E4%BD%93%E7%9F%A5%E8%AF%86%E4%B8%8E%E7%BE%A4%E4%BD%93%E8%AE%A4%E7%9F%A5',
     )
@@ -1332,6 +1345,8 @@ describe('ResearchAgentConversationPage', () => {
     const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
     const citationButtons = await within(region).findAllByRole('button', { name: `查看证据：${citation.label}` })
     fireEvent.click(citationButtons[0])
+    expect(await screen.findByRole('region', { name: '依据' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '依据' }))
     let sources = await screen.findByRole('region', { name: '研究面板' })
     fireEvent.click(within(sources).getByRole('button', { name: /社会资本与邻里互助/ }))
 
@@ -1346,6 +1361,8 @@ describe('ResearchAgentConversationPage', () => {
     )
 
     fireEvent.click(citationButtons[1])
+    expect(await screen.findByRole('region', { name: '依据' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '依据' }))
     sources = await screen.findByRole('region', { name: '研究面板' })
     fireEvent.click(within(sources).getByRole('button', { name: /社会资本与邻里互助/ }))
     basis = await screen.findByRole('region', { name: '依据' })
@@ -1355,6 +1372,8 @@ describe('ResearchAgentConversationPage', () => {
     )
 
     fireEvent.click(citationButtons[2])
+    expect(await screen.findByRole('region', { name: '依据' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '依据' }))
     sources = await screen.findByRole('region', { name: '研究面板' })
     fireEvent.click(within(sources).getByRole('button', { name: /社会资本与邻里互助/ }))
     basis = await screen.findByRole('region', { name: '依据' })
@@ -1362,26 +1381,14 @@ describe('ResearchAgentConversationPage', () => {
     expect(within(basis).getByText('当前回合的知识版本尚未确认，暂不提供跳转。')).toBeVisible()
   })
 
-  it('starts the first assistant transition from the personal companion', async () => {
+  it('keeps the personal companion identity in the first completed assistant response', async () => {
     const conversation = conversationFixture()
-    const startViewTransition = vi.fn((update: () => void) => {
-      update()
-      return {
-        updateCallbackDone: Promise.resolve(),
-        ready: Promise.resolve(),
-        finished: Promise.resolve(),
-        skipTransition: vi.fn(),
-      }
-    })
-    Object.defineProperty(document, 'startViewTransition', {
-      configurable: true,
-      value: startViewTransition,
-    })
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => (
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => (
       urlFor(input).pathname === '/api/agent/turns'
         ? streamResponse(conversation)
         : json({ items: [] })
-    )))
+    ))
+    vi.stubGlobal('fetch', fetchMock)
     renderPage()
 
     const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
@@ -1390,9 +1397,10 @@ describe('ResearchAgentConversationPage', () => {
     fireEvent.change(textbox, { target: { value: conversation.title } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
-    await waitFor(() => expect(startViewTransition).toHaveBeenCalledTimes(1))
-    const assistantMark = await within(region).findByLabelText('Everplain')
-    expect(assistantMark.querySelector('[data-research-agent-bot]')).toBeInTheDocument()
+    expect(await within(region).findByText(conversation.turns[0].assistant.content)).toBeVisible()
+    expect(fetchMock.mock.calls.filter(([request]) => urlFor(request).pathname === '/api/agent/turns')).toHaveLength(1)
+    expect(region.querySelector('[data-role="assistant-response"] [data-avatar="cheng"]')).toBeInTheDocument()
+    expect(within(region).getByRole('button', { name: '复制回答' })).toBeEnabled()
   })
 
   it('sends independent Agent turns with the agent workspace contract', async () => {
@@ -1607,7 +1615,7 @@ describe('ResearchAgentConversationPage', () => {
     const textbox = within(region).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(textbox, { target: { value: conversation.title } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
-    expect(await within(region).findByText('先检索。', { selector: '.new-research__markdown p' })).toBeVisible()
+    expect(await within(region).findByText('先检索。', { selector: '.cv-turn__prose p' })).toBeVisible()
     expect(within(region).getByText('再核对“关系机制。”', { selector: 'p' })).toBeVisible()
     expect(within(region).getByText('最后比较！', { selector: 'p' })).toBeVisible()
     expect(within(region).getByText('还有疑问？', { selector: 'p' })).toBeVisible()
@@ -1668,8 +1676,8 @@ describe('ResearchAgentConversationPage', () => {
 
     const basis = await screen.findByRole('region', { name: '依据' })
     expect(within(basis).getByText('检索知识库')).toBeVisible()
-    expect(within(basis).getByText(/社会资本条目/)).toBeVisible()
-    expect(within(basis).getByText(/互惠规范会影响社区互助/)).toBeVisible()
+    expect(within(basis).getByText('社会资本条目', { selector: 'strong' })).toBeVisible()
+    expect(within(basis).getByText('互惠规范会影响社区互助。', { selector: 'p' })).toBeVisible()
   })
 
   it('shows a live research phase and restores completed work after the user stops', async () => {
@@ -1781,8 +1789,7 @@ describe('ResearchAgentConversationPage', () => {
     renderPage('user-deep-stop')
 
     const region = await screen.findByRole('region', { name: 'Everplain Agent 对话' })
-    fireEvent.click(within(region).getByRole('button', { name: '选择 Agent 模式' }))
-    fireEvent.click(within(region).getByRole('menuitemradio', { name: /深入研究/ }))
+    fireEvent.click(within(region).getByRole('tab', { name: 'Research' }))
     const textbox = within(region).getByRole('textbox', { name: '问 Everplain' })
     fireEvent.change(textbox, { target: { value: '研究青年孤独。' } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
@@ -1820,13 +1827,54 @@ describe('ResearchAgentConversationPage', () => {
   })
 })
 
+it.each(['standalone', 'embedded'] as const)('shows model and effort outside the attachment menu in %s conversation', async surface => {
+  const requests: Record<string, unknown>[] = []
+  const saved = conversationFixture()
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = urlFor(input).pathname
+    if (path === '/api/agent/models') return json({ runtime_mode: 'base', items: [{ model_id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoning_efforts: ['low', 'medium', 'high'], default_reasoning_effort: 'medium' }] })
+    if (path === '/api/agent/turns') { requests.push(JSON.parse(init?.body as string)); return streamResponse(saved) }
+    return json({ items: [] })
+  }))
+  render(<MemoryRouter><ResearchAgentConversationPage userId="toolbar-owner" embedded={surface === 'embedded'} workspace={surface === 'embedded' ? 'research' : undefined} /></MemoryRouter>)
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  const composer = input.closest('form')!
+  const summary = await within(composer).findByRole('button', { name: /GPT 6 Luna · 中/ })
+  expect(summary).toBeVisible()
+  expect(within(composer).queryByRole('slider')).not.toBeInTheDocument()
+  fireEvent.click(summary)
+  expect(within(composer).getByRole('radio', { name: 'GPT 6 Luna' })).toBeVisible()
+  const slider = within(composer).getByRole('slider', { name: '思考强度' })
+  expect(slider).toHaveAttribute('aria-valuemax', '2')
+  fireEvent.keyDown(slider, { key: 'End' })
+  fireEvent.keyDown(document, { key: 'Escape' })
+  expect(summary).toHaveAttribute('aria-label', '模型与思考强度：GPT 6 Luna · 高')
+  fireEvent.click(screen.getByRole('button', { name: '更多对话操作' }))
+  const webSearch = screen.getByRole('button', { name: '联网搜索' })
+  expect(webSearch).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(webSearch)
+  expect(webSearch).toHaveAttribute('aria-pressed', 'false')
+  fireEvent.click(screen.getByRole('button', { name: '更多对话操作' }))
+  fireEvent.click(within(composer).getByRole('button', { name: '添加附件' }))
+  const attachments = within(composer).getByRole('menu', { name: '添加附件' })
+  expect(within(attachments).getAllByRole('menuitem')).toHaveLength(2)
+  expect(within(attachments).queryByRole('combobox')).not.toBeInTheDocument()
+  expect(within(attachments).queryByRole('slider')).not.toBeInTheDocument()
+  expect(within(attachments).queryByRole('button', { name: '联网搜索' })).not.toBeInTheDocument()
+  fireEvent.click(within(composer).getByRole('button', { name: '添加附件' }))
+  fireEvent.change(input, { target: { value: saved.title } })
+  fireEvent.submit(composer)
+  await waitFor(() => expect(requests).toHaveLength(1))
+  expect(requests[0]).toMatchObject({ model_id: 'gpt-6-luna', reasoning_effort: 'high', web_search: false })
+})
+
 it('opens the native file chooser from the standalone composer without navigating', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => json({ items: [] })))
   renderPage()
   await screen.findByRole('region', { name: 'Everplain Agent 对话' })
   const chooser = document.querySelector<HTMLInputElement>('input[type="file"]')!
   const click = vi.spyOn(chooser, 'click')
-  fireEvent.click(screen.getByRole('button', { name: '添加研究材料' }))
+  fireEvent.click(screen.getByRole('button', { name: '添加附件' }))
   fireEvent.click(screen.getByRole('menuitem', { name: '上传文件' }))
   expect(click).toHaveBeenCalledOnce()
   expect(screen.getByRole('textbox', { name: '问 Everplain' })).toBeVisible()
@@ -1847,6 +1895,7 @@ it('starts a project conversation from the standalone Agent folder button', asyn
   }))
   renderPage()
   fireEvent.click(await screen.findByRole('button', { name: '在社区研究中新建对话' }))
+  fireEvent.click(screen.getByRole('tab', { name: 'Research' }))
   expect(screen.getByRole('button', { name: '对话所属项目' })).toHaveTextContent('社区研究')
   const input = screen.getByRole('textbox', { name: '问 Everplain' })
   await waitFor(() => expect(input).toHaveFocus())
@@ -1864,6 +1913,7 @@ it('keeps an unsent draft when the composer switches between project and indepen
   await screen.findByRole('button', { name: '在社区研究中新建对话' })
   const input = screen.getByRole('textbox', { name: '问 Everplain' })
   fireEvent.change(input, { target: { value: '保留这段未发送的问题' } })
+  fireEvent.click(screen.getByRole('tab', { name: 'Research' }))
   const projectSelect = screen.getByRole('button', { name: '对话所属项目' })
   fireEvent.click(projectSelect)
   fireEvent.click(screen.getByRole('menuitemradio', { name: '社区研究' }))
@@ -1878,13 +1928,20 @@ it('keeps an unsent draft when the composer switches between project and indepen
 it('opens project creation in a dismissible sidebar popover', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
   renderPage()
-  fireEvent.click(await screen.findByRole('button', { name: '新建项目' }))
+  const trigger = await screen.findByRole('button', { name: '新建项目' })
+  fireEvent.click(trigger)
   const dialog = screen.getByRole('dialog', { name: '新建项目' })
   expect(within(dialog).getByRole('textbox', { name: '项目名称' })).toHaveFocus()
   expect(dialog).not.toHaveAttribute('aria-modal', 'true')
-  expect(dialog.closest('.app-frame')).not.toBeNull()
+  expect(dialog.closest('.cv-history')).not.toBeNull()
   fireEvent.click(within(dialog).getByRole('button', { name: '取消' }))
   expect(screen.queryByRole('dialog', { name: '新建项目' })).toBeNull()
+  expect(trigger).toHaveFocus()
+  fireEvent.click(trigger)
+  expect(within(screen.getByRole('dialog', { name: '新建项目' })).getByRole('textbox', { name: '项目名称' })).toHaveFocus()
+  fireEvent.keyDown(within(screen.getByRole('dialog', { name: '新建项目' })).getByRole('textbox', { name: '项目名称' }), { key: 'Escape' })
+  expect(screen.queryByRole('dialog', { name: '新建项目' })).toBeNull()
+  expect(trigger).toHaveFocus()
 })
 
 it.each([false, true])('restores a standard research Ask including focused discussion (%s)', async (focused) => {
@@ -1899,7 +1956,7 @@ it.each([false, true])('restores a standard research Ask including focused discu
   }))
   render(<MemoryRouter><ResearchAgentConversationPage userId="u" embedded workspace="research" taskId="t" conversationId={conversation.conversation_id} enableResearchGuidance discussion={focused ? { title: '研究对象', content: '大学生', sectionId: null } : null} /></MemoryRouter>)
   const ask = await screen.findByRole('region', { name: '研究下一步' })
-  expect(ask).toHaveClass('research-flow-card')
+  expect(ask).toHaveClass('cv-research-flow')
   fireEvent.click(within(ask).getByRole('radio', { name: /社团成员/ }))
   await waitFor(() => expect(requests).toHaveLength(1))
   expect(requests[0]).toMatchObject({ mode: 'standard', workspace: 'research', task_id: 't' })
@@ -2114,17 +2171,23 @@ it('keeps one embedded research panel toggle closed until clicked', async () => 
   const conversation = conversationFixture({ citations: [{ citation_id: 'panel-source', kind: 'knowledge', label: '社区研究文献', excerpt: '研究依据' }] })
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => urlFor(input).pathname === `/api/agent/conversations/${conversation.conversation_id}` ? json(conversation) : json({ items: [] })))
   render(<MemoryRouter><ResearchAgentConversationPage embedded userId="u" workspace="research" taskId="task-1" conversationId={conversation.conversation_id} /></MemoryRouter>)
-  const actions = await screen.findByRole('banner', { name: '对话操作' })
-  expect(within(actions).getAllByRole('button')).toHaveLength(1)
-  const toggle = within(actions).getByRole('button', { name: '研究面板' })
+  const agent = await screen.findByRole('complementary', { name: '研究 Agent 对话栏' })
+  const actions = within(agent).getByRole('button', { name: '更多对话操作' })
+  expect(within(agent).getAllByRole('button', { name: '更多对话操作' })).toHaveLength(1)
+  fireEvent.click(actions)
+  const menu = within(agent).getByRole('group', { name: '更多对话操作' })
+  expect(within(menu).getByRole('button', { name: '联网搜索' })).toBeVisible()
+  expect(within(menu).getAllByRole('button', { name: '研究面板' })).toHaveLength(1)
+  const toggle = within(menu).getByRole('button', { name: '研究面板' })
   expect(toggle).toHaveAttribute('aria-expanded', 'false')
   expect(screen.queryByRole('complementary', { name: '研究面板' })).not.toBeInTheDocument()
   fireEvent.click(toggle)
   const panel = screen.getByRole('complementary', { name: '研究面板' })
-  expect(panel).toHaveClass('research-context-rail--sections')
+  expect(panel).toHaveClass('cv-source-panel')
   expect(within(panel).getByText('社区研究文献')).toBeVisible()
-  expect(toggle).toHaveAttribute('aria-expanded', 'true')
-  fireEvent.click(toggle)
+  fireEvent.click(actions)
+  expect(within(agent).getByRole('button', { name: '研究面板' })).toHaveAttribute('aria-expanded', 'true')
+  fireEvent.click(within(agent).getByRole('button', { name: '研究面板' }))
   expect(screen.queryByRole('complementary', { name: '研究面板' })).not.toBeInTheDocument()
 })
 

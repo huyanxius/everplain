@@ -1028,6 +1028,79 @@
         "title": "AgentMessageResponse",
         "type": "object"
       },
+      "AgentModelCatalogResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AgentModelChoiceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "runtime_mode": {
+            "enum": [
+              "mock",
+              "base",
+              "sft"
+            ],
+            "title": "Runtime Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "runtime_mode"
+        ],
+        "title": "AgentModelCatalogResponse",
+        "type": "object"
+      },
+      "AgentModelChoiceResponse": {
+        "properties": {
+          "default_reasoning_effort": {
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "title": "Default Reasoning Effort",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "reasoning_efforts": {
+            "items": {
+              "enum": [
+                "none",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ],
+              "type": "string"
+            },
+            "title": "Reasoning Efforts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "model_id",
+          "label",
+          "reasoning_efforts",
+          "default_reasoning_effort"
+        ],
+        "title": "AgentModelChoiceResponse",
+        "type": "object"
+      },
       "AgentProfileResponse": {
         "properties": {
           "avatar_id": {
@@ -1056,6 +1129,11 @@
           "setup_step": {
             "title": "Setup Step",
             "type": "integer"
+          },
+          "soul_text": {
+            "default": "",
+            "title": "Soul Text",
+            "type": "string"
           },
           "speaking_style": {
             "title": "Speaking Style",
@@ -1166,6 +1244,18 @@
               }
             ],
             "title": "Setup Step"
+          },
+          "soul_text": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soul Text"
           },
           "speaking_style": {
             "anyOf": [
@@ -1603,6 +1693,7 @@
         "type": "object"
       },
       "AgentTurnRequest": {
+        "additionalProperties": false,
         "properties": {
           "conversation_id": {
             "anyOf": [
@@ -1703,6 +1794,38 @@
             ],
             "title": "Mode",
             "type": "string"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Effort"
           },
           "reference_knowledge_base_id": {
             "anyOf": [
@@ -4447,6 +4570,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
           "output_tokens": {
             "minimum": 0.0,
             "title": "Output Tokens",
@@ -4471,15 +4605,118 @@
       },
       "CreditPricingResponse": {
         "properties": {
+          "credits_per_usd": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credits Per Usd"
+          },
+          "fx_as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx As Of"
+          },
+          "fx_cny_per_usd_micro": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Cny Per Usd Micro"
+          },
+          "fx_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Snapshot Id"
+          },
+          "fx_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Source"
+          },
           "input_tokens_per_credit": {
             "minimum": 1.0,
             "title": "Input Tokens Per Credit",
             "type": "integer"
           },
+          "mode": {
+            "default": "legacy_tokens",
+            "enum": [
+              "legacy_tokens",
+              "model_rates",
+              "unconfigured"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
           "output_tokens_per_credit": {
             "minimum": 1.0,
             "title": "Output Tokens Per Credit",
             "type": "integer"
+          },
+          "points_per_cny": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Points Per Cny"
+          },
+          "price_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Version"
+          },
+          "reference_currency": {
+            "default": "USD",
+            "title": "Reference Currency",
+            "type": "string"
+          },
+          "retail_rate_ppm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retail Rate Ppm"
           }
         },
         "required": [
@@ -4526,6 +4763,24 @@
       },
       "CreditSummaryResponse": {
         "properties": {
+          "active_usage_buckets": {
+            "items": {
+              "$ref": "#/components/schemas/CreditUsageBucketResponse"
+            },
+            "title": "Active Usage Buckets",
+            "type": "array"
+          },
+          "available_balance": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Balance"
+          },
           "balance": {
             "minimum": 0.0,
             "title": "Balance",
@@ -4542,6 +4797,12 @@
             },
             "title": "Entries",
             "type": "array"
+          },
+          "frozen_points": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Frozen Points",
+            "type": "integer"
           },
           "grant_amount": {
             "minimum": 0.0,
@@ -4563,13 +4824,42 @@
             ],
             "title": "Next Cursor"
           },
+          "operations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Operations",
+            "type": "array"
+          },
           "pricing": {
             "$ref": "#/components/schemas/CreditPricingResponse"
+          },
+          "quota_status": {
+            "default": "unavailable",
+            "enum": [
+              "known",
+              "unavailable"
+            ],
+            "title": "Quota Status",
+            "type": "string"
           },
           "total_entries": {
             "minimum": 0.0,
             "title": "Total Entries",
             "type": "integer"
+          },
+          "total_granted_points": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Granted Points"
           }
         },
         "required": [
@@ -4583,6 +4873,53 @@
           "next_cursor"
         ],
         "title": "CreditSummaryResponse",
+        "type": "object"
+      },
+      "CreditUsageBucketResponse": {
+        "properties": {
+          "available_points": {
+            "minimum": 0.0,
+            "title": "Available Points",
+            "type": "integer"
+          },
+          "bucket_id": {
+            "title": "Bucket Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "kind": {
+            "enum": [
+              "subscription",
+              "top_up",
+              "welcome"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "limit_points": {
+            "exclusiveMinimum": 0.0,
+            "title": "Limit Points",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bucket_id",
+          "kind",
+          "available_points",
+          "limit_points"
+        ],
+        "title": "CreditUsageBucketResponse",
         "type": "object"
       },
       "CycleEvidenceResponse": {
@@ -5161,6 +5498,12 @@
           "provisioned_administrator_protected",
           "password_reset_invalid",
           "token_expired",
+          "credits_depleted",
+          "credit_run_in_progress",
+          "billing_budget_exceeded",
+          "billing_not_configured",
+          "billing_replay_blocked",
+          "billing_provider_error",
           "credit_code_unavailable",
           "credit_code_batch_conflict",
           "email_verification_invalid",
@@ -18189,6 +18532,57 @@
           }
         },
         "summary": "List Agent Materials",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/models": {
+      "get": {
+        "operationId": "list_agent_models",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentModelCatalogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Agent Models",
         "tags": [
           "agent"
         ]

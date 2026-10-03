@@ -61,7 +61,7 @@ function CategoryTree({
         return (
           <li key={category.nodeId}>
             <button
-              className="knowledge-tree__category"
+              className="qx-btn qx-btn--ghost knowledge-tree__category"
               type="button"
               data-active={selected || undefined}
               data-dimension-tone={tone}
@@ -158,7 +158,7 @@ export function KnowledgeCatalog({
             <section className="knowledge-tree__dimension" key={dimension.nodeId}>
               <div className="knowledge-tree__dimension-row" data-active={active || undefined} data-dimension-tone={tone}>
                 <button
-                  className="knowledge-tree__dimension-toggle"
+                  className="qx-btn qx-btn--ghost knowledge-tree__dimension-toggle"
                   type="button"
                   aria-label={`${expanded ? '收起' : '展开'} ${dimension.title}`}
                   onClick={() => toggle(dimension.nodeId)}
@@ -168,7 +168,7 @@ export function KnowledgeCatalog({
                     : <CaretRightIcon size={13} weight="bold" aria-hidden="true" />}
                 </button>
                 <button
-                  className="knowledge-tree__dimension-link"
+                  className="qx-btn qx-btn--ghost knowledge-tree__dimension-link"
                   type="button"
                   aria-current={active ? 'page' : undefined}
                   aria-label={`浏览 ${dimension.title} 目录`}

@@ -115,7 +115,10 @@ describe('AdminUsersPage', () => {
 
     const row = await screen.findByRole('row', { name: /owner@example.com/ })
     expect(within(row).getByText('部署管理员')).toBeVisible()
-    expect(within(row).getByLabelText('owner@example.com 的角色')).toBeDisabled()
+    const roleSelect = within(row).getByRole('combobox', { name: 'owner@example.com 的角色' })
+    expect(roleSelect).toBeDisabled()
+    fireEvent.click(roleSelect)
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
     expect(within(row).queryByRole('button', { name: '禁用 owner@example.com' })).not.toBeInTheDocument()
   })
 
@@ -157,6 +160,18 @@ describe('AdminUsersPage', () => {
     expect(screen.getByRole('row', { name: /member@example.com/ })).toBeVisible()
     expect(screen.queryByRole('row', { name: /owner@example.com/ })).not.toBeInTheDocument()
     expect(screen.getByText('1 位用户')).toBeVisible()
+  })
+
+  it('filters through the custom status selector without changing any account', async () => {
+    const listAdminUsers = vi.fn(async () => ({ items: [admin, member], total: 2, nextCursor: null }))
+    const updateUserRole = vi.fn()
+    render(<AdminUsersPage api={createApi({ listAdminUsers, updateUserRole })} />)
+
+    fireEvent.click(await screen.findByRole('combobox', { name: '筛选账户状态' }))
+    fireEvent.click(screen.getByRole('option', { name: '已禁用' }))
+    await waitFor(() => expect(listAdminUsers).toHaveBeenLastCalledWith({ status: 'disabled' }))
+    expect(await screen.findByRole('combobox', { name: '筛选账户状态' })).toHaveTextContent('已禁用')
+    expect(updateUserRole).not.toHaveBeenCalled()
   })
 
   it('requires a focused, escapable confirmation before disabling a user', async () => {
@@ -202,9 +217,9 @@ describe('AdminUsersPage', () => {
     render(<AdminUsersPage api={createApi({ updateUserRole, createPasswordReset })} />)
 
     const row = await screen.findByRole('row', { name: /member@example.com/ })
-    fireEvent.change(within(row).getByLabelText('member@example.com 的角色'), {
-      target: { value: 'admin' },
-    })
+    fireEvent.click(within(row).getByRole('combobox', { name: 'member@example.com 的角色' }))
+    fireEvent.click(screen.getByRole('option', { name: '管理员' }))
+    expect(updateUserRole).not.toHaveBeenCalled()
     fireEvent.click(within(row).getByRole('button', { name: '保存 member@example.com 的角色' }))
     const roleDialog = screen.getByRole('dialog', { name: '将角色更改为管理员？' })
     fireEvent.change(within(roleDialog).getByLabelText('变更原因'), {

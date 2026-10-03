@@ -28,7 +28,7 @@ import {
   selectionDraftFromDomRange,
   type ResearchMaterialSelectionDraft,
 } from './researchMaterialSelection'
-import './research-materials.css'
+import './material-views.css'
 
 const READER_PAGE_SIZE = 24
 
@@ -36,11 +36,13 @@ type ResearchMaterialsPanelProps = {
   readonly agentPanel?: ReactNode
   readonly analysisPanel?: ReactNode
   readonly workspaceNavigation?: ReactNode
+  readonly outlineTarget?: HTMLElement | null
   readonly refreshKey?: number
   readonly taskId: string
   readonly onClose?: () => void
   readonly presentation?: 'dialog' | 'workspace'
   readonly onMaterialDeleted?: (materialId: string) => void
+  readonly onMaterialsChange?: () => void
   readonly initialMaterialId?: string | null
   readonly initialSegmentId?: string | null
   readonly initialParseId?: string | null
@@ -64,10 +66,12 @@ export function ResearchMaterialsPanel({
   agentPanel,
   analysisPanel,
   workspaceNavigation,
+  outlineTarget = null,
   refreshKey = 0,
   onClose,
   presentation = 'dialog',
   onMaterialDeleted,
+  onMaterialsChange,
   initialMaterialId = null,
   initialSegmentId = null,
   initialParseId = null,
@@ -408,6 +412,7 @@ export function ResearchMaterialsPanel({
     try {
       const created = await uploadResearchMaterial(taskId, file, kind)
       setMaterials((current) => [created, ...current.filter((item) => item.materialId !== created.materialId)])
+      onMaterialsChange?.()
       // 上传响应可能只带片段数不带片段本身，补一次详情把可定位片段数补齐，让新加进来的这行
       // 立刻说得出自己有多少可引用位置。补完仍然留在材料库：加材料是库这一层的动作，刚上传
       // 就把人甩进阅读台，多半还在解析中，等于推开一扇空门。
@@ -438,6 +443,7 @@ export function ResearchMaterialsPanel({
       const updated = await reparseResearchMaterial(taskId, material.materialId)
       setMaterials((current) => current.map((item) => item.materialId === updated.materialId ? { ...item, ...updated } : item))
       setSelectedMaterial((current) => current?.materialId === updated.materialId ? { ...current, ...updated } : current)
+      onMaterialsChange?.()
     } catch (cause: unknown) {
       setError(cause instanceof Error ? cause.message : '研究材料重新解析失败。')
     } finally {
@@ -455,6 +461,7 @@ export function ResearchMaterialsPanel({
       setSelectedMaterial((current) => current?.materialId === material.materialId ? null : current)
       if (selectionDraft?.materialId === material.materialId) clearSelectionDraft()
       onMaterialDeleted?.(material.materialId)
+      onMaterialsChange?.()
       setUploadNotice('材料已删除，后续检索不会再使用它。')
     } catch (cause: unknown) {
       setError(cause instanceof Error ? cause.message : '研究材料删除失败。')
@@ -564,11 +571,12 @@ export function ResearchMaterialsPanel({
 
   const workspacePresentation = presentation === 'workspace'
   const body = selectedMaterial ? (
-    <div className="qx-materials__workbench">
+    <div className="ep-material-panel__reading">
         <MaterialReaderView
           agentPanel={agentPanel}
           analysisPanel={analysisPanel}
           workspaceNavigation={workspaceNavigation}
+          outlineTarget={outlineTarget}
           material={selectedMaterial}
           segments={pagedReaderSegments}
           allSegments={segments}
@@ -632,6 +640,7 @@ export function ResearchMaterialsPanel({
       onFileChange={(event) => { void handleFileChange(event) }}
       onOpenMaterial={(material) => { void selectMaterial(material) }}
       onOpenArchive={(material) => { void selectMaterial(material).then(() => setArchiveOpen(true)) }}
+      onReload={() => { void loadMaterials() }}
       onRetry={(material) => { void retry(material) }}
       onDelete={(material) => { void remove(material) }}
       searchQuery={librarySearchQuery}
@@ -646,55 +655,24 @@ export function ResearchMaterialsPanel({
     />
   )
 
-  return (
-    <div className={`qx-materials__shell${workspacePresentation ? ' is-workspace' : ''}`} role={workspacePresentation ? undefined : 'presentation'}>
-      <section
-        className="qx-materials"
-        role={workspacePresentation ? 'region' : 'dialog'}
-        aria-modal={workspacePresentation ? undefined : 'true'}
-        aria-label="研究材料"
-      >
-        {onClose ? (
-          <button type="button" className="qx-materials__close qx-icon-button" aria-label="关闭研究材料" onClick={onClose}>
-            <XIcon size={18} aria-hidden="true" />
-          </button>
-        ) : null}
-
-        {selectedMaterial && error ? <p className="qx-message is-error" role="alert"><WarningCircleIcon size={15} aria-hidden="true" />{error}</p> : null}
-        {selectionNotice ? <p className="qx-message is-error" role="alert">{selectionNotice}</p> : null}
-        {annotationError ? <p className="qx-message is-error" role="alert"><WarningCircleIcon size={15} aria-hidden="true" />{annotationError}</p> : null}
-        {annotationNotice ? <p className="qx-message is-success" role="status"><CheckCircleIcon size={15} aria-hidden="true" />{annotationNotice}</p> : null}
-
-        {!selectedMaterial ? workspaceNavigation : null}
-        {body}
-
-        {archiveOpen && selectedMaterial ? (
-          <>
-            <button type="button" className="qx-drawer__scrim" aria-label="关闭材料档案" onClick={() => setArchiveOpen(false)} />
-            <aside className="qx-drawer" role="region" aria-label="材料档案">
-              <header className="qx-drawer__head">
-                <div>
-                  <span className="qx-eyebrow">材料档案</span>
-                  <strong>{selectedMaterial.filename}</strong>
-                </div>
-                <button type="button" className="qx-icon-button" aria-label="收起材料档案" onClick={() => setArchiveOpen(false)}>
-                  <XIcon size={15} aria-hidden="true" />
-                </button>
-              </header>
-              <div className="qx-drawer__body">
-                <ProfessionalMaterialArchivePanel
-                  taskId={taskId}
-                  selectedMaterial={selectedMaterial}
-                  materials={materials}
-                  onMaterialsChanged={() => { void loadMaterials() }}
-                />
-              </div>
-            </aside>
-          </>
-        ) : null}
-      </section>
-    </div>
-  )
+  return <div className="ep-material-panel" data-presentation={presentation}>
+    <section className="ep-material-panel__surface" role={workspacePresentation ? 'region' : 'dialog'} aria-modal={workspacePresentation ? undefined : true} aria-label="研究材料">
+      {onClose ? <button type="button" className="ep-material-panel__close qx-btn qx-btn--ghost qx-btn--icon" aria-label="关闭研究材料" onClick={onClose}><XIcon size={18} aria-hidden="true" /></button> : null}
+      {selectedMaterial && error ? <p className="ep-material-notice" role="alert"><WarningCircleIcon size={17} aria-hidden="true" />{error}</p> : null}
+      {selectionNotice ? <p className="ep-material-notice" role="alert">{selectionNotice}</p> : null}
+      {annotationError ? <p className="ep-material-notice" role="alert"><WarningCircleIcon size={17} aria-hidden="true" />{annotationError}</p> : null}
+      {annotationNotice ? <p className="ep-material-notice" role="status"><CheckCircleIcon size={17} aria-hidden="true" />{annotationNotice}</p> : null}
+      {!selectedMaterial ? workspaceNavigation : null}
+      {body}
+      {archiveOpen && selectedMaterial ? <div className="ep-material-panel__archive-layer">
+        <button type="button" className="ep-material-panel__scrim" aria-label="关闭材料档案" onClick={() => setArchiveOpen(false)} />
+        <aside className="ep-material-panel__archive" role="region" aria-label="材料档案">
+          <header><div><p className="qx-group-label">材料档案</p><h2 className="qx-card__title">{selectedMaterial.filename}</h2></div><button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="收起材料档案" onClick={() => setArchiveOpen(false)}><XIcon size={18} aria-hidden="true" /></button></header>
+          <ProfessionalMaterialArchivePanel taskId={taskId} selectedMaterial={selectedMaterial} materials={materials} onMaterialsChanged={() => { void loadMaterials(); onMaterialsChange?.() }} />
+        </aside>
+      </div> : null}
+    </section>
+  </div>
 }
 
 export type { ResearchMaterialsPanelProps }

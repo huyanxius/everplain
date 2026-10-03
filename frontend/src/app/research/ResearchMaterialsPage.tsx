@@ -1,15 +1,13 @@
-import { ArrowLeftIcon, ArrowUpRightIcon, FolderSimpleIcon, CheckCircleIcon, FileDocIcon, FilePdfIcon, FileTextIcon, MarkdownLogoIcon, PlusIcon, TrashIcon, VideoCameraIcon, WaveformIcon } from '@phosphor-icons/react'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { Select } from '../ui/Select'
+import { ArrowLeftIcon, ArrowUpRightIcon, MagnifyingGlassIcon, CheckCircleIcon, FileDocIcon, FilePdfIcon, FileTextIcon, MarkdownLogoIcon, PlusIcon, TrashIcon, VideoCameraIcon, WaveformIcon } from '@phosphor-icons/react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 
 import { listMyResearchViaApi, type MyResearchItem } from '../../modules/account'
 import { addResearchLibraryMaterial, formatMaterialSize, listResearchLibraryMaterials, removeResearchLibraryMaterial, materialMediaLabel, materialStatusLabel, isSupportedResearchMaterialFile, RESEARCH_MATERIAL_ACCEPT, uploadInitialResearchMaterials, type ResearchMaterial } from '../../modules/research-materials'
 import { createMaterialFirstResearchProject } from '../../modules/socio-match-workspace'
 import { PageContent, PageShell } from '../ui/PageShell'
-import { ResearchLibraryBot } from './ResearchLibraryBot'
-import { ResearchMaterialsShader } from './ResearchMaterialsShader'
 import { researchLibraryPreview } from './researchLibraryPreview'
-import { ResearchHubToolbar } from './ResearchHubToolbar'
 import { ResearchMemoryPanel } from './ResearchMemoryPanel'
 import './research-materials-page.css'
 
@@ -27,6 +25,23 @@ function MaterialTypeIcon({ material }: { material: ResearchMaterial }) {
   if (format === 'MP3' || format === 'M4A' || format === 'WAV') return <WaveformIcon size={24} />
   if (format === 'MP4' || format === 'WebM') return <VideoCameraIcon size={24} />
   return <FileTextIcon size={24} />
+}
+
+const researchStages = ['提问', '找资料', '写大纲', '写作'] as const
+
+function ResearchStageBar({ item }: { item: MyResearchItem }) {
+  // The account API supplies a server label, not a client workflow enum. Unknown
+  // labels stay visible without suggesting that any stage has been completed.
+  const label = item.stageLabel
+  const stage = /写作|文稿|已完成|成果|交付/.test(label) ? 3
+    : /大纲|框架|研究方案|方案确认/.test(label) ? 2
+      : /资料|材料|理论|匹配/.test(label) ? 1
+        : /提问|现象|问题/.test(label) ? 0 : -1
+  const stageName = researchStages.at(stage >= 0 ? stage : researchStages.length) ?? label
+  return <div className="ep-research__stage" role="img" aria-label={`研究进度：${stageName}；${label}`}>
+    {researchStages.map((name, index) => <span key={name} data-done={index <= stage} aria-hidden="true" />)}
+    <em>{stageName}</em>
+  </div>
 }
 
 /**
@@ -56,6 +71,7 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
   const [removingMaterialId, setRemovingMaterialId] = useState<string | null>(null)
   const [materialActionError, setMaterialActionError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [researchReload, setResearchReload] = useState(0)
   const [uploadOpen, setUploadOpen] = useState(false)
   const [uploadTaskId, setUploadTaskId] = useState(selectedTaskId ?? '')
   const [uploading, setUploading] = useState(false)
@@ -66,6 +82,8 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
 
   useEffect(() => {
     let active = true
+    setLoading(true)
+    setError(null)
     void listMyResearchViaApi()
       .then((items) => {
         if (active) {
@@ -82,7 +100,7 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
     return () => {
       active = false
     }
-  }, [])
+  }, [researchReload])
 
   useEffect(() => {
     if (loading) return undefined
@@ -230,82 +248,104 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
     setUploadOpen(false)
   }
 
-  return <PageShell workspace wide backdrop={<ResearchMaterialsShader />}><PageContent>
-    <div className="material-files__scene research-hub-scene">
-      <section className={`research-hub${selectedResearch ? ' is-project' : ''}`} aria-label="我的研究">
-        {selectedResearch ? <header className="research-hub__project-header">
-          <Link className="research-hub__back" to="/research/materials"><ArrowLeftIcon size={16} />我的研究</Link>
-          <div className="research-hub__project-title"><FolderSimpleIcon size={28} /><h1>{researchTitle(selectedResearch)}</h1></div>
-          <p>{previewFiles ? '示例预览' : selectedResearch.stageLabel}<span className="research-hub__project-count">{fileCount(selectedResearch.taskId)}</span>{previewFiles ? <Link className="research-hub__preview-exit" to={`/research/materials?task_id=${encodeURIComponent(selectedResearch.taskId)}`}>退出预览</Link> : null}</p>
-        </header> : <header className="research-hub__hero">
-          <ResearchLibraryBot />
-          <h1 className="research-hub__accessible-title">我的研究</h1>
-        </header>}
-
-        <div className="research-hub__tabs" style={{ '--tab-count': tabs.length, '--tab-index': Math.max(0, tabs.findIndex(tab => tab.id === activeTab)) } as CSSProperties} role="tablist" aria-label={selectedResearch ? '项目内容' : '我的研究视图'} onKeyDown={(event) => {
-          const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
-          const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
-          const next = event.key === 'ArrowRight' ? (index + 1) % buttons.length : event.key === 'ArrowLeft' ? (index + buttons.length - 1) % buttons.length : event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : null
-          if (next !== null) { event.preventDefault(); buttons[next].focus(); buttons[next].click() }
-        }}>
-          {tabs.map(({ id, label }) => <button key={id} id={`research-tab-${id}`} type="button" role="tab" aria-controls={`research-panel-${id}`} aria-selected={activeTab === id} tabIndex={activeTab === id ? 0 : -1} onClick={() => changeTab(id)}>{label}</button>)}
+  return <PageShell wide><PageContent>
+    <section className="ep-research" aria-label="我的研究">
+      <header className="ep-research__head">
+        {selectedResearch ? <Link className="qx-btn qx-btn--ghost ep-research__back" to="/research/materials"><ArrowLeftIcon size={17} aria-hidden="true" />研究</Link> : null}
+        <div className="ep-research__heading-row">
+          <h1 className="qx-section-title">{selectedResearch ? researchTitle(selectedResearch) : '研究'}</h1>
+          {selectedResearch
+            ? <Link className="qx-btn qx-btn--secondary" to={`/research/${encodeURIComponent(selectedResearch.taskId)}/workspace`}>继续研究<ArrowUpRightIcon size={17} aria-hidden="true" /></Link>
+            : <Link className="qx-btn qx-btn--primary" to="/research/new"><PlusIcon size={18} aria-hidden="true" />新建研究</Link>}
         </div>
-
-        <div className="research-hub__body">
-          {error ? <p className="research-hub__notice" role="alert">{error}</p> : null}
-          {!selectedResearch ? <section className="research-hub__panel research-hub__panel--scroll" onScroll={(event) => event.currentTarget.style.setProperty('--scroll-fade', `${Math.min(36, event.currentTarget.scrollTop)}px`)} role="tabpanel" id="research-panel-projects" aria-labelledby="research-tab-projects" hidden={activeTab !== 'projects'}>
-            <ResearchHubToolbar query={projectQuery} onQueryChange={setProjectQuery} searchLabel="搜索研究项目" placeholder="搜索项目">
-              <Link className="research-hub__new" to="/research/new"><PlusIcon size={17} />新建研究</Link>
-            </ResearchHubToolbar>
-            {loading ? <p className="research-hub__notice" role="status">正在读取研究项目…</p> : <div className="research-hub__projects">
-              {visibleProjects.map((item) => <Link className="research-project-card" key={item.taskId} to={`/research/materials?task_id=${encodeURIComponent(item.taskId)}`} aria-label={`打开研究 ${researchTitle(item)}`} onClick={() => { setQuery(''); setCategory('all'); setUploadTaskId(item.taskId) }}>
-                <div className="research-project-card__top"><span className="research-project-card__icon"><FolderSimpleIcon size={23} /></span><ArrowUpRightIcon className="research-project-card__arrow" size={16} /></div>
-                <h2 title={researchTitle(item)}>{researchTitle(item)}</h2>
-                <p>{item.stageLabel}</p>
-                <footer><span>{fileCount(item.taskId)}</span><time dateTime={item.updatedAt}>{new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' }).format(new Date(item.updatedAt))}</time></footer>
-              </Link>)}
-            </div>}
-            {!loading && !visibleProjects.length ? <div className="research-hub__empty"><FolderSimpleIcon size={30} /><h2>{projectQuery ? '没有找到这个项目' : '开始你的第一项研究'}</h2><p>{projectQuery ? '换一个项目名称试试。' : '从一个问题或一份材料开始。'}</p>{!projectQuery ? <Link className="research-hub__new" to="/research/new">新建研究</Link> : null}</div> : null}
-          </section> : null}
-
-          <section className="research-hub__panel research-hub__panel--scroll material-files" onScroll={(event) => event.currentTarget.style.setProperty('--scroll-fade', `${Math.min(36, event.currentTarget.scrollTop)}px`)} role="tabpanel" id="research-panel-files" aria-labelledby="research-tab-files" hidden={activeTab !== 'files'}>
-            <ResearchHubToolbar query={query} onQueryChange={setQuery} searchLabel="搜索研究材料" placeholder={selectedResearch ? '搜索项目内的材料' : '搜索文件或研究名称'}>
-      <div className="material-files__upload-anchor" ref={uploadPopoverRef}>
-      <button type="button" className="research-hub__new" aria-expanded={uploadOpen} aria-controls="research-materials-upload-popover" disabled={previewFiles || uploading || emptyUploading} onClick={() => research.length ? setUploadOpen((open) => !open) : emptyUploadInputRef.current?.click()}><PlusIcon size={17} aria-hidden="true" />{uploading || emptyUploading ? '正在导入…' : '添加材料'}</button>
-        {uploadOpen && research.length ? <div id="research-materials-upload-popover" className="qx-popover-surface research-materials-page__upload" role="dialog" aria-label="添加材料">
-          {!selectedResearch ? <label>保存到研究<select aria-label="材料所属研究" value={uploadTaskId} onChange={(event) => setUploadTaskId(event.target.value)}>{research.map((item) => <option key={item.taskId} value={item.taskId}>{researchTitle(item)}</option>)}</select></label> : <span>添加到「{researchTitle(selectedResearch)}」</span>}
-          <button type="button" disabled={uploading} onClick={() => uploadInputRef.current?.click()}>选择文件</button>
-          <input ref={uploadInputRef} hidden type="file" accept={RESEARCH_MATERIAL_ACCEPT} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMaterial(file) }} />
-          {uploadError ? <span role="alert">{uploadError}</span> : null}
+        {selectedResearch ? <div className="ep-research__project-meta">
+          <ResearchStageBar item={selectedResearch} /><span>{fileCount(selectedResearch.taskId)}</span>
+          {previewFiles ? <><span>示例预览</span><Link to={`/research/materials?task_id=${encodeURIComponent(selectedResearch.taskId)}`}>退出预览</Link></> : null}
         </div> : null}
-      </div>
-            </ResearchHubToolbar>
-            <div className="research-hub__file-list" role="region" aria-label="全部研究材料">
-              <div className="research-hub__filters">
-                <select aria-label="材料类型" value={category} onChange={(event) => setCategory(event.target.value as typeof category)}><option value="all">所有类型</option><option value="documents">文档与文本</option><option value="media">录音与视频</option></select>
-                {!selectedResearch ? <select aria-label="按研究筛选材料" value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)}><option value="">全部研究</option>{research.map(item => <option key={item.taskId} value={item.taskId}>{researchTitle(item)}</option>)}</select> : null}
-                <span>{currentLibraryLoading ? `已读取 ${visibleMaterials.length} 份材料` : `${visibleMaterials.length} 份材料`}</span>
-                <select className="research-hub__sort" aria-label="材料排序" value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}><option value="updated">最近修改</option><option value="name">文件名称</option></select>
-              </div>
-              {loading || currentLibraryLoading ? <p className="research-hub__notice" role="status">正在读取研究材料…</p> : null}
-              {failedProjects.length ? <p className="research-hub__notice" role="alert">{selectedTaskId ? '当前项目的文件暂时无法读取。' : `${failedProjects.length} 个项目的文件暂时无法读取。`}<button type="button" onClick={() => setMaterialReload(value => value + 1)}>重试</button></p> : null}
-              {materialActionError ? <p className="research-hub__notice" role="alert">{materialActionError}</p> : null}
-              {emptyUploadError ? <p className="research-hub__notice" role="alert">{emptyUploadError}</p> : null}
-              {uploadNotice ? <p className="research-hub__notice" role="status">{uploadNotice}</p> : null}
-      {!loading && visibleMaterials.length ? <div className="material-files__table-scroll"><table aria-label="研究材料文件列表"><thead><tr><th scope="col">文件名称</th><th scope="col">所属研究</th><th scope="col">最近修改</th><th scope="col">大小</th><th scope="col">状态</th><th scope="col" className="material-files__actions-heading"><span className="research-hub__accessible-title">文件操作</span></th></tr></thead><tbody>{visibleMaterials.map(({ material, research: owner }) => <tr key={material.materialId}>
-        <td><Link className="material-files__filename" to={`/research/${encodeURIComponent(material.taskId)}/workspace/materials?material_id=${encodeURIComponent(material.materialId)}`} aria-label={`打开材料 ${material.filename}`} aria-disabled={previewFiles || undefined} onClick={previewFiles ? (event) => event.preventDefault() : undefined}><span className="material-files__file-icon" aria-hidden="true"><MaterialTypeIcon material={material} /></span><span className="material-files__file-copy"><strong>{material.filename}</strong></span><ArrowUpRightIcon className="material-files__open-icon" size={15} aria-hidden="true" /></Link></td>
-        <td title={researchTitle(owner)}>{researchTitle(owner)}</td><td><time dateTime={material.updatedAt}>{new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(material.updatedAt))}</time></td><td>{formatMaterialSize(material.sizeBytes)}</td><td><span className={`material-files__status is-${material.status}`}>{material.status === 'ready' ? <CheckCircleIcon size={14} aria-hidden="true" /> : null}{materialStatusLabel(material.status)}</span></td><td className="material-files__actions"><button type="button" aria-label={`删除文件 ${material.filename}`} title="删除文件" disabled={previewFiles || !!removingMaterialId} onClick={() => void removeMaterial(material)}><TrashIcon size={16} /></button></td>
-      </tr>)}</tbody></table></div> : null}
-      {!loading && !currentLibraryLoading && !failedProjects.length && !visibleMaterials.length ? <div className="material-files__empty" role="region" aria-label={!research.length ? '还没有研究' : '材料列表为空'}><FileTextIcon size={34} aria-hidden="true" /><h2>{query || ownerFilter ? '没有匹配的材料' : '从材料开始研究'}</h2><p>{query || ownerFilter ? '调整搜索词或分类，材料仍保存在所属研究中。' : '导入文档、音频或视频，整理原文并与 Agent 讨论。'}</p>{!research.length ? <button type="button" className="qx-button" disabled={emptyUploading} onClick={() => emptyUploadInputRef.current?.click()}>{emptyUploading ? '正在导入…' : '导入研究材料'}</button> : null}</div> : null}
-            </div>
-      <input ref={emptyUploadInputRef} hidden type="file" multiple accept={RESEARCH_MATERIAL_ACCEPT} onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void startFromMaterials(files) }} />
-          </section>
-
-          <section className="research-hub__panel" role="tabpanel" id="research-panel-memory" aria-labelledby="research-tab-memory" hidden={activeTab !== 'memory'}>
-            {activeTab === 'memory' ? <ResearchMemoryPanel key={`${selectedTaskId ?? 'personal'}:${searchParams.get('preview') ?? ''}`} taskId={selectedTaskId} projectName={selectedResearch ? researchTitle(selectedResearch) : undefined} preview={import.meta.env.DEV && searchParams.get('preview') === 'memory'} /> : null}
-          </section>
+        <div className="ep-research__navigation">
+          <div className="qx-segmented ep-research__tabs" role="tablist" aria-label={selectedResearch ? '项目内容' : '我的研究视图'} onKeyDown={(event) => {
+            const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+            const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+            const next = event.key === 'ArrowRight' ? (index + 1) % buttons.length : event.key === 'ArrowLeft' ? (index + buttons.length - 1) % buttons.length : event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : null
+            if (next !== null) { event.preventDefault(); buttons[next].focus(); buttons[next].click() }
+          }}>
+            {tabs.map(({ id, label }) => <button key={id} id={`research-tab-${id}`} type="button" role="tab" aria-controls={`research-panel-${id}`} aria-selected={activeTab === id} tabIndex={activeTab === id ? 0 : -1} onClick={() => changeTab(id)}>{label}</button>)}
+          </div>
+          {activeTab === 'projects' ? <label className="qx-search ep-research__search">
+            <MagnifyingGlassIcon size={18} aria-hidden="true" /><input type="search" aria-label="搜索研究项目" placeholder="搜索研究" value={projectQuery} onChange={event => setProjectQuery(event.target.value)} />
+          </label> : null}
         </div>
+      </header>
+
+      {error ? <div className="ep-research__notice" role="alert"><p>{error}</p><button className="qx-btn qx-btn--secondary" type="button" onClick={() => setResearchReload(value => value + 1)}>重新读取研究</button></div> : null}
+      {!loading && !error && selectedTaskId && !selectedResearch ? <div className="ep-research__notice" role="alert"><p>找不到这个研究项目。</p><Link className="qx-btn qx-btn--secondary" to="/research/materials">返回研究</Link></div> : null}
+
+      {!selectedResearch ? <section className="ep-research__panel" role="tabpanel" id="research-panel-projects" aria-labelledby="research-tab-projects" hidden={activeTab !== 'projects'}>
+        {loading ? <p className="ep-research__notice qx-meta" role="status">正在读取研究项目…</p> : <>
+          {!visibleProjects.length && !error ? <div className="ep-research__empty ep-research__empty--projects">
+            <h2 className="qx-card__title">{projectQuery ? '没有找到这个项目' : '开始你的第一项研究'}</h2>
+            <p>{projectQuery ? '换一个项目名称试试。' : '从一个问题或一份材料开始。'}</p>
+          </div> : null}
+          <div className="ep-research__grid" aria-label="研究项目列表">
+            {visibleProjects.map(item => <Link className="qx-card qx-card--interactive ep-research__card" key={item.taskId} to={`/research/materials?task_id=${encodeURIComponent(item.taskId)}`} aria-label={`打开研究 ${researchTitle(item)}`} onClick={() => { setQuery(''); setCategory('all'); setUploadTaskId(item.taskId) }}>
+              <ResearchStageBar item={item} />
+              <h2 className="qx-card__title">{researchTitle(item)}</h2>
+              <p className="qx-card__body ep-research__question">{item.phenomenonSummary !== '尚未确认现象' && item.phenomenonSummary !== researchTitle(item) ? item.phenomenonSummary : item.nextActionLabel || '从一个问题开始，逐步整理研究。'}</p>
+              <div className="qx-card__meta"><span>{fileCount(item.taskId)}</span><span aria-hidden="true">·</span><time dateTime={item.updatedAt}>{new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' }).format(new Date(item.updatedAt))}</time></div>
+            </Link>)}
+            <Link className="qx-card qx-card--muted ep-research__add-card" to="/research/new"><PlusIcon aria-hidden="true" /><span className="qx-heading">从一个问题开始</span></Link>
+          </div>
+        </>}
+      </section> : null}
+
+      <section className="ep-research__panel" role="tabpanel" id="research-panel-files" aria-labelledby="research-tab-files" hidden={activeTab !== 'files'}>
+        <div className="ep-research__tools">
+          <label className="qx-search ep-research__file-search"><MagnifyingGlassIcon size={18} aria-hidden="true" /><input type="search" aria-label="搜索研究材料" placeholder={selectedResearch ? '搜索项目内的材料' : '搜索文件或研究名称'} value={query} onChange={event => setQuery(event.target.value)} /></label>
+          <div className="ep-research__upload-anchor" ref={uploadPopoverRef}>
+            <button type="button" className="qx-btn qx-btn--primary" aria-expanded={uploadOpen} aria-controls="research-materials-upload-popover" disabled={loading || !!error || previewFiles || uploading || emptyUploading} onClick={() => research.length ? setUploadOpen(open => !open) : emptyUploadInputRef.current?.click()}><PlusIcon size={17} aria-hidden="true" />{uploading || emptyUploading ? '正在导入…' : '添加材料'}</button>
+            {uploadOpen && research.length ? <div id="research-materials-upload-popover" className="qx-popover-surface ep-research__upload" role="dialog" aria-label="添加材料">
+              {!selectedResearch ? <label>保存到研究<Select className="qx-input" aria-label="材料所属研究" value={uploadTaskId} onChange={nextValue => setUploadTaskId(nextValue)} options={research.map(item => ({ value: item.taskId, label: researchTitle(item) }))} /></label> : <span>添加到「{researchTitle(selectedResearch)}」</span>}
+              <button type="button" className="qx-btn qx-btn--primary" disabled={uploading} onClick={() => uploadInputRef.current?.click()}>选择文件</button>
+              <input ref={uploadInputRef} hidden type="file" accept={RESEARCH_MATERIAL_ACCEPT} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMaterial(file) }} />
+              {uploadError ? <span role="alert">{uploadError}</span> : null}
+            </div> : null}
+          </div>
+        </div>
+        <div className="ep-research__files" role="region" aria-label="全部研究材料">
+          <div className="ep-research__filters">
+            <Select className="qx-input" aria-label="材料类型" value={category} onChange={nextValue => setCategory(nextValue as typeof category)} options={[{ value: "all", label: "所有类型" }, { value: "documents", label: "文档与文本" }, { value: "media", label: "录音与视频" }]} />
+            {!selectedResearch ? <Select className="qx-input" aria-label="按研究筛选材料" value={ownerFilter} onChange={nextValue => setOwnerFilter(nextValue)} options={[{ value: "", label: "全部研究" }, ...(research.map(item => ({ value: item.taskId, label: researchTitle(item) })))]} /> : null}
+            <span className="qx-meta">{currentLibraryLoading ? `已读取 ${visibleMaterials.length} 份材料` : `${visibleMaterials.length} 份材料`}</span>
+            <Select className="qx-input ep-research__sort" aria-label="材料排序" value={sortBy} onChange={nextValue => setSortBy(nextValue as typeof sortBy)} options={[{ value: "updated", label: "最近修改" }, { value: "name", label: "文件名称" }]} />
+          </div>
+          {loading || currentLibraryLoading ? <p className="ep-research__notice qx-meta" role="status">正在读取研究材料…</p> : null}
+          {failedProjects.length ? <div className="ep-research__notice" role="alert"><p>{selectedTaskId ? '当前项目的文件暂时无法读取。' : `${failedProjects.length} 个项目的文件暂时无法读取。`}</p><button className="qx-btn qx-btn--secondary" type="button" onClick={() => setMaterialReload(value => value + 1)}>重试</button></div> : null}
+          {materialActionError ? <p className="ep-research__notice" role="alert">{materialActionError}</p> : null}
+          {emptyUploadError ? <p className="ep-research__notice" role="alert">{emptyUploadError}</p> : null}
+          {uploadNotice ? <p className="ep-research__notice" role="status">{uploadNotice}</p> : null}
+          {!loading && visibleMaterials.length ? <div className="ep-research__table-scroll"><table className="qx-data-table ep-research__table" aria-label="研究材料文件列表">
+            <thead><tr><th scope="col">文件名称</th><th scope="col">所属研究</th><th scope="col">最近修改</th><th scope="col">大小</th><th scope="col">状态</th><th scope="col" className="ep-research__actions-heading"><span className="ep-research__sr-only">文件操作</span></th></tr></thead>
+            <tbody>{visibleMaterials.map(({ material, research: owner }) => <tr key={material.materialId}>
+              <td><Link className="ep-research__filename" to={`/research/${encodeURIComponent(material.taskId)}/workspace/materials?material_id=${encodeURIComponent(material.materialId)}`} aria-label={`打开材料 ${material.filename}`} aria-disabled={previewFiles || undefined} onClick={previewFiles ? event => event.preventDefault() : undefined}><span className="ep-research__file-icon" aria-hidden="true"><MaterialTypeIcon material={material} /></span><span className="ep-research__file-copy"><strong>{material.filename}</strong><span className="qx-meta">{materialMediaLabel(material.mediaType, material.filename)}</span></span><ArrowUpRightIcon size={15} aria-hidden="true" /></Link></td>
+              <td title={researchTitle(owner)}>{researchTitle(owner)}</td>
+              <td><time dateTime={material.updatedAt}>{new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(material.updatedAt))}</time></td>
+              <td>{formatMaterialSize(material.sizeBytes)}</td>
+              <td><span className="ep-research__status" data-status={material.status}>{material.status === 'ready' ? <CheckCircleIcon size={14} aria-hidden="true" /> : null}{materialStatusLabel(material.status)}</span></td>
+              <td><button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={`删除文件 ${material.filename}`} title="删除文件" disabled={previewFiles || !!removingMaterialId} onClick={() => void removeMaterial(material)}><TrashIcon size={16} aria-hidden="true" /></button></td>
+            </tr>)}</tbody>
+          </table></div> : null}
+          {!loading && !error && !currentLibraryLoading && !failedProjects.length && !visibleMaterials.length ? <div className="ep-research__empty" role="region" aria-label={!research.length ? '还没有研究' : '材料列表为空'}>
+            <FileTextIcon size={34} aria-hidden="true" /><h2 className="qx-card__title">{query || ownerFilter || category !== 'all' ? '没有匹配的材料' : '从材料开始研究'}</h2>
+            <p>{query || ownerFilter || category !== 'all' ? '调整搜索词或分类，材料仍保存在所属研究中。' : '导入文档、音频或视频，整理原文并与 Agent 讨论。'}</p>
+            {!research.length ? <button type="button" className="qx-btn qx-btn--secondary" disabled={emptyUploading} onClick={() => emptyUploadInputRef.current?.click()}>{emptyUploading ? '正在导入…' : '导入研究材料'}</button> : null}
+          </div> : null}
+        </div>
+        <input ref={emptyUploadInputRef} hidden type="file" multiple accept={RESEARCH_MATERIAL_ACCEPT} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void startFromMaterials(files) }} />
       </section>
-    </div>
+
+      <section className="ep-research__panel" role="tabpanel" id="research-panel-memory" aria-labelledby="research-tab-memory" hidden={activeTab !== 'memory'}>
+        {activeTab === 'memory' ? <ResearchMemoryPanel key={`${selectedTaskId ?? 'personal'}:${searchParams.get('preview') ?? ''}`} taskId={selectedTaskId} projectName={selectedResearch ? researchTitle(selectedResearch) : undefined} preview={import.meta.env.DEV && searchParams.get('preview') === 'memory'} /> : null}
+      </section>
+    </section>
   </PageContent></PageShell>
 }

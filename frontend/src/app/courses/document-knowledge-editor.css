@@ -1,0 +1,14 @@
+.ep-knowledge-edit { display: grid; gap: var(--qx-space-4); min-width: 0; }
+.ep-knowledge-edit label { display: grid; gap: var(--qx-space-2); min-width: 0; font-size: var(--qx-text-control); }
+.ep-knowledge-edit input, .ep-knowledge-edit textarea { width: 100%; min-width: 0; }
+.ep-knowledge-edit textarea { min-height: 88px; resize: vertical; border-radius: var(--qx-radius-item); }
+.ep-knowledge-edit__section > header, .ep-knowledge-edit > footer { display: flex; align-items: center; justify-content: space-between; gap: var(--qx-space-2); }
+.ep-knowledge-edit__section h3 { margin: 0; }
+.ep-knowledge-edit__list { display: grid; gap: var(--qx-space-4); padding: 0; margin: var(--qx-space-2) 0 0; list-style: none; }
+.ep-knowledge-edit fieldset { display: grid; gap: var(--qx-space-3); min-width: 0; padding: var(--qx-space-3) 0 0; margin: 0; border: 0; border-top: 1px solid var(--qx-color-rule); }
+.ep-knowledge-edit legend { color: var(--qx-color-muted); font-size: var(--qx-text-meta); padding-right: var(--qx-space-2); }
+.ep-knowledge-edit__sources > p { margin: 0; color: var(--qx-color-muted); font-size: var(--qx-text-meta); }
+.ep-knowledge-edit__sources label { margin-top: var(--qx-space-2); }
+.ep-knowledge-edit__endpoints { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--qx-space-2); }
+.ep-knowledge-edit__remove { justify-self: start; color: var(--qx-color-danger); }
+.ep-knowledge-edit > footer { justify-content: flex-start; position: sticky; bottom: 0; padding-block: var(--qx-space-2); background: var(--qx-color-surface); }

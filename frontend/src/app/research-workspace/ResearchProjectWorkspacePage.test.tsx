@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { useState, type ReactNode } from 'react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -8,6 +8,7 @@ import type { ResearchDocumentWorkspaceContext } from './ResearchDocumentWorkben
 import { ResearchProjectWorkspacePage } from './ResearchProjectWorkspacePage'
 
 const agentInstances = vi.hoisted(() => ({ count: 0 }))
+const documentGuard = vi.hoisted(() => ({ current: null as null | (() => Promise<boolean>) }))
 
 vi.mock('../agent/ResearchAgentConversationPage', () => ({
   ResearchAgentConversationPage: ({ conversationId, taskId, onConversationStarted }: { conversationId: string; taskId: string; onConversationStarted?: (identity: { conversation_id: string; task_id: string }) => void }) => {
@@ -17,9 +18,10 @@ vi.mock('../agent/ResearchAgentConversationPage', () => ({
 }))
 
 vi.mock('./ResearchDocumentWorkbench', () => ({
-  ResearchDocumentWorkbench: ({ workspaceMode, onWorkspaceContextChange }: { workspaceMode: string; onWorkspaceContextChange?: (context: ResearchDocumentWorkspaceContext) => void }) => (
-    <section aria-label="文档中心">{workspaceMode}<button onClick={() => onWorkspaceContextChange?.({ mode: 'framework', documentId: 'document-1', sectionId: 'research_question', documentVersion: 2, theoryPlanId: null })}>定位章节</button></section>
-  ),
+  ResearchDocumentWorkbench: ({ workspaceMode, onWorkspaceContextChange, onNavigationGuardChange, onDiscuss }: { workspaceMode: string; onWorkspaceContextChange?: (context: ResearchDocumentWorkspaceContext) => void; onNavigationGuardChange?: (guard: (() => Promise<boolean>) | null) => void; onDiscuss?: (value: { title: string; content: string; sectionId: null }) => void }) => {
+    useEffect(() => { onNavigationGuardChange?.(documentGuard.current); return () => onNavigationGuardChange?.(null) }, [onNavigationGuardChange])
+    return <section aria-label="文档中心">{workspaceMode}<button onClick={() => onWorkspaceContextChange?.({ mode: 'framework', documentId: 'document-1', sectionId: 'research_question', documentVersion: 2, theoryPlanId: null })}>定位章节</button><button onClick={() => onDiscuss?.({ title: '当前章节', content: '待讨论段落', sectionId: null })}>讨论文稿</button></section>
+  },
 }))
 
 vi.mock('../../modules/research-materials', async (importOriginal) => {
@@ -50,6 +52,7 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   agentInstances.count = 0
+  documentGuard.current = null
   window.localStorage.clear()
 })
 
@@ -100,6 +103,7 @@ function renderWorkspace(path: string, conversationTaskId = 'task-1', primaryCon
     if (url.pathname === '/api/agent/conversations/conversation-b') return json({ conversation_id: 'conversation-b', task_id: conversationTaskId, title: '后续对话', created_at: '2026-09-05T00:00:00Z', updated_at: '2026-09-05T00:00:00Z', turn_count: 0, turns: [] })
     if (url.pathname === '/api/research-tasks/task-1/navigation') return json({ ...navigation(), conversation_id: primaryConversationId })
     if (url.pathname === '/api/research-tasks/task-1') return json(task())
+    if (url.pathname === '/api/research-tasks/task-1/materials') return json({ task_id: 'task-1', items: [{ material_id: 'material-1', task_id: 'task-1', filename: '访谈记录.pdf', media_type: 'application/pdf', size_bytes: 2400, status: 'ready', version: 1, parse_version: 1, segment_count: 8, updated_at: '2026-10-02T00:00:00Z' }] })
     return json({})
   }))
   return render(
@@ -118,7 +122,7 @@ describe('ResearchProjectWorkspacePage', () => {
   it('preserves a later project conversation through tool navigation', async () => {
     renderWorkspace('/research/task-1/workspace/map?conversation_id=conversation-b')
     const tools = await screen.findByRole('navigation', { name: '研究中心工具' })
-    expect(screen.getByRole('complementary', { name: '研究 Agent 对话栏' })).toHaveTextContent('conversation-b:task-1')
+    expect(screen.getByLabelText('研究 Agent 对话栏')).toHaveTextContent('conversation-b:task-1')
     expect(within(tools).getByRole('link', { name: '文稿' })).toHaveAttribute('href', '/research/task-1/workspace/writing?conversation_id=conversation-b')
     fireEvent.click(within(tools).getByRole('link', { name: '文稿' }))
     expect(screen.getByLabelText('当前地址')).toHaveTextContent('/research/task-1/workspace/writing?conversation_id=conversation-b')
@@ -151,19 +155,20 @@ describe('ResearchProjectWorkspacePage', () => {
 
   it('records the first conversation before completion without remounting the active Agent', async () => {
     renderWorkspace('/research/task-1/workspace/map', 'task-1', null)
-    fireEvent.click(await screen.findByRole('button', { name: '开始首轮' }))
+    fireEvent.click(await screen.findByRole('tab', { name: 'Agent' }))
+    fireEvent.click(screen.getByRole('button', { name: '开始首轮' }))
     expect(screen.getByLabelText('当前地址')).toHaveTextContent('/research/task-1/workspace/map?conversation_id=conversation-created')
-    expect(screen.getByRole('complementary', { name: '研究 Agent 对话栏' })).toHaveAttribute('data-instance', '1')
+    expect(screen.getByLabelText('研究 Agent 对话栏')).toHaveAttribute('data-instance', '1')
     fireEvent.click(screen.getByRole('link', { name: '材料' }))
     expect(screen.getByLabelText('当前地址')).toHaveTextContent('/research/task-1/workspace/materials?conversation_id=conversation-created')
-    expect(screen.getByRole('complementary', { name: '研究 Agent 对话栏' })).toHaveTextContent('conversation-created:task-1')
+    expect(screen.getByLabelText('研究 Agent 对话栏')).toHaveTextContent('conversation-created:task-1')
   })
 
   it('opens ordinary material reading beside the project Agent without coding', async () => {
     renderWorkspace('/research/task-1/workspace/materials?material_id=material-1&segment_id=segment-1')
     const reader = await screen.findByRole('region', { name: '材料中心' })
     expect(reader).toHaveTextContent('material-1:segment-1')
-    expect(screen.getByRole('complementary', { name: '研究 Agent 对话栏' })).toHaveTextContent('conversation-1:task-1')
+    expect(screen.getByLabelText('研究 Agent 对话栏')).toHaveTextContent('conversation-1:task-1')
     expect(within(reader).queryByRole('region', { name: '分析中心' })).not.toBeInTheDocument()
     expect(screen.getByTestId('research-workspace-layout')).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: '研究编码工作区' })).not.toBeInTheDocument()
@@ -190,7 +195,7 @@ describe('ResearchProjectWorkspacePage', () => {
 
     fireEvent.click(screen.getByRole('link', { name: '归档' }))
     expect(await screen.findByRole('region', { name: '项目归档与交换' })).toBeVisible()
-    expect(screen.getByRole('complementary', { name: '研究 Agent 对话栏' })).toHaveAttribute('data-instance', '1')
+    expect(screen.getByLabelText('研究 Agent 对话栏')).toHaveAttribute('data-instance', '1')
   })
 
   it('switches the mobile workspace between content and Agent without remounting either pane', async () => {
@@ -198,7 +203,7 @@ describe('ResearchProjectWorkspacePage', () => {
 
     const switcher = await screen.findByRole('group', { name: '移动工作区视图' })
     const layout = screen.getByTestId('research-workspace-layout')
-    const agent = screen.getByRole('complementary', { name: '研究 Agent 对话栏' })
+    const agent = screen.getByLabelText('研究 Agent 对话栏')
 
     expect(layout).toHaveAttribute('data-mobile-pane', 'center')
     expect(within(switcher).getByRole('button', { name: '内容' })).toHaveAttribute('aria-pressed', 'true')
@@ -207,7 +212,43 @@ describe('ResearchProjectWorkspacePage', () => {
 
     expect(layout).toHaveAttribute('data-mobile-pane', 'agent')
     expect(within(switcher).getByRole('button', { name: 'Agent' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('complementary', { name: '研究 Agent 对话栏' })).toBe(agent)
+    expect(screen.getByLabelText('研究 Agent 对话栏')).toBe(agent)
     expect(agent).toHaveAttribute('data-instance', '1')
   })
+})
+
+
+it('starts with real resources and keeps the same Agent when switching side panels', async () => {
+  renderWorkspace('/research/task-1/workspace/writing')
+  const resource = await screen.findByRole('link', { name: /访谈记录.pdf/ })
+  expect(resource).toHaveAttribute('href', '/research/task-1/workspace/materials?material_id=material-1')
+  expect(screen.getByRole('tabpanel', { name: '资料 1' })).toBeVisible()
+  const agent = screen.getByLabelText('研究 Agent 对话栏')
+  expect(agent).not.toBeVisible()
+  fireEvent.click(screen.getByRole('tab', { name: 'Agent' }))
+  expect(agent).toBeVisible()
+  fireEvent.click(screen.getByRole('tab', { name: '资料 1' }))
+  fireEvent.click(screen.getByRole('tab', { name: 'Agent' }))
+  expect(screen.getByLabelText('研究 Agent 对话栏')).toBe(agent)
+})
+
+it('opens the Agent pane for a document discussion', async () => {
+  renderWorkspace('/research/task-1/workspace/writing')
+  fireEvent.click(await screen.findByRole('button', { name: '讨论文稿' }))
+  expect(screen.getByRole('tab', { name: 'Agent' })).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByTestId('research-workspace-layout')).toHaveAttribute('data-mobile-pane', 'agent')
+})
+
+it('waits for pending document edits before changing tools and stays put when saving fails', async () => {
+  let finish: (value: boolean) => void = () => undefined
+  documentGuard.current = vi.fn(() => new Promise<boolean>(resolve => { finish = resolve }))
+  renderWorkspace('/research/task-1/workspace/writing')
+  fireEvent.click(await screen.findByRole('link', { name: '材料' }))
+  expect(documentGuard.current).toHaveBeenCalledOnce()
+  expect(screen.getByLabelText('当前地址')).toHaveTextContent('/workspace/writing')
+  await act(async () => { finish(false) })
+  expect(screen.getByLabelText('当前地址')).toHaveTextContent('/workspace/writing')
+  fireEvent.click(screen.getByRole('link', { name: '材料' }))
+  await act(async () => { finish(true) })
+  expect(screen.getByLabelText('当前地址')).toHaveTextContent('/workspace/materials')
 })

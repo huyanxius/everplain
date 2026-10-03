@@ -157,4 +157,52 @@ describe('ResearchContextRail', () => {
       '选择一条来源后，这里会显示它的依据。',
     )
   })
+  it('closes the sections drawer from its visible close control and Escape', () => {
+    const onClose = vi.fn()
+    render(<ResearchContextRail variant="sections" activeTab="sources" onClose={onClose} />)
+    fireEvent.click(screen.getByRole('button', { name: '关闭研究面板' }))
+    expect(onClose).toHaveBeenCalledOnce()
+    fireEvent.keyDown(screen.getByRole('region', { name: '研究面板' }), { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows the selected source in a panel and restores its row when returning', () => {
+    const { rerender } = render(<ResearchContextRail
+      variant="sections" activeTab="basis" citations={[citation]} selectedCitationId={citation.id}
+      basisContent={<div className="new-research__basis"><strong>{citation.title}</strong><p>{citation.excerpt}</p></div>}
+    />)
+    const drawer = screen.getByRole('complementary', { name: '引用来源' })
+    expect(drawer).toHaveClass('qx-panel', 'research-context-rail--source-detail')
+    expect(within(drawer).getByRole('region', { name: '依据' })).toHaveTextContent(citation.excerpt!)
+    expect(within(drawer).getByRole('region', { name: '依据' })).toHaveFocus()
+    expect(screen.queryByRole('group', { name: '知识库' })).not.toBeInTheDocument()
+    rerender(<ResearchContextRail variant="sections" activeTab="sources" citations={[citation]} />)
+    expect(screen.getByRole('button', { name: /社会行动四类型/ })).toHaveFocus()
+  })
+
+  it('keeps citation numbers stable across knowledge, web and file groups', () => {
+    const onCitationSelect = vi.fn()
+    const web = { ...citation, id: 'web', title: '网页摘录', group: 'web' as const }
+    const material = { ...citation, id: 'file', title: '访谈上传', group: 'material' as const }
+    render(<ResearchContextRail variant="sections" activeTab="sources"
+      citations={[web, citation, material]} onCitationSelect={onCitationSelect} />)
+    const knowledgeRow = screen.getByRole('button', { name: /社会行动四类型/ })
+    const webRow = screen.getByRole('button', { name: /网页摘录/ })
+    const fileRow = screen.getByRole('button', { name: /访谈上传/ })
+    expect(knowledgeRow.querySelector('.research-context-rail__source-index')).toHaveTextContent('2')
+    expect(webRow.querySelector('.research-context-rail__source-index')).toHaveTextContent('1')
+    expect(fileRow.querySelector('.research-context-rail__source-index')).toHaveTextContent('3')
+    fireEvent.click(fileRow)
+    expect(onCitationSelect).toHaveBeenCalledWith(material)
+  })
+
+  it('keeps deleted-source messages supplied by the host without inventing an open link', () => {
+    render(<ResearchContextRail variant="sections" activeTab="basis" citations={[citation]}
+      selectedCitationId={citation.id}
+      basisContent={<div className="new-research__basis"><strong>已删除资料</strong><p>这份研究材料已删除，原文不再可访问。</p></div>} />)
+    const drawer = screen.getByRole('complementary', { name: '引用来源' })
+    expect(drawer).toHaveTextContent('这份研究材料已删除，原文不再可访问。')
+    expect(within(drawer).queryByRole('link')).not.toBeInTheDocument()
+  })
+
 })

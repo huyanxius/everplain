@@ -53,3 +53,6 @@ export { buildResearchReportHtml, openResearchReportPrintWindow } from './resear
 export { canvasSuggestions } from './canvasEditing'
 export { saveCanvasNode } from './researchAgentGateway'
 export { citationGroup, parseCitationText } from './citationPresentation'
+
+export { getAgentModelCatalog } from './researchAgentGateway'
+export type { AgentModelCatalog, AgentReasoningEffort } from './model'

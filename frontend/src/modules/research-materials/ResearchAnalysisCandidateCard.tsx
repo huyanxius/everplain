@@ -1,3 +1,4 @@
+import './research-analysis-view.css'
 import { useState } from 'react'
 
 import type { AnalysisRecordStatus } from './researchAnalysisModel'
@@ -43,37 +44,15 @@ export function ResearchAnalysisCandidateCard({
     }
   }
 
-  return (
-    <article className="research-analysis-candidate" aria-label={`${kindLabel}：${title}`}>
-      <header>
-        <span>Agent 建议 · 待确认</span>
-        <small>{kindLabel}</small>
-      </header>
-      <strong>{title}</strong>
-      <p>{detail}</p>
-      {rationale ? <blockquote>{rationale}</blockquote> : null}
-      <label>
-        <span>判断依据</span>
-        <textarea
-          aria-label="判断依据"
-          disabled={pending !== null}
-          onChange={(event) => setReason(event.target.value)}
-          placeholder="回到原文后，写下你保留或拒绝它的理由"
-          rows={2}
-          value={reason}
-        />
-      </label>
-      {error ? <p className="research-analysis-candidate__error" role="alert">{error}</p> : null}
-      <footer>
-        <button type="button" disabled={!normalizedReason || pending !== null} onClick={() => { void decide('rejected') }}>
-          {pending === 'rejected' ? '正在拒绝' : `拒绝${kindLabel}`}
-        </button>
-        <button type="button" disabled={!normalizedReason || pending !== null} onClick={() => { void decide('confirmed') }}>
-          {pending === 'confirmed' ? '正在确认' : `确认${kindLabel}`}
-        </button>
-      </footer>
-    </article>
-  )
+  return <article className="qx-card ep-analysis-candidate" aria-label={`${kindLabel}：${title}`}>
+    <div className="ep-analysis-candidate__meta"><span className="qx-meta">{kindLabel} · v{version}</span><span className="qx-badge">Agent 建议 · 待确认</span></div>
+    <h4 className="qx-card__title">{title}</h4><p className="qx-card__body">{detail}</p>
+    {rationale ? <p className="ep-analysis-candidate__rationale">{rationale}</p> : null}
+    <form className="ep-analysis-form" onSubmit={event => { event.preventDefault(); void decide('confirmed') }}><label>判断依据<textarea className="qx-textarea" aria-label="判断依据" disabled={pending !== null} onChange={event => setReason(event.target.value)} placeholder="回到原文后，写下你保留或拒绝它的理由" rows={2} value={reason} /></label>
+      {error ? <p role="alert">{error}</p> : null}
+      <footer><button className="qx-btn qx-btn--ghost" type="button" disabled={!normalizedReason || pending !== null} onClick={() => void decide('rejected')}>{pending === 'rejected' ? '正在拒绝' : `拒绝${kindLabel}`}</button><button className="qx-btn qx-btn--secondary" type="submit" disabled={!normalizedReason || pending !== null}>{pending === 'confirmed' ? '正在确认' : `确认${kindLabel}`}</button></footer>
+    </form>
+  </article>
 }
 
 export type { ResearchAnalysisCandidateCardProps }

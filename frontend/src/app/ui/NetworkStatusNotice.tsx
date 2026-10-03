@@ -18,7 +18,7 @@ export function NetworkStatusNotice() {
   if (online) return null
 
   return (
-    <aside className="network-status-notice" role="status" aria-live="polite">
+    <aside className="application-network-notice" role="status" aria-live="polite">
       浏览器当前处于离线状态。已加载内容可以继续查看；提交或重试前请先恢复网络。
     </aside>
   )

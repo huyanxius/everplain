@@ -1,5 +1,23 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { ArrowCounterClockwiseIcon, FileTextIcon, ImageIcon, LinkSimpleIcon, NotePencilIcon, PlayIcon, XIcon } from '@phosphor-icons/react'
+import {
+  ArrowCounterClockwiseIcon,
+  BooksIcon,
+  ChatCircleIcon,
+  CheckIcon,
+  FileTextIcon,
+  GraphIcon,
+  HouseIcon,
+  ImageIcon,
+  LinkSimpleIcon,
+  MagnifyingGlassIcon,
+  MicrophoneIcon,
+  NotePencilIcon,
+  PlayIcon,
+  SparkleIcon,
+  XIcon,
+  type Icon,
+} from '@phosphor-icons/react'
+import { AgentAvatar } from '../../modules/agent-avatar'
 import claudeMark from '../../assets/models/claude.svg'
 import chatgptMark from '../../assets/models/chatgpt.svg'
 import geminiMark from '../../assets/models/gemini.svg'
@@ -7,23 +25,12 @@ import { prefersReducedMotion, useTimeline } from './useReveal'
 
 /*
  * 官网上的产品演示全部是写死的示例数据，不发任何模型或接口请求。
- * 两段演示讲的是同一个人、同一篇论文：知识库里整理出来的概念和出处，
- * 就是对话里被引用的那几条。改一处时记得两段一起对上。
+ * 三段演示讲的是同一个人、同一篇论文：收进来的资料、整理出来的概念、对话里被引用的出处是同一批东西。
+ * 改一处时记得三段一起对上。
+ *
+ * 每段演示都放在一个「产品窗口」里（DemoWindow），长得和真实应用一样：窗口栏、迷你侧栏、内容区。
+ * 访客看到的是 Everplain 用起来的样子，而不是几张飘着的说明卡片。
  */
-const collection = [
-  { id: 'web', icon: LinkSimpleIcon, title: '为什么我们越来越难说真话', status: '已存全文' },
-  { id: 'video', icon: PlayIcon, title: '沉默的螺旋，十分钟讲清楚', status: '已转写' },
-  { id: 'image', icon: ImageIcon, title: '展览里拍下的说明牌', status: '已识别文字' },
-  { id: 'paper', icon: FileTextIcon, title: '公共讨论中的自我审查', status: '已解析' },
-  { id: 'note', icon: NotePencilIcon, title: '好几个人都说「算了，不说了」', status: '已记下' },
-] as const
-
-const outline = [
-  { kind: '概念', name: '沉默的螺旋', from: '视频 07:12 · 论文 第 4 页' },
-  { kind: '概念', name: '自我审查', from: '论文 第 4 页 · 长文' },
-  { kind: '现象', name: '「算了，不说了」', from: '随手记 · 展览说明牌' },
-  { kind: '关联', name: '觉得自己是少数 → 更倾向沉默', from: '由 3 份资料连起来' },
-]
 
 /**
  * 演示循环播放：在视口里才播；播完停留 HOLD 毫秒，淡出后用新的 key 重新挂载，
@@ -58,20 +65,43 @@ function LoopingDemo({ label, className, children }: { label: string; className:
   </div>
 }
 
-/*
- * 收到一处：零散的东西先各自漂在原来的地方，再整整齐齐落进「我的空间」的网格里。
- * x / y 是宽屏漂浮时的百分比位置，mx / my 是窄屏的；百分比同时用来反向平移卡片自身，
- * 所以 0 贴左/上边、100 贴右/下边，不会溢出画布。落位后的网格位置按序号算，不用手写。
- */
-const scattered = [
-  { from: '聊天记录', text: '朋友转来的一篇长文', status: '已存全文', x: 2, y: 4, mx: 0, my: 0, r: -4 },
-  { from: '浏览器', text: '没读完的网页', status: '已存全文', x: 50, y: 0, mx: 100, my: 0, r: 2 },
-  { from: '相册', text: '展览里拍下的说明牌', status: '已识别文字', x: 98, y: 6, mx: 0, my: 33, r: 3 },
-  { from: '截图', text: '一段课堂板书', status: '已识别文字', x: 0, y: 52, mx: 100, my: 33, r: 5 },
-  { from: '语音', text: '路上想到的一句话', status: '已转写', x: 100, y: 46, mx: 0, my: 66, r: -5 },
-  { from: '收藏夹', text: '一个十分钟的讲解视频', status: '已转写', x: 4, y: 98, mx: 100, my: 66, r: 2 },
-  { from: '备忘录', text: '「算了，不说了」', status: '已记下', x: 48, y: 100, mx: 0, my: 100, r: -2 },
-  { from: '下载', text: '导师发的论文 PDF', status: '已解析', x: 96, y: 94, mx: 100, my: 100, r: -3 },
+type NavKey = 'home' | 'library' | 'graph' | 'chat'
+const nav: { key: NavKey; label: string; icon: Icon }[] = [
+  { key: 'home', label: '首页', icon: HouseIcon },
+  { key: 'library', label: '知识库', icon: BooksIcon },
+  { key: 'graph', label: '图谱', icon: GraphIcon },
+  { key: 'chat', label: '对话', icon: ChatCircleIcon },
+]
+
+/** 产品窗口的外壳：窗口栏 + 迷你侧栏 + 内容。侧栏只是布景，窄屏时收起。 */
+function DemoWindow({ title, active, children, aside }: { title: string; active: NavKey; children: ReactNode; aside?: ReactNode }) {
+  return <div className="ep-window" aria-hidden={false}>
+    <div className="ep-window__bar" aria-hidden="true"><i /><i /><i /><span>{title}</span></div>
+    <div className="ep-window__body">
+      <nav className="ep-window__side" aria-hidden="true">
+        <span className="ep-window__brand"><span className="ep-brand-mark" />Everplain</span>
+        {nav.map(item => <span key={item.key} className="ep-window__nav" data-on={item.key === active}><item.icon size={15} />{item.label}</span>)}
+        <span className="ep-window__agent"><AgentAvatar avatar="cheng" size={22} playing={false} />澄</span>
+      </nav>
+      <div className="ep-window__main">{children}</div>
+      {aside}
+    </div>
+  </div>
+}
+
+/* ---------------- 一、收到一处 ---------------- */
+
+type Kind = 'web' | 'image' | 'audio' | 'video' | 'note' | 'pdf'
+const kindIcon: Record<Kind, Icon> = { web: LinkSimpleIcon, image: ImageIcon, audio: MicrophoneIcon, video: PlayIcon, note: NotePencilIcon, pdf: FileTextIcon }
+const scattered: { from: string; text: string; status: string; kind: Kind }[] = [
+  { from: '聊天记录', text: '朋友转来的一篇长文', status: '已存全文', kind: 'web' },
+  { from: '浏览器', text: '没读完的网页', status: '已存全文', kind: 'web' },
+  { from: '相册', text: '展览里拍下的说明牌', status: '已识别文字', kind: 'image' },
+  { from: '截图', text: '一段课堂板书', status: '已识别文字', kind: 'image' },
+  { from: '语音', text: '路上想到的一句话', status: '已转写', kind: 'audio' },
+  { from: '收藏夹', text: '一个十分钟的讲解视频', status: '已转写', kind: 'video' },
+  { from: '备忘录', text: '「算了，不说了」', status: '已记下', kind: 'note' },
+  { from: '下载', text: '导师发的论文 PDF', status: '已解析', kind: 'pdf' },
 ]
 const spaceFilters = ['全部', '文章', '图片', '视频', '文档', '笔记']
 
@@ -79,75 +109,110 @@ export function GatherDemo() {
   return <LoopingDemo label="收集演示" className="ep-gather">{props => <GatherStage {...props} />}</LoopingDemo>
 }
 
+/*
+ * 1-8：各处的东西一条条落进知识库，先是「读取中」的骨架卡片，角上标着它从哪来；
+ * 9 停一拍；10 收齐，筛选和计数亮起；11-18 逐条读完，缩略图和状态填上。
+ */
 function GatherStage({ active, onDone }: { active: boolean; onDone: () => void }) {
-  // 1-8 各处的东西依次浮现  9 停一拍  10 一起落进空间的网格  11-18 逐条读完
   const { step, done } = useTimeline(active, [200, 220, 220, 220, 220, 220, 220, 220, 1300, 900, 260, 180, 180, 180, 180, 180, 180, 180])
   useEffect(() => { if (done) onDone() }, [done, onDone])
   const gathered = step >= 10
-  return <div className="ep-gather-canvas" data-gathered={gathered}>
-    <div className="ep-space-frame" aria-hidden={!gathered}>
-      <div className="ep-space-bar">
-        <span className="ep-space-title">我的空间</span>
-        <span className="ep-space-filters">{spaceFilters.map((filter, index) => <i key={filter} data-on={index === 0}>{filter}</i>)}</span>
-        <span className="ep-space-count">{gathered ? scattered.length : 0} 条</span>
-      </div>
+  const arrived = Math.min(step, scattered.length)
+  return <DemoWindow title="我的知识库" active="library">
+    <header className="ep-pagehead">
+      <h4>我的资料</h4>
+      <span className="ep-count">{gathered ? scattered.length : arrived} 条</span>
+      <span className="ep-search"><MagnifyingGlassIcon size={14} />搜标题、内容、知识点</span>
+    </header>
+    <div className="ep-filters" data-on={gathered}>{spaceFilters.map((filter, index) => <i key={filter} data-on={gathered && index === 0}>{filter}</i>)}</div>
+    <div className="ep-gather-canvas" data-gathered={gathered}>
+      {scattered.map((item, index) => {
+        const read = step >= index + 11
+        const Glyph = kindIcon[item.kind]
+        return <article key={item.text} className="ep-mcard" data-kind={item.kind} data-shown={step >= index + 1} data-read={read} style={{ '--i': index } as CSSProperties}>
+          <span className="ep-mcard__thumb" aria-hidden="true"><Glyph size={18} weight="duotone" /></span>
+          <small className="ep-mcard__from">{item.from}</small>
+          <h5>{item.text}</h5>
+          <em className="ep-mcard__status">{read ? <><CheckIcon size={11} weight="bold" />{item.status}</> : '读取中'}</em>
+        </article>
+      })}
     </div>
-    {scattered.map((item, index) => <div key={item.text} className="ep-drift" data-shown={step >= index + 1} data-read={step >= index + 11}
-      style={{ '--x': `${item.x}%`, '--y': `${item.y}%`, '--mx': `${item.mx}%`, '--my': `${item.my}%`, '--r': `${item.r}deg`, '--d': `${index * -0.7}s`,
-        '--gx': index % 4, '--gy': Math.floor(index / 4), '--mgx': index % 2, '--mgy': Math.floor(index / 2), '--i': index } as CSSProperties}>
-      <small>{item.from}</small><span>{item.text}</span><em>{step >= index + 11 ? item.status : '读取中'}</em>
-    </div>)}
-  </div>
+  </DemoWindow>
 }
+
+/* ---------------- 二、一键建成知识库 ---------------- */
+
+const collection: { id: string; kind: Kind; title: string; status: string }[] = [
+  { id: 'web', kind: 'web', title: '为什么我们越来越难说真话', status: '已存全文' },
+  { id: 'video', kind: 'video', title: '沉默的螺旋，十分钟讲清楚', status: '已转写' },
+  { id: 'image', kind: 'image', title: '展览里拍下的说明牌', status: '已识别文字' },
+  { id: 'paper', kind: 'pdf', title: '公共讨论中的自我审查', status: '已解析' },
+  { id: 'note', kind: 'note', title: '好几个人都说「算了，不说了」', status: '已记下' },
+]
+/* 概念板四角：kind 决定类别色，pos 是四个角。 */
+const outline = [
+  { kind: '概念', name: '沉默的螺旋', from: '视频 07:12 · 论文 第 4 页', tone: 'blue', pos: 'nw' },
+  { kind: '概念', name: '自我审查', from: '论文 第 4 页 · 长文', tone: 'violet', pos: 'ne' },
+  { kind: '现象', name: '「算了，不说了」', from: '随手记 · 展览说明牌', tone: 'amber', pos: 'sw' },
+  { kind: '关联', name: '觉得自己是少数 → 更倾向沉默', from: '由 3 份资料连起来', tone: 'green', pos: 'se' },
+] as const
 
 export function LibraryDemo() {
   return <LoopingDemo label="知识库演示" className="ep-library">{props => <LibraryStage {...props} />}</LoopingDemo>
 }
 
+/* 1-10 五条收藏各两拍（落进来、读完）；11 按下一键整理；12 主题；13-16 概念逐个长出来；17 切到「给 AI 用」 */
 function LibraryStage({ active, onDone }: { active: boolean; onDone: () => void }) {
-  // 1-10 五条收藏各两拍（落进来、读完）  11 按下一键整理  12 主题  13-16 结构逐行  17 切到「给 AI 用」
   const { step, done } = useTimeline(active, [300, 420, 260, 420, 260, 420, 260, 420, 260, 420, 700, 500, 360, 360, 360, 360, 1600])
   useEffect(() => { if (done) onDone() }, [done, onDone])
   const organized = step >= 12
   const forAI = step >= 17
-  return <div className="ep-library-grid">
-    <div className="ep-pane">
-      <div className="ep-pane-head"><span>收藏</span><span>{Math.min(collection.length, Math.ceil(step / 2))} 条</span></div>
-      <ul className="ep-inbox">
-        {collection.map((item, index) => {
-          const arrive = index * 2 + 1
-          const Icon = item.icon
-          return <li key={item.id} data-state={step < arrive ? 'hidden' : step === arrive ? 'arriving' : organized ? 'filed' : 'ready'}>
-            <Icon size={15} aria-hidden="true" /><span className="ep-inbox-title">{item.title}</span>
-            <small>{step === arrive ? '读取中' : item.status}</small>
-          </li>
-        })}
-      </ul>
-    </div>
-    <div className="ep-library-action">
-      <span className="ep-organize-button" data-pressed={step === 11} data-done={organized}>{organized ? '已整理' : '一键整理'}</span>
-    </div>
-    <div className="ep-pane">
-      <div className="ep-pane-head">
-        <span>我的知识库</span>
-        <span className="ep-view-switch" aria-hidden="true"><i data-on={!forAI}>给你看</i><i data-on={forAI}>给 AI 用</i></span>
-      </div>
-      <div className="ep-result-views">
-        <div className="ep-outline" data-shown={organized && !forAI}>
-          <h3 data-shown={organized}>公共讨论中的沉默</h3>
-          <ul>{outline.map((row, index) => <li key={row.name} data-shown={step >= index + 13}>
-            <span className="ep-outline-kind">{row.kind}</span><strong>{row.name}</strong><small>{row.from}</small>
-          </li>)}</ul>
+  return <DemoWindow title="知识库" active="graph">
+    <div className="ep-library-grid">
+      <section className="ep-inbox-pane">
+        <header><span>收藏</span><span>{Math.min(collection.length, Math.ceil(step / 2))} 条</span></header>
+        <ul className="ep-inbox">
+          {collection.map((item, index) => {
+            const arrive = index * 2 + 1
+            const Glyph = kindIcon[item.kind]
+            return <li key={item.id} data-state={step < arrive ? 'hidden' : step === arrive ? 'arriving' : organized ? 'filed' : 'ready'}>
+              <Glyph size={15} aria-hidden="true" /><span className="ep-inbox-title">{item.title}</span>
+              <small>{step === arrive ? '读取中' : item.status}</small>
+            </li>
+          })}
+        </ul>
+        <span className="ep-organize-button" data-pressed={step === 11} data-done={organized}>
+          {organized ? <><CheckIcon size={13} weight="bold" />已整理</> : <><SparkleIcon size={13} weight="fill" />一键整理</>}
+        </span>
+      </section>
+      <section className="ep-board-pane">
+        <header>
+          <span>我的知识库</span>
+          <span className="ep-view-switch" aria-hidden="true"><i data-on={!forAI}>给你看</i><i data-on={forAI}>给 AI 用</i></span>
+        </header>
+        <div className="ep-result-views">
+          <div className="ep-outline" data-shown={organized && !forAI}>
+            <svg className="ep-board-links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              {outline.map((row, index) => <path key={row.pos} data-tone={row.tone} data-shown={step >= index + 13}
+                d={{ nw: 'M50 50 C40 50 30 40 22 28', ne: 'M50 50 C60 50 70 40 78 28', sw: 'M50 50 C40 50 30 60 22 72', se: 'M50 50 C60 50 70 60 78 72' }[row.pos]} />)}
+            </svg>
+            <h3 data-shown={organized}>公共讨论中的沉默</h3>
+            <ul>{outline.map((row, index) => <li key={row.name} data-pos={row.pos} data-tone={row.tone} data-shown={step >= index + 13}>
+              <span className="ep-outline-kind">{row.kind}</span><strong>{row.name}</strong><small>{row.from}</small>
+            </li>)}</ul>
+          </div>
+          <div className="ep-for-ai" data-shown={forAI}>
+            <p>你问起论文第三章时，你的 AI 从这里取材：</p>
+            <ul>{outline.slice(0, 3).map((row, index) => <li key={row.name}><span className="ep-source-n">{index + 1}</span><strong>{row.name}</strong><small>{row.from}</small></li>)}</ul>
+            <p className="ep-for-ai-note">回答里的每一句，都能点回原文。</p>
+          </div>
         </div>
-        <div className="ep-for-ai" data-shown={forAI}>
-          <p>你问起论文第三章时，你的 AI 从这里取材：</p>
-          <ul>{outline.slice(0, 3).map((row, index) => <li key={row.name}><span className="ep-source-n">{index + 1}</span><strong>{row.name}</strong><small>{row.from}</small></li>)}</ul>
-          <p className="ep-for-ai-note">回答里的每一句，都能点回原文。</p>
-        </div>
-      </div>
+      </section>
     </div>
-  </div>
+  </DemoWindow>
 }
+
+/* ---------------- 三、只属于你的 AI ---------------- */
 
 const question = '上个月看的那个，讲人为什么不敢说真话的视频，和我论文第三章有关系吗？'
 const answer: { text: string; cite?: number }[] = [
@@ -160,9 +225,9 @@ const answer: { text: string; cite?: number }[] = [
   { text: '。' },
 ]
 const sources = [
-  { n: 1, kind: '随手记', title: '好几个人都说「算了，不说了」' },
-  { n: 2, kind: '视频 07:12', title: '沉默的螺旋，十分钟讲清楚' },
-  { n: 3, kind: '论文 第 4 页', title: '公共讨论中的自我审查' },
+  { n: 1, kind: '随手记', title: '好几个人都说「算了，不说了」', icon: NotePencilIcon, excerpt: '组会上问大家对新规定的看法，好几个人都说「算了，不说了」。是不想说，还是觉得说了也没用？' },
+  { n: 2, kind: '视频 07:12', title: '沉默的螺旋，十分钟讲清楚', icon: PlayIcon, excerpt: '当一个人觉得自己的看法属于少数，他公开表达的意愿就会下降——沉默又让这种看法显得更少。' },
+  { n: 3, kind: '论文 第 4 页', title: '公共讨论中的自我审查', icon: FileTextIcon, excerpt: '自我审查并不总是来自外部压力，更多时候是个体对社交代价的预判。' },
 ]
 const answerLength = answer.reduce((sum, part) => sum + (part.cite ? 1 : part.text.length), 0)
 
@@ -188,32 +253,51 @@ function CompanionStage({ active, onDone }: { active: boolean; onDone: () => voi
     return () => window.clearInterval(timer)
   }, [step])
   const finished = shownChars >= answerLength
-  // 回答写完后依次点亮三个出处；访客点过就以访客为准
+  // 回答写完后依次点亮三个出处，右侧抽屉跟着翻到那一份；访客点过就以访客为准
   const { step: citeStep, done } = useTimeline(finished, [600, 1000, 1000, 1000])
   useEffect(() => { if (done) onDone() }, [done, onDone])
   const current = touched ? focus : citeStep >= 1 && citeStep <= 3 ? [2, 1, 3][citeStep - 1] : null
+  const opened = sources.find(source => source.n === current)
   let budget = shownChars
-  return <>
-    <p className="ep-bubble" data-shown={step >= 1}>{question}</p>
-    <p className="ep-thinking" data-shown={step === 2}>在你的知识库里找…</p>
-    <div className="ep-reply" data-shown={step >= 3}>
-      <p>{answer.map((part, index) => {
-        if (budget <= 0) return null
-        if (part.cite) {
-          budget -= 1
-          return <button key={index} type="button" className="ep-cite" aria-pressed={current === part.cite} aria-label={`查看来源 ${part.cite}`} onClick={() => { setTouched(true); setFocus(current === part.cite ? null : part.cite!) }}>{part.cite}</button>
-        }
-        const visible = part.text.slice(0, budget)
-        budget -= part.text.length
-        return <span key={index}>{visible}</span>
-      })}{!finished && step >= 3 && <i className="ep-caret" aria-hidden="true" />}</p>
-      <ol className="ep-sources" data-shown={finished}>
-        {sources.map(source => <li key={source.n} data-focus={current === source.n}>
-          <span className="ep-source-n">{source.n}</span><span className="ep-source-kind">{source.kind}</span>{source.title}
-        </li>)}
-      </ol>
+  const pick = (n: number) => { setTouched(true); setFocus(current === n ? null : n) }
+  return <DemoWindow title="第三章的思路" active="chat" aside={
+    <aside className="ep-source-drawer" data-open={Boolean(opened)} aria-hidden={!opened}>
+      {opened ? <>
+        <span className="ep-drawer-kind"><opened.icon size={13} />{opened.kind}</span>
+        <h5>{opened.title}</h5>
+        <blockquote>{opened.excerpt}</blockquote>
+        <small>在知识库里打开 ↗</small>
+      </> : null}
+    </aside>
+  }>
+    <div className="ep-thread">
+      <p className="ep-bubble" data-shown={step >= 1}>{question}</p>
+      <div className="ep-turn" data-shown={step >= 2}>
+        <AgentAvatar avatar="cheng" size={28} state={step === 2 ? 'think' : 'idle'} />
+        <div className="ep-turn__body">
+          <p className="ep-thinking" data-shown={step === 2}>在你的知识库里找…</p>
+          <div className="ep-reply" data-shown={step >= 3}>
+            <p>{answer.map((part, index) => {
+              if (budget <= 0) return null
+              if (part.cite) {
+                budget -= 1
+                return <button key={index} type="button" className="ep-cite" aria-pressed={current === part.cite} aria-label={`查看来源 ${part.cite}`} onClick={() => pick(part.cite!)}>{part.cite}</button>
+              }
+              const visible = part.text.slice(0, budget)
+              budget -= part.text.length
+              return <span key={index}>{visible}</span>
+            })}{!finished && step >= 3 && <i className="ep-caret" aria-hidden="true" />}</p>
+            <ol className="ep-sources" data-shown={finished}>
+              {sources.map(source => <li key={source.n} data-focus={current === source.n} onClick={() => pick(source.n)}>
+                <span className="ep-source-n">{source.n}</span>{source.title}
+              </li>)}
+            </ol>
+          </div>
+        </div>
+      </div>
     </div>
-  </>
+    <div className="ep-ask" aria-hidden="true"><span>接着问</span><i /></div>
+  </DemoWindow>
 }
 
 const initialMemories = [
@@ -238,7 +322,10 @@ export function MemoryDemo() {
     setForgotten(null)
   }
   return <aside className="ep-memory" aria-label="记忆演示">
-    <div className="ep-pane-head"><span>它记得你</span><span>{memories.length} 条</span></div>
+    <header className="ep-memory__head">
+      <AgentAvatar avatar="cheng" size={40} state="greet" />
+      <span><strong>它记得你</strong><small>{memories.length} 条</small></span>
+    </header>
     <ul>
       {memories.map(memory => <li key={memory.id}>
         <span>{memory.text}</span>
@@ -299,7 +386,7 @@ export function ModelOrbit() {
     frame = requestAnimationFrame(loop)
     return () => { cancelAnimationFrame(frame); observer?.disconnect() }
   }, [])
-  return <div className="ep-orbit" ref={stage} role="list" aria-label="可用模型">
+  return <div className="ep-orbit" ref={stage} role="list" aria-label="模型示意">
     <svg className="ep-orbit-ring" aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none"><ellipse cx="50" cy="52" rx="40" ry="40" vectorEffect="non-scaling-stroke" /></svg>
     {models.map((model, index) => <div key={model.name} role="listitem" className="ep-orbit-tile" ref={node => { tiles.current[index] = node }}>
       <img src={model.mark} alt="" />

@@ -1,95 +1,99 @@
-* {
-  box-sizing: border-box;
-}
+/* 基础重置放在 base 层：组件层（components.css）要能盖过它，页面自己的未分层样式又能盖过组件。 */
+@layer theme, base, components, utilities;
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
 
-html {
-  min-width: 320px;
-  background: var(--paper);
-  scroll-behavior: smooth;
-}
+  html {
+    min-width: 320px;
+    background: var(--qx-color-canvas);
+    scroll-behavior: smooth;
+  }
 
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  background: var(--paper);
-}
-
-button,
-a {
-  font: inherit;
-}
-
-:where(a, button, input, textarea, select, summary) {
-  transition:
-    color var(--motion-fast) ease,
-    background-color var(--motion-base) ease,
-    border-color var(--motion-fast) ease,
-    box-shadow var(--motion-base) var(--ease),
-    opacity var(--motion-fast) ease;
-}
-
-button {
-  border-radius: var(--radius-control);
-}
-
-button:not(:disabled):active {
-  filter: brightness(0.94);
-}
-
-a {
-  color: inherit;
-}
-
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: 2px solid var(--focus-ring, var(--accent));
-  outline-offset: 4px;
-}
-
-::selection {
-  color: var(--paper);
-  background: var(--accent);
-}
-
-@media (max-width: 760px) {
-  html,
   body {
-    max-width: 100%;
-    overflow-x: clip;
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    background: var(--qx-color-canvas);
   }
 
   button,
-  a,
-  input,
-  select,
-  textarea,
-  summary {
-    touch-action: manipulation;
+  a {
+    font: inherit;
   }
 
-  main img,
-  main video,
-  main canvas,
-  main svg {
-    max-width: 100%;
+  :where(a, button, input, textarea, select, summary) {
+    transition:
+      color var(--qx-motion-fast) ease,
+      background-color var(--qx-motion-base) ease,
+      border-color var(--qx-motion-fast) ease,
+      box-shadow var(--qx-motion-base) var(--qx-ease),
+      opacity var(--qx-motion-fast) ease;
   }
 
-  main pre,
-  main table {
-    max-width: 100%;
-    overflow-x: auto;
+  button {
+    border-radius: var(--qx-radius-pill);
   }
 
-  main p,
-  main li,
-  main dd,
-  main td,
-  main th,
-  main code {
-    overflow-wrap: anywhere;
+  button:not(:disabled):active {
+    filter: brightness(0.94);
+  }
+
+  a {
+    color: inherit;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--focus-ring, var(--qx-color-accent));
+    outline-offset: 4px;
+  }
+
+  ::selection {
+    color: var(--qx-color-canvas);
+    background: var(--qx-color-accent);
+  }
+
+  @media (max-width: 760px) {
+    html,
+    body {
+      max-width: 100%;
+      overflow-x: clip;
+    }
+
+    button,
+    a,
+    input,
+    select,
+    textarea,
+    summary {
+      touch-action: manipulation;
+    }
+
+    main img,
+    main video,
+    main canvas,
+    main svg {
+      max-width: 100%;
+    }
+
+    main pre,
+    main table {
+      max-width: 100%;
+      overflow-x: auto;
+    }
+
+    main p,
+    main li,
+    main dd,
+    main td,
+    main th,
+    main code {
+      overflow-wrap: anywhere;
+    }
   }
 }

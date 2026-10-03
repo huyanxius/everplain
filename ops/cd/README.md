@@ -2,23 +2,27 @@
 
 Scope: `huyanxius/everplain` only. Issue [#31](https://github.com/huyanxius/everplain/issues/31).
 
-This is a versioned release mechanism, not evidence that production is configured. As of the
-2026-10-02 handoff, only the old static Docker container is healthy on loopback 5196; API
-8297 is not configured and public `e.qunxue.xyz` routing is not ready. The model provider
-selection also still needs its separately reviewed compatibility work. These scripts do
-not provision credentials or claim a real model/browser acceptance test.
+This is a versioned release mechanism, not evidence that production is configured.
+The earlier static-only handoff is historical and must not be used to describe current
+production. Verify the current host revision, database schema, deployment layout and
+runtime mode independently before a release. A reachable site or mock-mode API does not
+prove a configured production deployment channel or working real model calls. These
+scripts do not provision credentials or claim a real model/browser acceptance test.
 
 ## Normal release
 
-1. PR: existing backend/frontend/contract checks plus offline release-safety tests. No
-   production environment, secrets, deployment or `pull_request_target` execution.
+1. PR: existing backend/frontend/contract checks plus offline release-safety tests and
+   a real Linux Docker build of the immutable API/web artifact (including the clipper).
+   No production environment, secrets, transport, deployment or `pull_request_target`
+   execution. The validation artifact is not promoted; main builds its checked commit.
 2. Merge to `main`: the same commit's reusable CI must pass. Build on a hosted Linux
    runner with the existing Dockerfiles, frozen application dependencies and official
    base-image digests resolved once per build. Save API/web images; activate by immutable
    image IDs, never by a mutable tag.
 3. Upload one immutable artifact named by source SHA and attempt. It contains image
    archives, migration sources, reviewed migration policy and a manifest. The manifest
-   records all file checksums, commit, image IDs, base digests, lockfile checksums and
+   records all file checksums, commit, image IDs, base digests, backend/frontend/clipper
+   lockfile checksums and
    workflow run identity. This is traceable provenance over the trusted GitHub artifact
    and pinned SSH channel, not a claim of a cryptographically signed attestation or a
    bit-for-bit reproducible build. No paid registry or additional service is needed.
@@ -26,6 +30,9 @@ not provision credentials or claim a real model/browser acceptance test.
    checks its exact SHA-256 against the build job output, uploads it to the dedicated
    incoming directory and invokes a fixed, operator-installed controller. The workflow
    cannot supply a script, arbitrary ref, service name, directory or shell command.
+   Missing deployment variables or secrets fail explicitly before any SSH connection;
+   a successful build alone is never a successful deployment. There is no silent
+   "deployment ready" switch that turns missing setup into a green release.
 5. On the host, an independent filesystem lock serializes deploy and recovery. Older run
    IDs are rejected. Validate configured host identity, actual private environment,
    immutable artifact/image identity, migration policy, nginx configuration, available
@@ -92,7 +99,8 @@ still require the user's secure approval. Nothing below authorizes copying local
 1. Resolve the separately controlled DNS/tunnel bootstrap and API/provider readiness.
    Ordinary release code never reads/writes/restarts cloudflared, Cloudflare, DNS,
    shared nginx, PM2, another application, or root-domain routing. Preserve the existing
-   static source/container until the first full baseline has been proven and recorded.
+   source/container until the first full baseline has been proven and recorded. Do not
+   rerun historical bootstrap scripts to adopt an existing live instance.
 2. Host prerequisites: Linux x86_64, Docker Engine at `/usr/bin/docker`, Python >=3.11,
    enough disk for two images/releases plus independent DB/backup snapshots. The host
    does not need npm, uv, application dependencies, host nginx or a new systemd app.
@@ -158,9 +166,21 @@ still require the user's secure approval. Nothing below authorizes copying local
 8. Run one authorized end-to-end deployment and one recovery rehearsal. Until those
    complete, claim only offline tests/source delivery. Configuration and health checks
    do not exercise real model tool calling, research/citations, email or user browser
-   flows. The selected Modelink Luna medium + tools Chat compatibility is unverified; obtain
-   a gateway guarantee or an explicitly authorized minimal smoke test before claiming
-   compatibility. A Responses adapter is conditional on those results, not assumed.
+   flows. Use the selected provider/model's actual protocol and an explicitly authorized
+   minimal smoke test before claiming compatibility; an adapter or passing unit test
+   alone does not establish live credentials, billing, or tool-call behavior.
+
+## Integrating the current main schema
+
+The 2026-10-03 integration includes the durable-billing migration `20261002_0510`
+and Soul preferences migration `20261003_0520` from main. Their presence in the artifact
+is not an approval to migrate an unknown live database. The compatibility allowlist
+remains empty: if the actual recorded schema tree differs, deployment stops before
+services are stopped. Compare the confirmed old application/schema with the proposed
+migration, and verify old readers/writers against the new schema before allowing that
+specific previous fingerprint. Never substitute a guessed revision or a frontend asset
+hash for the recorded database schema. Keep ordinary deploy, first baseline adoption,
+and real-model activation as separate, explicitly verified outcomes.
 
 ## Metadata, audit, and operations
 

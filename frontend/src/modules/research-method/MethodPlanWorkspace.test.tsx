@@ -50,7 +50,7 @@ describe('MethodPlanWorkspace', () => {
     render(<MethodPlanWorkspace taskId="task-1" />)
     const workspace = await screen.findByRole('region', { name: '研究方法计划' })
     expect(within(workspace).getByRole('heading', { name: '方法设计' })).toBeVisible()
-    expect(within(workspace).getByRole('button', { name: '保存新版本' })).toHaveClass('qx-button', 'qx-button--primary')
+    expect(within(workspace).getByRole('button', { name: '保存新版本' })).toHaveClass('qx-btn', 'qx-btn--primary')
     const section = await within(workspace).findByLabelText('研究设计')
     fireEvent.change(section, { target: { value: '解释性个案研究' } })
     fireEvent.click(within(workspace).getByRole('button', { name: '保存新版本' }))

@@ -25,10 +25,14 @@ class AgentProfile:
     questionnaire: dict = field(default_factory=dict)
     memory_ids: dict = field(default_factory=dict)
     version: int = 0
+    soul_text: str = ""
 
     def persona(self) -> dict:
         # Raw questionnaire is deliberately absent: forgotten memories stay forgotten.
-        return {"name": self.name, "style": STYLES[self.speaking_style]}
+        persona = {"name": self.name, "style": STYLES[self.speaking_style]}
+        if self.soul_text:
+            persona["soul_text"] = self.soul_text
+        return persona
 
 
 class ProfileConflict(ValueError):

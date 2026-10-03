@@ -83,7 +83,7 @@ export async function sendRegistrationCodeViaApi(
     body: { email },
   })
   if (!data) throw new ApiRequestError('验证码发送失败，请稍后重试。', response?.status)
-  return { resendAfterSeconds: data.resend_after_seconds }
+  return { resendAfterSeconds: data.resend_after_seconds ?? 60 }
 }
 
 export function registrationFailureMessage(failure: unknown): string {

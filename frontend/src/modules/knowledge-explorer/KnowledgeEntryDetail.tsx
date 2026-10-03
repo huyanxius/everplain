@@ -148,7 +148,7 @@ function KnowledgeMarkdown({
               return (
                 <button
                   type="button"
-                  className={className}
+                  className={["qx-btn qx-btn--ghost", className].filter(Boolean).join(' ')}
                   aria-label={node.properties['aria-label'] as string}
                   aria-expanded={openEvidenceId === evidenceId}
                   aria-controls={evidenceId}
@@ -163,7 +163,7 @@ function KnowledgeMarkdown({
             return (
               <blockquote {...props} data-open={evidenceId === openEvidenceId ? 'true' : undefined}>
                 {evidenceId === openEvidenceId ? (
-                  <button className="knowledge-reader__evidence-close" type="button" aria-label="关闭文献依据" onClick={() => setOpenEvidenceId(undefined)}>×</button>
+                  <button className="qx-btn qx-btn--ghost knowledge-reader__evidence-close" type="button" aria-label="关闭文献依据" onClick={() => setOpenEvidenceId(undefined)}>×</button>
                 ) : null}
                 {children}
               </blockquote>
@@ -185,11 +185,11 @@ function ReadingTools({ evidenceMode, onChangeEvidenceMode }: {
     <div className="knowledge-reader__tools" role="group" aria-label="阅读工具">
       <p>阅读工具</p>
       <div className="knowledge-reader__evidence-modes" role="radiogroup" aria-label="文献显示方式">
-        <button type="button" role="radio" aria-label="默认展开全部文献" aria-checked={evidenceMode === 'expanded'} onClick={() => onChangeEvidenceMode('expanded')}>展开</button>
-        <button type="button" role="radio" aria-label="悬浮正文显示文献" aria-checked={evidenceMode === 'hover'} onClick={() => onChangeEvidenceMode('hover')}>悬浮</button>
-        <button type="button" role="radio" aria-label="点击批注显示文献" aria-checked={evidenceMode === 'annotations'} onClick={() => onChangeEvidenceMode('annotations')}>批注</button>
+        <button className="qx-btn qx-btn--ghost" type="button" role="radio" aria-label="默认展开全部文献" aria-checked={evidenceMode === 'expanded'} onClick={() => onChangeEvidenceMode('expanded')}>展开</button>
+        <button className="qx-btn qx-btn--ghost" type="button" role="radio" aria-label="悬浮正文显示文献" aria-checked={evidenceMode === 'hover'} onClick={() => onChangeEvidenceMode('hover')}>悬浮</button>
+        <button className="qx-btn qx-btn--ghost" type="button" role="radio" aria-label="点击批注显示文献" aria-checked={evidenceMode === 'annotations'} onClick={() => onChangeEvidenceMode('annotations')}>批注</button>
       </div>
-      <button type="button" aria-label="划线批注（暂未开放）" title="本期暂不引入划线批注" disabled>
+      <button className="qx-btn qx-btn--ghost" type="button" aria-label="划线批注（暂未开放）" title="本期暂不引入划线批注" disabled>
         <HighlighterIcon size={14} />
         <span><strong>划线批注</strong><small>暂未开放</small></span>
       </button>
@@ -341,7 +341,7 @@ export function KnowledgeEntryDetail({ detail, onStartResearch }: KnowledgeEntry
           {theory ? (
             <section className="knowledge-reader__theory" data-section-role="research" aria-labelledby="knowledge-theory-title">
               <div><p>研究入口</p><h2 id="knowledge-theory-title">{theory.title}</h2></div>
-              {canSeedTheory ? <button type="button" onClick={() => onStartResearch({ theoryId: theory.theoryId, theoryName: theory.title })}>以此理论开始研究 <span aria-hidden="true">↗</span></button> : null}
+              {canSeedTheory ? <button className="qx-btn qx-btn--ghost" type="button" onClick={() => onStartResearch({ theoryId: theory.theoryId, theoryName: theory.title })}>以此理论开始研究 <span aria-hidden="true">↗</span></button> : null}
             </section>
           ) : null}
         </article>

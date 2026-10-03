@@ -23,3 +23,18 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
     disconnect() {}
   }
 }
+
+// jsdom applies the closed-popover UA rule but does not implement the native
+// lifecycle. Model open/closed visibility; keep content, actions and focus real.
+if (typeof HTMLElement.prototype.showPopover !== 'function') {
+  Object.defineProperty(HTMLElement.prototype, 'showPopover', {
+    configurable: true,
+    value(this: HTMLElement) { this.style.display = 'grid' },
+  })
+}
+if (typeof HTMLElement.prototype.hidePopover !== 'function') {
+  Object.defineProperty(HTMLElement.prototype, 'hidePopover', {
+    configurable: true,
+    value(this: HTMLElement) { this.style.display = 'none' },
+  })
+}

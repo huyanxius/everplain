@@ -282,7 +282,8 @@ describe('NewResearchWorkspacePage', () => {
     })
     expect(uploadRequests).toHaveLength(2)
     await waitFor(() => expect(screen.getByRole('status', { name: '材料来源' })).toHaveTextContent('已添加'))
-    fireEvent.click(within(screen.getByRole('navigation', { name: '桌面主导航' })).getByRole('link', { name: '新建研究' }))
+    fireEvent.click(screen.getByText('更多功能', { selector: 'summary span' }))
+    fireEvent.click(within(screen.getByRole('navigation', { name: '更多功能' })).getByRole('link', { name: '新建研究' }))
     fireEvent.change(await screen.findByLabelText('从材料开始研究'), {
       target: { files: [new File(['另一项研究'], '另一项研究.txt', { type: 'text/plain' })] },
     })
@@ -292,6 +293,36 @@ describe('NewResearchWorkspacePage', () => {
       expect(creationRequests).toHaveLength(2)
       expect(new Set(creationRequests.map((request) => request.headers.get('Idempotency-Key'))).size).toBe(2)
     })
+  })
+
+  it('retries initial material uploads without creating a second project or repeating completed files', async () => {
+    let projectCount = 0
+    const uploadedNames: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      const path = new URL(request.url).pathname
+      if (path === '/api/research-tasks' && request.method === 'POST') {
+        projectCount += 1
+        return json({ task_id: 'material-retry-task', entry_type: 'material_input', entry_mode: 'from_scratch', lifecycle_status: 'draft', status: 'draft', version: 1, allowed_actions: ['submit_phenomenon'], created_at: '2026-08-31T00:00:00Z', updated_at: '2026-08-31T00:00:00Z' }, 201)
+      }
+      if (path === '/api/research-tasks/material-retry-task/materials' && request.method === 'POST') {
+        const file = (await parseMultipartRequest(request)).get('file') as File
+        uploadedNames.push(file.name)
+        if (uploadedNames.length === 2) return json({ detail: '第二份材料上传中断' }, 503)
+        return json({ material_id: `material-${file.name}`, task_id: 'material-retry-task', filename: file.name, media_type: file.type, material_kind: 'other', size_bytes: file.size, status: 'ready', version: 1, parse_version: 1, segment_count: 1, created_at: '2026-08-31T00:00:00Z', updated_at: '2026-08-31T00:00:00Z' }, 201)
+      }
+      return json({ items: [] })
+    }))
+    renderPage()
+    expect(screen.getByRole('link', { name: '返回研究' })).toHaveAttribute('href', '/research/materials')
+    fireEvent.change(await screen.findByLabelText('从材料开始研究'), { target: { files: [new File(['one'], 'one.txt', { type: 'text/plain' }), new File(['two'], 'two.txt', { type: 'text/plain' })] } })
+    expect(await screen.findByRole('alert')).toHaveTextContent('第二份材料上传中断')
+    expect(screen.getByRole('status', { name: '材料来源' })).toHaveTextContent('导入失败')
+    fireEvent.click(screen.getByRole('button', { name: '重试导入' }))
+    await waitFor(() => expect(screen.getByRole('status', { name: '材料来源' })).toHaveTextContent('已添加'))
+    expect(projectCount).toBe(1)
+    expect(uploadedNames).toEqual(['one.txt', 'two.txt', 'two.txt'])
+    expect(screen.getByLabelText('当前测试路径')).toHaveTextContent('task_id=material-retry-task')
   })
 
   it('shows saved Agent conversations in the left rail', async () => {
@@ -314,7 +345,7 @@ describe('NewResearchWorkspacePage', () => {
     renderPage()
 
     const history = await screen.findByRole('region', { name: 'Agent 对话记录' })
-    expect(history.parentElement).toHaveClass('desktop-rail__secondary')
+    expect(history.closest('.application-sidebar__history')).toBeInTheDocument()
     expect(within(history).getByRole('button', { name: /青年为什么推迟进入婚姻/ })).toBeVisible()
   })
 
@@ -539,8 +570,11 @@ describe('NewResearchWorkspacePage', () => {
 
     const workspace = await screen.findByRole('region', { name: '新建研究工作区' })
     await within(workspace).findByRole('region', { name: '研究已建立' })
-    fireEvent.click(within(workspace).getByRole('button', { name: '添加研究材料' }))
-    expect(within(workspace).getByRole('menuitem', { name: '查看材料库' })).toBeVisible()
+    expect(within(workspace).getByRole('button', { name: '查看材料库' })).toBeVisible()
+    const composer = within(workspace).getByRole('textbox', { name: '和 Agent 讨论你的研究' }).closest('form')!
+    expect(composer).toHaveAttribute('data-mode', 'standard')
+    expect(composer).toHaveAttribute('data-layout', 'research')
+    expect(composer).not.toContainElement(within(workspace).getByRole('group', { name: '研究工具栏' }))
   })
 
   it('loads the proposal persisted by a completed Agent turn', async () => {
@@ -1006,6 +1040,8 @@ describe('NewResearchWorkspacePage', () => {
 
     const workspace = await screen.findByRole('region', { name: '新建研究工作区' })
     fireEvent.click(await within(workspace).findByRole('button', { name: /查看证据：互惠规范/ }))
+    expect(await screen.findByRole('region', { name: '依据' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '依据' }))
     const sources = await screen.findByRole('group', { name: '知识库' })
     fireEvent.click(within(sources).getByRole('button', { name: /互惠规范/ }))
 
@@ -1036,6 +1072,8 @@ describe('NewResearchWorkspacePage', () => {
 
     const workspace = await screen.findByRole('region', { name: '新建研究工作区' })
     fireEvent.click(await within(workspace).findByRole('button', { name: /查看证据：社区互助工作笔记/ }))
+    expect(await screen.findByRole('region', { name: '依据' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '依据' }))
     const sources = await screen.findByRole('group', { name: '知识库' })
     expect(sources).toHaveTextContent('知识库资料')
     expect(sources).not.toHaveTextContent('未审核')
@@ -1066,6 +1104,8 @@ describe('NewResearchWorkspacePage', () => {
 
     const workspace = await screen.findByRole('region', { name: '新建研究工作区' })
     fireEvent.click(await within(workspace).findByRole('button', { name: /查看证据：互惠规范/ }))
+    expect(await screen.findByRole('region', { name: '依据' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '依据' }))
     const sources = await screen.findByRole('group', { name: '知识库' })
     fireEvent.click(within(sources).getByRole('button', { name: /互惠规范/ }))
 
@@ -1110,6 +1150,8 @@ describe('NewResearchWorkspacePage', () => {
     renderPage(`/research/new?conversation_id=${conversation.conversation_id}`)
     const refreshedWorkspace = await screen.findByRole('region', { name: '新建研究工作区' })
     fireEvent.click(await within(refreshedWorkspace).findByRole('button', { name: /查看证据：社会资本与互助/ }))
+    expect(await screen.findByRole('region', { name: '依据' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '依据' }))
     const sources = await screen.findByRole('group', { name: '知识库' })
     fireEvent.click(within(sources).getByRole('button', { name: /社会资本与互助/ }))
     const basis = await screen.findByRole('region', { name: '依据' })
@@ -1143,7 +1185,7 @@ describe('NewResearchWorkspacePage', () => {
     }))
     const page = renderPage()
     const workspace = await within(page.container).findByRole('region', { name: '新建研究工作区' })
-    const columns = workspace.querySelector<HTMLElement>('.new-research__workspace')!
+    const columns = workspace.querySelector<HTMLElement>('.research-launch__body')!
     Object.defineProperty(columns, 'getBoundingClientRect', {
       configurable: true,
       value: () => ({ width: 1000, height: 800, top: 0, right: 1000, bottom: 800, left: 0, x: 0, y: 0, toJSON: () => ({}) }),
@@ -1156,7 +1198,7 @@ describe('NewResearchWorkspacePage', () => {
     fireEvent.pointerMove(separator, { pointerId: 1, clientX: 500 })
     fireEvent.pointerUp(separator, { pointerId: 1 })
     expect(separator).toHaveAttribute('aria-valuenow', '500')
-    expect(columns.style.getPropertyValue('--new-research-agent-width')).toBe('500px')
+    expect(columns.style.getPropertyValue('--qx-research-agent-width')).toBe('500px')
 
     fireEvent.keyDown(separator, { key: 'ArrowRight' })
     expect(separator).toHaveAttribute('aria-valuenow', '476')

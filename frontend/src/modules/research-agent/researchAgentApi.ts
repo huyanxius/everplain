@@ -1,4 +1,4 @@
-import { editAgentCanvasNode, type AgentCanvasNodeEditRequest } from '../../api/generated'
+import { editAgentCanvasNode, listAgentModels, type AgentCanvasNodeEditRequest } from '../../api/generated'
 import { apiClient } from '../../api/client'
 import type {
   AgentResearchJourneyResponse,
@@ -6,6 +6,7 @@ import type {
   AgentTurnRequest as AgentTurnRequestDto,
 } from '../../api/generated'
 import type {
+  AgentModelCatalog,
   AgentCitation,
   AgentConversation,
   AgentConversationSummary,
@@ -198,6 +199,20 @@ function isResearchMapRelation(value: unknown): boolean {
     && (value.label === undefined || value.label === null || typeof value.label === 'string')
 }
 
+export async function getAgentModelCatalog(signal?: AbortSignal): Promise<AgentModelCatalog> {
+  const result = await listAgentModels({ client: apiClient, signal })
+  if (!result.data) throw new Error('无法加载可用模型，请重试。')
+  return {
+    runtimeMode: result.data.runtime_mode,
+    models: result.data.items.map(item => ({
+      id: item.model_id,
+      label: item.label,
+      reasoningEfforts: item.reasoning_efforts,
+      defaultReasoningEffort: item.default_reasoning_effort,
+    })),
+  }
+}
+
 export async function listAgentConversations(signal?: AbortSignal): Promise<AgentConversationSummary[]> {
   const response = await fetch(apiClient.buildUrl({ url: '/api/agent/conversations' }), {
     credentials: 'include',
@@ -316,6 +331,8 @@ async function streamAgentTurnOnce(
       'Idempotency-Key': payload.idempotencyKey,
     },
     body: JSON.stringify({
+      ...(payload.model_id == null ? {} : { model_id: payload.model_id }),
+      ...(payload.reasoning_effort == null ? {} : { reasoning_effort: payload.reasoning_effort }),
       conversation_id: payload.conversation_id,
       message: payload.message,
       mode: payload.mode ?? 'standard',
@@ -336,7 +353,12 @@ async function streamAgentTurnOnce(
   })
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) throw new Error('登录状态已失效，请重新登录后继续研究。')
-    if (response.status === 422) throw new Error('问题长度或格式不符合要求，请修改后重试。')
+    if (response.status === 422) {
+      const failure = await response.json().catch(() => null) as { detail?: unknown } | null
+      throw new Error(typeof failure?.detail === 'string'
+        ? failure.detail
+        : payload.model_id ? '问题或模型设置不符合要求，请检查后重试。' : '问题长度或格式不符合要求，请修改后重试。')
+    }
     throw new Error('Agent 暂时无法连接')
   }
   if (!response.body) throw new Error('Agent 暂时无法连接')
@@ -423,7 +445,7 @@ export async function stopAgentRun(runId: string, options: { keepalive?: boolean
 export async function saveCanvasNode(conversationId: string, nodeId: string, body: AgentCanvasNodeEditRequest): Promise<AgentConversation> {
   const result = await editAgentCanvasNode({ client: apiClient, headers: { 'Idempotency-Key': crypto.randomUUID() }, path: { conversation_id: conversationId, node_id: nodeId }, body })
   if (!result.data) {
-    throw new Error(result.response.status === 409 ? '卡片已在另一处更新。你的草稿仍保留，请载入最新版本后核对。' : '卡片未保存，请检查连接后重试。')
+    throw new Error(result.response?.status === 409 ? '卡片已在另一处更新。你的草稿仍保留，请载入最新版本后核对。' : '卡片未保存，请检查连接后重试。')
   }
   return result.data as AgentConversation
 }

@@ -41,10 +41,23 @@ export type CreditLedgerEntry = {
   inputTokens: number
   outputTokens: number
   createdAt: string
+  status?: 'pending' | 'settled' | 'failed' | 'refunded' | 'released'
+  chargedCny?: number | null
+  refundedCny?: number | null
+}
+
+/** Each item describes one currently valid allowance pool, never lifetime grants. */
+export type ActiveUsageBucket = {
+  id: string
+  kind: 'subscription' | 'top_up' | 'welcome'
+  availablePoints: number
+  limitPoints: number
+  expiresAt: string | null
 }
 
 export type CreditSummary = {
   balance: number
+  activeUsageBuckets?: ActiveUsageBucket[] | null
   creditLimit: number
   grantAmount: number
   isUnlimited: boolean

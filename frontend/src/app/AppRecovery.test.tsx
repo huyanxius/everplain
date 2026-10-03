@@ -49,7 +49,7 @@ describe('global recovery', () => {
       </ErrorBoundary>,
     )
 
-    expect(screen.getByRole('heading', { name: '页面没有安全地完成渲染。' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: '页面暂时打不开' })).toBeVisible()
     expect(screen.getByRole('button', { name: '重新加载' })).toBeVisible()
     expect(consoleError).toHaveBeenCalled()
     consoleError.mockRestore()

@@ -175,6 +175,7 @@ def build(root, prepared, output, revision, images, bases):
                 "workflow_ref": os.environ.get("GITHUB_WORKFLOW_REF"),
                 "backend_lock_sha256": digest(root / "backend/uv.lock"),
                 "frontend_lock_sha256": digest(root / "frontend/package-lock.json"),
+                "clipper_lock_sha256": digest(root / "extensions/clipper/package-lock.json"),
             },
         }
         validate_manifest(manifest, revision)

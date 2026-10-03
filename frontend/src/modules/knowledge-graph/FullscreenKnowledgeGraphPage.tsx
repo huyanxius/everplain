@@ -250,7 +250,7 @@ export function FullscreenKnowledgeGraphPage({
           parentNodeId ? readStructuralConnectionPage({
             releaseId: activeReleaseId,
             sourceNodeId: parentNodeId,
-          }) : Promise.resolve({ connections: [] as const, nextCursor: undefined }),
+          }) : Promise.resolve<Awaited<ReturnType<typeof readStructuralConnectionPage>>>({ connections: [], nextCursor: undefined }),
           readIncidentRelationPage({
             releaseId: activeReleaseId,
             knowledgeId: nextFocus.knowledgeId,
@@ -455,7 +455,7 @@ export function FullscreenKnowledgeGraphPage({
               onChange={(event) => setQueryInput(event.target.value)}
               placeholder="搜索理论、概念或方法"
             />
-            <button
+            <button className="qx-btn qx-btn--primary"
               type="submit"
               aria-label="搜索"
               disabled={!queryInput.trim() || searching}
@@ -469,7 +469,7 @@ export function FullscreenKnowledgeGraphPage({
             <ul>
               {searchResults.map((entry) => (
                 <li key={entry.knowledgeId}>
-                  <button type="button" onClick={() => selectCenter(entry.knowledgeId)}>
+                  <button className="qx-btn qx-btn--ghost" type="button" onClick={() => selectCenter(entry.knowledgeId)}>
                     <strong>{entry.title}</strong>
                     <span>{entry.directoryPath.map((node) => node.title).join(' / ')}</span>
                   </button>
@@ -477,7 +477,7 @@ export function FullscreenKnowledgeGraphPage({
               ))}
             </ul>
             {searchCursor ? (
-              <button type="button" onClick={() => void runSearch(query, searchCursor)}>
+              <button className="qx-btn qx-btn--ghost" type="button" onClick={() => void runSearch(query, searchCursor)}>
                 加载更多搜索结果
               </button>
             ) : null}
@@ -509,7 +509,7 @@ export function FullscreenKnowledgeGraphPage({
           <p><i className="legend-line legend-line--structure" />目录结构</p>
           <p><i className="legend-line legend-line--reviewed" />正式关系 <span>{reviewedCount}</span></p>
           <p><i className="legend-line legend-line--pending" />候选关系 <span>{pendingCount}</span></p>
-          <button
+          <button className="qx-btn qx-btn--ghost"
             type="button"
             disabled={!focus}
             aria-pressed={pendingEnabled}
@@ -525,7 +525,7 @@ export function FullscreenKnowledgeGraphPage({
         {focus || directoryCursor ? (
           <section className="knowledge-graph-page__pagination" aria-label="局部网络分页">
             {directoryCursor ? (
-              <button
+              <button className="qx-btn qx-btn--ghost"
                 type="button"
                 onClick={() => void expandDirectory(directoryCursor.nodeId, directoryCursor.cursor)}
               >
@@ -533,22 +533,22 @@ export function FullscreenKnowledgeGraphPage({
               </button>
             ) : null}
             {structureCursors.children ? (
-              <button type="button" onClick={() => void loadMoreStructure('children')}>
+              <button className="qx-btn qx-btn--ghost" type="button" onClick={() => void loadMoreStructure('children')}>
                 加载更多直接子级
               </button>
             ) : null}
             {structureCursors.siblings ? (
-              <button type="button" onClick={() => void loadMoreStructure('siblings')}>
+              <button className="qx-btn qx-btn--ghost" type="button" onClick={() => void loadMoreStructure('siblings')}>
                 加载更多同父条目
               </button>
             ) : null}
             {relationCursor ? (
-              <button type="button" onClick={() => void loadMoreRelations()}>
+              <button className="qx-btn qx-btn--ghost" type="button" onClick={() => void loadMoreRelations()}>
                 加载更多正式关系
               </button>
             ) : relationTotal === 0 ? <p>当前中心没有知识关系。</p> : null}
             {pendingEnabled && candidateCursor ? (
-              <button type="button" onClick={() => void loadMoreCandidates()}>
+              <button className="qx-btn qx-btn--ghost" type="button" onClick={() => void loadMoreCandidates()}>
                 加载更多候选关系
               </button>
             ) : null}

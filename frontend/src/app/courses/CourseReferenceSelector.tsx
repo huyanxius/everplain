@@ -1,9 +1,12 @@
+import { BooksIcon, CheckIcon } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { listCourses, type SharedCourse } from '../../modules/shared-knowledge'
-import './courses.css'
+import { Select } from '../ui/Select'
+import '../conversation-view/conversation-composer.css'
 
-export function CourseReferenceSelector({ value, hasConversation, disabled, onChange }: {
+export function CourseReferenceSelector({ value, hasConversation, disabled, onChange, menu = false }: {
+  menu?: boolean
   value: string
   hasConversation: boolean
   disabled: boolean
@@ -17,13 +20,18 @@ export function CourseReferenceSelector({ value, hasConversation, disabled, onCh
     return () => { active = false }
   }, [value])
   const found = courses.find((course) => course.id === value)
-  return <div className="course-reference-selector">
-    <label>知识来源 <select aria-label="选择个人知识库" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-      <option value="">不使用个人知识库</option>
-      {value && !found ? <option value={value}>当前知识库{failed ? '暂不可用' : ''}</option> : null}
-      {courses.map((course) => <option key={course.id} value={course.id} disabled={course.access === 'unavailable'}>{course.name ?? '知识库不可用'}{course.access === 'unavailable' ? '（不可用）' : ''}</option>)}
-    </select></label>
-    {hasConversation ? <span>切换将开启新对话</span> : value ? <span>本次对话将使用所选知识库</span> : null}
-    {(failed || found?.access === 'unavailable') ? <Link to="/library">查看知识库</Link> : null}
+  const options = [
+    { value: '', label: '不使用个人知识库' },
+    ...(value && !found ? [{ value, label: `当前知识库${failed ? '暂不可用' : ''}` }] : []),
+    ...courses.map(course => ({ value: course.id, label: `${course.name ?? '知识库不可用'}${course.access === 'unavailable' ? '（不可用）' : ''}`, disabled: course.access === 'unavailable' })),
+  ]
+  return <div className={menu ? 'cv-library-selector cv-library-selector--menu' : 'cv-library-selector'}>
+    {menu ? <><p className="cv-library-selector__label"><BooksIcon size={17} />知识来源</p>
+      {options.map(option => <button type="button" key={option.value} role="menuitemradio" aria-checked={option.value === value}
+        className="qx-btn qx-btn--ghost" disabled={disabled || ('disabled' in option && option.disabled)} onClick={() => onChange(option.value)}>
+        <span>{option.label}</span>{option.value === value && <CheckIcon size={15} />}
+      </button>)}</> : <label><span className="qx-meta">知识来源</span><Select aria-label="选择个人知识库" value={value} disabled={disabled} onChange={onChange} options={options} /></label>}
+    {hasConversation ? <span className="qx-meta">切换将开启新对话</span> : value ? <span className="qx-meta">本次对话将使用所选知识库</span> : null}
+    {(failed || found?.access === 'unavailable') ? <Link className="qx-btn qx-btn--ghost" to="/library">查看知识库</Link> : null}
   </div>
 }

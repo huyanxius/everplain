@@ -87,7 +87,7 @@ function CompareStage() {
           const active = focus === theoryId
           return (
             <button
-              className={`research-demo__theory research-demo__theory--${theoryId}`}
+              className={["qx-btn qx-btn--ghost", `research-demo__theory research-demo__theory--${theoryId}`].filter(Boolean).join(' ')}
               key={theoryId}
               type="button"
               aria-pressed={active}
@@ -229,7 +229,7 @@ export function ResearchDemoPreview() {
 
       <div className="research-demo__stages" role="tablist" aria-label="研究推演阶段">
         {stages.map((item, index) => (
-          <button
+          <button className="qx-btn qx-btn--ghost"
             key={item.id}
             id={`research-demo-tab-${item.id}`}
             type="button"
@@ -275,7 +275,7 @@ export function ResearchDemoPreview() {
       </div>
 
       <footer className="research-demo__footer">
-        <button type="button" onClick={() => setPlaying((current) => !current)}>
+        <button className="qx-btn qx-btn--ghost" type="button" onClick={() => setPlaying((current) => !current)}>
           <i aria-hidden="true">{playing ? 'Ⅱ' : '▶'}</i>
           {playing ? '暂停推演' : '继续推演'}
         </button>

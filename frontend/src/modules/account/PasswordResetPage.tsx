@@ -145,7 +145,7 @@ export function PasswordResetPage({
           </label>
           {error ? <p className="account-management-alert" role="alert">{error}</p> : null}
           <button
-            className="account-management-button account-management-button--primary"
+            className="qx-btn qx-btn--primary"
             type="submit"
             disabled={submitting}
           >

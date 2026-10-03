@@ -124,9 +124,9 @@ function AccountSettingsRoute() {
     })
   }
   return (
-    <SettingsModal onClose={() => location.state?.settingsBackground ? navigate(-1) : navigate('/app', { replace: true })}>
-        <button className="account-profile-setup" onClick={() => navigate('/welcome/setup')}>重新设置我的 AI 伙伴</button>
+    <SettingsModal userId={account.sessionState.status === 'authenticated' ? account.sessionState.session.user.userId : undefined} accountName={account.sessionState.status === 'authenticated' ? account.sessionState.session.user.displayName || account.sessionState.session.user.email : undefined} onClose={() => location.state?.settingsBackground ? navigate(-1) : navigate('/app', { replace: true })}>
         <AccountSettingsPage
+          onResetAgent={() => navigate('/welcome/setup')}
           onLogout={leaveAccount}
           onProfileUpdated={() => account.retrySession()}
           onSessionExpired={() => account.retrySession()}
@@ -160,7 +160,7 @@ function AdminOperationsRoute() {
           onForbidden={() => navigate('/settings', { replace: true })}
           onSessionExpired={() => navigate('/login?redirect=%2Fadmin%2Foperations', { replace: true })}
         />
-        <button className="admin-ops-back" type="button" onClick={() => navigate('/admin/users')}>返回用户管理</button>
+        <button className="qx-btn qx-btn--ghost admin-ops-back" type="button" onClick={() => navigate('/admin/users')}>返回用户管理</button>
       </PageContent>
     </PageShell>
   )

@@ -36,6 +36,7 @@ def https_url(value):
 def check_configuration():
     invalid = set()
     env = os.environ
+    fallback = env.get("EVERPLAIN_ALLOW_MODEL_FALLBACK", "").lower() in {"true", "1", "yes", "on"}
     required = (
         "MODEL_BASE_URL",
         "MODEL_NAME",
@@ -50,6 +51,13 @@ def check_configuration():
         "ACCOUNT_INITIAL_ADMIN_EMAIL",
         "ACCOUNT_INITIAL_ADMIN_PASSWORD",
     )
+    if fallback:
+        required = tuple(
+            f"{prefix}_{suffix}"
+            for prefix in ("MODEL", "EMBEDDING", "RERANKER")
+            if credential(env.get(f"EVERPLAIN_{prefix}_API_KEY"))
+            for suffix in ("BASE_URL", "NAME" if prefix == "MODEL" else "MODEL", "API_KEY")
+        )
     for suffix in required:
         name = f"EVERPLAIN_{suffix}"
         if not credential(env.get(name)):
@@ -60,11 +68,23 @@ def check_configuration():
     if env.get("EVERPLAIN_RUNTIME_MODE") != "base":
         invalid.add("EVERPLAIN_RUNTIME_MODE")
     for suffix in ("MODEL_BASE_URL", "EMBEDDING_BASE_URL", "RERANKER_BASE_URL"):
+        if fallback and not credential(
+            env.get("EVERPLAIN_" + suffix.replace("BASE_URL", "API_KEY"))
+        ):
+            continue
         if not https_url(env.get(f"EVERPLAIN_{suffix}")):
             invalid.add(f"EVERPLAIN_{suffix}")
-    if len(env.get("EVERPLAIN_ACCOUNT_INITIAL_ADMIN_PASSWORD", "")) < 12:
+    admin_configured = bool(
+        env.get("EVERPLAIN_ACCOUNT_INITIAL_ADMIN_EMAIL")
+        or env.get("EVERPLAIN_ACCOUNT_INITIAL_ADMIN_PASSWORD")
+    )
+    if (not fallback or admin_configured) and len(
+        env.get("EVERPLAIN_ACCOUNT_INITIAL_ADMIN_PASSWORD", "")
+    ) < 12:
         invalid.add("EVERPLAIN_ACCOUNT_INITIAL_ADMIN_PASSWORD")
-    if "@" not in env.get("EVERPLAIN_ACCOUNT_INITIAL_ADMIN_EMAIL", ""):
+    if (not fallback or admin_configured) and "@" not in env.get(
+        "EVERPLAIN_ACCOUNT_INITIAL_ADMIN_EMAIL", ""
+    ):
         invalid.add("EVERPLAIN_ACCOUNT_INITIAL_ADMIN_EMAIL")
 
     optional = {"email": "not_configured", "transcription": "not_configured"}
@@ -80,7 +100,9 @@ def check_configuration():
         "TRANSCRIPTION_BASE_URL",
         "TRANSCRIPTION_MODEL",
     )
-    if any(env.get(f"EVERPLAIN_{suffix}") for suffix in voice_fields):
+    if (not fallback or credential(env.get("EVERPLAIN_TRANSCRIPTION_API_KEY"))) and any(
+        env.get(f"EVERPLAIN_{suffix}") for suffix in voice_fields
+    ):
         optional["transcription"] = "configured_not_verified"
         for suffix in voice_fields:
             if not credential(env.get(f"EVERPLAIN_{suffix}")):
@@ -101,15 +123,13 @@ def check_configuration():
             not https_url(origin) for origin in settings.cors_allowed_origins
         ):
             invalid.add("EVERPLAIN_CORS_ALLOWED_ORIGINS")
-        if settings.embedding_model != "Pro/BAAI/bge-m3":
+        if not fallback and settings.embedding_model != "Pro/BAAI/bge-m3":
             invalid.add("EVERPLAIN_EMBEDDING_MODEL")
-        if settings.reranker_model != "Pro/BAAI/bge-reranker-v2-m3":
+        if not fallback and settings.reranker_model != "Pro/BAAI/bge-reranker-v2-m3":
             invalid.add("EVERPLAIN_RERANKER_MODEL")
         if settings.web_search_profile != "generic":
             invalid.add("EVERPLAIN_WEB_SEARCH_PROFILE")
-        if settings.web_search_provider == "custom" and not https_url(
-            settings.web_search_base_url
-        ):
+        if settings.web_search_provider == "custom" and not https_url(settings.web_search_base_url):
             invalid.add("EVERPLAIN_WEB_SEARCH_BASE_URL")
         for endpoint in settings.model_fallbacks:
             if not https_url(endpoint.base_url) or not credential(
@@ -127,6 +147,16 @@ def check_configuration():
         invalid.add("EVERPLAIN_SETTINGS_FORMAT")
     return {
         "status": "configuration_invalid" if invalid else "configuration_ready",
+        "ai_mode": "model_fallback"
+        if fallback and not credential(env.get("EVERPLAIN_MODEL_API_KEY"))
+        else "real",
+        "backend_mode": "real",
+        "web_search": "configured_not_verified"
+        if credential(env.get("EVERPLAIN_WEB_SEARCH_API_KEY"))
+        or env.get("EVERPLAIN_WEB_SEARCH_PROVIDER") == "custom"
+        else "not_configured",
+        "registration_email": optional["email"],
+        "administrator": "configured" if admin_configured else "not_provisioned",
         "invalid_fields": sorted(invalid),
         "optional_services": optional,
         "provider_connectivity": "not_checked",
@@ -140,11 +170,7 @@ def main():
     )
     args = parser.parse_args()
     if args.env_file and not load_dotenv(args.env_file, override=False):
-        print(
-            json.dumps(
-                {"status": "configuration_invalid", "invalid_fields": ["ENV_FILE"]}
-            )
-        )
+        print(json.dumps({"status": "configuration_invalid", "invalid_fields": ["ENV_FILE"]}))
         return 1
     result = check_configuration()
     print(json.dumps(result, ensure_ascii=False))

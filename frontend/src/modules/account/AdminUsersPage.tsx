@@ -4,9 +4,10 @@ import {
   UsersThreeIcon,
   WarningIcon,
 } from '@phosphor-icons/react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 
+import { Select } from '../../ui/Select'
 import { accountManagementApi } from './accountManagementApi'
 import {
   AccountManagementRequestError,
@@ -20,7 +21,7 @@ import {
 } from './accountManagementModels'
 import { AccountConfirmationDialog } from './AccountSettingsPage'
 import { MutationIntentLedger } from './mutationIntent'
-import './account-management.css'
+import './admin-users.css'
 
 type AdminUsersPageProps = {
   api?: AccountManagementApi
@@ -106,6 +107,12 @@ export function AdminUsersPage({
   const mutationIntents = useRef(new MutationIntentLedger())
   const rowTriggerRef = useRef<HTMLElement | null>(null)
 
+  const handleBoundaryFailure = useCallback((failure: unknown) => {
+    if (!(failure instanceof AccountManagementRequestError)) return
+    if (failure.status === 401) onSessionExpired?.()
+    if (failure.status === 403) onForbidden?.()
+  }, [onSessionExpired, onForbidden])
+
   useEffect(() => {
     let active = true
     setDirectory({ status: 'loading' })
@@ -134,7 +141,7 @@ export function AdminUsersPage({
     return () => {
       active = false
     }
-  }, [api, submittedQuery, statusFilter, reloadToken])
+  }, [api, submittedQuery, statusFilter, reloadToken, handleBoundaryFailure])
 
   useEffect(() => {
     let active = true
@@ -149,12 +156,6 @@ export function AdminUsersPage({
       active = false
     }
   }, [api, auditReloadToken])
-
-  function handleBoundaryFailure(failure: unknown) {
-    if (!(failure instanceof AccountManagementRequestError)) return
-    if (failure.status === 401) onSessionExpired?.()
-    if (failure.status === 403) onForbidden?.()
-  }
 
   function actionFailureMessage(failure: unknown) {
     handleBoundaryFailure(failure)
@@ -226,291 +227,78 @@ export function AdminUsersPage({
   }
 
   if (directory.status === 'loading') {
-    return (
-      <section className="account-management-state account-management-state--loading" role="status" aria-live="polite">
-        <span className="account-management-state__line" />
-        <span className="account-management-state__line" />
-        <span className="account-management-state__line" />
-        <p>正在读取用户目录</p>
-      </section>
-    )
+    return <section className="ep-admin-load" role="status" aria-live="polite"><p className="qx-meta">正在读取用户目录</p></section>
   }
 
   if (directory.status === 'error') {
-    return (
-      <section className="account-management-state" role="alert">
-        <span className="account-management-state__icon" aria-hidden="true">
-          <WarningIcon size={20} />
-        </span>
-        <h2>暂时无法读取用户目录</h2>
-        <p>没有任何角色或账户状态被改变。</p>
-        <button
-          className="account-management-button"
-          type="button"
-          onClick={() => setReloadToken((value) => value + 1)}
-        >
-          重试
-        </button>
-      </section>
-    )
+    return <section className="ep-admin-load" role="alert">
+      <WarningIcon size={24} aria-hidden="true" />
+      <h2 className="qx-heading">暂时无法读取用户目录</h2>
+      <p className="qx-meta">没有任何角色或账户状态被改变。</p>
+      <button className="qx-btn qx-btn--secondary" type="button" onClick={() => setReloadToken(value => value + 1)}>重试</button>
+    </section>
   }
 
   const pending = pendingAction !== null
 
   return (
-    <article className="account-management-page account-admin-page">
-      <header className="account-management-hero account-admin-hero">
-        <div>
-          <p className="account-management-eyebrow">PRIVATE BETA ROSTER</p>
-          <h1>用户管理</h1>
-          <p>管理内测用户的资格、权限与账户恢复。</p>
-        </div>
-        <div className="account-admin-summary" aria-label="目录摘要">
-          <span aria-hidden="true"><UsersThreeIcon size={21} /></span>
-          <strong>{directory.total}</strong>
-          <small>位内测用户</small>
-        </div>
-        <a className="account-management-admin-link" href={settingsHref}>返回账户设置</a>
-        <a className="account-management-admin-link account-management-admin-link--secondary" href="/admin/operations">打开模型配置</a>
-      </header>
-
-      {feedback ? <p className="account-management-feedback" role="status">{feedback}</p> : null}
-      {actionError ? <p className="account-management-alert" role="alert">{actionError}</p> : null}
-
-      <section className="account-admin-credit-codes" aria-labelledby="credit-code-generator-title">
-        <header>
-          <div>
-            <p className="account-management-eyebrow">PRIVATE BETA CREDITS</p>
-            <h2 id="credit-code-generator-title">积分兑换码</h2>
-            <p>批量生成一次性兑换码，兑换后积分恢复至 10,000。</p>
-          </div>
+    <article className="ep-admin-users">
+      <div className="ep-admin-users__content" inert={Boolean(roleDialog || statusDialog || resetUser)}>
+        <header className="ep-admin-users__head">
+          <div><h1 className="qx-section-title">用户管理</h1><p className="qx-meta">管理用户资格、角色与账户恢复。操作记录保存在服务端。</p></div>
+          <nav className="ep-admin-actions" aria-label="管理页面"><a className="qx-btn qx-btn--ghost" href={settingsHref}>返回账户设置</a><a className="qx-btn qx-btn--secondary" href="/admin/operations">打开模型配置</a></nav>
         </header>
-        <form className="account-admin-credit-code-form" onSubmit={submitCreditCodeBatch}>
-          <label>
-            <span>生成数量</span>
-            <input
-              type="number"
-              min={1}
-              max={100}
-              value={creditCodeCount}
-              onChange={(event) => setCreditCodeCount(Number(event.target.value))}
-            />
-          </label>
-          <label>
-            <span>有效天数</span>
-            <input
-              type="number"
-              min={1}
-              max={365}
-              value={creditCodeExpiresInDays}
-              onChange={(event) => setCreditCodeExpiresInDays(Number(event.target.value))}
-            />
-          </label>
-          <button
-            className="account-management-button account-management-button--primary"
-            type="submit"
-            disabled={pending
-              || creditCodeCount < 1
-              || creditCodeExpiresInDays < 1}
-          >
-            {pendingAction === 'credit-code-batch' ? '正在生成…' : '生成兑换码'}
-          </button>
-        </form>
-        {generatedCreditCodes ? (
-          <div className="account-admin-credit-code-result">
-            <p>完整兑换码只显示在这里，请立即复制保存。</p>
-            <small>
-              兑换后恢复至 {generatedCreditCodes.points.toLocaleString('zh-CN')} 积分 ·
-              有效至 {formatDate(generatedCreditCodes.expiresAt)}
-            </small>
-            <ol>
-              {generatedCreditCodes.codes.map((code) => <li key={code}><code>{code}</code></li>)}
-            </ol>
-          </div>
-        ) : null}
-      </section>
-
-      <section className="account-admin-toolbar" aria-label="用户目录工具">
-        <form className="account-admin-search" role="search" onSubmit={submitSearch}>
-          <label>
-            <span className="sr-only">搜索用户</span>
-            <MagnifyingGlassIcon size={17} aria-hidden="true" />
-            <input
-              type="search"
-              aria-label="搜索用户"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索姓名或邮箱"
-            />
-          </label>
-          <select
-            aria-label="筛选账户状态"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as AccountStatus | '')}
-          >
-            <option value="">全部状态</option>
-            <option value="active">活跃</option>
-            <option value="disabled">已禁用</option>
-            <option value="deactivated">已停用</option>
-          </select>
-          <button className="account-management-button" type="submit">搜索</button>
-        </form>
-      </section>
-
-      <section className="account-admin-directory" aria-labelledby="account-directory-title">
-        <header>
-          <div>
-            <p className="account-management-eyebrow">ACCESS DIRECTORY</p>
-            <h2 id="account-directory-title">内测名册</h2>
-          </div>
-          <span>{directory.total} 位用户</span>
-        </header>
-
-        {directory.users.length === 0 ? (
-          <div className="account-admin-empty">
-            <UsersThreeIcon size={24} aria-hidden="true" />
-            <h3>还没有匹配的用户</h3>
-            <p>调整搜索条件，或等待新的内测用户完成注册。</p>
-          </div>
-        ) : (
-          <div className="account-admin-table-wrap">
-            <table className="account-admin-table">
-              <thead>
-                <tr>
-                  <th scope="col">用户</th>
-                  <th scope="col">角色</th>
-                  <th scope="col">状态</th>
-                  <th scope="col">最近活动</th>
-                  <th scope="col"><span className="sr-only">操作</span></th>
+        {feedback ? <p className="qx-notice" role="status">{feedback}</p> : null}
+        {actionError ? <p className="qx-notice qx-notice--danger" role="alert">{actionError}</p> : null}
+        <section className="ep-admin-directory" aria-labelledby="account-directory-title">
+          <form className="ep-admin-search" role="search" onSubmit={submitSearch}>
+            <label className="qx-search"><MagnifyingGlassIcon size={18} aria-hidden="true" /><input type="search" aria-label="搜索用户" value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索姓名或邮箱" /></label>
+            <Select aria-label="筛选账户状态" value={statusFilter} onChange={value => setStatusFilter(value as AccountStatus | '')} options={[{ value: '', label: '全部状态' }, { value: 'active', label: '活跃' }, { value: 'disabled', label: '已禁用' }, { value: 'deactivated', label: '已停用' }]} />
+            <button className="qx-btn qx-btn--secondary" type="submit">搜索</button>
+          </form>
+          <header className="ep-admin-section-head"><h2 className="qx-heading" id="account-directory-title">用户目录</h2><span className="qx-meta">{directory.total} 位用户</span></header>
+          {directory.users.length === 0 ? <div className="ep-admin-empty"><UsersThreeIcon size={28} aria-hidden="true" /><h3 className="qx-heading">还没有匹配的用户</h3><p className="qx-meta">调整搜索条件，或等待新的内测用户完成注册。</p></div> : <div className="ep-admin-table-scroll">
+            <table className="ep-admin-table"><thead><tr><th scope="col">用户</th><th scope="col">角色</th><th scope="col">状态</th><th scope="col">最近活动</th><th scope="col">账户操作</th></tr></thead><tbody>
+              {directory.users.map(user => {
+                const selectedRole = roleSelections[user.userId] ?? user.role
+                const resetLink = resetLinks[user.userId]
+                return <tr key={user.userId}>
+                  <td><div className="ep-admin-user"><strong>{user.displayName ?? '未设置名称'}</strong><span className="qx-meta">{user.email}</span>{user.isCurrentUser || user.isProtectedAdmin ? <div className="ep-admin-user__labels">{user.isCurrentUser ? <span className="qx-tag">当前账户</span> : null}{user.isProtectedAdmin ? <span className="qx-tag">部署管理员</span> : null}</div> : null}</div></td>
+                  <td><div className="ep-admin-role"><Select aria-label={`${user.email} 的角色`} value={selectedRole} disabled={pending || user.isProtectedAdmin} onChange={value => setRoleSelections(values => ({ ...values, [user.userId]: value as AccountRole }))} options={[{ value: 'member', label: '内测用户' }, { value: 'admin', label: '管理员' }]} /><button className="qx-btn qx-btn--ghost" type="button" aria-label={`保存 ${user.email} 的角色`} disabled={pending || user.isProtectedAdmin || selectedRole === user.role} onClick={event => { rowTriggerRef.current = event.currentTarget; setRoleReason(''); setRoleDialog({ user, nextRole: selectedRole }) }}>保存</button></div></td>
+                  <td><span className={`qx-tag ep-admin-status ep-admin-status--${user.status}`}>{user.status === 'active' ? '活跃' : user.status === 'disabled' ? '已禁用' : '已停用'}</span></td>
+                  <td><time className="qx-meta" dateTime={user.lastActiveAt ?? undefined}>{formatDate(user.lastActiveAt)}</time></td>
+                  <td><div className="ep-admin-row-actions">
+                    {!user.isProtectedAdmin && user.status === 'active' ? <button className="qx-btn qx-btn--ghost" type="button" aria-label={`禁用 ${user.email}`} disabled={pending || user.isCurrentUser} onClick={event => { rowTriggerRef.current = event.currentTarget; setStatusReason(''); setStatusDialog({ user, nextStatus: 'disabled' }) }}>禁用</button> : !user.isProtectedAdmin ? <button className="qx-btn qx-btn--ghost" type="button" aria-label={`启用 ${user.email}`} disabled={pending} onClick={event => { rowTriggerRef.current = event.currentTarget; setStatusReason('恢复内测资格'); setStatusDialog({ user, nextStatus: 'active' }) }}>启用</button> : null}
+                    <button className="qx-btn qx-btn--ghost" type="button" aria-label={`为 ${user.email} 创建密码重置链接`} disabled={pending || user.status !== 'active'} onClick={event => { rowTriggerRef.current = event.currentTarget; setResetUser(user) }}>重置密码</button>
+                  </div>{resetLink?.resetUrl ? <a className="ep-admin-reset-link" href={resetLink.resetUrl}>{user.email} 的密码重置链接</a> : null}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {directory.users.map((user) => {
-                  const selectedRole = roleSelections[user.userId] ?? user.role
-                  const resetLink = resetLinks[user.userId]
-                  return (
-                    <tr key={user.userId}>
-                      <td>
-                        <strong>{user.displayName ?? '未设置名称'}</strong>
-                        <span>{user.email}</span>
-                        {user.isCurrentUser ? <small>当前账户</small> : null}
-                        {user.isProtectedAdmin ? (
-                          <small className="account-admin-protected">部署管理员</small>
-                        ) : null}
-                      </td>
-                      <td>
-                        <div className="account-admin-role-control">
-                          <select
-                            aria-label={`${user.email} 的角色`}
-                            value={selectedRole}
-                            disabled={pending || user.isProtectedAdmin}
-                            onChange={(event) => setRoleSelections((values) => ({
-                              ...values,
-                              [user.userId]: event.target.value as AccountRole,
-                            }))}
-                          >
-                            <option value="member">内测用户</option>
-                            <option value="admin">管理员</option>
-                          </select>
-                          <button
-                            className="account-management-button account-management-button--quiet"
-                            type="button"
-                            aria-label={`保存 ${user.email} 的角色`}
-                            disabled={pending || user.isProtectedAdmin || selectedRole === user.role}
-                            onClick={(event) => {
-                              rowTriggerRef.current = event.currentTarget
-                              setRoleReason('')
-                              setRoleDialog({ user, nextRole: selectedRole })
-                            }}
-                          >
-                            保存
-                          </button>
-                        </div>
-                      </td>
-                      <td>
-                        <span className={`account-status account-status--${user.status}`}>
-                          {user.status === 'active' ? '活跃' : user.status === 'disabled' ? '已禁用' : '已停用'}
-                        </span>
-                      </td>
-                      <td>{formatDate(user.lastActiveAt)}</td>
-                      <td>
-                        <div className="account-admin-actions">
-                          {!user.isProtectedAdmin && user.status === 'active' ? (
-                            <button
-                              className="account-management-button account-management-button--quiet"
-                              type="button"
-                              aria-label={`禁用 ${user.email}`}
-                              disabled={pending || user.isCurrentUser}
-                              onClick={(event) => {
-                                rowTriggerRef.current = event.currentTarget
-                                setStatusReason('')
-                                setStatusDialog({ user, nextStatus: 'disabled' })
-                              }}
-                            >禁用</button>
-                          ) : !user.isProtectedAdmin ? (
-                            <button
-                              className="account-management-button account-management-button--quiet"
-                              type="button"
-                              aria-label={`启用 ${user.email}`}
-                              disabled={pending}
-                              onClick={(event) => {
-                                rowTriggerRef.current = event.currentTarget
-                                setStatusReason('恢复内测资格')
-                                setStatusDialog({ user, nextStatus: 'active' })
-                              }}
-                            >启用</button>
-                          ) : null}
-                          <button
-                            className="account-management-button account-management-button--quiet"
-                            type="button"
-                            aria-label={`为 ${user.email} 创建密码重置链接`}
-                            disabled={pending || user.status !== 'active'}
-                            onClick={(event) => {
-                              rowTriggerRef.current = event.currentTarget
-                              setResetUser(user)
-                            }}
-                          >重置密码</button>
-                        </div>
-                        {resetLink?.resetUrl ? (
-                          <a className="account-admin-reset-link" href={resetLink.resetUrl}>
-                            {user.email} 的密码重置链接
-                          </a>
-                        ) : null}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="account-admin-audit" aria-labelledby="account-audit-title">
-        <header>
-          <span aria-hidden="true"><ClockCounterClockwiseIcon size={19} /></span>
-          <div>
-            <h2 id="account-audit-title">最近审计记录</h2>
-            <p>角色、资格与账户恢复操作都会在服务端留痕。</p>
-          </div>
-        </header>
-        {auditEvents.length ? (
-          <ol>
-            {auditEvents.map((event) => (
-              <li key={event.eventId}>
-                <span className={`account-audit-outcome account-audit-outcome--${event.outcome ?? 'succeeded'}`} />
-                <div>
-                  <strong>{auditLabels[event.action] ?? event.action}</strong>
-                  <p>{event.actorEmail ?? '系统'} → {event.targetEmail ?? '账户域'}</p>
-                </div>
-                <span>{event.reason ?? '未填写原因'} · {formatDate(event.occurredAt)}</span>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p className="account-settings-empty">还没有可显示的审计记录。</p>
-        )}
-      </section>
+              })}
+            </tbody></table>
+          </div>}
+        </section>
+        <div className="ep-admin-support">
+          <section aria-labelledby="credit-code-generator-title">
+            <header className="ep-admin-section-head"><h2 className="qx-heading" id="credit-code-generator-title">积分兑换码</h2></header>
+            <div className="qx-card ep-admin-credit-panel">
+              <p className="qx-meta">批量生成一次性兑换码，兑换后积分恢复至 10,000。</p>
+              <form className="ep-admin-credit-form" onSubmit={submitCreditCodeBatch}>
+                <label className="ep-admin-field">生成数量<input className="qx-input" type="number" min={1} max={100} value={creditCodeCount} onChange={event => setCreditCodeCount(Number(event.target.value))} /></label>
+                <label className="ep-admin-field">有效天数<input className="qx-input" type="number" min={1} max={365} value={creditCodeExpiresInDays} onChange={event => setCreditCodeExpiresInDays(Number(event.target.value))} /></label>
+                <button className="qx-btn qx-btn--primary" type="submit" disabled={pending || creditCodeCount < 1 || creditCodeExpiresInDays < 1}>{pendingAction === 'credit-code-batch' ? '正在生成…' : '生成兑换码'}</button>
+              </form>
+              {generatedCreditCodes ? <div className="ep-admin-credit-result"><p>完整兑换码只显示在这里，请立即复制保存。</p><p className="qx-meta">兑换后恢复至 {generatedCreditCodes.points.toLocaleString('zh-CN')} 积分 · 有效至 {formatDate(generatedCreditCodes.expiresAt)}</p><ol>{generatedCreditCodes.codes.map(code => <li key={code}><code>{code}</code></li>)}</ol></div> : null}
+            </div>
+          </section>
+          <section className="ep-admin-audit" aria-labelledby="account-audit-title">
+            <header className="ep-admin-section-head"><h2 className="qx-heading" id="account-audit-title">最近审计记录</h2><ClockCounterClockwiseIcon size={20} aria-hidden="true" /></header>
+            {auditEvents.length ? <ol>{auditEvents.map(event => <li key={event.eventId}>
+              <div className="ep-admin-audit__event"><strong>{auditLabels[event.action] ?? event.action}</strong>{event.outcome ? <span className={`qx-tag ep-admin-audit__outcome ep-admin-audit__outcome--${event.outcome}`}>{event.outcome === 'succeeded' ? '成功' : event.outcome === 'denied' ? '已拒绝' : '失败'}</span> : null}</div>
+              <p className="qx-meta">{event.actorEmail ?? '系统'} → {event.targetEmail ?? '账户域'}</p>
+              <p className="qx-meta">{event.reason ?? '未填写原因'} · <time dateTime={event.occurredAt}>{formatDate(event.occurredAt)}</time></p>
+            </li>)}</ol> : <p className="qx-meta">还没有可显示的审计记录。</p>}
+          </section>
+        </div>
+      </div>
 
       {roleDialog ? (
         <AccountConfirmationDialog
@@ -548,9 +336,9 @@ export function AdminUsersPage({
             )
           }}
         >
-          <label className="account-dialog-field">
+          <label className="ep-admin-field">
             <span>变更原因</span>
-            <textarea value={roleReason} onChange={(event) => setRoleReason(event.target.value)} maxLength={240} rows={3} />
+            <textarea className="qx-textarea" value={roleReason} onChange={(event) => setRoleReason(event.target.value)} maxLength={240} rows={3} />
           </label>
         </AccountConfirmationDialog>
       ) : null}
@@ -592,9 +380,9 @@ export function AdminUsersPage({
             )
           }}
         >
-          <label className="account-dialog-field">
+          <label className="ep-admin-field">
             <span>原因</span>
-            <textarea value={statusReason} onChange={(event) => setStatusReason(event.target.value)} maxLength={240} rows={3} />
+            <textarea className="qx-textarea" value={statusReason} onChange={(event) => setStatusReason(event.target.value)} maxLength={240} rows={3} />
           </label>
         </AccountConfirmationDialog>
       ) : null}

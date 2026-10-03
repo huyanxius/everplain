@@ -1,7 +1,7 @@
 from dataclasses import asdict, replace
 from uuid import UUID
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, update
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text, update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +24,7 @@ class AgentProfileRow(Base):
     questionnaire: Mapped[dict] = mapped_column(JSON)
     memory_ids: Mapped[dict] = mapped_column(JSON)
     version: Mapped[int] = mapped_column(Integer)
+    soul_text: Mapped[str] = mapped_column(Text, default="", server_default="")
 
 
 class SqliteAgentProfileRepository:

@@ -59,3 +59,7 @@ tests/test_imported_knowledge_availability.py
 tests/test_knowledge_import.py
 tests/test_media_import.py
 tests/test_personal_graph.py
+
+# Real backend with an explicit missing-key model boundary fallback.
+tests/test_deployed_mock.py
+tests/test_agent_model_only_fallback.py

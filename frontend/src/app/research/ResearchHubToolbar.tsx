@@ -9,7 +9,7 @@ export function ResearchHubToolbar({ query, onQueryChange, searchLabel, placehol
   children: ReactNode
 }) {
   return <div className="research-hub__toolbar">
-    <label className="research-hub__search"><MagnifyingGlassIcon size={17} /><input type="search" aria-label={searchLabel} placeholder={placeholder} value={query} onChange={(event) => onQueryChange(event.target.value)} /></label>
+    <label className="qx-search research-hub__search"><MagnifyingGlassIcon size={17} /><input type="search" aria-label={searchLabel} placeholder={placeholder} value={query} onChange={(event) => onQueryChange(event.target.value)} /></label>
     {children}
   </div>
 }

@@ -1,0 +1,22 @@
+.ep-knowledge-page { width: 100%; max-width: 1120px; margin: 0 auto; padding: var(--qx-space-10) var(--qx-space-8) var(--qx-space-16); color: var(--qx-color-ink); }
+.ep-knowledge-page--graph { max-width: 1280px; }
+.ep-knowledge-head { display: grid; gap: var(--qx-space-4); margin-bottom: var(--qx-space-6); }
+.ep-knowledge-head__row { display: flex; align-items: center; justify-content: space-between; gap: var(--qx-space-4); }
+.ep-knowledge-head__actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--qx-space-2); }
+.ep-knowledge-view > a { display: inline-flex; align-items: center; justify-content: center; min-height: var(--qx-control-height); padding: 8px 12px; border-radius: var(--qx-radius-pill); color: var(--qx-color-muted); text-decoration: none; }
+.ep-knowledge-view > a[aria-current='page'] { color: var(--qx-color-ink); background: var(--qx-color-surface); box-shadow: var(--qx-shadow-card); }
+.ep-knowledge-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--qx-space-2); }
+.ep-knowledge-search { width: min(100%, 560px); }
+.ep-knowledge-filters__separator { width: 1px; height: 20px; margin: 0 var(--qx-space-1); background: var(--qx-color-rule-strong); }
+.ep-knowledge-empty { display: grid; justify-items: center; gap: var(--qx-space-2); padding: var(--qx-space-16) 0; text-align: center; }
+.ep-knowledge-empty > h2, .ep-knowledge-empty > p { margin: 0; }
+.ep-knowledge-empty > p { max-width: 460px; }
+.ep-knowledge-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--qx-space-2); }
+@media (max-width: 720px) {
+  .ep-knowledge-page { padding: var(--qx-space-4) var(--qx-space-4) var(--qx-space-16); }
+  .ep-knowledge-head__row { align-items: flex-start; flex-wrap: wrap; }
+  .ep-knowledge-head__actions { gap: var(--qx-space-1); }
+}
+
+.ep-knowledge-zoom { position: absolute; bottom: var(--qx-space-4); left: var(--qx-space-4); display: grid; gap: var(--qx-space-2); z-index: 1; }
+.ep-knowledge-map-actions { position: absolute; top: var(--qx-space-4); right: var(--qx-space-4); display: flex; gap: var(--qx-space-2); z-index: 1; }

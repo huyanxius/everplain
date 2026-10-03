@@ -149,6 +149,7 @@ class ArtifactTests(unittest.TestCase):
                 "backend/migrations",
                 "ops/cd",
                 "frontend",
+                "extensions/clipper",
                 "prepared/images",
                 "prepared/web/assets",
                 "backend/src/qunxue_api/adapters/retrieval",
@@ -157,6 +158,7 @@ class ArtifactTests(unittest.TestCase):
             for path in (
                 "backend/uv.lock",
                 "frontend/package-lock.json",
+                "extensions/clipper/package-lock.json",
                 "backend/migrations/one.py",
                 "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py",
             ):
@@ -175,6 +177,10 @@ class ArtifactTests(unittest.TestCase):
             self.assertEqual(manifest, restored)
             self.assertEqual(restored["revision"], NEW)
             self.assertIn("backend_lock_sha256", restored["provenance"])
+            self.assertEqual(
+                restored["provenance"]["clipper_lock_sha256"],
+                artifact.digest(root / "extensions/clipper/package-lock.json"),
+            )
             self.assertNotIn(".env", "\n".join(restored["files"]))
 
 
@@ -513,6 +519,14 @@ class ActiveConfigurationTests(unittest.TestCase):
 
 
 class WorkflowSafetyTests(unittest.TestCase):
+    def test_pr_builds_real_release_images_without_transport(self):
+        checks = (ROOT / ".github/workflows/ci.yml").read_text()
+        build = checks.split("  release-build:\n", 1)[1].split("  backend:\n", 1)[0]
+        self.assertIn("if: github.event_name == 'pull_request'", build)
+        self.assertIn("run: bash ops/cd/build.sh", build)
+        self.assertNotIn("transport.sh", build)
+        self.assertNotIn("environment:", build)
+
     def test_pr_checks_do_not_reference_production_secrets(self):
         checks = (ROOT / ".github/workflows/ci.yml").read_text()
         self.assertIn("pull_request:", checks)

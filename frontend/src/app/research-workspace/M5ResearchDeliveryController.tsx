@@ -136,7 +136,7 @@ export function M5ResearchDeliveryController({
       <section className="m5-delivery-stack" role="alert">
         <strong>研究交付状态暂时无法加载</strong>
         <p>{loadError}</p>
-        <button type="button" className="m5-secondary-button" onClick={() => void refresh()}>重新加载</button>
+        <button type="button" className="qx-btn qx-btn--secondary" onClick={() => void refresh()}>重新加载</button>
       </section>
     )
   }

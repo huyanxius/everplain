@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Link } from 'react-router'
-import { ArrowLeftIcon, ArrowRightIcon, ArrowUpRightIcon, FileTextIcon, MagnifyingGlassIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
+import { ArrowRightIcon, ArrowUpRightIcon, FileTextIcon, MagnifyingGlassIcon, PlusIcon, XIcon } from '@phosphor-icons/react'
 import { AgentAvatar, type AgentAvatarId } from '../../modules/agent-avatar'
 import { ObsidianKnowledgeGraph } from '../../modules/knowledge-graph'
 import { readPersonalGraph, rebuildPersonalGraph } from '../../modules/personal-graph'
 import { readCourseDocument } from '../../modules/shared-knowledge'
-import { ErrorState, LoadingState } from '../ui/States'
+import { ErrorState } from '../ui/States'
+import { AgentLoading } from '../ui/AgentLoading'
+import { KnowledgeGraphControls, KnowledgePage, KnowledgePageHead, KnowledgeViewSwitch } from '../courses/KnowledgeLayout'
 import './personal-graph.css'
 
 export function PersonalGraphPage({ userId }: { userId: string | null }) {
@@ -28,22 +30,31 @@ export function PersonalGraphPage({ userId }: { userId: string | null }) {
     return { releaseId: g.releaseId, nodes: g.nodes.map(node => ({ ...node, image: node.id === 'self' ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(image)}` : undefined })), edges: g.edges.map(edge => ({ ...edge, layer: 'structure' as const })) }
   }, [graph.data])
   async function refresh() { setRefreshing(true); setError(''); try { const value = await rebuildPersonalGraph(); cache.setQueryData(['personal-graph', userId], value) } catch (e) { setError(String(e)) } finally { setRefreshing(false) } }
-  if (graph.isPending) return <LoadingState message="正在展开你的知识图谱" />
+  if (graph.isPending) return <AgentLoading message="正在展开你的知识图谱" />
   if (graph.isError || !projection) return <ErrorState detail={graph.error?.message} onRetry={() => { void graph.refetch() }} />
   const g = graph.data!
-  const results = g.nodes.filter(n => n.nodeType !== 'self' && n.label.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
-  return <main className="ep-personal-graph">
-    <header className="ep-graph-header"><Link to="/app" className="ep-graph-back"><ArrowLeftIcon size={17} /><span>我的空间</span></Link><div><span>CONNECTIONS</span><h1>你的思绪，自成一片天地。</h1></div><Link className="ep-graph-talk" to={record ? `/agent?reference_knowledge_base_id=${encodeURIComponent(record.library_id)}` : '/agent'}>和 {g.name} 聊聊<ArrowRightIcon size={16} /></Link></header>
-    <div className="ep-graph-toolbar"><label><MagnifyingGlassIcon size={17} /><input aria-label="搜索我的图谱" value={query} onChange={e => setQuery(e.target.value)} placeholder="寻找一个想法、一份资料……" /></label><span>{g.document_count} 份资料 · {g.topic_count} 个主题</span><button disabled={refreshing} onClick={() => { void refresh() }}>{refreshing ? '正在更新…' : '更新图谱'}</button><Link to="/imports"><PlusIcon size={15} />继续导入</Link></div>
-    {error && <p role="alert" className="ep-graph-error">{error}</p>}
-    <div className="ep-graph-layout"><section className="ep-graph-map"><ObsidianKnowledgeGraph projection={projection} personal focusNodeId={selected} onSelectKnowledge={setSelected} onExpandNode={setSelected} />
-      <div className="ep-graph-legend"><span><i />我</span><span><i />主题</span><span><i />资料</span><span><i />知识点</span></div>
-      {g.document_count === 0 && <div className="ep-graph-empty"><h2>每个想法，都可以从这里开始。</h2><p>导入几份收藏或笔记，慢慢长出你的知识图谱。</p><Link to="/imports">带来第一份资料 <ArrowUpRightIcon size={14} /></Link></div>}
-      {g.pending_count > 0 && <p className="ep-graph-working" role="status">{g.pending_count} 份资料等待归类{g.mode === 'semantic' ? '，需要完成语义索引' : ''}</p>}
-    </section>
-    <aside className={`ep-graph-sidebar${record ? ' ep-graph-sidebar--source' : ''}`}>
-      {record ? <><header><span>原文</span><button aria-label="关闭原文" onClick={() => setSelected(undefined)}><XIcon size={18} /></button></header><h2>{record.title}</h2>{record.asset_url && <img className="ep-graph-source-image" src={record.asset_url} alt={record.title} />}{source.isPending ? <LoadingState message="正在读取原文" /> : source.isError ? <ErrorState detail={source.error.message} onRetry={() => { void source.refetch() }} /> : <div className="ep-graph-source">{source.data?.segments.map(s => <p key={s.id} data-active={s.id === record.segment_id}>{s.text}</p>)}</div>}<Link className="ep-graph-source-link" to={`/library?kb_id=${encodeURIComponent(record.library_id)}&document_id=${encodeURIComponent(record.document_id)}`}>在资料库中打开 <ArrowUpRightIcon size={14} /></Link>{record.source_url && /^https?:\/\//i.test(record.source_url) && <a className="ep-graph-source-link" href={record.source_url} target="_blank" rel="noreferrer">访问来源网页 <ArrowUpRightIcon size={14} /></a>}</> : <><header><span>{query ? `找到 ${results.length} 个结果` : '沿着好奇心，开始探索'}</span></header><div className="ep-graph-result-list">{results.slice(0,80).map(n => <button key={n.id} data-selected={n.id === selected} onClick={() => setSelected(n.id)}><FileTextIcon size={15} weight="light" /><span>{n.label}<small>{n.nodeType === 'topic' ? '主题' : n.nodeType === 'document' ? '资料' : '知识点'}</small></span><ArrowUpRightIcon size={13} /></button>)}</div>{!results.length && <p className="ep-graph-sidebar-hint">{query ? '换一个词试试看。' : '你收集的资料与发现的联系，会在这里汇合。'}</p>}</>}
-      {g.mode === 'mock' && <p className="ep-graph-mode">当前为本地演示归类；接入专用模型后可进行语义归类与主题命名。</p>}
-    </aside></div>
-  </main>
+  const search = query.trim().toLocaleLowerCase()
+  const selectedNode = g.nodes.find(node => node.id === selected)
+  const neighbors = new Set(g.edges.flatMap(edge => edge.source === selected ? [edge.target] : edge.target === selected ? [edge.source] : []))
+  const results = g.nodes.filter(node => node.nodeType !== 'self' && (search ? node.label.toLocaleLowerCase().includes(search) : selected ? neighbors.has(node.id) : false))
+  const showSidebar = Boolean(search || selected)
+  const closeSidebar = () => { setSelected(undefined); setQuery('') }
+  return <KnowledgePage graph>
+    <KnowledgePageHead title="图谱" actions={<><KnowledgeViewSwitch view="graph" /><Link className="qx-btn qx-btn--primary" to="/imports"><PlusIcon size={18} />继续导入</Link></>}>
+      <div className="ep-knowledge-filters"><label className="qx-search ep-personal-map__search"><MagnifyingGlassIcon size={18} /><input aria-label="搜索我的图谱" value={query} onChange={event => { setQuery(event.target.value); setSelected(undefined) }} placeholder="找一个节点" /></label>{g.nodes.filter(node => node.nodeType === 'topic').map(node => <button className="qx-tag" type="button" key={node.id} aria-pressed={selected === node.id} onClick={() => { setSelected(selected === node.id ? undefined : node.id); setQuery('') }}>{node.label}</button>)}</div>
+    </KnowledgePageHead>
+    <div className="ep-personal-map__bar"><span className="qx-meta">{g.document_count} 份资料 · {g.topic_count} 个主题 · {g.nodes.length} 节点 · {g.edges.length} 关系</span><div className="ep-knowledge-actions"><button type="button" className="qx-btn qx-btn--ghost" disabled={refreshing} onClick={() => void refresh()}>{refreshing ? '正在更新…' : '更新图谱'}</button><Link className="qx-btn qx-btn--ghost" to={record ? `/agent?reference_knowledge_base_id=${encodeURIComponent(record.library_id)}` : '/agent'}>和 {g.name} 聊聊<ArrowRightIcon size={16} /></Link></div></div>
+    {error && <p role="alert" className="qx-notice qx-notice--danger">{error}</p>}
+    <div className="ep-personal-map">
+      <ObsidianKnowledgeGraph renderControls={controls => <KnowledgeGraphControls controls={controls} />} projection={projection} personal focusNodeId={selected} onSelectKnowledge={setSelected} onExpandNode={setSelected} />
+      {g.document_count === 0 && <div className="ep-personal-map__empty"><h2 className="qx-card__title">每个想法，都可以从这里开始。</h2><p className="qx-meta">导入几份收藏或笔记，慢慢长出你的知识图谱。</p><Link className="qx-btn qx-btn--secondary" to="/imports">带来第一份资料<ArrowUpRightIcon size={15} /></Link></div>}
+      {g.pending_count > 0 && <p className="qx-meta ep-personal-map__working" role="status">{g.pending_count} 份资料等待归类{g.mode === 'semantic' ? '，需要完成语义索引' : ''}</p>}
+      <div className="ep-personal-map__legend" aria-label="节点类型"><span>我</span><span>主题</span><span>资料</span><span>知识点</span></div>
+      {showSidebar && <aside className="qx-panel ep-personal-map__detail" aria-label={record ? '资料原文' : search ? '搜索结果' : '节点详情'}>
+        <header><span className="qx-tag">{record ? '原文' : search ? `找到 ${results.length} 个结果` : selectedNode?.nodeType === 'topic' ? '主题' : '知识点'}</span><button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={record ? '关闭原文' : '关闭节点面板'} onClick={closeSidebar}><XIcon size={18} /></button></header>
+        {record ? <><h2 className="qx-card__title">{record.title}</h2>{record.asset_url && <img src={record.asset_url} alt={record.title} />}{source.isPending ? <AgentLoading compact state="work" message="正在读取原文…" /> : source.isError ? <ErrorState detail={source.error.message} onRetry={() => void source.refetch()} /> : <div className="qx-prose ep-personal-map__source">{source.data?.segments.map(segment => <p key={segment.id} data-active={segment.id === record.segment_id}>{segment.text}</p>)}</div>}<Link className="qx-btn qx-btn--primary qx-btn--block" to={`/library?kb_id=${encodeURIComponent(record.library_id)}&document_id=${encodeURIComponent(record.document_id)}${record.segment_id ? `&segment_id=${encodeURIComponent(record.segment_id)}` : ''}`}>在资料库中打开<ArrowUpRightIcon size={15} /></Link>{record.source_url && /^https?:\/\//i.test(record.source_url) && <a className="qx-btn qx-btn--ghost" href={record.source_url} target="_blank" rel="noreferrer">访问来源网页<ArrowUpRightIcon size={15} /></a>}</> : <>{selectedNode && <h2 className="qx-card__title">{selectedNode.label}</h2>}<div className="ep-personal-map__results">{results.slice(0, 80).map(node => <button className="qx-item" type="button" key={node.id} onClick={() => setSelected(node.id)}><FileTextIcon size={17} /><span>{node.label}<small>{node.nodeType === 'topic' ? '主题' : node.nodeType === 'document' ? '资料' : '知识点'}</small></span><ArrowUpRightIcon size={14} /></button>)}</div>{!results.length && <p className="qx-meta">{search ? '换一个词试试看。' : '这个节点暂时还没有关联资料。'}</p>}</>}
+      </aside>}
+    </div>
+    {g.mode === 'mock' && <p className="qx-meta ep-personal-map__note">当前为本地演示归类；接入专用模型后可进行语义归类与主题命名。</p>}
+  </KnowledgePage>
 }

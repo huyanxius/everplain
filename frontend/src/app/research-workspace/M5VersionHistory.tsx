@@ -51,42 +51,16 @@ export function M5VersionHistory({ currentVersion, versions, onRestore }: Props)
     }
   }
 
-  return (
-    <section className="m5-version-history" aria-labelledby="m5-version-heading" aria-busy={busyVersion !== null}>
-      <div className="m5-panel-heading">
-        <div>
-          <span className="m5-panel-kicker">版本记录</span>
-          <h3 id="m5-version-heading">可恢复历史</h3>
-        </div>
-        <span className="m5-status-chip">第 {currentVersion} 版</span>
-      </div>
-      <ol className="m5-version-list">
-        {versions.map((version) => {
-          const current = version.version === currentVersion
-          return (
-            <li key={version.version}>
-              <div>
-                <strong>第 {version.version} 版</strong>
-                {current && <span>当前版本</span>}
-                {version.status === 'confirmed' && <span>正式版</span>}
-                <small>{displayDate(version.createdAt)} · {version.actorLabel}</small>
-                <p>{version.summary}</p>
-                {version.restoredFromVersion && <em>由第 {version.restoredFromVersion} 版恢复</em>}
-              </div>
-              {!current && (
-                <button type="button" className="m5-quiet-button" disabled={busyVersion !== null} onClick={() => void restore(version.version)} aria-label={`恢复第 ${version.version} 版`}>
-                  {busyVersion === version.version
-                    ? <CircleNotchIcon className="m5-spin" aria-hidden="true" />
-                    : <ArrowCounterClockwiseIcon aria-hidden="true" />}
-                </button>
-              )}
-            </li>
-          )
-        })}
-      </ol>
-      <p className={`m5-live-message ${error ? 'is-error' : ''}`} role="status" aria-live="polite">
-        {error ?? (restoredVersion ? `已从第 ${restoredVersion} 版创建新的可编辑版本。` : '')}
-      </p>
-    </section>
-  )
+  return <section className="qx-card ep-delivery-history" aria-labelledby="m5-version-heading" aria-busy={busyVersion !== null}>
+    <header className="ep-delivery-section-head"><h3 className="qx-card__title" id="m5-version-heading">可恢复历史</h3><span className="qx-meta">第 {currentVersion} 版</span></header>
+    <ol className="ep-delivery-history__list">{versions.map(version => {
+      const current = version.version === currentVersion
+      return <li key={version.version} aria-current={current ? 'true' : undefined}>
+        <header><strong>第 {version.version} 版</strong>{current ? <span className="qx-tag">当前版本</span> : null}{version.status === 'confirmed' ? <span className="qx-tag">正式版</span> : null}{!current ? <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" disabled={busyVersion !== null} onClick={() => void restore(version.version)} aria-label={`恢复第 ${version.version} 版`}>{busyVersion === version.version ? <CircleNotchIcon className="ep-delivery-spin" aria-hidden="true" /> : <ArrowCounterClockwiseIcon aria-hidden="true" />}</button> : null}</header>
+        <p>{version.summary}</p><div className="qx-meta"><time dateTime={version.createdAt}>{displayDate(version.createdAt)}</time><span> · {version.actorLabel}</span></div>{version.restoredFromVersion ? <p className="qx-meta">由第 {version.restoredFromVersion} 版恢复</p> : null}
+      </li>
+    })}</ol>
+    {!versions.length ? <p className="qx-meta">还没有可恢复的历史版本。</p> : null}
+    <p className="ep-delivery-message" data-error={Boolean(error)} role="status" aria-live="polite">{error ?? (restoredVersion ? `已从第 ${restoredVersion} 版创建新的可编辑版本。` : '')}</p>
+  </section>
 }

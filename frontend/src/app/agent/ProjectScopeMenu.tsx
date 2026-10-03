@@ -12,7 +12,7 @@ export function ProjectScopeMenu({ projects, taskId, disabled, onChange }: {
   const { text } = useAppLocale()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [offset, setOffset] = useState(0)
+  const [position, setPosition] = useState({ left: 0, top: 0, maxHeight: 320 })
   const entryRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -25,10 +25,18 @@ export function ProjectScopeMenu({ projects, taskId, disabled, onChange }: {
   const filteredOptions = options.filter((option) => option.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
   useLayoutEffect(() => {
     if (!open) return
-    const left = entryRef.current?.getBoundingClientRect().left ?? 0
-    const width = menuRef.current?.offsetWidth ?? 240
-    setOffset(Math.min(0, window.innerWidth - left - width - 12))
-    menuRef.current?.querySelector('input')?.focus()
+    const menu = menuRef.current
+    const anchor = triggerRef.current
+    if (!menu || !anchor) return
+    menu.showPopover?.()
+    const rect = anchor.getBoundingClientRect()
+    const width = Math.min(288, window.innerWidth - 32)
+    const above = rect.top - 16, below = window.innerHeight - rect.bottom - 16
+    const up = above >= below
+    const maxHeight = Math.max(80, Math.min(320, up ? above : below))
+    setPosition({ left: Math.max(16, Math.min(rect.left, window.innerWidth - width - 16)), top: up ? Math.max(8, rect.top - Math.min(menu.scrollHeight, maxHeight) - 8) : rect.bottom + 8, maxHeight })
+    menu.querySelector('input')?.focus()
+    return () => menu.hidePopover?.()
   }, [open])
   useEffect(() => {
     if (!open) return
@@ -38,7 +46,7 @@ export function ProjectScopeMenu({ projects, taskId, disabled, onChange }: {
     document.addEventListener('pointerdown', dismiss)
     return () => document.removeEventListener('pointerdown', dismiss)
   }, [open])
-  return <div ref={entryRef} className="research-agent-composer__project-entry" onKeyDown={(event) => {
+  return <div ref={entryRef} className="cv-project-selector" onKeyDown={(event) => {
     if (event.key === 'Enter' && event.target instanceof HTMLInputElement) { event.preventDefault(); return }
     if (event.key === 'Escape') { setOpen(false); triggerRef.current?.focus(); event.stopPropagation() }
     if (event.key === 'Tab') setOpen(false)
@@ -50,17 +58,17 @@ export function ProjectScopeMenu({ projects, taskId, disabled, onChange }: {
     const current = items.indexOf(document.activeElement as HTMLElement)
     items[(current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus()
   }}>
-    <button ref={triggerRef} type="button" className="research-agent-composer__mode-button research-agent-composer__project-button"
+    <button ref={triggerRef} type="button" className="qx-btn qx-btn--ghost cv-project-selector__trigger"
       aria-label={text('对话所属项目', 'Conversation project')} title={title} aria-haspopup="dialog" aria-expanded={open}
       disabled={disabled} onClick={() => { setQuery(''); setOpen((current) => !current) }}>
       {taskId ? <FolderIcon size={15} /> : <ChatCircleIcon size={15} />}<span>{title}</span><CaretDownIcon size={11} />
     </button>
-    {open && !disabled ? <div ref={menuRef} role="dialog" aria-label={text('切换项目', 'Switch project')}
-      className="research-agent-composer__material-menu research-agent-composer__project-menu" style={{ left: offset }}>
-      <input type="search" aria-label={text('搜索项目', 'Search projects')} placeholder={text('搜索项目', 'Search projects')}
+    {open && !disabled ? <div ref={menuRef} popover="manual" role="dialog" aria-label={text('切换项目', 'Switch project')}
+      className="qx-menu cv-project-selector__menu" style={position}>
+      <input className="qx-input" type="search" aria-label={text('搜索项目', 'Search projects')} placeholder={text('搜索项目', 'Search projects')}
         value={query} onChange={(event) => setQuery(event.target.value)} />
-      <div role="menu" aria-label={text('选择项目', 'Choose project')} className="research-agent-composer__project-options">
-      {filteredOptions.map((option) => <button key={option.id} type="button" role="menuitemradio" aria-checked={option.id === (taskId ?? '')}
+      <div role="menu" aria-label={text('选择项目', 'Choose project')} className="cv-project-selector__options">
+      {filteredOptions.map((option) => <button className="qx-btn qx-btn--ghost" key={option.id} type="button" role="menuitemradio" aria-checked={option.id === (taskId ?? '')}
         onClick={() => { setOpen(false); if (option.id !== (taskId ?? '')) onChange(option.id); else triggerRef.current?.focus() }}>
         {option.id ? <FolderIcon size={16} /> : <ChatCircleIcon size={16} />}<span>{option.title}</span>
         {option.id === (taskId ?? '') ? <CheckIcon size={14} /> : null}

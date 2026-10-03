@@ -1,5 +1,9 @@
 import type { ResearchDiscussion, ResearchCanvasStreamingTurn } from '../../modules/research-workspace'
 import {
+  ArrowLeftIcon,
+  CheckIcon,
+  PlusIcon,
+  SidebarSimpleIcon,
   ChartBarIcon,
   ArchiveBoxIcon,
   FileTextIcon,
@@ -22,12 +26,13 @@ import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } 
 import { readResearchTaskNavigationViaApi } from '../../api/researchWorkspace'
 import { getAgentConversation, type AgentConversation } from '../../modules/research-agent'
 import { ResearchArchivePanel } from '../../modules/research-exchange'
-import { ResearchAnalysisPanel, ResearchMaterialsPanel } from '../../modules/research-materials'
+import { ResearchAnalysisPanel, ResearchMaterialsPanel, listResearchLibraryMaterials, materialMediaLabel, materialStatusLabel } from '../../modules/research-materials'
 import { MethodPlanWorkspace } from '../../modules/research-method'
 import { useResearchTask, type ResearchTask } from '../../modules/socio-match-workspace'
 import { ResearchAgentConversationPage } from '../agent/ResearchAgentConversationPage'
 import { PageContent, PageShell } from '../ui/PageShell'
-import { ErrorState, LoadingState } from '../ui/States'
+import { ErrorState } from '../ui/States'
+import { AgentLoading } from '../ui/AgentLoading'
 import { ResearchDocumentWorkbench, type ResearchDocumentWorkspaceContext } from './ResearchDocumentWorkbench'
 import {
   readResearchWorkspaceResumePath,
@@ -41,7 +46,7 @@ import './research-project-workspace.css'
 
 const MIN_AGENT_WIDTH = 320
 const MAX_AGENT_WIDTH = 680
-const DEFAULT_AGENT_WIDTH = 430
+const DEFAULT_AGENT_WIDTH = 340
 
 const tools: ReadonlyArray<{
   id: ResearchWorkspaceTool
@@ -63,8 +68,9 @@ type ResearchProjectWorkspacePageProps = {
   readonly userId?: string | null
 }
 
-function clampAgentWidth(value: number) {
-  return Math.round(Math.min(MAX_AGENT_WIDTH, Math.max(MIN_AGENT_WIDTH, value)))
+function clampAgentWidth(value: number, availableWidth = Number.POSITIVE_INFINITY) {
+  const upper = Math.min(MAX_AGENT_WIDTH, Math.max(MIN_AGENT_WIDTH, availableWidth - 360))
+  return Math.round(Math.min(upper, Math.max(MIN_AGENT_WIDTH, value)))
 }
 
 function readAgentWidth(taskId: string) {
@@ -131,11 +137,22 @@ export function ResearchProjectWorkspacePage({ userId = null }: ResearchProjectW
   const [citationRequest, setCitationRequest] = useState<{ id: string; key: number } | null>(null)
   const [streamingTurn, setStreamingTurn] = useState<ResearchCanvasStreamingTurn | null>(null)
   useEffect(() => { setDiscussion(null); setCitationRequest(null) }, [taskId, toolParam])
-  const discuss = (next: ResearchDiscussion) => { setDiscussion(next); setMobilePane('agent') }
+  const discuss = (next: ResearchDiscussion) => { setDiscussion(next); setSide('agent'); setMobilePane('agent') }
 
   const [documentContext, setDocumentContext] = useState<ResearchDocumentWorkspaceContext | null>(null)
   const [centerRefreshKey, setCenterRefreshKey] = useState(0)
-  const [mobilePane, setMobilePane] = useState<'center' | 'agent'>('center')
+  const [mobilePane, setMobilePane] = useState<'center' | 'outline' | 'materials' | 'agent'>('center')
+  const [side, setSide] = useState<'materials' | 'agent'>('materials')
+  const [outlineOpen, setOutlineOpen] = useState(true)
+  const [outlineTarget, setOutlineTarget] = useState<HTMLDivElement | null>(null)
+  const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null)
+  const leaveDocument = useRef<null | (() => Promise<boolean>)>(null)
+  const registerDocumentGuard = useCallback((guard: (() => Promise<boolean>) | null) => { leaveDocument.current = guard }, [])
+  const resources = useQuery({
+    queryKey: ['research-workspace-materials', taskId, centerRefreshKey],
+    queryFn: ({ signal }) => listResearchLibraryMaterials(taskId, signal),
+    enabled: Boolean(taskId), retry: false,
+  })
   const [historyRailTarget, setHistoryRailTarget] = useState<HTMLDivElement | null>(null)
   const [agentWidth, setAgentWidth] = useState(() => readAgentWidth(taskId))
   const resizePointer = useRef<number | null>(null)
@@ -154,10 +171,24 @@ export function ResearchProjectWorkspacePage({ userId = null }: ResearchProjectW
     setDocumentContext(null)
   }, [tool])
 
+  useEffect(() => {
+    const layout = layoutRef.current
+    if (!layout) return
+    const fit = () => {
+      const width = layout.getBoundingClientRect().width
+      if (width > 0) setAgentWidth(current => clampAgentWidth(current, width))
+    }
+    fit()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(fit)
+    observer?.observe(layout)
+    window.addEventListener('resize', fit)
+    return () => { observer?.disconnect(); window.removeEventListener('resize', fit) }
+  }, [task.isPending, navigation.isPending, taskId, tool])
+
   const resizeAgent = useCallback((clientX: number) => {
     const bounds = layoutRef.current?.getBoundingClientRect()
     if (!bounds?.width) return
-    setAgentWidth(clampAgentWidth(Math.min(bounds.width - 360, bounds.right - clientX)))
+    setAgentWidth(clampAgentWidth(bounds.right - clientX, bounds.width))
   }, [])
 
   function startResize(event: ReactPointerEvent<HTMLDivElement>) {
@@ -190,13 +221,21 @@ export function ResearchProjectWorkspacePage({ userId = null }: ResearchProjectW
             : null
     if (next == null) return
     event.preventDefault()
-    const width = clampAgentWidth(next)
+    const width = clampAgentWidth(next, layoutRef.current?.getBoundingClientRect().width || Number.POSITIVE_INFINITY)
     setAgentWidth(width)
     try {
       window.localStorage.setItem(`everplain.research-workspace.agent-width.v1:${taskId}`, String(width))
     } catch {
       // Keyboard resizing remains available for this session.
     }
+  }
+
+  async function openWorkspace(event: React.MouseEvent<HTMLAnchorElement>, destination: string) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    if (leaveDocument.current && !(await leaveDocument.current())) return
+    setMobilePane('center')
+    navigate(destination)
   }
 
   const updateMaterialLocation = useCallback((next: {
@@ -229,7 +268,7 @@ export function ResearchProjectWorkspacePage({ userId = null }: ResearchProjectW
   }, [location.pathname, location.search, navigate, preserveConversation, taskId, tool])
 
   if (!taskId) return <ErrorState detail="研究项目地址无效。" />
-  if (task.isPending || navigation.isPending) return <LoadingState message="正在恢复研究项目" />
+  if (task.isPending || navigation.isPending) return <AgentLoading message="正在恢复研究项目" />
   if (task.isError || navigation.isError || !task.data || !navigation.data) {
     return <ErrorState
       title="研究项目暂时无法打开"
@@ -238,7 +277,7 @@ export function ResearchProjectWorkspacePage({ userId = null }: ResearchProjectW
     />
   }
   if (requestedConversationId && requestedConversationId !== knownConversationId) {
-    if (conversationQuery.isPending) return <LoadingState message="正在恢复研究对话" />
+    if (conversationQuery.isPending) return <AgentLoading message="正在恢复研究对话" />
     if (conversationQuery.isError || !conversationQuery.data) return <ErrorState
       detail="研究对话暂时无法打开。"
       onRetry={() => { void conversationQuery.refetch() }}
@@ -269,7 +308,7 @@ export function ResearchProjectWorkspacePage({ userId = null }: ResearchProjectW
   }
 
   const center = tool === 'materials'
-    ? <ResearchMaterialsPanel taskId={taskId} presentation="workspace" initialMaterialId={position.materialId ?? null} initialParseId={position.parseId ?? null} initialSegmentId={position.segmentId ?? null} refreshKey={centerRefreshKey} onWorkspaceLocationChange={updateMaterialLocation} />
+    ? <ResearchMaterialsPanel taskId={taskId} outlineTarget={outlineTarget} onMaterialsChange={() => { void resources.refetch() }} presentation="workspace" initialMaterialId={position.materialId ?? null} initialParseId={position.parseId ?? null} initialSegmentId={position.segmentId ?? null} refreshKey={centerRefreshKey} onWorkspaceLocationChange={updateMaterialLocation} />
     : tool === 'analysis'
       ? <ResearchAnalysisPanel taskId={taskId} refreshKey={centerRefreshKey} />
       : tool === 'method'
@@ -279,6 +318,9 @@ export function ResearchProjectWorkspacePage({ userId = null }: ResearchProjectW
       : (
           <ResearchDocumentWorkbench
             embedded
+            outlineTarget={outlineTarget}
+            toolbarTarget={toolbarTarget}
+            onNavigationGuardChange={registerDocumentGuard}
             userId={userId}
             workspaceMode={tool === 'writing' ? 'framework' : 'match'}
             focusDocument={tool !== 'map'}
@@ -287,101 +329,81 @@ export function ResearchProjectWorkspacePage({ userId = null }: ResearchProjectW
             conversation={agentConversation}
             streamingTurn={streamingTurn}
             onDiscuss={discuss}
-            onOpenCitation={(id) => setCitationRequest({ id, key: Date.now() })}
+            onOpenCitation={(id) => { setSide('agent'); setMobilePane('agent'); setCitationRequest({ id, key: Date.now() }) }}
             refreshKey={centerRefreshKey}
             onWorkspaceContextChange={updateDocumentLocation}
           />
         )
 
+  const stageLabel = taskData.projectStage ?? ''
+  const progress = /写作|文稿|已完成|成果|交付/.test(stageLabel) ? 3
+    : /大纲|框架|研究方案|方案确认|方法/.test(stageLabel) ? 2
+      : /资料|材料|理论|匹配|分析|编码/.test(stageLabel) ? 1
+        : /提问|现象|问题/.test(stageLabel) ? 0 : -1
+  const materialItems = resources.data?.items.filter(item => item.status !== 'deleted') ?? []
+  const selectSide = (value: 'materials' | 'agent') => { setSide(value); setMobilePane(value); if (value === 'materials') void resources.refetch() }
+
   return (
     <PageShell workspace wide railContentRef={setHistoryRailTarget}>
       <PageContent>
-        <main className="research-project-workspace" aria-label="研究项目工作区">
-          <header className="research-project-workspace__header">
-            {/*
-              顶栏只留一行：返回入口和项目名。原先还有「已有研究」这类分类词和阶段副标题，
-              它们跟中心工具自己的标题栏结构一模一样（返回 | 眉标+标题 / 副行 + 右侧控件），
-              两条叠在一起就成了同一个模板出现两遍。阶段和方法在地图与方法页里都看得到，
-              这里不必重复。
-            */}
-            <div className="research-project-workspace__identity">
-              <Link to="/app?research=all">全部研究</Link>
-              <h1>{projectTitle(taskData, navigationData)}</h1>
-            </div>
-            <nav className="research-project-workspace__tools" aria-label="研究中心工具">
-              {tools.map(({ id, label, icon: Icon }) => (
-                <Link
-                  key={id}
-                  to={preserveConversation(researchWorkspaceDestination(taskId, id))}
-                  aria-current={tool === id ? 'page' : undefined}
-                  onClick={() => setMobilePane('center')}
-                >
-                  <Icon size={16} aria-hidden="true" />
-                  <span>{label}</span>
-                </Link>
-              ))}
-            </nav>
+        <main className="ep-workspace" aria-label="研究项目工作区" data-outline={outlineOpen}>
+          <header className="ep-workspace__bar">
+            <Link className="qx-btn qx-btn--ghost qx-btn--icon" to="/research/materials" aria-label="返回研究" onClick={event => void openWorkspace(event, '/research/materials')}><ArrowLeftIcon /></Link>
+            <button className="qx-btn qx-btn--ghost qx-btn--icon ep-workspace__outline-toggle" type="button" aria-label="大纲" aria-pressed={outlineOpen} onClick={() => setOutlineOpen(value => !value)}><SidebarSimpleIcon /></button>
+            <h1 className="qx-heading ep-workspace__title">{projectTitle(taskData, navigationData)}</h1>
+            <ol className="ep-workspace__steps" aria-label="研究进度">
+              {['提问', '找资料', '写大纲', '写作'].map((label, index) => <li key={label} data-done={index < progress} data-current={index === progress}><span>{index < progress ? <CheckIcon weight="bold" /> : index + 1}</span>{label}</li>)}
+            </ol>
+            <div ref={setToolbarTarget} className="ep-workspace__document-actions" />
           </header>
 
-          <div className="research-project-workspace__mobile-switcher" role="group" aria-label="移动工作区视图">
-            <button type="button" aria-pressed={mobilePane === 'center'} onClick={() => setMobilePane('center')}>
-              内容
-            </button>
-            <button type="button" aria-pressed={mobilePane === 'agent'} onClick={() => setMobilePane('agent')}>
-              Agent
-            </button>
+          <div className="ep-workspace__mobile-switcher qx-segmented" role="group" aria-label="移动工作区视图">
+            {([{ id: 'center', label: '内容' }, { id: 'outline', label: '大纲与工具' }, { id: 'materials', label: '资料' }, { id: 'agent', label: 'Agent' }] as const).map(item => <button key={item.id} type="button" aria-pressed={mobilePane === item.id} onClick={() => { setMobilePane(item.id); if (item.id === 'agent' || item.id === 'materials') setSide(item.id) }}>{item.label}</button>)}
           </div>
 
-          <div
-            ref={layoutRef}
-            className="research-project-workspace__layout"
-            data-mobile-pane={mobilePane}
-            data-testid="research-workspace-layout"
-            style={{ '--research-agent-width': `${agentWidth}px` } as CSSProperties}
-          >
-            <section className="research-project-workspace__center" aria-label="中心工具区">
-              {center}
-            </section>
-            <div
-              className="research-project-workspace__separator"
-              role="separator"
-              tabIndex={0}
-              aria-label="调整 Agent 对话栏宽度"
-              aria-orientation="vertical"
-              aria-valuemin={MIN_AGENT_WIDTH}
-              aria-valuemax={MAX_AGENT_WIDTH}
-              aria-valuenow={agentWidth}
-              onKeyDown={handleResizeKey}
-              onPointerDown={startResize}
-              onPointerMove={moveResize}
-              onPointerUp={finishResize}
-              onPointerCancel={finishResize}
-            />
-            <div className="research-project-workspace__agent">
-              <ResearchAgentConversationPage
-                showConversationManagement
-                historyRailTarget={historyRailTarget}
-                embedded
-                userId={userId}
-                conversationId={requestedConversationId ?? knownConversationId ?? navigationData.conversation_id}
-                knowledgeReleaseId={navigationData.knowledge_release_id}
-                workspace="research"
-                taskId={taskId}
-                documentId={documentContext?.documentId ?? null}
-                sectionId={documentContext?.sectionId ?? null}
-                documentVersion={documentContext?.documentVersion ?? null}
-                theoryPlanId={navigationData.current_theory_plan_id}
-                onConversationStarted={syncConversationIdentity}
-                onConversationChange={syncConversation}
-                onStreamingTurnChange={setStreamingTurn}
-                discussion={discussion}
-                onClearDiscussion={() => setDiscussion(null)}
-                citationRequest={citationRequest}
-                enableResearchGuidance={Boolean(navigationData.phenomenon_summary)}
-                onTurnCompleted={() => setCenterRefreshKey((value) => value + 1)}
-                composerAriaLabel={`和 Agent 讨论当前${tools.find((item) => item.id === tool)?.label ?? '研究'}`}
-              />
-            </div>
+          <div ref={layoutRef} className="ep-workspace__body" data-mobile-pane={mobilePane} data-testid="research-workspace-layout" style={{ '--research-agent-width': `${agentWidth}px` } as CSSProperties}>
+            <aside className="ep-workspace__outline" aria-label="研究大纲与工具">
+              <div ref={setOutlineTarget} className="ep-workspace__outline-content" />
+              <nav className="ep-workspace__tools" aria-label="研究中心工具">
+                <p className="qx-group-label">研究工具</p>
+                {tools.map(({ id, label, icon: Icon }) => {
+                  const destination = preserveConversation(researchWorkspaceDestination(taskId, id))
+                  return <Link key={id} className="qx-item" to={destination} aria-current={tool === id ? 'page' : undefined} onClick={event => void openWorkspace(event, destination)}><Icon size={18} aria-hidden="true" /><span>{label}</span></Link>
+                })}
+              </nav>
+            </aside>
+            <section className="ep-workspace__center" aria-label="中心工具区">{center}</section>
+            <div className="ep-workspace__separator" role="separator" tabIndex={0} aria-label="调整 Agent 对话栏宽度" aria-orientation="vertical" aria-valuemin={MIN_AGENT_WIDTH} aria-valuemax={MAX_AGENT_WIDTH} aria-valuenow={agentWidth} onKeyDown={handleResizeKey} onPointerDown={startResize} onPointerMove={moveResize} onPointerUp={finishResize} onPointerCancel={finishResize} />
+            <aside className="ep-workspace__side" aria-label="研究资料与 Agent">
+              <div className="qx-segmented ep-workspace__side-tabs" role="tablist" aria-label="研究侧栏">
+                <button id="workspace-materials-tab" type="button" role="tab" aria-selected={side === 'materials'} aria-controls="workspace-materials-panel" onClick={() => selectSide('materials')}>资料 {resources.isSuccess ? materialItems.length : ''}</button>
+                <button id="workspace-agent-tab" type="button" role="tab" aria-selected={side === 'agent'} aria-controls="workspace-agent-panel" onClick={() => selectSide('agent')}>Agent</button>
+              </div>
+              <section id="workspace-materials-panel" className="ep-workspace__resources" role="tabpanel" aria-labelledby="workspace-materials-tab" hidden={side !== 'materials'}>
+                {resources.isPending ? <AgentLoading compact state="work" message="正在读取研究资料…" /> : null}
+                {resources.isError ? <div role="alert"><p>资料暂时无法读取。</p><button className="qx-btn qx-btn--secondary" type="button" onClick={() => void resources.refetch()}>重试读取资料</button></div> : null}
+                {materialItems.map((material, index) => {
+                  const destination = preserveConversation(researchWorkspaceDestination(taskId, 'materials', { materialId: material.materialId }))
+                  return <Link className="qx-card ep-workspace__resource" key={material.materialId} to={destination} data-active={position.materialId === material.materialId} onClick={event => void openWorkspace(event, destination)}><span className="qx-meta"><FileTextIcon size={16} />{index + 1} · {materialMediaLabel(material.mediaType, material.filename)}</span><strong>{material.filename}</strong><span className="qx-meta">{materialStatusLabel(material.status)} · {material.segmentCount} 个片段</span></Link>
+                })}
+                {resources.isSuccess && !materialItems.length ? <p className="qx-meta ep-workspace__resource-empty">把与问题有关的资料放在这里，写作时随时查阅。</p> : null}
+                <Link className="qx-btn qx-btn--secondary qx-btn--block" to={`/research/materials?task_id=${encodeURIComponent(taskId)}`} onClick={event => void openWorkspace(event, `/research/materials?task_id=${encodeURIComponent(taskId)}`)}><PlusIcon />添加研究资料</Link>
+              </section>
+              <section id="workspace-agent-panel" className="ep-workspace__agent" role="tabpanel" aria-labelledby="workspace-agent-tab" hidden={side !== 'agent'}>
+                <ResearchAgentConversationPage
+                  showConversationManagement historyRailTarget={historyRailTarget} embedded userId={userId}
+                  conversationId={requestedConversationId ?? knownConversationId ?? navigationData.conversation_id}
+                  knowledgeReleaseId={navigationData.knowledge_release_id} workspace="research" taskId={taskId}
+                  documentId={documentContext?.documentId ?? null} sectionId={documentContext?.sectionId ?? null}
+                  documentVersion={documentContext?.documentVersion ?? null} theoryPlanId={navigationData.current_theory_plan_id}
+                  onConversationStarted={syncConversationIdentity} onConversationChange={syncConversation}
+                  onStreamingTurnChange={setStreamingTurn} discussion={discussion} onClearDiscussion={() => setDiscussion(null)}
+                  citationRequest={citationRequest} enableResearchGuidance={Boolean(navigationData.phenomenon_summary)}
+                  onTurnCompleted={() => setCenterRefreshKey(value => value + 1)}
+                  composerAriaLabel={`和 Agent 讨论当前${tools.find(item => item.id === tool)?.label ?? '研究'}`}
+                />
+              </section>
+            </aside>
           </div>
         </main>
       </PageContent>
