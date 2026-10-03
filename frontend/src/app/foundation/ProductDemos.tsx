@@ -386,7 +386,7 @@ export function ModelOrbit() {
     frame = requestAnimationFrame(loop)
     return () => { cancelAnimationFrame(frame); observer?.disconnect() }
   }, [])
-  return <div className="ep-orbit" ref={stage} role="list" aria-label="可用模型">
+  return <div className="ep-orbit" ref={stage} role="list" aria-label="模型示意">
     <svg className="ep-orbit-ring" aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none"><ellipse cx="50" cy="52" rx="40" ry="40" vectorEffect="non-scaling-stroke" /></svg>
     {models.map((model, index) => <div key={model.name} role="listitem" className="ep-orbit-tile" ref={node => { tiles.current[index] = node }}>
       <img src={model.mark} alt="" />

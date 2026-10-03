@@ -130,9 +130,9 @@ export function FoundationPage({ authenticated = false }: { authenticated?: bool
       <section className="ep-models" id="models" aria-labelledby="ep-models-title">
         <ModelOrbit />
         <div className="ep-models-copy">
-          <h2 id="ep-models-title">用 1% 的成本，<br />和全球最顶尖的模型对话。</h2>
-          <p className="ep-price"><span>低至</span><strong>1%</strong><span>官方 API 价格</span></p>
-          <small>以各模型官方 API 标价为对比基准。</small>
+          <h2 id="ep-models-title">用 10% 的价格，<br />和全球最顶尖的模型对话。</h2>
+          <p className="ep-price"><span>调用费用</span><strong>10%</strong><span>官方 API 价格</span></p>
+          <small>以官方 API 标价为对比基准。当前提供 GPT 6 Luna，图中其他模型仅作展示。</small>
         </div>
       </section>
 
