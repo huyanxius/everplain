@@ -31,6 +31,19 @@ const rawAccount = {
 } as const
 
 describe('account management API adapter', () => {
+  it('preserves active pool boundaries and real charge/refund fields', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      balance: 3200, credit_limit: 3000, grant_amount: 3000, is_unlimited: false,
+      active_usage_buckets: [{ bucket_id: 'cycle-2', kind: 'subscription', available_points: 2400, limit_points: 6000, expires_at: '2027-01-01T00:00:00Z' }],
+      pricing: { input_tokens_per_credit: 100, output_tokens_per_credit: 25 },
+      entries: [{ entry_id: 'usage-1', kind: 'usage', points: -20, balance_after: 3200, input_tokens: 200, output_tokens: 20, created_at: '2026-10-01T00:00:00Z', status: 'refunded', charged_cny: 0.2, refunded_cny: 0.2 }], total_entries: 1, next_cursor: null,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+    await expect(accountManagementApi.getCreditSummary()).resolves.toMatchObject({
+      activeUsageBuckets: [{ id: 'cycle-2', kind: 'subscription', availablePoints: 2400, limitPoints: 6000, expiresAt: '2027-01-01T00:00:00Z' }],
+      entries: [{ status: 'refunded', chargedCny: 0.2, refundedCny: 0.2 }],
+    })
+  })
+
   it('exposes system health through the account module adapter', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL) => new Response(JSON.stringify({
       capability: 'base',

@@ -38,7 +38,7 @@ export function ErrorState({
       <h2>{title}</h2>
       <p>{detail}</p>
       {onRetry ? (
-        <button className="state-panel__action" type="button" onClick={onRetry}>
+        <button className="qx-btn qx-btn--ghost state-panel__action" type="button" onClick={onRetry}>
           重试
         </button>
       ) : null}

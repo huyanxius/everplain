@@ -1,305 +1,94 @@
-import { EyeIcon, EyeSlashIcon } from '@phosphor-icons/react'
-import { useEffect, useState } from 'react'
-import type { FormEvent, ReactNode } from 'react'
+import { ArrowLeftIcon, EyeIcon, EyeSlashIcon } from '@phosphor-icons/react'
+import type { ReactNode } from 'react'
+import { AgentAvatar, agentAvatarPresets } from '../agent-avatar'
+import { useLoginFlow, useRegisterFlow, type LoginPageProps, type RegisterPageProps } from './useAuthFlow'
+import './auth-flow.css'
 
-import brandMark from '../../assets/qunxue-brand-mark.svg'
-import {
-  isLoginServiceFailure,
-  registrationCodeFailureMessage,
-  registrationFailureMessage,
-} from './accountApi'
-import { AccountPaperShader } from './AccountPaperShader'
-import './account.css'
-
-type LoginPageProps = {
-  onLogin(email: string, password: string): Promise<unknown>
-  onAuthenticated(): void
-  registerHref: string
-  sessionExpired?: boolean
-}
-
-type RegisterPageProps = {
-  onRegister(email: string, password: string, verificationCode: string): Promise<unknown>
-  onSendRegistrationCode(email: string): Promise<{ resendAfterSeconds: number }>
-  onAuthenticated(): void
-  loginHref: string
-}
-
-const emailPattern = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
-
-function AccountPortal({
-  kind,
-  title,
-  formLabel,
-  children,
-  switcher,
-}: {
-  kind: 'login' | 'register'
+/** Mock Login's single-column composition, with only real authentication actions. */
+function AuthStage({ title, onBack, busy, children, footer }: {
   title: string
-  formLabel: string
+  onBack?: () => void
+  busy: boolean
   children: ReactNode
-  switcher: ReactNode
+  footer: ReactNode
 }) {
   return (
-    <section className={`account-portal account-portal--${kind}`} aria-labelledby={`account-${kind}-title`}>
-      <div className="account-paper-field" aria-hidden="true">
-        <AccountPaperShader />
+    <main className="auth-stage" aria-labelledby="auth-title">
+      {onBack && <button className="qx-btn qx-btn--secondary qx-btn--icon qx-btn--lg auth-stage__back" type="button" aria-label="返回" onClick={onBack} disabled={busy}><ArrowLeftIcon /></button>}
+      <div className="auth-stage__crowd" aria-hidden="true">
+        {agentAvatarPresets.map((preset, index) => (
+          <AgentAvatar key={preset.id} avatar={preset.id} size={index === 3 ? 72 : 48} offset={index * 0.7} state={index === 3 ? 'greet' : 'idle'} />
+        ))}
       </div>
-      <div className="account-portal__story">
-        <img className="account-portal__brand-echo" src={brandMark} alt="" aria-hidden="true" />
-        <a className="account-portal__brand" href="/" aria-label="返回 Everplain 首页">
-          <span className="account-portal__brand-mark"><img src={brandMark} alt="" /></span>
-          <span className="account-portal__brand-copy">
-            <strong>Everplain</strong>
-            <small>YOUR KNOWLEDGE, CONNECTED</small>
-          </span>
-        </a>
-        <h1 id={`account-${kind}-title`}>{title}</h1>
-        <div className="account-portal__axis" aria-hidden="true">
-          <span>资料</span>
-          <span>问题</span>
-          <span>证据</span>
-        </div>
-      </div>
-
-      <div className="account-portal__entry">
-        <div className="account-portal__entry-inner">
-          <div className="account-portal__form-heading">
-            <img src={brandMark} alt="" aria-hidden="true" />
-            <p className="account-portal__form-label">{formLabel}</p>
-          </div>
-          {children}
-          {switcher}
-        </div>
-      </div>
-    </section>
+      <h1 id="auth-title" className="qx-display">{title}</h1>
+      {children}
+      <footer className="auth-stage__footer qx-meta">{footer}<a href="/">Everplain 首页</a></footer>
+    </main>
   )
 }
 
-export function LoginPage({
-  onLogin,
-  onAuthenticated,
-  registerHref,
-  sessionExpired = false,
-}: LoginPageProps) {
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [passwordVisible, setPasswordVisible] = useState(false)
+function FormError({ message }: { message: string | null }) {
+  return message ? <p className="qx-notice qx-notice--danger" role="alert">{message}</p> : null
+}
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const data = new FormData(event.currentTarget)
-    const email = String(data.get('email') ?? '').trim()
-    const password = String(data.get('password') ?? '')
-    if (
-      !emailPattern.test(email)
-      || email.length > 320
-      || password.length < 8
-      || password.length > 128
-    ) {
-      setError('请检查邮箱格式，密码需要 8-128 个字符。')
-      return
-    }
-    setSubmitting(true)
-    setError(null)
-    try {
-      await onLogin(email, password)
-      onAuthenticated()
-    } catch (failure) {
-      if (isLoginServiceFailure(failure)) {
-        setError('登录服务暂时不可用，请稍后重试。')
-      } else {
-        setError('邮箱或密码不正确，请重新输入。')
-      }
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
+export function LoginPage(props: LoginPageProps) {
+  const flow = useLoginFlow(props)
   return (
-    <AccountPortal
-      kind="login"
-      title="登录"
-      formLabel="登录到 Everplain"
-      switcher={<p className="account-switch">还没有账号？<a href={registerHref}>创建账号</a></p>}
-    >
-      <form className="account-form" onSubmit={submit} noValidate>
-        {sessionExpired ? (
-          <p className="account-notice" role="status">登录已过期，请重新登录后继续。</p>
-        ) : null}
-        <label>
-          <span>邮箱</span>
-          <input name="email" type="email" autoComplete="email" maxLength={320} required />
-        </label>
-        <div className="account-field">
-          <label htmlFor="login-password">密码</label>
-          <div className="account-password-field">
-            <input
-              id="login-password"
-              className="account-password-field__input"
-              name="password"
-              type={passwordVisible ? 'text' : 'password'}
-              autoComplete="current-password"
-              minLength={8}
-              maxLength={128}
-              required
-            />
-            <button
-              className="account-password-field__toggle"
-              type="button"
-              aria-label={passwordVisible ? '隐藏密码' : '显示密码'}
-              aria-pressed={passwordVisible}
-              onClick={() => setPasswordVisible((visible) => !visible)}
-            >
-              {passwordVisible ? <EyeSlashIcon aria-hidden="true" /> : <EyeIcon aria-hidden="true" />}
-            </button>
-          </div>
-        </div>
-        {error ? <p className="account-error" role="alert">{error}</p> : null}
-        <button className="account-primary" type="submit" disabled={submitting}>
-          {submitting ? '正在登录…' : '登录并继续'}
+    <AuthStage title={flow.step === 'email' ? '登录 Everplain' : '输入密码'} busy={flow.submitting}
+      onBack={flow.step === 'password' ? flow.back : undefined}
+      footer={<span>还没有账号？ <a href={props.registerHref}>创建账号</a></span>}>
+      {flow.step === 'password' && <p className="auth-stage__email">{flow.email}</p>}
+      <form className="auth-stage__form" aria-label="登录到 Everplain" onSubmit={flow.step === 'email' ? flow.continueToPassword : flow.submit} noValidate>
+        {props.sessionExpired && <p className="qx-notice" role="status">登录已过期，请重新登录后继续。</p>}
+        {flow.step === 'email' ? (
+          <input key="email" className="qx-input" aria-label="邮箱" name="email" type="email" placeholder="邮箱地址" autoComplete="email" maxLength={320} required autoFocus value={flow.email} onChange={event => flow.changeEmail(event.target.value)} />
+        ) : (
+          <>
+            <input type="hidden" name="email" autoComplete="username" value={flow.email} />
+            <div className="auth-stage__password">
+              <input key="password" className="qx-input" aria-label="密码" name="password" type={flow.passwordVisible ? 'text' : 'password'} placeholder="密码" autoComplete="current-password" minLength={8} maxLength={128} required autoFocus value={flow.password} onChange={event => flow.setPassword(event.target.value)} />
+              <button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={flow.passwordVisible ? '隐藏密码' : '显示密码'} aria-pressed={flow.passwordVisible} onClick={() => flow.setPasswordVisible(value => !value)}>{flow.passwordVisible ? <EyeSlashIcon /> : <EyeIcon />}</button>
+            </div>
+          </>
+        )}
+        <FormError message={flow.error} />
+        <button className="qx-btn qx-btn--primary qx-btn--lg qx-btn--block" type="submit" disabled={flow.submitting}>
+          {flow.step === 'email' ? '继续' : flow.submitting ? '正在登录…' : '登录并继续'}
         </button>
       </form>
-    </AccountPortal>
+    </AuthStage>
   )
 }
 
-export function RegisterPage({
-  onRegister,
-  onSendRegistrationCode,
-  onAuthenticated,
-  loginHref,
-}: RegisterPageProps) {
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [step, setStep] = useState<'email' | 'code' | 'password'>('email')
-  const [email, setEmail] = useState('')
-  const [verificationCode, setVerificationCode] = useState('')
-  const [resendAfter, setResendAfter] = useState(0)
-
-  useEffect(() => {
-    if (resendAfter <= 0) return
-    const timer = window.setTimeout(() => setResendAfter((value) => Math.max(0, value - 1)), 1000)
-    return () => window.clearTimeout(timer)
-  }, [resendAfter])
-
-  async function sendCode(event?: FormEvent<HTMLFormElement>) {
-    event?.preventDefault()
-    const normalizedEmail = email.trim()
-    if (!emailPattern.test(normalizedEmail) || normalizedEmail.length > 320) {
-      setError('请输入有效的邮箱地址。')
-      return
-    }
-    setSubmitting(true)
-    setError(null)
-    try {
-      const result = await onSendRegistrationCode(normalizedEmail)
-      setEmail(normalizedEmail)
-      setResendAfter(result.resendAfterSeconds)
-      setStep('code')
-    } catch (failure) {
-      setError(registrationCodeFailureMessage(failure))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  function continueToPassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!/^\d{6}$/.test(verificationCode)) {
-      setError('请输入邮件中的 6 位验证码。')
-      return
-    }
-    setError(null)
-    setStep('password')
-  }
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const data = new FormData(event.currentTarget)
-    const password = String(data.get('password') ?? '')
-    const confirmation = String(data.get('confirmation') ?? '')
-    if (password.length < 8 || password.length > 128) {
-      setError('密码需要 8-128 个字符。')
-      return
-    }
-    if (password !== confirmation) {
-      setError('两次输入的密码不一致。')
-      return
-    }
-    setSubmitting(true)
-    setError(null)
-    try {
-      await onRegister(email, password, verificationCode)
-      onAuthenticated()
-    } catch (failure) {
-      setError(registrationFailureMessage(failure))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
+export function RegisterPage(props: RegisterPageProps) {
+  const flow = useRegisterFlow(props)
+  const stepNumber = flow.step === 'email' ? 1 : flow.step === 'code' ? 2 : 3
   return (
-    <AccountPortal
-      kind="register"
-      title="注册"
-      formLabel="创建 Everplain 账号"
-      switcher={<p className="account-switch">已有账号？<a href={loginHref}>返回登录</a></p>}
-    >
-      <div className="account-register-progress" aria-live="polite">
-        <span>第 {step === 'email' ? 1 : step === 'code' ? 2 : 3} 步，共 3 步</span>
-        <span className="account-register-progress__track" aria-hidden="true">
-          <span style={{ width: step === 'email' ? '33.333%' : step === 'code' ? '66.666%' : '100%' }} />
-        </span>
-      </div>
-      {step === 'email' ? (
-        <form className="account-form" onSubmit={sendCode} noValidate>
-          <label>
-            <span>邮箱</span>
-            <input value={email} onChange={(event) => setEmail(event.target.value)} name="email" type="email" autoComplete="email" maxLength={320} required autoFocus />
-          </label>
-          {error ? <p className="account-error" role="alert">{error}</p> : null}
-          <button className="account-primary" type="submit" disabled={submitting}>
-            {submitting ? '正在发送…' : '发送验证码'}
-          </button>
-        </form>
-      ) : step === 'code' ? (
-        <form className="account-form" onSubmit={continueToPassword} noValidate>
-          <div className="account-register-summary">
-            <span>验证码已发送至</span><strong>{email}</strong>
-            <button type="button" onClick={() => { setStep('email'); setError(null) }}>修改邮箱</button>
-          </div>
-          <label>
-            <span>验证码</span>
-            <input value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))} name="verification-code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required autoFocus />
-          </label>
-          {error ? <p className="account-error" role="alert">{error}</p> : null}
-          <button className="account-primary" type="submit">继续设置密码</button>
-          <button className="account-secondary" type="button" disabled={submitting || resendAfter > 0} onClick={() => void sendCode()}>
-            {resendAfter > 0 ? `${resendAfter} 秒后可重新发送` : '重新发送验证码'}
-          </button>
-        </form>
-      ) : (
-        <form className="account-form" onSubmit={submit} noValidate>
-          <div className="account-register-summary">
-            <span>注册邮箱</span><strong>{email}</strong>
-            <button type="button" onClick={() => { setStep('code'); setError(null) }}>返回验证码</button>
-          </div>
-          <div className="account-field">
-            <label htmlFor="register-password">密码</label>
-            <input id="register-password" name="password" type="password" autoComplete="new-password" minLength={8} maxLength={128} aria-describedby="password-help" required autoFocus />
-            <small id="password-help">8-128 个字符。</small>
-          </div>
-          <label>
-            <span>确认密码</span>
-            <input name="confirmation" type="password" autoComplete="new-password" minLength={8} maxLength={128} required />
-          </label>
-          {error ? <p className="account-error" role="alert">{error}</p> : null}
-          <button className="account-primary" type="submit" disabled={submitting}>
-            {submitting ? '正在创建…' : '创建账号'}
-          </button>
-        </form>
-      )}
-    </AccountPortal>
+    <AuthStage title={flow.step === 'email' ? '注册' : flow.step === 'code' ? '查看你的邮箱' : '设置密码'} busy={flow.submitting}
+      onBack={flow.step !== 'email' ? flow.back : undefined}
+      footer={<span>已有账号？ <a href={props.loginHref}>返回登录</a></span>}>
+      <ol className="auth-stage__steps" aria-label={`第 ${stepNumber} 步，共 3 步`}>
+        {[1, 2, 3].map(step => <li key={step} data-current={step === stepNumber} data-done={step < stepNumber} />)}
+      </ol>
+      <span className="auth-stage__step-label qx-meta">第 {stepNumber} 步，共 3 步</span>
+      {flow.step !== 'email' && <div className="auth-stage__recipient">
+        <p className="auth-stage__email">{flow.email}</p>
+        <button className="qx-btn qx-btn--ghost" type="button" onClick={flow.back} disabled={flow.submitting}>{flow.step === 'code' ? '修改邮箱' : '返回验证码'}</button>
+      </div>}
+      <form className="auth-stage__form" aria-label="创建 Everplain 账号" onSubmit={flow.step === 'email' ? flow.sendCode : flow.step === 'code' ? flow.continueToPassword : flow.submit} noValidate>
+        {flow.step === 'email' && <input key="email" className="qx-input" aria-label="邮箱" placeholder="邮箱地址" value={flow.email} onChange={event => flow.setEmail(event.target.value)} name="email" type="email" autoComplete="email" maxLength={320} required autoFocus />}
+        {flow.step === 'code' && <input key="code" className="qx-input auth-stage__code" aria-label="验证码" placeholder="6 位验证码" value={flow.verificationCode} onChange={event => flow.setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))} name="verification-code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required autoFocus />}
+        {flow.step === 'password' && <>
+          <input key="password" className="qx-input" aria-label="密码" placeholder="密码" name="password" type="password" autoComplete="new-password" minLength={8} maxLength={128} aria-describedby="password-help" required autoFocus />
+          <input className="qx-input" aria-label="确认密码" placeholder="再输入一次密码" name="confirmation" type="password" autoComplete="new-password" minLength={8} maxLength={128} required />
+          <small id="password-help" className="qx-meta">8-128 个字符。</small>
+        </>}
+        <FormError message={flow.error} />
+        <button className="qx-btn qx-btn--primary qx-btn--lg qx-btn--block" type="submit" disabled={flow.submitting}>
+          {flow.step === 'email' ? (flow.submitting ? '正在发送…' : '发送验证码') : flow.step === 'code' ? '继续设置密码' : flow.submitting ? '正在创建…' : '创建账号'}
+        </button>
+        {flow.step === 'code' && <button className="qx-btn qx-btn--ghost" type="button" disabled={flow.submitting || flow.resendAfter > 0} onClick={() => void flow.sendCode()}>{flow.resendAfter > 0 ? `${flow.resendAfter} 秒后可重新发送` : '重新发送验证码'}</button>}
+      </form>
+    </AuthStage>
   )
 }

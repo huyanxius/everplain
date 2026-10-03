@@ -56,6 +56,7 @@ type RawSession = {
 
 type RawCreditSummary = {
   balance: number
+  active_usage_buckets?: Array<{ bucket_id: string; kind: 'subscription' | 'top_up' | 'welcome'; available_points: number; limit_points: number; expires_at: string | null }> | null
   credit_limit: number
   grant_amount: number
   is_unlimited: boolean
@@ -71,6 +72,9 @@ type RawCreditSummary = {
     input_tokens: number
     output_tokens: number
     created_at: string
+    status?: 'pending' | 'settled' | 'failed' | 'refunded' | 'released'
+    charged_cny?: number | null
+    refunded_cny?: number | null
   }>
   total_entries: number
   next_cursor: string | null
@@ -163,6 +167,7 @@ function toSession(value: RawSession): AccountSession {
 function toCreditSummary(value: RawCreditSummary): CreditSummary {
   return {
     balance: value.balance,
+    activeUsageBuckets: value.active_usage_buckets?.map(bucket => ({ id: bucket.bucket_id, kind: bucket.kind, availablePoints: bucket.available_points, limitPoints: bucket.limit_points, expiresAt: bucket.expires_at })) ?? null,
     creditLimit: value.credit_limit,
     grantAmount: value.grant_amount,
     isUnlimited: value.is_unlimited,
@@ -176,6 +181,9 @@ function toCreditSummary(value: RawCreditSummary): CreditSummary {
       inputTokens: entry.input_tokens,
       outputTokens: entry.output_tokens,
       createdAt: entry.created_at,
+      status: entry.status,
+      chargedCny: entry.charged_cny,
+      refundedCny: entry.refunded_cny,
     })),
     totalEntries: value.total_entries,
     nextCursor: value.next_cursor,

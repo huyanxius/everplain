@@ -107,7 +107,7 @@ export function MyResearchPage() {
       <div className="research-library-state" role="alert">
         <h2>{text('暂时无法读取研究任务', 'Research tasks are unavailable')}</h2>
         <p>{text('研究内容仍然保留。重新连接后即可继续。', 'Your research is safe. Reconnect to continue.')}</p>
-        <button
+        <button className="qx-btn qx-btn--ghost"
           type="button"
           disabled={research.isFetching}
           onClick={() => research.refetch()}
@@ -167,7 +167,7 @@ export function MyResearchPage() {
                   {formattedDate(item.updatedAt, locale, text('时间未知', 'Unknown time'))}
                 </time>
                 <div className="research-row__actions" role="cell">
-                  <button
+                  <button className="qx-btn qx-btn--ghost"
                     type="button"
                     aria-label={text(`打开研究操作：${item.phenomenonSummary}`, `Open research actions: ${item.phenomenonSummary}`)}
                     aria-expanded={menuOpen}
@@ -181,7 +181,7 @@ export function MyResearchPage() {
                   {menuOpen ? (
                     <div className="research-row__menu" role="menu">
                       <a role="menuitem" href={item.entryPath}>{text('继续研究', 'Continue research')}</a>
-                      <button
+                      <button className="qx-btn qx-btn--ghost"
                         type="button"
                         role="menuitem"
                         onClick={() => {
@@ -222,7 +222,7 @@ export function MyResearchPage() {
               <p className="delete-dialog__error" role="alert">{text('删除失败，研究内容仍然保留。', 'Deletion failed. Your research is still available.')}</p>
             ) : null}
             <div className="delete-dialog__actions">
-              <button
+              <button className="qx-btn qx-btn--ghost"
                 type="button"
                 disabled={deletion.isPending}
                 ref={deleteCancelRef}
@@ -231,7 +231,7 @@ export function MyResearchPage() {
                 {text('取消', 'Cancel')}
               </button>
               <button
-                className="delete-dialog__confirm"
+                className="qx-btn qx-btn--ghost delete-dialog__confirm"
                 type="button"
                 disabled={deletion.isPending}
                 onClick={() => deletion.mutate(pendingDelete.taskId)}

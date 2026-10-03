@@ -1,20 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftIcon, ArrowRightIcon, ArrowUpRightIcon, CheckIcon, FileTextIcon, FolderOpenIcon, GlobeIcon, SparkleIcon } from '@phosphor-icons/react'
-import { Link, Navigate, useLocation, useNavigate } from 'react-router'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { AgentAvatar, agentAvatarPresets, type AgentAvatarId } from '../../modules/agent-avatar'
-import { readAgentProfile, saveAgentProfile, type PersonalAgentProfileUpdate } from '../../modules/agent-profile'
-import { importFiles, readImportBatches, retryImport } from '../../modules/knowledge-import'
+import { useQuery } from '@tanstack/react-query'
+import { ArrowLeftIcon, BookmarkSimpleIcon, CheckIcon, FolderIcon, NoteIcon, TelevisionSimpleIcon } from '@phosphor-icons/react'
+import { Link, Navigate, useLocation } from 'react-router'
+import { AgentAvatar, agentAvatarPresets } from '../../modules/agent-avatar'
+import { readAgentProfile } from '../../modules/agent-profile'
+import type { ImportSourceType } from '../../modules/knowledge-import'
 import { ErrorState, LoadingState } from '../ui/States'
-import logo from '../../assets/qunxue-brand-mark.svg'
+import { agentColors, goalOptions, occupations, speakingStyles, useWelcomeSetup } from './useWelcomeSetup'
 import './welcome-setup.css'
-
-const steps = ['带来一些资料', '认识你的伙伴', '聊聊你自己', '让思绪相遇']
-const styles = [{ id: 'clear', title: '清晰直接', detail: '先说重点，清楚利落' }, { id: 'warm', title: '温和自然', detail: '耐心倾听，一起想办法' }, { id: 'rigorous', title: '严谨细致', detail: '重视依据，深入推敲' }, { id: 'curious', title: '好奇开放', detail: '发现联系，探索可能' }] as const
-const colors = ['#a5b69c', '#c7b99d', '#bc9c8c', '#98aeb5', '#aaa0b9', '#c2ae80', '#a9aaa0']
-const occupations = ['学生', '研究者', '产品经理', '老师', '创作者', '自由职业']
-const goalOptions = ['整理阅读笔记', '查找收藏资料', '研究一个问题', '辅助写作', '准备课程', '探索新领域']
 
 export function OnboardingGate({ userId, children }: { userId: string | null; children: ReactNode }) {
   const location = useLocation()
@@ -27,99 +21,149 @@ export function OnboardingGate({ userId, children }: { userId: string | null; ch
   return children
 }
 
+type SetupFlow = ReturnType<typeof useWelcomeSetup>
+const stageNames = ['导入资料', '名字与外观', '说说自己', '整理图谱']
+const avatarStates = ['idle', 'greet', 'think', 'work'] as const
+
 export function WelcomeSetupPage({ userId }: { userId: string | null }) {
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const alive = useRef(true)
-  useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
-  const profile = useQuery({ queryKey: ['agent-profile', userId], queryFn: readAgentProfile })
-  const batches = useQuery({ queryKey: ['import-batches', userId], queryFn: readImportBatches,
-    refetchInterval: query => query.state.data?.some(batch => batch.status === 'processing') ? 1200 : false })
-  const [step, setStep] = useState(0)
-  const [name, setName] = useState('')
-  const [avatar, setAvatar] = useState<AgentAvatarId>('cheng')
-  const [color, setColor] = useState(colors[0])
-  const [style, setStyle] = useState<typeof styles[number]['id']>('clear')
-  const [occupation, setOccupation] = useState('')
-  const [industry, setIndustry] = useState('')
-  const [goals, setGoals] = useState<string[]>([])
-  const [interests, setInterests] = useState('')
-  const [additional, setAdditional] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-  useEffect(() => {
-    const p = profile.data
-    if (!p) return
-    setStep(p.setup_completed ? 0 : Math.min(p.setup_step, 3)); setName(p.name === 'Everplain' ? '' : p.name)
-    setAvatar(p.avatar_id as AgentAvatarId); setColor(p.color); setStyle(p.speaking_style as typeof style)
-    setOccupation(p.questionnaire.occupation ?? ''); setIndustry(p.questionnaire.industry ?? '')
-    setGoals(p.questionnaire.goals ?? []); setInterests((p.questionnaire.interests ?? []).join('、'))
-    setAdditional(p.questionnaire.additional ?? '')
-  }, [profile.data])
-  const items = batches.data ?? []
-  const total = items.reduce((n, b) => n + b.total, 0)
-  const finished = items.reduce((n, b) => n + b.finished, 0)
-  const processing = items.some(b => b.status === 'processing')
-  async function change(next: number, skip = false) {
-    if (!profile.data || busy) return
-    setBusy(true); setError('')
-    const update: PersonalAgentProfileUpdate = { expected_version: profile.data.version, setup_step: next, setup_completed: next === 4 }
-    if (!skip && step === 1) Object.assign(update, { name: name.trim() || 'Everplain', avatar_id: avatar, color, speaking_style: style })
-    if (!skip && step === 2) update.questionnaire = { occupation, industry, goals, interests: interests.split(/[、,，\n]/).map(x => x.trim()).filter(Boolean), additional }
-    try {
-      const saved = await saveAgentProfile(update)
-      queryClient.setQueryData(['agent-profile', userId], saved)
-      if (alive.current) { if (next === 4) navigate('/my/graph'); else setStep(next) }
-    } catch (e) { if (alive.current) setError(e instanceof Error ? e.message : '暂时无法保存') }
-    finally { if (alive.current) setBusy(false) }
-  }
-  async function upload(source: 'chrome' | 'obsidian', files: FileList | null) {
-    if (!files?.length) return
-    setBusy(true); setError('')
-    try { await importFiles(source, Array.from(files)); await batches.refetch() }
-    catch (e) { setError(e instanceof Error ? e.message : '文件暂时无法读取') }
-    finally { setBusy(false) }
-  }
-  if (profile.isPending) return <LoadingState message="正在铺开你的知识空间" />
-  if (profile.isError) return <ErrorState detail={profile.error.message} onRetry={() => { void profile.refetch() }} />
-  return <main className="ep-setup">
-    <header className="ep-setup__header"><Link to="/" className="ep-setup__brand"><img src={logo} alt="" />Everplain</Link><span>一个只属于你的知识空间</span><Link to="/settings">账户设置 <ArrowUpRightIcon size={14} /></Link></header>
-    <nav className="ep-setup__steps" aria-label="引导进度">{steps.map((label, i) => <button key={label} type="button" disabled={busy || i > step} aria-current={i === step ? 'step' : undefined} onClick={() => { void change(i, true) }}><span>{i < step ? <CheckIcon size={12} /> : String(i + 1).padStart(2, '0')}</span><b>{label}</b></button>)}</nav>
-    <div className="ep-setup__body">
-      <aside className="ep-setup__aside"><div className="ep-setup__orbit"><i /><i /><AgentAvatar avatar={avatar} color={color} state={processing && step === 3 ? 'work' : step === 1 ? 'greet' : 'idle'} size={164} /></div><p className="ep-setup__aside-title">{step === 1 ? name || '一个名字，一段新的默契。' : step === 3 ? '零散的收藏，开始有了联系。' : '从你已经知道的，走向新的发现。'}</p><span>YOUR KNOWLEDGE, YOUR COMPANION</span></aside>
-      <section className="ep-setup__panel" aria-labelledby="setup-title">
-        <p className="ep-setup__eyebrow">GETTING TO KNOW YOU <span>{String(step + 1).padStart(2, '0')} / 04</span></p>
-        <h1 id="setup-title">{['把散落的想法，带到一起。', '给你的伙伴一点个性。', '从了解你开始。', '你的空间，正在生长。'][step]}</h1>
-        <p className="ep-setup__intro">{['那些舍不得关掉的网页，写了一半的笔记，都可以从这里开始。', '一个熟悉的名字，一种舒服的交流方式。以后也可以随时调整。', '几个简单的选择，让它更懂得如何帮你。每一项都可以跳过。', '资料会保留原文和出处。你可以先看看图谱，或继续等待剩余导入。'][step]}</p>
-        {step === 0 && <div className="ep-setup__imports">
-          <label className="ep-import-choice"><GlobeIcon size={27} weight="light" /><span><strong>Chrome 书签</strong><small>从浏览器导出的 HTML 文件</small></span><ArrowUpRightIcon size={20} /><input aria-label="导入 Chrome 书签" type="file" accept=".html,.htm" disabled={busy} onChange={e => { void upload('chrome', e.target.files); e.target.value = '' }} /></label>
-          <label className="ep-import-choice"><FolderOpenIcon size={27} weight="light" /><span><strong>Obsidian / Markdown</strong><small>选择笔记文件夹，保留双链与目录</small></span><ArrowUpRightIcon size={20} /><input aria-label="导入 Markdown 文件夹" type="file" multiple {...{ webkitdirectory: '' }} disabled={busy} onChange={e => { void upload('obsidian', e.target.files); e.target.value = '' }} /></label>
-          <p className="ep-setup__hint">只属于你的资料，默认仅你可见。稍后也能继续导入。</p>
-          {total > 0 && <div className="ep-import-summary" role="status"><CheckIcon size={18} /><span>已接收 {total} 条资料 · 已处理 {finished} 条</span></div>}
-        </div>}
-        {step === 1 && <div className="ep-setup__identity">
-          <label className="ep-field">你想叫它什么？<input value={name} maxLength={40} placeholder="例如：小叶" onChange={e => setName(e.target.value)} /></label>
-          <fieldset><legend>挑一个合眼缘的伙伴</legend><div className="ep-avatar-options">{agentAvatarPresets.map(p => <button type="button" key={p.id} aria-label={p.name} aria-pressed={avatar === p.id} onClick={() => setAvatar(p.id)}><AgentAvatar avatar={p.id} color={avatar === p.id ? color : p.color} size={55} playing={avatar === p.id} /><span>{p.name}</span></button>)}</div></fieldset>
-          <div className="ep-color-options" aria-label="角色颜色">{colors.map(c => <button key={c} aria-label={`颜色 ${c}`} aria-pressed={color === c} style={{ background: c }} onClick={() => setColor(c)}>{color === c && <CheckIcon size={14} />}</button>)}</div>
-          <fieldset><legend>你喜欢怎样的交流方式？</legend><div className="ep-style-options">{styles.map(s => <button key={s.id} aria-pressed={style === s.id} onClick={() => setStyle(s.id)}><strong>{s.title}</strong><span>{s.detail}</span></button>)}</div></fieldset>
-        </div>}
-        {step === 2 && <div className="ep-setup__questions">
-          <fieldset><legend>现在的你，更多时候是……</legend><div className="ep-option-chips">{occupations.map(o => <button key={o} aria-pressed={occupation === o} onClick={() => setOccupation(occupation === o ? '' : o)}>{o}</button>)}</div></fieldset>
-          <label className="ep-field">所在领域 <span>选填</span><input value={industry} maxLength={160} onChange={e => setIndustry(e.target.value)} placeholder="例如：教育、设计、互联网" /></label>
-          <fieldset><legend>希望它帮你做些什么？<small>可以多选</small></legend><div className="ep-option-chips">{goalOptions.map(g => <button key={g} aria-pressed={goals.includes(g)} onClick={() => setGoals(goals.includes(g) ? goals.filter(x => x !== g) : [...goals, g])}>{g}</button>)}</div></fieldset>
-          <label className="ep-field">最近感兴趣的事 <span>选填</span><input value={interests} onChange={e => setInterests(e.target.value)} placeholder="例如：城市、认知科学、电影，用顿号分隔" /></label>
-          <details className="ep-setup__optional"><summary>还有什么想告诉它的？</summary><textarea value={additional} maxLength={1000} onChange={e => setAdditional(e.target.value)} placeholder="你自己的节奏、目标，或一个正在琢磨的问题……" /></details>
-          <p className="ep-setup__hint">这些偏好会保存到你的记忆面板，随时可以查看、修改或删除。</p>
-        </div>}
-        {step === 3 && <div className="ep-setup__progress">
-          <div className="ep-progress-heading"><span>{processing ? '正在整理带来的资料' : total ? '资料已经安放好了' : '从一张空白的纸开始，也很好'}</span><b>{finished}<i> / {total}</i></b></div>
-          <progress max={Math.max(total, 1)} value={total ? finished : 1} />
-          <div className="ep-import-results">{items.map(batch => <div key={batch.id}><div className="ep-import-results__batch"><FileTextIcon size={18} /><strong>{batch.source_type === 'chrome' ? '浏览器收藏' : '笔记文件'}</strong><span>{batch.finished} / {batch.total}</span></div>{batch.items.filter(i => i.status === 'failed').map(i => <div className="ep-import-error" key={i.id}><span>{i.title}<small>{i.error}</small></span><button onClick={() => { void retryImport(batch.id, i.id).then(() => batches.refetch()).catch(e => setError(String(e))) }}>重试</button></div>)}</div>)}</div>
-          <p className="ep-setup__hint"><SparkleIcon size={15} /> 下一步，在图谱里看看这些想法如何相遇。</p>
-        </div>}
-        {error && <p className="ep-setup__error" role="alert">{error}</p>}
-        <footer className="ep-setup__actions">{step > 0 && <button className="ep-setup__back" disabled={busy} onClick={() => { void change(step - 1, true) }}><ArrowLeftIcon size={16} />上一步</button>}<button className="ep-setup__skip" disabled={busy} onClick={() => { void change(step + 1, true) }}>{step === 3 ? '先进入，后台继续' : '暂时跳过'}</button><button className="ep-setup__next" disabled={busy} onClick={() => { void change(step + 1) }}>{busy ? '正在保存…' : step === 3 ? '看看我的知识图谱' : '继续'}<ArrowRightIcon size={16} /></button></footer>
-      </section>
+  const flow = useWelcomeSetup(userId)
+  if (flow.profile.isPending) return <LoadingState message="正在铺开你的知识空间" />
+  if (flow.profile.isError) return <ErrorState detail={flow.profile.error.message} onRetry={() => { void flow.profile.refetch() }} />
+  return (
+    <main className="setup-flow">
+      <header className="setup-flow__top">
+        {flow.step > 0 ? <button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label="上一步" disabled={Boolean(flow.busy)} onClick={() => void flow.change(flow.step - 1, true)}><ArrowLeftIcon /></button> : <Link className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="返回官网" to="/welcome"><ArrowLeftIcon /></Link>}
+        <ol className="setup-flow__steps" aria-label={`第 ${flow.step + 1} 步，共 4 步`}>
+          {stageNames.map((name, index) => <li key={name} data-done={index < flow.step} data-current={index === flow.step}>
+            <button type="button" aria-label={name} aria-current={index === flow.step ? 'step' : undefined} disabled={Boolean(flow.busy) || index >= flow.step} onClick={() => void flow.change(index, true)} />
+          </li>)}
+        </ol>
+        {flow.step < 3 ? <button className="qx-btn qx-btn--ghost" type="button" disabled={Boolean(flow.busy)} onClick={() => void flow.change(flow.step + 1, true)}>暂时跳过</button> : <span />}
+      </header>
+      <div className="setup-flow__agent">
+        <AgentAvatar avatar={flow.draft.avatar} color={flow.draft.color} size={flow.step === 3 ? 128 : 96} state={flow.step === 3 && !flow.processing ? 'greet' : avatarStates[flow.step]} />
+      </div>
+      {flow.step === 0 && <ImportStep flow={flow} />}
+      {flow.step === 1 && <IdentityStep flow={flow} />}
+      {flow.step === 2 && <SurveyStep flow={flow} />}
+      {flow.step === 3 && <GenerateStep flow={flow} />}
+    </main>
+  )
+}
+
+function StepBody({ flow, title, children, wide = false, action = '继续' }: { flow: SetupFlow; title: string; children: ReactNode; wide?: boolean; action?: string }) {
+  return <section className={`setup-flow__body${wide ? ' setup-flow__body--wide' : ''}`} aria-labelledby="setup-title">
+    <h1 id="setup-title" className="qx-display">{title}</h1>
+    {children}
+    {flow.error && <p className="qx-notice qx-notice--danger setup-flow__notice" role="alert">{flow.error}</p>}
+    <button className="qx-btn qx-btn--primary qx-btn--lg setup-flow__next" type="button" disabled={Boolean(flow.busy)} onClick={() => void flow.change(flow.step + 1)}>{flow.busy === 'save' ? '正在保存…' : flow.busy === 'import' ? '正在导入…' : action}</button>
+    {flow.step === 3 && flow.processing && <button className="qx-btn qx-btn--ghost" type="button" disabled={Boolean(flow.busy)} onClick={() => void flow.change(4, true)}>先进入，后台继续</button>}
+    <Link className="setup-flow__settings qx-meta" to="/settings">账户设置</Link>
+  </section>
+}
+
+function ImportStep({ flow }: { flow: SetupFlow }) {
+  const [showFavorites, setShowFavorites] = useState(false)
+  const [uid, setUid] = useState('')
+  return <StepBody flow={flow} title="先把你收藏过的东西带进来">
+    <p className="setup-flow__lead">选几个你常用的地方。导入在后台进行，不用等。</p>
+    <div className="setup-sources">
+      <FileSource flow={flow} source="chrome" title="Chrome 书签" hint="上传导出的书签文件" label="导入 Chrome 书签" accept=".html,.htm" icon={<BookmarkSimpleIcon />} />
+      <FileSource flow={flow} source="obsidian" title="Obsidian" hint="选择整个 Vault 文件夹" label="导入 Markdown 文件夹" directory icon={<FolderIcon />} />
+      <button className="setup-source" type="button" aria-expanded={showFavorites} aria-controls="setup-bilibili" disabled={Boolean(flow.busy)} onClick={() => setShowFavorites(value => !value)}>
+        <span className="setup-source__icon"><TelevisionSimpleIcon /></span><span className="setup-source__text"><strong>B 站收藏夹</strong><small>填你的 UID</small></span><span className="setup-source__check" data-selected={flow.items.some(batch => batch.source_type === 'bilibili')}>{flow.items.some(batch => batch.source_type === 'bilibili') && <CheckIcon weight="bold" />}</span>
+      </button>
+      <FileSource flow={flow} source="apple_notes" title="Apple 备忘录" hint="导出 Markdown 后上传" label="导入 Apple 备忘录" accept=".md,.markdown,.txt,.html,.htm" icon={<NoteIcon />} />
     </div>
-  </main>
+    {showFavorites && <form id="setup-bilibili" className="setup-flow__source-form" onSubmit={event => { event.preventDefault(); void flow.importFavorites(uid) }}>
+      <input className="qx-input" aria-label="B 站 UID" placeholder="B 站 UID" inputMode="numeric" value={uid} onChange={event => setUid(event.target.value)} />
+      <button className="qx-btn qx-btn--secondary" disabled={Boolean(flow.busy)} type="submit">导入收藏夹</button>
+      <small className="qx-meta">只导入公开可访问的收藏内容。</small>
+    </form>}
+    <BatchAvailability flow={flow} />
+    {flow.total > 0 && <p className="setup-flow__lead" role="status">已接收 {flow.total} 条资料 · 已处理 {flow.finished} 条</p>}
+    <p className="qx-meta">默认只有你能看到。以后也能继续导入。</p>
+  </StepBody>
+}
+
+function FileSource({ flow, source, title, hint, label, icon, accept, directory = false }: {
+  flow: SetupFlow; source: ImportSourceType; title: string; hint: string; label: string; icon: ReactNode; accept?: string; directory?: boolean
+}) {
+  const selected = flow.items.some(batch => batch.source_type === source)
+  return <label className="setup-source" data-disabled={Boolean(flow.busy)}>
+    <span className="setup-source__icon">{icon}</span>
+    <span className="setup-source__text"><strong>{title}</strong><small>{hint}</small></span>
+    <span className="setup-source__check" data-selected={selected}>{selected && <CheckIcon weight="bold" />}</span>
+    <input type="file" aria-label={label} accept={accept} multiple={source !== 'chrome'} {...(directory ? { webkitdirectory: '' } : {})} disabled={Boolean(flow.busy)} onChange={event => { void flow.upload(source, event.target.files); event.target.value = '' }} />
+  </label>
+}
+
+function IdentityStep({ flow }: { flow: SetupFlow }) {
+  const { draft, patch } = flow
+  return <StepBody flow={flow} title="给它起个名字" action={`就叫${draft.name.trim() || '它'}`}>
+    <input className="qx-input setup-flow__name" aria-label="你想叫它什么？" placeholder="例如：小叶" value={draft.name} maxLength={40} onChange={event => patch({ name: event.target.value })} />
+    <div className="setup-avatars" role="group" aria-label="外观">
+      {agentAvatarPresets.map((preset, index) => <button key={preset.id} type="button" aria-pressed={draft.avatar === preset.id} aria-label={preset.name} onClick={() => patch({ avatar: preset.id, color: preset.color })}>
+        <AgentAvatar avatar={preset.id} color={draft.avatar === preset.id ? draft.color : preset.color} size={56} offset={index * 0.6} />
+      </button>)}
+    </div>
+    <div className="setup-colors" role="group" aria-label="颜色">
+      {agentColors.map(color => <button key={color} type="button" aria-pressed={draft.color === color} aria-label={`颜色 ${color}`} style={{ background: color }} onClick={() => patch({ color })} />)}
+    </div>
+    <fieldset className="setup-survey">
+      <legend className="qx-heading">你喜欢它怎么说话？</legend>
+      <div className="setup-survey__options">
+        {speakingStyles.map(style => <button className="setup-option" type="button" key={style.id} aria-pressed={draft.style === style.id} title={style.detail} onClick={() => patch({ style: style.id })}>{style.title}</button>)}
+      </div>
+    </fieldset>
+  </StepBody>
+}
+
+function SurveyStep({ flow }: { flow: SetupFlow }) {
+  const { draft, patch } = flow
+  return <StepBody flow={flow} title="说说你自己" action="好了" wide>
+    <fieldset className="setup-survey">
+      <legend className="qx-heading">你现在主要在做什么？</legend>
+      <div className="setup-survey__options">{occupations.map(occupation => <button className="setup-option" type="button" key={occupation} aria-pressed={draft.occupation === occupation} onClick={() => patch({ occupation: draft.occupation === occupation ? '' : occupation })}>{occupation}</button>)}</div>
+    </fieldset>
+    <label className="setup-survey"><span className="qx-heading">所在领域 <small className="qx-meta">选填</small></span><input className="qx-input" value={draft.industry} maxLength={160} onChange={event => patch({ industry: event.target.value })} placeholder="例如：教育、设计、互联网" /></label>
+    <fieldset className="setup-survey">
+      <legend className="qx-heading">最想让它帮你做什么？ <small className="qx-meta">可以多选</small></legend>
+      <div className="setup-survey__options">{goalOptions.map(goal => <button className="setup-option" type="button" key={goal} aria-pressed={draft.goals.includes(goal)} onClick={() => patch({ goals: draft.goals.includes(goal) ? draft.goals.filter(item => item !== goal) : [...draft.goals, goal] })}>{goal}</button>)}</div>
+    </fieldset>
+    <label className="setup-survey"><span className="qx-heading">最近在关心什么？</span><input className="qx-input" value={draft.interests} onChange={event => patch({ interests: event.target.value })} placeholder="例如：城市、认知科学、电影，用顿号分隔" /></label>
+    <label className="setup-survey"><span className="qx-heading">还有什么想告诉它的？ <small className="qx-meta">选填</small></span><textarea className="qx-textarea" value={draft.additional} maxLength={1000} onChange={event => patch({ additional: event.target.value })} placeholder="你自己的节奏、目标，或一个正在琢磨的问题……" /></label>
+    <p className="qx-meta">每一项都可跳过。以后可以在记忆面板里修改或删除。</p>
+  </StepBody>
+}
+
+function BatchAvailability({ flow }: { flow: SetupFlow }) {
+  if (flow.batches.isPending) return <p className="qx-meta" role="status">正在读取导入进度…</p>
+  if (!flow.batches.isError) return null
+  return <div className="qx-notice qx-notice--danger setup-flow__notice" role="alert">
+    <p>暂时无法读取导入进度：{flow.batches.error.message}</p>
+    <button className="qx-btn qx-btn--ghost" type="button" disabled={flow.batches.isFetching} onClick={() => void flow.batches.refetch()}>重新读取</button>
+  </div>
+}
+
+function GenerateStep({ flow }: { flow: SetupFlow }) {
+  const readable = !flow.batches.isPending && !flow.batches.isError
+  const title = !readable ? '看看你的知识图谱' : flow.processing ? `${flow.draft.name || 'Everplain'}正在读你的收藏` : flow.failed ? '还有几条资料需要重试' : flow.total ? '整理好了' : '从一张空白的纸开始'
+  return <StepBody flow={flow} title={title} action="看看我的知识图谱">
+    <BatchAvailability flow={flow} />
+    {readable && <>
+      <div className="setup-progress" role="progressbar" aria-label="资料导入进度" aria-valuemin={0} aria-valuemax={Math.max(flow.total, 1)} aria-valuenow={Math.min(flow.finished, flow.total)}>
+        <span style={{ width: `${flow.total ? Math.min(100, flow.finished / flow.total * 100) : 0}%`, background: flow.draft.color }} />
+      </div>
+      <p className="setup-flow__lead" role="status">{flow.total ? `${flow.finished} / ${flow.total} 条已处理${flow.failed ? ` · ${flow.failed} 条需要重试` : ''}` : '还没有导入资料，随时都可以添加。'}</p>
+      <div className="setup-results">
+        {flow.items.map(batch => <section key={batch.id} className="setup-results__batch" aria-label={batch.source_type}>
+          <div className="setup-results__summary"><span>{({ chrome: 'Chrome 书签', obsidian: 'Obsidian', bilibili: 'B 站收藏夹', apple_notes: 'Apple 备忘录' } as Record<string, string>)[batch.source_type] ?? '笔记文件'}</span><span>{batch.finished} / {batch.total}</span></div>
+          {batch.items.filter(item => item.status === 'failed').map(item => <div className="setup-results__failure" key={item.id}>
+            <span>{item.title}<small>{item.error}</small></span><button className="qx-btn qx-btn--secondary" type="button" disabled={Boolean(flow.busy)} onClick={() => void flow.retry(batch.id, item.id)}>重试</button>
+          </div>)}
+        </section>)}
+      </div>
+    </>}
+  </StepBody>
 }

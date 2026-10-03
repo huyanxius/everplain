@@ -1,15 +1,24 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { AccountSettingsPage } from './AccountSettingsPage'
 import { AppLocaleProvider } from '../../i18n/AppLocaleProvider'
+import { sidebarLayoutPreferenceStorageKey } from '../../styles/sidebarLayoutPreference'
+import { appearancePreferenceStorageKey } from '../../styles/appearancePreference'
 import type {
   AccountManagementApi,
   AccountProfile,
   AccountSession,
 } from './accountManagementModels'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  window.localStorage.removeItem(sidebarLayoutPreferenceStorageKey)
+  window.localStorage.removeItem(appearancePreferenceStorageKey)
+  document.documentElement.style.removeProperty('color-scheme')
+  delete document.documentElement.dataset.colorScheme
+})
 
 const account: AccountProfile = {
   userId: 'user-1',
@@ -126,6 +135,165 @@ function openPartition(name: string) {
 }
 
 describe('AccountSettingsPage', () => {
+  it('renders new Mock-style label/control rows without legacy settings markup', async () => {
+    const { container } = render(<AccountSettingsPage api={createApi()} />)
+    const panel = await screen.findByRole('region', { name: '个人资料' })
+    expect(container.querySelector('[class*="qs-"]')).toBeNull()
+    expect(container.querySelector('aside')).toBeNull()
+    expect(panel.querySelectorAll('.ep-setting-row')).toHaveLength(2)
+    expect(panel.querySelector('.ep-settings-profile__metadata')).toHaveTextContent('账户类型')
+    expect(panel.querySelector('.ep-settings-profile__metadata')).toHaveTextContent('加入时间')
+    expect(container.querySelector('.ep-settings-rail')).toContainElement(screen.getByRole('navigation', { name: '账户设置分区' }))
+    const row = panel.querySelector('.ep-setting-row')!
+    expect(row.children[0]).toHaveClass('ep-setting-row__label')
+    expect(row.children[1]).toHaveClass('ep-setting-row__control')
+    expect(row.children[1]).toHaveTextContent('林同学')
+  })
+
+  it('validates deactivation, keeps its confirmation pending, and submits the original contract once', async () => {
+    const result = deferred<{ recoverable: true }>()
+    const deactivateAccount = vi.fn(() => result.promise)
+    const onAccountDeactivated = vi.fn()
+    render(<AccountSettingsPage api={createApi({ deactivateAccount })} onAccountDeactivated={onAccountDeactivated} />)
+    await screen.findByRole('heading', { name: '个人资料' })
+    openPartition('账户状态')
+    fireEvent.click(screen.getByRole('button', { name: '停用账户' }))
+    const dialog = screen.getByRole('dialog', { name: '停用账户？' })
+    const confirm = within(dialog).getByRole('button', { name: '确认停用' })
+    expect(confirm).toBeDisabled()
+    fireEvent.change(within(dialog).getByLabelText('当前密码'), { target: { value: 'current-passphrase' } })
+    fireEvent.change(within(dialog).getByLabelText('停用原因'), { target: { value: '  暂停使用  ' } })
+    fireEvent.click(confirm)
+    fireEvent.click(confirm)
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    expect(dialog).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: '取消' })).toBeDisabled()
+    expect(deactivateAccount).toHaveBeenCalledOnce()
+    expect(deactivateAccount).toHaveBeenCalledWith({ currentPassword: 'current-passphrase', reason: '暂停使用', idempotencyKey: expect.any(String) })
+    result.resolve({ recoverable: true })
+    await waitFor(() => expect(onAccountDeactivated).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('cycles confirmation focus while keeping the underlying settings inert', async () => {
+    render(<AccountSettingsPage api={createApi()} />)
+    await screen.findByRole('heading', { name: '个人资料' })
+    openPartition('安全')
+    fireEvent.click(screen.getByRole('button', { name: '撤销 Chrome · Windows 会话' }))
+    const dialog = screen.getByRole('dialog', { name: '撤销这个会话？' })
+    const cancel = within(dialog).getByRole('button', { name: '取消' })
+    const confirm = within(dialog).getByRole('button', { name: '确认撤销' })
+    expect(document.querySelector('.ep-settings-workspace')).toHaveAttribute('inert')
+    fireEvent.keyDown(cancel, { key: 'Tab', shiftKey: true })
+    expect(confirm).toHaveFocus()
+    fireEvent.keyDown(confirm, { key: 'Tab' })
+    expect(cancel).toHaveFocus()
+  })
+
+  it('switches the browser-local sidebar layout immediately and restores it on remount', async () => {
+    const updatePreferences = vi.fn(async () => account.preferences)
+    const first = render(<AccountSettingsPage api={createApi({ updatePreferences })} />)
+    await screen.findByRole('heading', { name: '个人资料' })
+    openPartition('使用偏好')
+    const toggle = screen.getByRole('switch', { name: '新侧栏布局' })
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    expect(window.localStorage.getItem(sidebarLayoutPreferenceStorageKey)).toBe('split')
+    expect(updatePreferences).not.toHaveBeenCalled()
+    first.unmount()
+
+    render(<AccountSettingsPage api={createApi({ updatePreferences })} />)
+    await screen.findByRole('heading', { name: '个人资料' })
+    openPartition('使用偏好')
+    expect(screen.getByRole('switch', { name: '新侧栏布局' })).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(screen.getByRole('switch', { name: '新侧栏布局' }))
+    expect(window.localStorage.getItem(sidebarLayoutPreferenceStorageKey)).toBe('classic')
+    expect(updatePreferences).not.toHaveBeenCalled()
+  })
+
+  it('switches browser appearance immediately without submitting account preferences', async () => {
+    const updatePreferences = vi.fn(async () => account.preferences)
+    render(<AccountSettingsPage api={createApi({ updatePreferences })} />)
+    await screen.findByRole('heading', { name: '个人资料' })
+    openPartition('使用偏好')
+    const appearance = screen.getByRole('group', { name: '外观' })
+    expect(within(appearance).getByRole('button', { name: '跟随系统' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(within(appearance).getByRole('button', { name: '深色' }))
+    expect(document.documentElement.style.colorScheme).toBe('dark')
+    expect(document.documentElement.dataset.colorScheme).toBe('dark')
+    expect(window.localStorage.getItem(appearancePreferenceStorageKey)).toBe('dark')
+    expect(within(appearance).getByRole('button', { name: '深色' })).toHaveAttribute('aria-pressed', 'true')
+    expect(updatePreferences).not.toHaveBeenCalled()
+
+    fireEvent.click(within(appearance).getByRole('button', { name: '浅色' }))
+    expect(document.documentElement.style.colorScheme).toBe('light')
+    fireEvent.click(within(appearance).getByRole('button', { name: '跟随系统' }))
+    expect(document.documentElement.style.colorScheme).toBe('')
+    expect(document.documentElement.dataset.colorScheme).toBe('system')
+    expect(updatePreferences).not.toHaveBeenCalled()
+  })
+
+  it('reaches all seven categories through the compact picker and retains the Agent editor', async () => {
+    const onResetAgent = vi.fn()
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    queryClient.setQueryData(['agent-profile', account.userId], {
+      name: 'Everplain', avatar_id: 'cheng', color: '#5d8fe6', speaking_style: 'clear',
+      setup_step: 4, setup_completed: true, version: 1, questionnaire: {}, greeting: '你好',
+    })
+    render(<QueryClientProvider client={queryClient}><AccountSettingsPage api={createApi()} onResetAgent={onResetAgent} /></QueryClientProvider>)
+
+    const navigation = await screen.findByRole('navigation', { name: '账户设置分区' })
+    expect(within(navigation).getAllByRole('button').map((button) => button.textContent)).toEqual([
+      '我的 Agent', '个人资料', '使用情况', '使用偏好', '安全', '数据与隐私', '账户状态',
+    ])
+    expect(screen.queryByRole('button', { name: '重新设置我的 AI 伙伴' })).not.toBeInTheDocument()
+    expect(screen.getAllByText('林同学')).toHaveLength(1)
+
+    const picker = screen.getByRole('combobox', { name: '设置分类', hidden: true })
+    expect(picker).toHaveTextContent('个人资料')
+    fireEvent.click(picker)
+    const categoryOptions = within(screen.getByRole('listbox', { hidden: true })).getAllByRole('option', { hidden: true })
+    expect(categoryOptions.map(option => option.textContent)).toEqual([
+      '我的 Agent', '个人资料', '使用情况', '使用偏好', '安全', '数据与隐私', '账户状态',
+    ])
+    const content = screen.getByRole('region', { name: '个人资料' })
+    content.scrollTop = 240
+    fireEvent.click(categoryOptions[0])
+    expect(content.scrollTop).toBe(0)
+    expect(picker).toHaveTextContent('我的 Agent')
+    expect(within(navigation).getByRole('button', { name: '我的 Agent' })).toHaveAttribute('aria-current', 'page')
+    fireEvent.click(await screen.findByRole('button', { name: '重新设置我的 AI 伙伴' }))
+    expect(onResetAgent).toHaveBeenCalledOnce()
+  })
+
+  it('uses the shared navigation component and resets the content scroll on section changes', async () => {
+    render(<AccountSettingsPage api={createApi()} />)
+
+    const content = await screen.findByRole('region', { name: '个人资料' })
+    content.scrollTop = 320
+    const navigation = screen.getByRole('navigation', { name: '账户设置分区' })
+    const security = within(navigation).getByRole('button', { name: '安全' })
+    expect(security).toHaveClass('qx-item')
+    fireEvent.click(security)
+    expect(content.scrollTop).toBe(0)
+    expect(screen.getByRole('region', { name: '安全' })).toContainElement(screen.getByLabelText('当前密码'))
+    expect(screen.getByRole('button', { name: '退出登录' })).toBeVisible()
+  })
+
+  it('keeps admin navigation and sign-out together below the category navigation', async () => {
+    render(<AccountSettingsPage api={createApi({ getAccount: async () => ({ ...account, role: 'admin' }) })} />)
+
+    const navigation = await screen.findByRole('navigation', { name: '账户设置分区' })
+    const admin = screen.getByRole('link', { name: '打开用户管理' })
+    const signOut = screen.getByRole('button', { name: '退出登录' })
+    expect(admin).toHaveAttribute('href', '/admin/users')
+    expect(admin.parentElement).toBe(signOut.parentElement)
+    expect(navigation).not.toContainElement(signOut)
+    expect(screen.getAllByText('管理员')).toHaveLength(1)
+  })
+
   it('omits notification controls without a delivery service while preserving the stored preference', async () => {
     const updatePreferences = vi.fn(async () => account.preferences)
     render(<AccountSettingsPage api={createApi({ updatePreferences })} />)
@@ -177,19 +345,24 @@ describe('AccountSettingsPage', () => {
 
     await screen.findByRole('heading', { name: '账户设置' })
     openPartition('使用偏好')
-    fireEvent.change(screen.getByLabelText('界面语言'), { target: { value: 'en-US' } })
+    fireEvent.click(screen.getByRole('combobox', { name: '界面语言' }))
+    fireEvent.click(screen.getByRole('option', { name: 'English' }))
 
     expect(screen.getByRole('heading', { name: 'Preferences' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Credits & usage' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Usage' })).toBeVisible()
     expect(document.documentElement).toHaveAttribute('lang', 'en')
+    const timezone = screen.getByRole('combobox', { name: 'Time zone' })
+    expect(timezone.tagName).not.toBe('SELECT')
+    fireEvent.click(timezone)
+    fireEvent.click(screen.getByRole('option', { name: 'Coordinated Universal Time' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Save preferences' }))
     await waitFor(() => expect(updatePreferences).toHaveBeenCalledWith(
-      expect.objectContaining({ locale: 'en-US' }),
+      expect.objectContaining({ locale: 'en-US', timezone: 'UTC' }),
     ))
   })
 
-  it('loads the credit balance and token ledger inside its own settings partition', async () => {
+  it('shows usage history without inventing a percentage from the legacy credit limit', async () => {
     const getCreditSummary = vi.fn(async () => ({
       balance: 1162,
       creditLimit: 3000,
@@ -204,6 +377,9 @@ describe('AccountSettingsPage', () => {
         balanceAfter: 1162,
         inputTokens: 600,
         outputTokens: 800,
+        status: 'refunded' as const,
+        chargedCny: 0.38,
+        refundedCny: 0.38,
         model: 'deepseek-v4-flash',
         createdAt: '2026-08-22T06:00:00Z',
       }],
@@ -215,14 +391,17 @@ describe('AccountSettingsPage', () => {
     render(<AccountSettingsPage api={api} />)
 
     const navigation = await screen.findByRole('navigation', { name: '账户设置分区' })
-    fireEvent.click(within(navigation).getByRole('button', { name: '积分与用量' }))
+    fireEvent.click(within(navigation).getByRole('button', { name: '使用情况' }))
 
     expect(getCreditSummary).toHaveBeenCalledOnce()
-    expect(screen.getByLabelText('积分余额数值')).toHaveTextContent('1,162/ 3,000')
-    expect(screen.getByRole('progressbar', { name: '积分余额' })).toHaveAttribute('aria-valuenow', '39')
-    expect(screen.getByText('剩余 39%')).toBeVisible()
+    expect(screen.getByText('额度信息暂不可用')).toBeVisible()
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+    expect(screen.queryByText(/1,162|3,000|39%|积分/)).not.toBeInTheDocument()
     expect(screen.getByText('600 输入 · 800 输出 token')).toBeVisible()
-    expect(screen.getByText('-38')).toBeVisible()
+    expect(screen.queryByText('-38')).not.toBeInTheDocument()
+    expect(screen.getByText('已退款')).toBeVisible()
+    expect(screen.getByText(/费用.*0.38/)).toBeVisible()
+    expect(screen.getByText(/退款.*0.38/)).toBeVisible()
     expect(screen.queryByText(/deepseek-v4-flash/)).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '个人资料' })).not.toBeInTheDocument()
   })
@@ -272,16 +451,16 @@ describe('AccountSettingsPage', () => {
     render(<AccountSettingsPage api={createApi({ getCreditSummary })} />)
 
     await screen.findByRole('heading', { name: '账户设置' })
-    openPartition('积分与用量')
-    expect(screen.getByText('-20')).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: '下一页积分消耗记录' }))
+    openPartition('使用情况')
+    expect(document.querySelector('time[datetime="2026-08-23T06:00:00Z"]')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '下一页用量记录' }))
 
     await waitFor(() => expect(getCreditSummary).toHaveBeenLastCalledWith({
       cursor: '10',
       limit: 10,
     }))
-    expect(await screen.findByText('-12')).toBeVisible()
-    expect(screen.queryByText('-20')).not.toBeInTheDocument()
+    await waitFor(() => expect(document.querySelector('time[datetime="2026-08-01T06:00:00Z"]')).toBeInTheDocument())
+    expect(document.querySelector('time[datetime="2026-08-23T06:00:00Z"]')).not.toBeInTheDocument()
     expect(screen.getByText('第 2 页')).toBeVisible()
   })
 
@@ -289,6 +468,7 @@ describe('AccountSettingsPage', () => {
     const getCreditSummary = vi.fn()
       .mockResolvedValueOnce({
         balance: 1200,
+        activeUsageBuckets: [{ id: 'welcome', kind: 'welcome', availablePoints: 900, limitPoints: 3000, expiresAt: null }],
         creditLimit: 3000,
         grantAmount: 3000,
         isUnlimited: false,
@@ -300,6 +480,7 @@ describe('AccountSettingsPage', () => {
       })
       .mockResolvedValueOnce({
         balance: 3000,
+        activeUsageBuckets: [{ id: 'top-up', kind: 'top_up', availablePoints: 3000, limitPoints: 6000, expiresAt: null }],
         creditLimit: 3000,
         grantAmount: 3000,
         isUnlimited: false,
@@ -313,18 +494,19 @@ describe('AccountSettingsPage', () => {
     render(<AccountSettingsPage api={createApi({ getCreditSummary, redeemCredits })} />)
 
     await screen.findByRole('heading', { name: '账户设置' })
-    openPartition('积分与用量')
-    fireEvent.change(screen.getByLabelText('积分兑换码'), {
+    openPartition('使用情况')
+    fireEvent.change(screen.getByLabelText('兑换码'), {
       target: { value: 'QX-7KDM-4XJP-9TWR-P6AC' },
     })
-    fireEvent.click(screen.getByRole('button', { name: '兑换积分' }))
+    fireEvent.click(screen.getByRole('button', { name: '兑换' }))
 
     await waitFor(() => expect(redeemCredits).toHaveBeenCalledWith({
       code: 'QX-7KDM-4XJP-9TWR-P6AC',
       idempotencyKey: expect.any(String),
     }))
-    await waitFor(() => expect(screen.getByLabelText('积分余额数值')).toHaveTextContent('3,000/ 3,000'))
-    expect(screen.getByRole('status')).toHaveTextContent('积分已恢复至 3,000')
+    await waitFor(() => expect(screen.getByRole('progressbar', { name: '额外购买额度' })).toHaveAttribute('aria-valuenow', '50'))
+    expect(screen.getByRole('status')).toHaveTextContent('兑换成功')
+    expect(screen.queryByText(/3,000|6,000|积分/)).not.toBeInTheDocument()
   })
 
   it('shows an unlimited balance for the provisioned administrator', async () => {
@@ -345,10 +527,26 @@ describe('AccountSettingsPage', () => {
     render(<AccountSettingsPage api={api} />)
 
     const navigation = await screen.findByRole('navigation', { name: '账户设置分区' })
-    fireEvent.click(within(navigation).getByRole('button', { name: '积分与用量' }))
+    fireEvent.click(within(navigation).getByRole('button', { name: '使用情况' }))
 
-    expect(screen.getByText('无限')).toBeVisible()
-    expect(screen.getByText('管理员账户不扣减积分')).toBeVisible()
+    expect(screen.getByText('不限量')).toBeVisible()
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  })
+
+  it('keeps a successful redemption successful when its follow-up usage read fails', async () => {
+    const initial = await createApi().getCreditSummary()
+    const getCreditSummary = vi.fn().mockResolvedValueOnce(initial).mockRejectedValueOnce(new Error('read failed'))
+    const redeemCredits = vi.fn(async () => ({ redeemedPoints: 3000, balance: 4200 }))
+    render(<AccountSettingsPage api={createApi({ getCreditSummary, redeemCredits })} />)
+    await screen.findByRole('heading', { name: '个人资料' })
+    openPartition('使用情况')
+    fireEvent.change(screen.getByLabelText('兑换码'), { target: { value: 'QX-ONE-CODE' } })
+    fireEvent.click(screen.getByRole('button', { name: '兑换' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('兑换成功')
+    expect(screen.getByText('额度信息暂不可用')).toBeVisible()
+    expect(screen.getByLabelText('兑换码')).toHaveValue('')
+    expect(redeemCredits).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('recovers from a failed load and explains an empty session list', async () => {

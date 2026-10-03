@@ -11,15 +11,14 @@ export function FatalErrorState({
   onReload?: () => void
 }) {
   return (
-    <main className="fatal-error" role="alert">
-      <p className="eyebrow">SYSTEM / RECOVERY</p>
-      <h1>页面没有安全地完成渲染。</h1>
+    <main className="application-recovery" role="alert">
+      <h1 className="qx-section-title">页面暂时打不开</h1>
       <p>请刷新页面；若问题持续存在，保留当前地址用于排查。</p>
-      <div className="fatal-error__actions">
-        <button type="button" onClick={onReload ?? (() => window.location.reload())}>
+      <div className="application-recovery__actions">
+        <button className="qx-btn qx-btn--primary" type="button" onClick={onReload ?? (() => window.location.reload())}>
           重新加载
         </button>
-        <a href="/welcome">回到首页</a>
+        <a className="qx-btn qx-btn--ghost" href="/welcome">回到首页</a>
       </div>
     </main>
   )
