@@ -14,7 +14,7 @@ export function AgentModeSwitch({ mode, disabled, avatar, onChange, children }: 
       <button type="button" role="tab" aria-label="Chat" aria-selected={mode === 'standard'} disabled={disabled}
         onClick={() => onChange('standard')} onKeyDown={event => {
           if (!disabled && event.key === 'ArrowRight') { event.preventDefault(); onChange('deep-research'); (event.currentTarget.nextElementSibling as HTMLButtonElement)?.focus() }
-        }}>{avatar}<span>{text('对话', 'Chat')}</span></button>
+        }}>{avatar}</button>
       <button type="button" role="tab" aria-label="Research" aria-selected={mode === 'deep-research'} disabled={disabled}
         onClick={() => onChange('deep-research')} onKeyDown={event => {
           if (!disabled && event.key === 'ArrowLeft') { event.preventDefault(); onChange('standard'); (event.currentTarget.previousElementSibling as HTMLButtonElement)?.focus() }
