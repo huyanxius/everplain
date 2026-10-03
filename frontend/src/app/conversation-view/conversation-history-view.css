@@ -1,0 +1,58 @@
+.cv-history { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: var(--qx-space-2); color: var(--qx-color-ink); }
+.cv-history__head { display: flex; min-width: 0; flex: none; align-items: center; justify-content: space-between; gap: var(--qx-space-2); padding-inline: var(--qx-space-2); }
+.cv-history__head > div { display: flex; align-items: center; }
+.cv-history__head h2 { color: var(--qx-color-muted); font-size: var(--qx-text-meta); font-weight: 500; }
+.cv-history__head .qx-btn { color: var(--qx-color-muted); }
+.cv-history__body { display: grid; min-height: 0; align-content: start; gap: var(--qx-space-4); overflow-y: auto; overscroll-behavior: contain; }
+.cv-history__row { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--qx-space-1); }
+.cv-history__row .qx-item { min-width: 0; padding-inline: var(--qx-space-2); }
+.cv-history__row .qx-item > span { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
+.cv-history__row .qx-item > svg { flex: none; width: 1.1em; height: 1.1em; }
+.cv-history__row .qx-item > .cv-history__caret { width: .7em; height: .7em; }
+.cv-history__row .qx-btn--icon { width: calc(var(--qx-icon-control-size) - var(--qx-space-2)); min-height: calc(var(--qx-control-height) - var(--qx-space-2)); color: var(--qx-color-muted); }
+.cv-history__more { opacity: 0; }
+.cv-history__row:hover .cv-history__more, .cv-history__row:focus-within .cv-history__more, .cv-history__more[aria-expanded='true'] { opacity: 1; }
+.cv-history__project-title { font-size: var(--qx-text-control); }
+.cv-history__project-items { margin-left: var(--qx-space-3); }
+.cv-history__project-items[hidden] { display: none; }
+.cv-history__resources { display: flex; flex-wrap: wrap; gap: var(--qx-space-3); padding: var(--qx-space-2); color: var(--qx-color-muted); font-size: var(--qx-text-meta); }
+.cv-history__resources a { color: inherit; text-decoration: none; }
+.cv-history__resources a:hover { color: var(--qx-color-ink); text-decoration: underline; text-underline-offset: .15em; }
+.cv-history__body .qx-meta { margin: 0; padding: var(--qx-space-2); }
+.cv-history__group-head { display: flex; align-items: center; justify-content: space-between; padding-left: var(--qx-space-2); }
+.cv-history__group-head h3, .cv-history__group-label { margin: 0; color: var(--qx-color-muted); font-size: var(--qx-text-meta); font-weight: 500; }
+.cv-history__group-label { padding: var(--qx-space-2); }
+.cv-history__search { display: flex; min-width: 0; flex: none; align-items: center; gap: var(--qx-space-2); margin: var(--qx-space-2); padding: var(--qx-space-2) var(--qx-space-3); border-radius: var(--qx-radius-pill); color: var(--qx-color-muted); background: var(--qx-color-surface-strong); }
+.cv-history__search svg { flex: none; width: 1em; height: 1em; }
+.cv-history__search input { min-width: 0; width: 100%; min-height: calc(var(--qx-control-height) - var(--qx-space-2)); padding: 0; border: 0; outline: none; color: var(--qx-color-ink); background: transparent; font: inherit; font-size: var(--qx-text-control); }
+.cv-history__search:focus-within { box-shadow: var(--qx-shadow-ring); }
+.cv-history__error { margin: 0; padding: var(--qx-space-2); color: var(--qx-color-danger); font-size: var(--qx-text-meta); line-height: var(--qx-text-meta--line-height); overflow-wrap: anywhere; }
+.cv-history-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: var(--qx-space-5); background: var(--qx-color-overlay); }
+.cv-history--modal { width: min(560px, 100%); max-height: min(80dvh, 780px); padding: var(--qx-space-5); background: var(--qx-color-surface-raised); box-shadow: var(--qx-shadow-panel); }
+.cv-history--modal .cv-history__head h2 { color: var(--qx-color-ink); font-size: var(--qx-text-heading); }
+.cv-history--modal .cv-history__body { flex: 1; }
+.cv-history-popover { position: fixed; z-index: 120; display: grid; width: 264px; max-width: calc(100vw - var(--qx-space-4)); max-height: calc(100dvh - var(--qx-space-4)); gap: var(--qx-space-2); overflow: auto; margin: 0; padding: var(--qx-space-3); border-radius: var(--qx-radius-card); background: var(--qx-color-surface-raised); box-shadow: var(--qx-shadow-menu); }
+.cv-history-popover [role='menu'], .cv-history-popover form { display: grid; min-width: 0; gap: var(--qx-space-2); }
+.cv-history-popover [role='menuitem'] { width: 100%; justify-content: start; padding-inline: var(--qx-space-3); }
+.cv-history-popover strong { overflow-wrap: anywhere; font-size: var(--qx-text-control); font-weight: 550; }
+.cv-history-popover input { width: 100%; min-width: 0; }
+.cv-history-popover p { margin: 0; color: var(--qx-color-muted); font-size: var(--qx-text-meta); line-height: var(--qx-text-meta--line-height); overflow-wrap: anywhere; }
+.cv-history-popover .cv-history__error { color: var(--qx-color-danger); }
+.cv-history-popover__actions { display: flex; justify-content: flex-end; gap: var(--qx-space-2); margin-top: var(--qx-space-2); }
+.cv-history :is(button, a):focus-visible, .cv-history-popover :is(button, input):focus-visible { outline: 2px solid var(--qx-color-accent); outline-offset: 2px; }
+@media (hover: none) { .cv-history__more { opacity: 1; } }
+@media (max-width: 760px) {
+  .cv-history-backdrop { align-items: end; padding: 0; }
+  .cv-history--modal { width: 100%; max-height: 85dvh; padding-bottom: max(var(--qx-space-5), env(safe-area-inset-bottom)); border-radius: var(--qx-radius-panel) var(--qx-radius-panel) 0 0; }
+}
+
+@media (max-width: 760px) {
+  .cv-history .qx-btn--icon { width: calc(var(--qx-control-height) + var(--qx-space-1)); min-height: calc(var(--qx-control-height) + var(--qx-space-1)); }
+  .cv-history .qx-item, .cv-history-popover .qx-btn { min-height: calc(var(--qx-control-height) + var(--qx-space-1)); }
+  .cv-history__resources a { display: inline-flex; align-items: center; min-height: calc(var(--qx-control-height) + var(--qx-space-1)); }
+  .cv-history__more { opacity: 1; }
+  .cv-history__search input, .cv-history-popover input { font-size: var(--qx-text-body); }
+  .cv-history-backdrop { top: var(--app-viewport-offset-top, 0px); bottom: auto; height: var(--app-viewport-height, 100dvh); }
+  .cv-history--modal { max-height: calc(var(--app-viewport-height, 100dvh) - var(--qx-space-5)); }
+  .cv-history-popover { max-height: calc(var(--app-viewport-height, 100dvh) - var(--qx-space-4)); }
+}

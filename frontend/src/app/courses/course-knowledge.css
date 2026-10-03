@@ -1,0 +1,19 @@
+.ep-course-graph__filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--qx-space-2); margin-bottom: var(--qx-space-6); }
+.ep-course-graph__filters > .qx-search { min-width: 220px; }
+.ep-course-graph__caption { display: flex; align-items: center; justify-content: space-between; gap: var(--qx-space-3); margin-bottom: var(--qx-space-3); }
+.ep-course-graph { position: relative; height: min(72vh, 760px); min-height: 420px; overflow: hidden; border-radius: var(--qx-radius-panel); background: var(--qx-color-surface); box-shadow: var(--qx-shadow-card); }
+.ep-course-graph > .obsidian-knowledge-graph { height: 100%; border: 0; border-radius: 0; background: transparent; }
+.ep-course-graph .obsidian-knowledge-graph__canvas { height: 100%; min-height: 420px; background: transparent; }
+.ep-course-graph__detail { position: absolute; top: var(--qx-space-4); right: var(--qx-space-4); bottom: var(--qx-space-4); display: flex; width: 320px; flex-direction: column; gap: var(--qx-space-3); overflow-y: auto; z-index: 2; }
+.ep-course-graph__detail > header { display: flex; align-items: center; justify-content: space-between; }
+.ep-course-graph__detail .qx-item { white-space: normal; justify-content: space-between; text-decoration: none; }
+.ep-course-graph__evidence { display: grid; gap: var(--qx-space-2); padding-bottom: var(--qx-space-4); border-bottom: 1px solid var(--qx-color-rule); }
+.ep-course-graph__evidence p { margin: 0; font-size: var(--qx-text-control); line-height: 1.8; }
+.ep-course-graph__evidence .qx-item { padding-inline: 0; font-size: var(--qx-text-meta); }
+.ep-course-graph__cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px,100%),1fr)); gap: var(--qx-space-4); }
+.ep-course-graph__cards > article { display: flex; flex-direction: column; gap: var(--qx-space-2); }
+.ep-course-graph__cards h2 button { border: 0; padding: 0; color: inherit; background: none; font: inherit; text-align: left; cursor: pointer; }
+.ep-course-graph__card-evidence { display: grid; gap: var(--qx-space-3); padding-top: var(--qx-space-4); }
+.ep-course-graph__card-evidence > h2 { display: none; }
+.ep-course-graph__note { margin-top: var(--qx-space-4); }
+@media (max-width: 720px) { .ep-course-graph { height: 64vh; } .ep-course-graph__detail { inset: auto var(--qx-space-2) var(--qx-space-2); width: auto; max-height: 60%; } .ep-course-graph__filters > .qx-search { width: 100%; } }

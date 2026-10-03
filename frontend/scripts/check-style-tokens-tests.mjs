@@ -30,7 +30,7 @@ test('accepts structural values expressed through semantic tokens', () => {
   assert.match(result.stdout, /Style tokens: ok/)
 })
 
-test('rejects new raw structural values without policing page colors', () => {
+test('rejects raw structural values and raw colors', () => {
   const result = runChecker(`
     .control {
       min-height: 1.9rem;
@@ -44,6 +44,27 @@ test('rejects new raw structural values without policing page colors', () => {
   assert.match(result.stderr, /raw control size/)
   assert.match(result.stderr, /raw radius/)
   assert.match(result.stderr, /raw type size/)
-  assert.doesNotMatch(result.stderr, /raw color/)
+  assert.match(result.stderr, /raw color/)
 })
 
+
+test('accepts colors mixed from tokens', () => {
+  const result = runChecker(`
+    .note {
+      color: var(--qx-color-info);
+      background: color-mix(in srgb, var(--qx-color-info) 12%, transparent);
+      border-radius: 0;
+    }
+  `)
+
+  assert.equal(result.status, 0, result.stderr)
+})
+
+test('rejects custom properties that reference each other in a cycle', () => {
+  const result = runChecker(`
+    .frame { --app-ink: var(--qx-color-ink); --qx-color-ink: var(--app-ink); }
+  `)
+
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /custom property cycle/)
+})

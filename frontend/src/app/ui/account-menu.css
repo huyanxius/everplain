@@ -1,0 +1,12 @@
+.application-account-menu { flex: 1; min-width: 0; width: 100%; }
+.account-menu { position: absolute; z-index: 70; bottom: calc(100% + var(--qx-space-2)); left: 0; display: grid; gap: var(--qx-space-1); width: min(320px, calc(100vw - var(--qx-space-8))); max-height: calc(var(--app-viewport-height, 100dvh) - var(--qx-action-height) * 2 - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; padding: var(--qx-space-2); }
+.account-menu__identity { display: flex; align-items: center; gap: var(--qx-space-3); padding: var(--qx-space-3) var(--qx-space-2); margin-bottom: var(--qx-space-1); }
+.account-menu__identity > .agent-avatar { flex: none; }
+.account-menu__identity > div { display: grid; gap: var(--qx-space-1); min-width: 0; }
+.account-menu__identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--qx-color-ink); font-size: var(--qx-text-control); font-weight: var(--qx-text-heading--font-weight); }
+.application-frame .application-sidebar .account-menu .qx-item { justify-content: flex-start; min-height: var(--qx-action-height); gap: var(--qx-space-2); padding-inline: var(--qx-space-2); }
+.account-menu__usage { flex-wrap: wrap; }
+.account-menu__usage > small { margin-left: auto; color: var(--qx-color-muted); font-size: var(--qx-text-meta); }
+.account-menu__usage > span { flex: 1; }
+.account-menu__usage > .account-menu__buckets { display: grid; flex: 1 0 100%; gap: var(--qx-space-2); padding-left: calc(var(--application-nav-icon-size, var(--qx-space-5)) + var(--qx-space-2)); color: var(--qx-color-muted); }
+.account-menu__buckets > small { display: flex; justify-content: space-between; gap: var(--qx-space-3); font-size: var(--qx-text-meta); }

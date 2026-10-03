@@ -12,7 +12,7 @@
 .kinetic-copy-line-inner {
   display: block;
   opacity: 0;
-  letter-spacing: 0.075em;
+  letter-spacing: normal;
   transform: translate3d(0, 120%, 0);
   animation: kinetic-copy-line-enter 620ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
   animation-delay: calc(210ms + var(--kinetic-copy-line-index) * 90ms);
@@ -94,7 +94,7 @@
 @keyframes kinetic-copy-line-enter {
   0% {
     opacity: 0;
-    letter-spacing: 0.075em;
+    letter-spacing: normal;
     transform: translate3d(0, 120%, 0);
   }
   100% {
@@ -115,7 +115,7 @@
   }
   100% {
     opacity: 0;
-    letter-spacing: 0.045em;
+    letter-spacing: normal;
     transform: translate3d(0, -118%, 0);
   }
 }

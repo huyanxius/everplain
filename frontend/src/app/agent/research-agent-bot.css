@@ -3,7 +3,7 @@
   aspect-ratio: 1;
   display: inline-flex;
   flex: 0 0 auto;
-  color: color-mix(in srgb, var(--app-ink) 84%, transparent);
+  color: color-mix(in srgb, var(--qx-color-ink) 84%, transparent);
   animation: research-agent-bot-presence 5.6s ease-in-out infinite;
 }
 

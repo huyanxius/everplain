@@ -1,0 +1,5 @@
+.agent-loading { display: grid; justify-items: center; align-content: center; gap: var(--qx-space-3); min-height: 180px; padding: var(--qx-space-6); color: var(--qx-color-muted); text-align: center; }
+.agent-loading p { margin: 0; font-size: var(--qx-text-body); line-height: var(--qx-text-body--line-height); }
+.agent-loading[data-compact='true'] { display: flex; justify-content: flex-start; align-items: center; gap: var(--qx-space-2); min-height: 0; padding: var(--qx-space-2) 0; text-align: left; }
+.agent-loading[data-compact='true'] p { font-size: var(--qx-text-meta); line-height: var(--qx-text-meta--line-height); }
+.agent-loading[data-reduced-motion='true'] .agent-avatar, .agent-loading[data-reduced-motion='true'] .agent-avatar * { animation: none; transition: none; }
