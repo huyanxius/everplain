@@ -3,7 +3,7 @@
 set -euo pipefail
 umask 077
 mode="${1:-all}"
-[[ "$mode" == all || "$mode" == upload || "$mode" == apply ]] || exit 2
+[[ "$mode" == all || "$mode" == trial || "$mode" == upload || "$mode" == apply ]] || exit 2
 for name in EVERPLAIN_DEPLOY_HOST EVERPLAIN_DEPLOY_USER EVERPLAIN_DEPLOY_PORT EVERPLAIN_SSH_HOST_KEY_FINGERPRINT EVERPLAIN_SSH_PRIVATE_KEY; do
   [[ -n "${!name:-}" ]] || { echo "Missing required production setting: $name" >&2; exit 2; }
 done
@@ -57,26 +57,41 @@ for item in json.loads(Path(sys.argv[2]).read_text()):
     if remaining == 0 and digest.hexdigest() == item["sha256"]:
         print(item["directory"])
         print("true" if item["size"] == source.stat().st_size else "false")
+        print(item["size"])
+        print(item["sha256"])
         break
 PYSELECT
 )
 upload="${selected[0]:-}"
 complete="${selected[1]:-false}"
+prefix_size="${selected[2]:-0}"
+prefix_hash="${selected[3]:-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855}"
 if [[ -z "$upload" ]]; then
   upload="$(ssh "${opts[@]}" -p "$port" "$target" 'mktemp -d /tmp/everplain-candidate.XXXXXXXX')"
 fi
 [[ "$upload" =~ ^/tmp/everplain-candidate\.[A-Za-z0-9]+$ ]] || exit 2
 ssh "${opts[@]}" -p "$port" "$target" "sudo -n python3 - space $size $upload" \
   < "$root/ops/cd/upload-state.py" > /dev/null
+if [[ "$complete" != true ]]; then
+  duration=1800
+  [[ "$mode" != trial ]] || duration=120
+  status=0
+  python3 "$root/ops/cd/upload_parts.py" local "$archive" "$upload" "$private" \
+    "$port" "$target" "$prefix_size" "$prefix_hash" "$duration" "${opts[@]}" || status=$?
+  if [[ "$status" == 3 && "$mode" == trial ]]; then
+    echo '{"parallel_trial_finished":true,"upload_completed":false}'
+    exit 0
+  fi
+  [[ "$status" == 0 ]] || { echo '{"upload_completed":false}'; exit 2; }
+fi
+if [[ "$mode" == trial ]]; then
+  echo '{"parallel_trial_finished":true,"upload_completed":true}'
+  exit 0
+fi
 tar -czf "$private/code.tar.gz" -C "$root" \
   ops/cd/deploy-existing.py ops/cd/artifact.py ops/cd/deploy.py ops/database.py ops/nginx.conf
-: > "$private/batch"
-if [[ "$complete" != true ]]; then
-  printf 'put -a "%s" "%s/release.tar.gz"\n' "$archive" "$upload" >> "$private/batch"
-fi
-printf 'put "%s" "%s/code.tar.gz"\n' "$private/code.tar.gz" "$upload" >> "$private/batch"
-# Continue a verified prefix using built-in SFTP, retaining partial bytes on a bounded timeout.
-if ! timeout --signal=TERM 1800s sftp -q -B 65536 -R 64 "${opts[@]}" -P "$port" \
+printf 'put "%s" "%s/code.tar.gz"\n' "$private/code.tar.gz" "$upload" > "$private/batch"
+if ! timeout --signal=TERM 120s sftp -q "${opts[@]}" -P "$port" \
   -b "$private/batch" "$target" > "$private/transfer.log" 2>&1; then
   echo '{"upload_completed":false}'
   exit 2

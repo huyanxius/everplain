@@ -33,7 +33,27 @@ def upload_snapshot(parent=Path("/tmp")):
             info = path.lstat()
             if stat.S_ISREG(info.st_mode) and info.st_uid == uid and info.st_nlink == 1:
                 result[path] = (info.st_size, info.st_mtime_ns)
-        except OSError:
+                parts = directory / "parts"
+                plan = parts / "plan.json"
+                if not parts.is_symlink() and not plan.is_symlink() and plan.is_file():
+                    if plan.stat().st_size > 16384:
+                        continue
+                    values = json.loads(plan.read_text())
+                    if values.get("prefix_size") != info.st_size:
+                        continue
+                    for index, item in enumerate(values.get("parts", [])[:3]):
+                        if item.get("name") != f"part-{index}":
+                            continue
+                        chunk = parts / item["name"]
+                        data = chunk.lstat()
+                        if (
+                            stat.S_ISREG(data.st_mode)
+                            and data.st_uid == uid
+                            and data.st_nlink == 1
+                            and data.st_size <= item["size"]
+                        ):
+                            result[chunk] = (data.st_size, data.st_mtime_ns)
+        except (OSError, ValueError, TypeError, KeyError):
             pass
     return result
 
@@ -56,8 +76,10 @@ def upload_writers(paths, proc=Path("/proc")):
 
 def inspect_upload():
     before = upload_snapshot()
+    started = time.monotonic()
     time.sleep(10)
     after = upload_snapshot()
+    elapsed = max(1, time.monotonic() - started)
     writers = upload_writers(after)
     complete = False
     for path, metadata in after.items():
@@ -72,6 +94,10 @@ def inspect_upload():
             complete |= unchanged and digest.hexdigest() == UPLOAD_SHA256
         except OSError:
             pass
+    totals = {}
+    for path, (size, _mtime) in after.items():
+        directory = path.parent.parent if path.parent.name == "parts" else path.parent
+        totals[directory] = totals.get(directory, 0) + size
     return {
         "upload_present": bool(after),
         "upload_growing": any(
@@ -79,10 +105,16 @@ def inspect_upload():
         ),
         "upload_writer_present": bool(writers),
         "upload_complete": complete,
+        "upload_at_least_64_kib_per_second": sum(
+            max(0, value[0] - before.get(path, (0, 0))[0]) for path, value in after.items()
+        )
+        / elapsed
+        >= 64 * 1024,
         **{
-            f"upload_bytes_at_least_{percent}_percent": any(
+            f"upload_bytes_at_least_{percent}_percent": complete
+            or any(
                 size * 100 >= PUBLIC_ARTIFACT_BYTES * percent
-                for size, _mtime in after.values()
+                for size in totals.values()
                 if size <= PUBLIC_ARTIFACT_BYTES
             )
             for percent in (25, 50, 75)

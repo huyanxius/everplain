@@ -132,6 +132,21 @@ class InspectionTests(unittest.TestCase):
 
 
 class UploadInspectionTests(unittest.TestCase):
+    def test_parallel_progress_counts_separate_shards_once(self):
+        prefix = Path("/tmp/everplain-candidate.fixture/release.tar.gz")
+        shard = prefix.parent / "parts/part-0"
+        snapshot = {prefix: (20, 1), shard: (45, 1)}
+        with (
+            patch.object(inspection, "upload_snapshot", return_value=snapshot),
+            patch.object(inspection, "upload_writers", return_value=set(snapshot)),
+            patch.object(inspection.time, "sleep"),
+            patch.object(inspection, "PUBLIC_ARTIFACT_BYTES", 120),
+        ):
+            result = inspection.inspect_upload()
+        self.assertTrue(result["upload_bytes_at_least_50_percent"])
+        self.assertFalse(result["upload_bytes_at_least_75_percent"])
+        self.assertFalse(result["upload_complete"])
+
     def test_progress_is_conservative_and_never_claims_integrity(self):
         path = Path("/fixture/release.tar.gz")
         with (
