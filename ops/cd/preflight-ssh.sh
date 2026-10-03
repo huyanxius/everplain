@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Read-only host inspection using the existing account and GitHub Actions secret.
+# Verified existing SSH account; default inspection or explicit Everplain-only web repair.
 set -euo pipefail
 umask 077
 for name in EVERPLAIN_DEPLOY_HOST EVERPLAIN_DEPLOY_USER EVERPLAIN_DEPLOY_PORT EVERPLAIN_SSH_HOST_KEY_FINGERPRINT EVERPLAIN_SSH_PRIVATE_KEY; do
@@ -28,7 +28,12 @@ opts=(-i "$private/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyC
   -o ClearAllForwardings=yes -o ForwardAgent=no -o PermitLocalCommand=no -o RequestTTY=no
   -o LogLevel=ERROR -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-echo 'Approved ED25519 host fingerprint verified; running read-only Everplain inspection'
-# Uses existing sudo capability only. No installation, permission change or host-file write.
+case "${1:-inspect}" in
+  inspect) script=inspect-production.py ;;
+  repair-web) script=repair_existing_web.py ;;
+  *) exit 2 ;;
+esac
+echo 'Approved ED25519 host fingerprint verified'
+# Uses only the existing sudo capability. The selected operation is fixed above.
 ssh "${opts[@]}" -p "$port" "$EVERPLAIN_DEPLOY_USER@$EVERPLAIN_DEPLOY_HOST" \
-  'sudo -n python3 -' < "$root/ops/cd/inspect-production.py"
+  'sudo -n python3 -' < "$root/ops/cd/$script"
