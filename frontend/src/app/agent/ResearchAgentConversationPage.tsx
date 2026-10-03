@@ -1006,6 +1006,7 @@ type ResearchAgentConversationPageProps = {
   onClearDiscussion?: () => void
   citationRequest?: { id: string; key: number } | null
   enableResearchGuidance?: boolean
+  researchContext?: boolean
 }
 
 export function ResearchAgentConversationPage({
@@ -1037,6 +1038,7 @@ export function ResearchAgentConversationPage({
   onClearDiscussion,
   citationRequest = null,
   enableResearchGuidance = false,
+  researchContext = false,
 }: ResearchAgentConversationPageProps) {
   const { locale, text } = useAppLocale()
   const modelSelection = useAgentModelSelection(userId)
@@ -1112,6 +1114,8 @@ export function ResearchAgentConversationPage({
   const [materialUploading, setMaterialUploading] = useState(false)
   const [materialMenuOpen, setMaterialMenuOpen] = useState(false)
   const [composerMode, setComposerMode] = useState<AgentComposerMode>(() => restoredPendingTurn.current?.request?.mode === 'deep_research' ? 'deep-research' : 'standard')
+  // Presentation context is distinct from the request workspace: a new research has no task yet.
+  const researchToolsVisible = researchContext || (embedded && workspace === 'research') || composerMode === 'deep-research'
   const [deepResearchIntroVisible, setDeepResearchIntroVisible] = useState(false)
   const deepResearchIntroShown = useRef(false)
   const [deepResearchMockStage, setDeepResearchMockStage] = useState<DeepResearchMockStage>('idle')
@@ -2479,6 +2483,12 @@ export function ResearchAgentConversationPage({
   }
 
   const conversationActions = (<>
+                <section className="cv-conversation-settings" aria-label={text('对话设置', 'Conversation settings')} onClick={event => event.stopPropagation()}>
+                  <h3 className="qx-meta">{text('知识来源与联网', 'Knowledge sources and web')}</h3>
+                  {!embedded ? <CourseReferenceSelector value={activeConversation ? activeConversation.reference_knowledge_base_id ?? '' : searchParams.get('reference_knowledge_base_id') ?? ''} hasConversation={Boolean(activeConversation)} disabled={isBusy}
+                    onChange={value => { newConversation(); setSearchParams(value ? { reference_knowledge_base_id: value } : {}) }} /> : null}
+                  <button type="button" className="qx-btn qx-btn--ghost" aria-label={text('联网搜索', 'Web search')} aria-pressed={webSearchEnabled} disabled={isBusy} onClick={() => setWebSearchEnabled(enabled => !enabled)}><GlobeHemisphereWestIcon size={16} /><span>{webSearchEnabled ? text('联网已开启', 'Web on') : text('联网搜索', 'Web search')}</span></button>
+                </section>
 
                 {workspace === 'research' && !embedded ? (
                   <button className="qx-btn qx-btn--ghost"
@@ -2674,18 +2684,9 @@ export function ResearchAgentConversationPage({
               onRemoveAttachment={id => setAttachedMaterials(items => items.filter(item => item.materialId !== id))}
               attachments={attachedMaterials.map(material => ({ id: material.materialId, title: material.filename,
                 status: material.status === 'ready' ? text('已添加', 'Added') : attachmentStatusLabel(material, locale), removable: !isBusy }))}
-              toolbar={<>
-                <ModelSelectionSettings state={modelSelection} disabled={isBusy || materialUploading}
-                  activeRequest={isBusy ? activeTurnAttempt.current?.request : null} />
-                <div className="cv-work-tools" role="group" aria-label={text('研究工具栏', 'Research tools')}>
-                  <ProjectScopeMenu projects={projects} taskId={taskId} disabled={isBusy || materialUploading} onChange={switchComposerProject} />
-                  {!embedded ? <CourseReferenceSelector value={activeConversation ? activeConversation.reference_knowledge_base_id ?? '' : searchParams.get('reference_knowledge_base_id') ?? ''} hasConversation={Boolean(activeConversation)} disabled={isBusy}
-                    onChange={value => { newConversation(); setSearchParams(value ? { reference_knowledge_base_id: value } : {}) }} /> : null}
-                  <button type="button" className="qx-btn qx-btn--secondary" aria-label={text('联网搜索', 'Web search')} aria-pressed={webSearchEnabled} disabled={isBusy} onClick={() => setWebSearchEnabled(enabled => !enabled)}><GlobeHemisphereWestIcon size={16} /><span>{webSearchEnabled ? text('联网已开启', 'Web on') : text('联网搜索', 'Web search')}</span></button>
-                  <button type="button" className="qx-btn qx-btn--secondary" aria-label={text('查看材料库', 'Open material library')} onClick={openResearchMaterials}><FolderOpenIcon size={16} /><span>{text('材料库', 'Materials')}</span></button>
-                  <ConversationSuggestions onSelect={choosePrompt} />
-                </div>
-              </>}
+              researchLayout={researchToolsVisible}
+              modelSelector={<ModelSelectionSettings state={modelSelection} disabled={isBusy || materialUploading}
+                activeRequest={isBusy ? activeTurnAttempt.current?.request : null} />}
               context={composerPrefix}
               attachmentPicker={materialPickerOpen ? <AgentMaterialAttachmentPicker inline loading={materialPickerLoading}
                 materials={materialPickerLoading ? [] : availableMaterials} selectedIds={new Set(attachedMaterials.map(item => item.materialId))}
@@ -2700,6 +2701,13 @@ export function ResearchAgentConversationPage({
                 </section>
               </>}
             />
+            {researchToolsVisible && <>
+              <div className="cv-research-base" role="group" aria-label={text('研究工具栏', 'Research tools')}>
+                {!embedded && <ProjectScopeMenu projects={projects} taskId={taskId} disabled={isBusy || materialUploading} onChange={switchComposerProject} />}
+                <button type="button" className="qx-btn qx-btn--ghost" aria-label={text('查看材料库', 'Open material library')} onClick={openResearchMaterials}><FolderOpenIcon size={16} /><span>{text('材料库', 'Materials')}</span></button>
+              </div>
+              <div className="cv-research-suggestions"><ConversationSuggestions onSelect={choosePrompt} /></div>
+            </>}
 </>}
 
     source={<ConversationSourcePanel

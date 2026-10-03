@@ -128,7 +128,7 @@ export function NewResearchWorkspacePage({ userId }: { userId: string | null }) 
           <div className="research-launch__resize" role="separator" tabIndex={0} aria-label="调整对话栏宽度" aria-orientation="vertical" aria-controls="research-launch-agent-panel" aria-valuemin={state.minAgentPanelWidth} aria-valuemax={state.agentPanelMaxWidth} aria-valuenow={state.agentPanelWidth} aria-valuetext={`${state.agentPanelWidth} 像素`} onKeyDown={state.handleResizeKey} onMouseDown={state.startMouseResize} onPointerDown={state.startPointerResize} onPointerMove={state.movePointerResize} onPointerUp={state.finishPointerResize} onPointerCancel={state.finishPointerResize} />
           <aside ref={agentPanel} id="research-launch-agent-panel" className="research-launch__agent" aria-label="研究对话">
             <ResearchAgentConversationPage
-              embedded showConversationManagement
+              embedded showConversationManagement researchContext
               historyRailTarget={state.historyRailTarget}
               userId={userId}
               conversationId={state.requestedConversationId}

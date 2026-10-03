@@ -47,7 +47,8 @@ describe('personal home rebuilt from Home mock', () => {
   it('offers model controls directly and hands the choice and question to the new conversation', async () => {
     show()
     const composer = screen.getByRole('form', { name: '开始 Agent 对话' })
-    expect(await within(composer).findByRole('combobox', { name: '模型' })).toBeVisible()
+    fireEvent.click(await within(composer).findByRole('button', { name: /GPT 6 Luna · 中/ }))
+    expect(within(composer).getByRole('combobox', { name: '模型' })).toBeVisible()
     fireEvent.change(within(composer).getByRole('slider', { name: '思考强度' }), { target: { value: '2' } })
     const input = await screen.findByRole('textbox', { name: '问小叶' })
     fireEvent.change(input, { target: { value: '我的新问题' } })

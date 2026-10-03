@@ -1,14 +1,23 @@
 .conversation-composer { position: relative; display: grid; gap: var(--qx-space-2); padding: var(--qx-space-2); border-radius: var(--qx-radius-pill); background: var(--qx-color-surface); box-shadow: var(--qx-shadow-composer); }
 .conversation-composer[data-multiline='true'], .conversation-composer[data-mode='deep-research'], .conversation-composer:has(.conversation-composer__attachments), .conversation-composer:has(.conversation-composer__context), .conversation-composer:has(.conversation-composer__picker), .conversation-composer:has(.conversation-composer__toolbar) { border-radius: var(--qx-radius-panel); }
-.conversation-composer__row { display: grid; grid-template-columns: var(--qx-control-height) minmax(0, 1fr) var(--qx-control-height); align-items: end; gap: var(--qx-space-1); }
+.conversation-composer__row { display: grid; grid-template-columns: var(--qx-control-height) minmax(0, 1fr) auto var(--qx-control-height); align-items: end; gap: var(--qx-space-1); }
 .conversation-composer__row > textarea { display: block; width: 100%; min-width: 0; min-height: var(--qx-control-height); max-height: min(240px, 25cqh); margin: 0; padding: var(--qx-space-2); border: 0; border-radius: 0; outline: none; resize: none; color: var(--qx-color-ink); background: transparent; font-family: var(--qx-font-ui); font-size: var(--qx-text-body); line-height: var(--qx-text-body--line-height); }
 .conversation-composer__row > textarea::placeholder { color: var(--qx-color-faint); }
 .conversation-composer__tools { position: relative; grid-column: 1; grid-row: 1; }
 .conversation-composer__row > textarea { grid-column: 2; grid-row: 1; }
-.conversation-composer__send { grid-column: 3; grid-row: 1; }
+.conversation-composer__model { grid-column: 3; grid-row: 1; min-width: 0; }
+.conversation-composer__send { grid-column: 4; grid-row: 1; }
 .conversation-composer__row .qx-btn--icon { width: var(--qx-control-height); height: var(--qx-control-height); min-height: var(--qx-control-height); flex: none; padding: 0; }
-.conversation-composer[data-mode='deep-research'] .conversation-composer__row > textarea { grid-column: 1 / -1; grid-row: 1; min-height: min(64px, 20cqh); }
-.conversation-composer[data-mode='deep-research'] .conversation-composer__tools, .conversation-composer[data-mode='deep-research'] .conversation-composer__send { grid-row: 2; }
+.conversation-composer[data-layout='research'], .conversation-composer[data-multiline='true'] { border-radius: var(--qx-radius-panel); }
+.conversation-composer[data-layout='research'] .conversation-composer__row > textarea,
+.conversation-composer[data-multiline='true'] .conversation-composer__row > textarea { grid-column: 1 / -1; grid-row: 1; }
+.conversation-composer[data-layout='research'] .conversation-composer__row > textarea { min-height: min(64px, 20cqh); }
+.conversation-composer[data-layout='research'] .conversation-composer__tools,
+.conversation-composer[data-layout='research'] .conversation-composer__model,
+.conversation-composer[data-layout='research'] .conversation-composer__send,
+.conversation-composer[data-multiline='true'] .conversation-composer__tools,
+.conversation-composer[data-multiline='true'] .conversation-composer__model,
+.conversation-composer[data-multiline='true'] .conversation-composer__send { grid-row: 2; }
 .conversation-composer__menu { position: fixed; z-index: 60; inset: auto; margin: 0; border: 0; display: grid; gap: var(--qx-space-1); width: min(320px, calc(100vw - var(--qx-space-8))); max-height: min(420px, 65dvh); overflow: auto; }
 .conversation-composer__menu > .qx-btn { justify-content: flex-start; width: 100%; }
 .conversation-composer__attachments { display: flex; flex-wrap: wrap; gap: var(--qx-space-2); padding: var(--qx-space-1); }
@@ -53,7 +62,7 @@
 .cv-tool-secondary > button { justify-content: flex-start; }
 
 @media (max-width: 760px) {
-  .conversation-composer__row { grid-template-columns: 44px minmax(0, 1fr) 44px; }
+  .conversation-composer__row { grid-template-columns: 44px minmax(0, 1fr) auto 44px; }
   .conversation-composer__row .qx-btn--icon { width: 44px; height: 44px; min-height: 44px; }
   .conversation-composer__row > textarea { min-height: 44px; }
   .conversation-composer__attachment .qx-btn { min-width: 44px; min-height: 44px; }
@@ -71,6 +80,16 @@
 .conversation-composer__toolbar .cv-work-tools .qx-select__trigger:hover { background: var(--qx-color-surface-muted); }
 
 .conversation-composer__toolbar .cv-work-tools > button[aria-pressed='true'] { background: var(--qx-color-surface-strong); box-shadow: var(--qx-shadow-ring); color: var(--qx-color-ink); }
+.cv-research-base { display: flex; align-items: center; flex-wrap: wrap; gap: var(--qx-space-2); margin: 0 var(--qx-space-3); padding: var(--qx-space-1) var(--qx-space-3); border-radius: 0 0 var(--qx-radius-panel) var(--qx-radius-panel); background: var(--qx-color-surface-muted); }
+.cv-research-base > .cv-project-selector { flex: 0 1 180px; min-width: 0; }
+.cv-research-base .qx-btn { background: transparent; box-shadow: none; font-size: var(--qx-text-meta); font-weight: 400; }
+.cv-research-base .qx-btn:hover { background: var(--qx-color-surface-strong); }
+.cv-research-suggestions { margin: var(--qx-space-3) var(--qx-space-3) 0; }
+.cv-research-suggestions .cv-suggestions > div { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
+.cv-research-suggestions .cv-suggestions > div > button { align-items: flex-start; padding: var(--qx-space-3); border-radius: var(--qx-radius-item); background: var(--qx-color-surface-muted); }
+.cv-conversation-settings { display: grid; gap: var(--qx-space-2); min-width: 0; padding: var(--qx-space-2); }
+.cv-conversation-settings > h3 { margin: 0; font-weight: 400; }
+.cv-conversation-settings > button { justify-content: flex-start; }
 .conversation-composer__toolbar .cv-suggestions { position: relative; min-width: 0; }
 .conversation-composer__toolbar .cv-suggestions > summary { display: flex; align-items: center; min-height: var(--qx-control-height); padding: 0 var(--qx-space-2); font-size: var(--qx-text-meta); }
 .conversation-composer__toolbar .cv-suggestions > div { position: absolute; bottom: 100%; right: 0; z-index: 60; width: min(288px, calc(100vw - var(--qx-space-8))); max-height: min(320px, 50dvh); overflow-y: auto; border-radius: var(--qx-radius-panel); background: var(--qx-color-surface-raised); box-shadow: var(--qx-shadow-menu); }

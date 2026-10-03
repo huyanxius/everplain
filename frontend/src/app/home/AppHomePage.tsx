@@ -106,9 +106,9 @@ function HomeComposer({ home }: { home: Home }) {
       <textarea ref={input} rows={1} aria-label={`问${home.profile.data?.name ?? 'Agent'}`} placeholder={`问${home.profile.data?.name ?? 'Agent'}，或者丢一个链接进来`} value={home.question} onChange={event => home.setQuestion(event.target.value)} onKeyDown={event => {
         if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); home.ask() }
       }} />
+      <ModelSelectionSettings state={home.modelSelection} disabled={false} />
       <button className="qx-btn qx-btn--primary qx-btn--icon qx-btn--lg" type="submit" aria-label="开始对话"><ArrowUpIcon weight="bold" /></button>
     </div>
-    <div className="personal-start__composer-toolbar"><ModelSelectionSettings state={home.modelSelection} disabled={false} /></div>
   </form>
 }
 
