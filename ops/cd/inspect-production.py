@@ -34,6 +34,9 @@ try:
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"users", "alembic_version"} <= tables
         initialization = {"alembic_version", "account_system_state", "sqlite_sequence"}
+        # FTS shadow tables contain internal rows even when the searchable table is empty.
+        initialization.update(row[1] for row in db.execute("PRAGMA table_list")
+                              if row[2] == "shadow")
         auth = {"user_sessions", "registration_verifications", "account_password_resets",
                 "account_mutation_requests", "account_audit_events", "user_preferences"}
         present = set()

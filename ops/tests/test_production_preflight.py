@@ -150,6 +150,7 @@ class UploadInspectionTests(unittest.TestCase):
                 db.executescript(
                     "CREATE TABLE users(id TEXT); CREATE TABLE alembic_version(version_num TEXT);"
                     "INSERT INTO alembic_version VALUES ('fixture');"
+                    "CREATE VIRTUAL TABLE knowledge_search_fts USING fts5(body);"
                 )
             code = inspection.DATA_PRESENCE_SCRIPT.replace(
                 "file:/data/everplain.db", path.resolve().as_uri()
