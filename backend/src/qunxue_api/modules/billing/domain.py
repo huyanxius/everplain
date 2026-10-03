@@ -5,7 +5,10 @@ from typing import Literal
 from uuid import UUID
 
 WELCOME_GRANT = 10_000
-SIGNUP_GRANT = 3_000
+# Approx. USD 2 at the approved FX 6.7351 CNY/USD, 10% retail and 100 points/CNY:
+# floor(2 * 6.7351 * 0.1 * 100) = 134. Review together with future FX/price changes.
+# This is not an exact USD cap and does not change existing balances or redemption.
+SIGNUP_GRANT = 134
 INPUT_TOKENS_PER_CREDIT = 100
 OUTPUT_TOKENS_PER_CREDIT = 25
 

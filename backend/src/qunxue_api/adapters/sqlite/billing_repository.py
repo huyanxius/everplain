@@ -13,6 +13,7 @@ from qunxue_api.adapters.sqlite.billing_model import (
     CreditRedemptionCodeRow,
 )
 from qunxue_api.modules.billing import (
+    SIGNUP_GRANT,
     WELCOME_GRANT,
     CreditCodeBatchConflict,
     CreditCodeSpec,
@@ -295,7 +296,7 @@ class SqliteCreditRepository:
             if account is None:
                 self.ensure_welcome_grant(
                     user_id=user_id,
-                    points=WELCOME_GRANT,
+                    points=SIGNUP_GRANT,
                     now=now,
                 )
                 continue
