@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import stat
 import subprocess
 import time
@@ -14,6 +15,75 @@ UPLOAD_SHA256 = "85f2b033ed68e94d9d0563800d3d5b078c4b4e2d7b6ad868c4a3fa2e0cf3ec0
 # Public artifact 11266871021 used compression-level 0. Its ZIP includes the entire
 # tar plus metadata, so this larger denominator gives conservative progress only.
 PUBLIC_ARTIFACT_BYTES = 141_463_972
+REVISION = "0dae10baff6a78cb0e12f67cc6f5ad153336a8a4"
+CHECKED_IMAGES = {
+    "api": "sha256:e3101bab572ab3f795a13a4c7ccd70198d4908b7ab949fefc3e05afcd19b14a0",
+    "web": "sha256:d7fa4418995958435e783f23d627be4542bf4aa6ba0c9b0d805f56c3338ff8d3",
+}
+
+
+def read_command(args):
+    result = subprocess.run(args, capture_output=True, text=True, timeout=20, check=False)
+    if result.returncode:
+        raise ValueError("inspection unavailable")
+    return result.stdout.strip()
+
+
+def inspect_release(base=Path("/srv/everplain-updates")):
+    report = {
+        key: False
+        for key in (
+            "release_disk_budget_ok",
+            "release_api_image_verified",
+            "release_web_image_verified",
+            "release_private_env_present",
+        )
+    }
+    try:
+        stages = [
+            p
+            for p in base.glob(REVISION[:8] + "-*")
+            if p.is_dir()
+            and not p.is_symlink()
+            and p.stat().st_uid == os.geteuid()
+            and p.stat().st_mode & 0o077 == 0
+        ]
+        stage = max(stages, key=lambda p: p.stat().st_mtime_ns)
+        release = stage / "releases" / REVISION
+        env = release / "runtime.env"
+        report["release_private_env_present"] = env.is_file() and not env.is_symlink()
+        for role, image in CHECKED_IMAGES.items():
+            try:
+                output = read_command(
+                    [
+                        "docker",
+                        "image",
+                        "inspect",
+                        "--format",
+                        "{{.Architecture}} {{.Os}} "
+                        '{{index .Config.Labels "org.opencontainers.image.revision"}}',
+                        image,
+                    ]
+                )
+                report[f"release_{role}_image_verified"] = output == "amd64 linux " + REVISION
+            except (OSError, ValueError, subprocess.SubprocessError):
+                pass
+        mounts = json.loads(
+            read_command(["docker", "inspect", "--format", "{{json .Mounts}}", "everplain-api"])
+        )
+        source = Path(next(item["Source"] for item in mounts if item["Destination"] == "/data"))
+        image_bytes = sum(
+            (release / "images" / (role + ".tar")).stat().st_size for role in CHECKED_IMAGES
+        )
+        data_bytes = sum(p.stat().st_size for p in source.iterdir())
+        budget = image_bytes * 3 + data_bytes * 3 + 512 * 1024**2
+        docker_root = Path(read_command(["docker", "info", "--format", "{{.DockerRootDir}}"]))
+        report["release_disk_budget_ok"] = (
+            shutil.disk_usage(stage).free > budget and shutil.disk_usage(docker_root).free > budget
+        )
+    except (OSError, ValueError, TypeError, KeyError, StopIteration, subprocess.SubprocessError):
+        pass
+    return report
 
 
 def upload_snapshot(parent=Path("/tmp")):
@@ -163,6 +233,7 @@ def inspect():
         ).is_file(),
         "host_changes": False,
         **inspect_upload(),
+        **inspect_release(),
     }
 
 
