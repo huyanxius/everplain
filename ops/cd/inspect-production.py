@@ -11,6 +11,9 @@ import urllib.request
 from pathlib import Path
 
 UPLOAD_SHA256 = "85f2b033ed68e94d9d0563800d3d5b078c4b4e2d7b6ad868c4a3fa2e0cf3ec03"
+# Public artifact 11266871021 used compression-level 0. Its ZIP includes the entire
+# tar plus metadata, so this larger denominator gives conservative progress only.
+PUBLIC_ARTIFACT_BYTES = 141_463_972
 
 
 def upload_snapshot(parent=Path("/tmp")):
@@ -76,6 +79,14 @@ def inspect_upload():
         ),
         "upload_writer_present": bool(writers),
         "upload_complete": complete,
+        **{
+            f"upload_bytes_at_least_{percent}_percent": any(
+                size * 100 >= PUBLIC_ARTIFACT_BYTES * percent
+                for size, _mtime in after.values()
+                if size <= PUBLIC_ARTIFACT_BYTES
+            )
+            for percent in (25, 50, 75)
+        },
     }
 
 

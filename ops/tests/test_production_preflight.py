@@ -132,6 +132,20 @@ class InspectionTests(unittest.TestCase):
 
 
 class UploadInspectionTests(unittest.TestCase):
+    def test_progress_is_conservative_and_never_claims_integrity(self):
+        path = Path("/fixture/release.tar.gz")
+        with (
+            patch.object(inspection, "upload_snapshot", return_value={path: (80, 1)}),
+            patch.object(inspection, "upload_writers", return_value={path}),
+            patch.object(inspection.time, "sleep"),
+            patch.object(inspection, "PUBLIC_ARTIFACT_BYTES", 120),
+        ):
+            result = inspection.inspect_upload()
+        self.assertTrue(result["upload_bytes_at_least_25_percent"])
+        self.assertTrue(result["upload_bytes_at_least_50_percent"])
+        self.assertFalse(result["upload_bytes_at_least_75_percent"])
+        self.assertFalse(result["upload_complete"])
+
     def test_growing_or_open_upload_is_not_hashed(self):
         path = Path("/private-fixture/release.tar.gz")
         with (
