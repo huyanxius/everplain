@@ -18,15 +18,17 @@ describe('Everplain product website', () => {
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => { requests.push(String(input)); return new Response('{}', { status: 503 }) })
     render(<MemoryRouter><FoundationPage /></MemoryRouter>)
     expect(screen.getByRole('heading', { level: 1, name: /^Everplain，帮你/ })).toBeVisible()
-    for (const name of ['你的知识，你的 AI。', '散落各处的，收到一处。', '一键，建成你的知识库。', '只属于你的 AI。', '用 1% 的成本，和全球最顶尖的模型对话。']) {
+    for (const name of ['你的知识，你的 AI。', '散落各处的，收到一处。', '一键，建成你的知识库。', '只属于你的 AI。', '用 10% 的价格，和全球最顶尖的模型对话。']) {
       expect(screen.getByRole('heading', { name })).toBeVisible()
     }
-    const models = screen.getByRole('list', { name: '可用模型' })
+    const models = screen.getByRole('list', { name: '模型示意' })
     for (const name of ['Claude Opus 5.5', 'GPT-6 Sol', 'Gemini 3.1 Pro']) expect(within(models).getByText(name)).toBeInTheDocument()
     for (const provider of ['Anthropic', 'OpenAI', 'Google']) expect(within(models).getAllByText(provider)).toHaveLength(2)
     expect(screen.getByRole('link', { name: '登录' })).toHaveAttribute('href', '/login')
     expect(screen.getByRole('link', { name: '免登录查看静态演示' })).toHaveAttribute('href', '#gather')
     expect(screen.getByText(/下方演示使用预设示例/)).toBeVisible()
+    expect(screen.getByText('10%')).toBeVisible()
+    expect(screen.getByText(/当前提供 GPT 6 Luna/)).toBeVisible()
     expect(requests).toEqual([])
   })
 
