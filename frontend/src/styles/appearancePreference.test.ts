@@ -55,8 +55,8 @@ describe('browser appearance preference', () => {
   it('keeps explicit graph appearances above the OS preference and print above both', () => {
     const css = readFileSync(resolve(process.cwd(), 'src/styles/system-theme.css'), 'utf8')
     expect(css).toMatch(/@media \(prefers-color-scheme: dark\)[\s\S]*?:root:not\(\[data-color-scheme='light'\]\)/)
-    expect(css).toMatch(/:root\[data-color-scheme='dark'\]\s*\{\s*--qx-graph-filter: invert/)
-    expect(css).toMatch(/:root\[data-color-scheme='light'\]\s*\{\s*--qx-graph-filter: none/)
+    expect(css).toMatch(/:root\[data-color-scheme='dark'\]\s*\{\s*color-scheme: dark;\s*--qx-graph-filter: invert/)
+    expect(css).toMatch(/:root\[data-color-scheme='light'\]\s*\{\s*color-scheme: light;\s*--qx-graph-filter: none/)
     const print = css.slice(css.indexOf('@media print'))
     expect(print).toContain(':root[data-color-scheme]')
     expect(print).toContain('color-scheme: light !important')
