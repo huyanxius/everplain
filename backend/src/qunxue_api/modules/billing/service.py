@@ -6,6 +6,7 @@ from datetime import UTC, datetime, time, timedelta
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from qunxue_api.modules.billing.domain import (
+    SIGNUP_GRANT,
     WELCOME_GRANT,
     CreditCodeSpec,
     CreditEntry,
@@ -49,7 +50,7 @@ class CreditService:
         if summary is None:
             summary = self._repository.ensure_welcome_grant(
                 user_id=user_id,
-                points=WELCOME_GRANT,
+                points=SIGNUP_GRANT,
                 now=self._clock(),
             )
         if user_id in self._exempt_user_ids:

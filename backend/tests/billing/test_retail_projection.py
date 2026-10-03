@@ -91,17 +91,17 @@ def test_rational_credit_precision_survives_persistence_and_price_change(wallet)
 def test_signup_gift_and_welcome_projection_are_once_and_use_real_frozen_funds(account_client):
     user = register(account_client)
     data = account_client.get("/api/account/credits").json()
-    assert data["balance"] == data["total_granted_points"] == data["credit_limit"] == 3000
+    assert data["balance"] == data["total_granted_points"] == data["credit_limit"] == 134
     assert data["quota_status"] == "known"
     assert data["active_usage_buckets"][0]["kind"] == "welcome"
-    assert data["active_usage_buckets"][0]["limit_points"] == 3000
+    assert data["active_usage_buckets"][0]["limit_points"] == 134
     from billing_test_support import synthetic_billing_runtime
 
     runtime = synthetic_billing_runtime(account_client.app.state.database.engine)
     runtime.start(user_id=user, run_id="synthetic-hold", fingerprint="synthetic")
     frozen = account_client.get("/api/account/credits").json()
-    assert frozen["available_balance"] == 2000
-    assert frozen["active_usage_buckets"][0]["available_points"] == 2000
+    assert frozen["available_balance"] == 0
+    assert frozen["active_usage_buckets"][0]["available_points"] == 0
     with account_client.app.state.database.session() as session:
         repository = SqliteCreditRepository(session)
         repository.ensure_welcome_grant(user_id=UUID(user), points=10000, now=datetime.now(UTC))
@@ -112,7 +112,7 @@ def test_signup_gift_and_welcome_projection_are_once_and_use_real_frozen_funds(a
             )
             == 1
         )
-    assert account_client.get("/api/account/credits").json()["balance"] == 3000
+    assert account_client.get("/api/account/credits").json()["balance"] == 134
 
 
 def test_historical_redemption_does_not_claim_a_paid_top_up_or_current_period(account_client):

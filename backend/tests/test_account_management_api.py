@@ -161,9 +161,9 @@ def test_registration_grants_a_visible_credit_balance_and_ledger_entry(
     assert response.status_code == 200
     payload = response.json()
     assert payload["is_unlimited"] is False
-    assert payload["balance"] == 3000
-    assert payload["credit_limit"] == 3000
-    assert payload["grant_amount"] == 3000
+    assert payload["balance"] == 134
+    assert payload["credit_limit"] == 134
+    assert payload["grant_amount"] == 134
     assert payload["pricing"] == {
         "input_tokens_per_credit": 100,
         "output_tokens_per_credit": 25,
@@ -228,7 +228,7 @@ def test_credit_reservation_fallback_uses_the_current_welcome_grant(
         summary = repository.get_summary(user_id=user_id, limit=10)
 
     assert summary is not None
-    assert summary.balance == 3000
+    assert summary.balance == 134
 
 
 def test_new_credit_reservation_preempts_an_abandoned_agent_run(
