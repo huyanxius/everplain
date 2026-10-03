@@ -7,7 +7,7 @@ import '../../styles/components.css'
 import '../../styles/base.css'
 import './writing.css'
 import { WritingApp } from './WritingHome'
-import '../../app/research/research-materials-page.css'
+import '../../app/home/personal-home.css'
 import '../shared/composer.css'
 import './writing-home.css'
 
