@@ -107,6 +107,7 @@ class ExistingReleaseTests(unittest.TestCase):
             return json.dumps(
                 [
                     {
+                        "Id": args[3],
                         "Architecture": "amd64",
                         "Os": "linux",
                         "Config": {
@@ -155,6 +156,13 @@ class ExistingReleaseTests(unittest.TestCase):
             patch.object(release, "unpack", side_effect=self.unpack),
             patch.object(release, "reusable_stage", return_value=None),
             patch.object(release, "inspect_image_archive"),
+            patch.object(
+                release,
+                "loaded_image",
+                side_effect=lambda image, *_: json.loads(
+                    self.command(["docker", "image", "inspect", image])
+                )[0],
+            ),
             patch.object(release, "run", side_effect=self.command),
             patch.object(release.Controller, "health", side_effect=self.health),
             patch.object(release, "public_health", side_effect=self.public),
@@ -313,6 +321,23 @@ class ExistingReleaseTests(unittest.TestCase):
         self.assertTrue(report["api_archive_linux_amd64"])
         self.assertTrue(report["api_archive_oci_layout"])
         self.assertFalse(report["api_archive_docker_manifest"])
+        self.assertTrue(all(type(value) is bool for value in report.values()))
+
+    def test_loaded_image_distinguishes_identity_architecture_and_missing_label_privately(self):
+        value = {
+            "Id": release.API_IMAGE,
+            "Architecture": "amd64",
+            "Os": "linux",
+            "Config": {"Labels": None, "Env": ["PRIVATE=must-not-print"]},
+        }
+        result = subprocess.CompletedProcess([], 0, json.dumps([value]), "")
+        report = {}
+        with patch.object(release.subprocess, "run", return_value=result):
+            self.assertEqual(release.loaded_image(release.API_IMAGE, "api", report), value)
+        self.assertTrue(report["api_id_identity_matches"])
+        self.assertTrue(report["api_id_amd64"])
+        self.assertFalse(report["api_id_revision_label_matches"])
+        self.assertNotIn("must-not-print", json.dumps(report))
         self.assertTrue(all(type(value) is bool for value in report.values()))
 
     def test_failed_preflight_reports_only_known_field_flags(self):
