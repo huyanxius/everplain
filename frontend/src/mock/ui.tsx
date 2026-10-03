@@ -9,9 +9,11 @@ import {
   PlusIcon,
   VideoCameraIcon,
   XIcon,
+  CaretDownIcon,
+  CheckIcon,
 } from '@phosphor-icons/react'
 
-import { topicById, type Material, type MaterialKind } from './data'
+import { libraries, joinedLibraries, researches, topicById, type Material, type MaterialKind } from './data'
 
 export function KindIcon({ kind }: { kind: MaterialKind }) {
   if (kind === '网页') return <GlobeIcon />
@@ -63,7 +65,7 @@ export function MaterialCard({ m }: { m: Material }) {
  * Agent 输入框。单行起步，内容多了长高（最多 8 行），回车发送、Shift+回车换行。
  * 圆角在长高后从胶囊过渡到 field，避免多行文字被两端切掉。
  */
-export function Composer({ placeholder, onSend, autoFocus, attachments }: { placeholder: string; onSend?: (text: string) => void; autoFocus?: boolean; attachments?: ReactNode }) {
+export function Composer({ placeholder, onSend, autoFocus, attachments, footer }: { placeholder: string; onSend?: (text: string) => void; autoFocus?: boolean; attachments?: ReactNode; footer?: ReactNode }) {
   const [text, setText] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
@@ -106,6 +108,52 @@ export function Composer({ placeholder, onSend, autoFocus, attachments }: { plac
           <ArrowUpIcon weight="bold" />
         </button>
       </div>
+      {footer ? <div className="mk-composer__foot">{footer}</div> : null}
+    </div>
+  )
+}
+
+/*
+ * 对话范围：Agent 在哪些资料里找。替代现在对话页的"对话所属项目"菜单——
+ * 用户关心的是"它会翻哪些东西"，项目只是其中一种范围。
+ */
+export function ScopePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const off = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false)
+    window.addEventListener('mousedown', off)
+    return () => window.removeEventListener('mousedown', off)
+  }, [open])
+  const groups: [string, [string, string][]][] = [
+    ['', [['all', '全部资料']]],
+    ['库', [...libraries, ...joinedLibraries].map((l) => [`lib:${l.id}`, l.name])],
+    ['研究', researches.map((r) => [`research:${r.id}`, r.title])],
+    ['', [['none', '不用资料，随便聊']]],
+  ]
+  const label = groups.flatMap(([, items]) => items).find(([id]) => id === value)?.[1] ?? '全部资料'
+  return (
+    <div className="mk-menu-anchor" ref={ref}>
+      <button className="qx-btn qx-btn--ghost mk-scope" aria-expanded={open} onClick={() => setOpen(!open)}>
+        在「{label}」里找 <CaretDownIcon />
+      </button>
+      {open ? (
+        <div className="qx-menu mk-menu mk-scope__menu" role="menu">
+          {groups.map(([title, items], gi) => (
+            <div key={gi}>
+              {gi > 0 ? <div className="qx-menu__divider" /> : null}
+              {title ? <p className="qx-group-label">{title}</p> : null}
+              {items.map(([id, name]) => (
+                <button key={id} className="qx-item" role="menuitemradio" aria-checked={value === id} onClick={() => { onChange(id); setOpen(false) }}>
+                  <span>{name}</span>
+                  {value === id ? <CheckIcon className="qx-item__trail" /> : null}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }

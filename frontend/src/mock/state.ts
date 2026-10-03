@@ -31,7 +31,8 @@ export const useAgent = () => useContext(AgentContext)
 export function loadAgent(): AgentProfile {
   try {
     const raw = localStorage.getItem('mk-agent')
-    return raw ? { ...defaultAgent, ...JSON.parse(raw) } : defaultAgent
+    const saved = raw ? { ...defaultAgent, ...JSON.parse(raw) } : defaultAgent
+    return saved.name?.trim() ? saved : { ...saved, name: defaultAgent.name }
   } catch {
     return defaultAgent
   }

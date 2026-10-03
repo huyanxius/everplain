@@ -53,7 +53,7 @@ function ImportStep() {
     { id: 'chrome', icon: <BookmarkSimpleIcon />, name: 'Chrome 书签', hint: '上传导出的书签文件' },
     { id: 'obsidian', icon: <FolderIcon />, name: 'Obsidian', hint: '选择整个 Vault 文件夹' },
     { id: 'bili', icon: <TelevisionSimpleIcon />, name: 'B 站收藏夹', hint: '填你的 UID' },
-    { id: 'notes', icon: <NoteIcon />, name: 'Apple 备忘录', hint: '导出 Markdown 后上传' },
+    { id: 'notes', icon: <NoteIcon />, name: '印象笔记', hint: '导出的 HTML 笔记' },
   ]
   const [picked, setPicked] = useState<string[]>(['chrome'])
   return (

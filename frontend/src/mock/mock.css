@@ -315,3 +315,125 @@ p { margin: 0; }
   .mk-auth__back { top: var(--qx-space-4); left: var(--qx-space-4); }
   .mk-pages { right: var(--qx-space-3); bottom: var(--qx-space-3); }
 }
+
+/* ---------- 重构：侧栏账户 / 最近 ---------- */
+.mk-sidebar__kind { margin-left: auto; flex: none; color: var(--qx-color-faint); }
+.mk-account { position: relative; }
+.mk-account__trigger { width: 100%; }
+.mk-account__avatar { position: relative; display: inline-grid; width: 28px; height: 28px; flex: none; place-items: center; border-radius: var(--qx-radius-pill); color: var(--qx-color-ink); background: var(--qx-color-surface-strong); font-size: var(--qx-text-meta); font-weight: 600; }
+.mk-account__dot { position: absolute; top: -1px; right: -1px; width: 8px; height: 8px; border-radius: var(--qx-radius-pill); background: var(--qx-color-accent); box-shadow: 0 0 0 2px var(--qx-color-surface-muted); }
+.mk-account__name { color: var(--qx-color-ink); }
+.mk-account__caret { margin-left: auto; color: var(--qx-color-faint); }
+.mk-account__menu { position: absolute; right: 0; bottom: calc(100% + 6px); left: 0; z-index: 10; }
+.mk-account__quota { display: grid; gap: var(--qx-space-2); padding: var(--qx-space-2) var(--qx-space-3) var(--qx-space-3); }
+.mk-account__quota-row { display: flex; justify-content: space-between; color: var(--qx-color-ink); font-size: var(--qx-text-control); }
+.mk-badge { display: inline-grid; min-width: 20px; height: 20px; place-items: center; border-radius: var(--qx-radius-pill); color: var(--qx-color-on-accent); background: var(--qx-color-accent); }
+.mk-shell[data-collapsed='true'] .mk-sidebar :is(.mk-account__name, .mk-account__caret, .mk-sidebar__agent-name, .mk-sidebar__kind) { display: none; }
+.mk-shell[data-collapsed='true'] .mk-account__menu { right: auto; width: 260px; }
+.mk-inbox { display: grid; gap: var(--qx-space-4); }
+.mk-inbox__list { display: grid; gap: var(--qx-space-1); margin: 0; padding: 0; list-style: none; }
+.mk-inbox__list > li { display: grid; gap: 2px; padding: var(--qx-space-3); border-radius: var(--qx-radius-item); }
+.mk-inbox__list > li[data-unread='true'] { background: var(--qx-color-surface-muted); }
+.mk-inbox__list p { color: var(--qx-color-ink); }
+
+/* ---------- 重构：输入框范围 ---------- */
+.mk-composer__foot { display: flex; padding: 0 var(--qx-space-1); }
+.mk-composer:has(.mk-composer__foot) { border-radius: var(--qx-radius-panel); }
+.mk-scope { min-height: 30px; padding: 0 var(--qx-space-2); color: var(--qx-color-muted); font-size: var(--qx-text-meta); }
+.mk-scope__menu { top: calc(100% + 6px); right: auto; left: 0; width: 260px; max-height: 360px; overflow-y: auto; text-align: left; }
+.mk-chat__title { display: flex; align-items: center; gap: var(--qx-space-2); min-width: 0; }
+.mk-chat__title .qx-heading { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-chat__head-actions { display: flex; align-items: center; gap: var(--qx-space-1); }
+.mk-home__pending { display: inline-flex; align-items: center; gap: var(--qx-space-2); margin-bottom: var(--qx-space-3); text-decoration: none; }
+
+/* ---------- 重构：知识库 ---------- */
+.mk-lib { display: grid; grid-template-columns: 200px minmax(0, 1fr); align-items: start; gap: var(--qx-space-8); max-width: 1280px; }
+.mk-lib__nav { position: sticky; top: var(--qx-space-10); display: grid; gap: 2px; }
+.mk-lib__nav .qx-item { min-height: 36px; font-size: var(--qx-text-control); }
+.mk-lib__nav .qx-item > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-lib__nav .qx-group-label { margin-top: var(--qx-space-4); }
+.mk-lib__main { min-width: 0; }
+.mk-lib__bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--qx-space-3); }
+.mk-lib__bar .mk-search { flex: 1; min-width: 220px; }
+.mk-graph-view { display: grid; gap: var(--qx-space-4); }
+.mk-points-view { display: grid; gap: var(--qx-space-8); }
+.mk-points-view__group h2 { display: flex; align-items: center; gap: var(--qx-space-2); margin-bottom: var(--qx-space-3); }
+.mk-points-view__group ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--qx-space-2); margin: 0; padding: 0; list-style: none; }
+.mk-points-view__group li { display: grid; gap: var(--qx-space-1); padding: var(--qx-space-3) var(--qx-space-4); }
+.mk-points-view__text { padding: 0; border: 0; color: var(--qx-color-ink); background: none; font-family: var(--qx-font-reading); font-size: var(--qx-text-body); text-align: left; cursor: text; }
+.mk-points-view__src { overflow: hidden; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.mk-import__top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--qx-space-3); }
+.mk-import__target { display: flex; align-items: center; gap: var(--qx-space-2); color: var(--qx-color-muted); font-size: var(--qx-text-control); }
+.mk-import__target select, .mk-select { width: auto; min-width: 160px; }
+.mk-import .mk-import__sources { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--qx-space-2); }
+.mk-import .mk-source { padding: var(--qx-space-3); }
+.mk-import .mk-source__icon { width: 36px; height: 36px; font-size: 18px; }
+.mk-import__uid { margin-top: var(--qx-space-3); }
+.mk-import__ext { display: flex; align-items: center; gap: var(--qx-space-3); padding: var(--qx-space-3) var(--qx-space-4); border-radius: var(--qx-radius-card); color: var(--qx-color-muted); background: var(--qx-color-surface-muted); }
+.mk-import__ext > span { flex: 1; }
+.mk-share { display: grid; gap: var(--qx-space-4); }
+.mk-share__row { display: flex; align-items: center; justify-content: space-between; gap: var(--qx-space-4); }
+.mk-share__row > span { display: grid; gap: 2px; }
+.mk-share__row strong { color: var(--qx-color-ink); font-weight: 600; }
+.mk-share__row small { color: var(--qx-color-muted); font-size: var(--qx-text-meta); }
+.mk-share__members { display: grid; gap: var(--qx-space-1); margin: 0; padding: 0; list-style: none; }
+.mk-share__members > li { display: flex; align-items: center; gap: var(--qx-space-3); color: var(--qx-color-ink); }
+.mk-share__members .qx-btn { margin-left: auto; }
+
+/* ---------- 重构：研究 ---------- */
+.mk-newr { display: grid; gap: var(--qx-space-5); }
+.mk-newr__ways { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--qx-space-2); }
+.mk-newr__ways .mk-source { align-items: flex-start; flex-direction: column; padding: var(--qx-space-4); }
+.mk-newr__q { font-family: var(--qx-font-reading); font-size: var(--qx-text-title); resize: none; }
+.mk-newr__chat { display: grid; gap: var(--qx-space-3); }
+.mk-newr__chat .mk-ws__question { margin: 0; }
+.mk-newr .qx-heading { margin-bottom: var(--qx-space-3); }
+.mk-newr__foot { display: flex; justify-content: flex-end; gap: var(--qx-space-2); }
+.mk-ws__chats { display: grid; gap: 2px; margin-top: var(--qx-space-4); }
+.mk-ws__chats .qx-item > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-versions { display: grid; gap: 2px; }
+.mk-versions .qx-heading { margin-bottom: var(--qx-space-2); }
+.mk-versions .qx-btn--block { margin-top: var(--qx-space-4); }
+.mk-map { min-width: 0; overflow: auto; padding: var(--qx-space-10); }
+.mk-map__root { max-width: 520px; margin: 0 auto var(--qx-space-10); padding: var(--qx-space-5); color: var(--qx-color-ink); font-family: var(--qx-font-reading); font-size: var(--qx-text-title); text-align: center; }
+.mk-map__threads { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); align-items: start; gap: var(--qx-space-5); }
+.mk-map__thread { display: grid; gap: var(--qx-space-2); padding-top: var(--qx-space-4); border-top: 2px solid var(--qx-color-ink); }
+.mk-map__node { padding: var(--qx-space-4); color: var(--qx-color-ink); font-weight: 600; }
+.mk-map__mat { display: flex; align-items: center; gap: var(--qx-space-2); margin-left: var(--qx-space-4); padding: var(--qx-space-3); color: var(--qx-color-ink-soft); font-size: var(--qx-text-control); text-decoration: none; }
+.mk-map__add { display: flex; align-items: center; justify-content: center; gap: var(--qx-space-2); min-height: 64px; border: 0; color: var(--qx-color-muted); cursor: pointer; }
+
+/* ---------- 重构：发现 / 只读阅读 ---------- */
+.mk-discover__bar { display: flex; flex-wrap: wrap; gap: var(--qx-space-3); }
+.mk-discover__bar .mk-search { flex: 1; min-width: 220px; }
+.mk-discover__invite { flex: 1; min-width: 280px; max-width: 440px; min-height: var(--qx-action-height); padding-right: var(--qx-space-1); }
+.mk-reader-head { margin-bottom: var(--qx-space-8); }
+.mk-reader-head .mk-reader__title { margin-top: 0; margin-bottom: var(--qx-space-2); }
+.mk-shared { display: grid; grid-template-columns: 280px minmax(0, 1fr); align-items: start; gap: var(--qx-space-10); }
+.mk-shared__list { display: grid; gap: 2px; }
+.mk-shared__list .qx-item > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-shared .mk-reader .qx-section-title { margin-bottom: var(--qx-space-4); color: var(--qx-color-ink); font-family: var(--qx-font-reading); }
+
+/* ---------- 重构：设置 / Agent ---------- */
+.mk-settings__body > .qx-group-label { margin-top: var(--qx-space-3); }
+.mk-settings__body > .mk-sources { margin-bottom: var(--qx-space-3); }
+.mk-settings__body > .qx-btn { justify-self: start; margin-top: var(--qx-space-3); }
+.mk-settings__body > .mk-share__row { margin-bottom: var(--qx-space-4); }
+.mk-plan { display: flex; flex-wrap: wrap; align-items: center; gap: var(--qx-space-3); }
+.mk-plan strong { color: var(--qx-color-ink); }
+.mk-soul { resize: vertical; }
+.mk-conn-new { display: grid; gap: var(--qx-space-3); margin-top: var(--qx-space-3); padding: var(--qx-space-4); }
+
+@media (max-width: 1080px) {
+  .mk-lib { grid-template-columns: minmax(0, 1fr); gap: var(--qx-space-4); }
+  .mk-lib__nav { position: static; display: flex; overflow-x: auto; }
+  .mk-lib__nav .qx-group-label { display: none; }
+  .mk-lib__nav .qx-item { width: auto; flex: none; white-space: nowrap; }
+  .mk-shared { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .mk-newr__ways { grid-template-columns: minmax(0, 1fr); }
+  .mk-newr__ways .mk-source { flex-direction: row; align-items: center; }
+  .mk-chat__head { padding: 0 var(--qx-space-4); }
+  .mk-chat__head-actions .qx-btn--secondary { display: none; }
+  .mk-map { padding: var(--qx-space-4); }
+}

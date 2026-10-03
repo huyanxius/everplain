@@ -8,9 +8,10 @@ import {
   PlusIcon,
   TrashIcon,
   ExportIcon,
+  FolderIcon,
 } from '@phosphor-icons/react'
 
-import { materialById, researches } from '../data'
+import { libraryById, materialById, researches } from '../data'
 import { KindIcon, TopicChip } from '../ui'
 
 /*
@@ -26,11 +27,11 @@ export function MaterialPage({ id }: { id: string }) {
   return (
     <div className="mk-page mk-material">
       <div className="mk-material__bar">
-        <a className="qx-btn qx-btn--ghost" href="#/library">
-          <ArrowLeftIcon /> 知识库
+        <a className="qx-btn qx-btn--ghost" href={`#/library?lib=${m.libraryId}`}>
+          <ArrowLeftIcon /> {libraryById[m.libraryId].name}
         </a>
         <div className="mk-material__actions">
-          <a className="qx-btn qx-btn--secondary" href="#/agent/c1">
+          <a className="qx-btn qx-btn--secondary" href="#/c/c1">
             <ChatCircleIcon /> 问这份资料
           </a>
           <button className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="打开原网页">
@@ -44,6 +45,9 @@ export function MaterialPage({ id }: { id: string }) {
               <div className="qx-menu mk-menu" role="menu">
                 <button className="qx-item" role="menuitem">
                   <PencilSimpleIcon /> 重命名
+                </button>
+                <button className="qx-item" role="menuitem">
+                  <FolderIcon /> 移到别的库
                 </button>
                 <button className="qx-item" role="menuitem">
                   <ExportIcon /> 导出 Markdown

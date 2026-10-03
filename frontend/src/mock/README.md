@@ -4,20 +4,43 @@
 
 打开方式：`npm run dev`，然后访问 `http://localhost:5196/mock.html`。右下角「全部页面」可以跳到任意一页。组件样张在 `/design-system.html`。
 
+## 信息结构
+
+整站只围绕三样东西：**资料（知识库）、研究、Agent**。其余功能挂在它们身上，不再单独占导航。
+
+```
+侧栏    新对话（= 首页）
+        知识库 · 研究 · 发现
+        最近（对话和研究按时间混排）
+        底部：Agent 角色 → 我的 Agent；账户 → 额度 / 通知 / 设置 / 退出
+```
+
+现在要取消的东西：侧栏「更多功能」折叠（7 项）、首页底部的功能按钮墙、账户菜单里的「Soul · 人格」「Memory · 记忆」、独立的 `/imports` `/sharing` `/connections` `/subscription` `/my/graph` `/library/knowledge` `/research/new` `/research/existing` 页面。旧路径都保留为重定向，指向新的位置。
+
 ## 哪一页对应哪一页
 
 | Mock | 真实路由 | 说明 |
 | --- | --- | --- |
 | `#/login` | `/login`、`/register` | 单列居中，邮箱和密码分两屏 |
-| `#/setup/1`–`4` | `/welcome/setup`（计划中） | 导入 → 取名与外观 → 问卷 → 生成图谱，每一步都能跳过 |
-| `#/` | `/app` | 问候 + 输入框，下面是「接着研究」「最近收进来的」 |
-| `#/library` | `/library` | 卡片网格 + 搜索 + 主题/类型筛选；「添加」打开导入弹窗 |
-| `#/library/m1` | 新增资料详情 | 左边读原文，右边知识点、关联、用在了哪个研究 |
-| `#/graph` | 新增，次级视图 | 同心圆：Agent 居中，主题第一圈，资料外圈。真实实现用 `ObsidianKnowledgeGraph` 换 concentric 布局 |
-| `#/agent`、`#/agent/c1` | `/agent` | 空状态居中问候；对话里用户灰气泡、Agent 衬线正文；引用点开右侧来源抽屉 |
-| `#/research` | `/app?research=all` | 研究卡片，四段进度条 |
-| `#/research/r1` | `/research/:id/workspace` | 左大纲、中文稿、右资料/Agent |
-| `?settings` | `/settings` 弹窗 | 我的 Agent、记忆、导入来源、外观、账号与数据 |
+| `#/setup/1`–`4` | `/welcome/setup` | 导入 → 取名与外观 → 问卷 → 生成图谱，每一步都能跳过 |
+| `#/` | `/app`，`/agent` 无参数时重定向到这里 | 首页就是新对话：问候、输入框（带"在哪些资料里找"）、接着研究、最近收进来的 |
+| `#/c/c1` | `/agent?conversation=…` | 只负责已开始的对话。顶部是范围选择，以及"转成研究"或回到所属研究 |
+| `#/library` | `/library` | 左栏选库（我的 / 共享给我的），右边三个视图 |
+| `#/library?view=points` | `/library/knowledge` → 重定向 | 知识点视图，按主题分组，可直接改 |
+| `#/library?view=graph` | `/my/graph` → 重定向 | 图谱视图，`ObsidianKnowledgeGraph` 换 concentric 布局 |
+| `#/library?add`、`?add=records` | `/imports` → 重定向 | 添加弹窗：链接、文件、5 个导入来源、B 站 UID、插件；第二页是导入记录 |
+| `#/library?lib=thesis&share` | `/sharing` 的管理部分 | 共享以库为单位：邀请链接、成员、公开到发现 |
+| `#/library?lib=j1` | `/shared/:libraryId` | 共享给我的只读库，没有添加和共享按钮 |
+| `#/library/m1` | 资料详情（新） | 左读原文，右知识点、关联、用在了哪个研究；返回到所在库 |
+| `#/research` | `/research/materials`（改名 `/research`） | 研究卡片，四段进度 |
+| `#/research?new`、`?new=chat` | `/research/new`、`/research/existing` → 重定向 | 一个弹窗三种起点：问题、已有稿子、一段对话；选用哪些库 |
+| `#/research/r1` | `/research/:id/workspace` | 文稿 / 地图切换；右栏资料、Agent、版本；挂在研究下的对话列在资料下面 |
+| `#/discover` | `/discover` | 公共主题 + 粘贴邀请链接加入 |
+| `#/discover/p1` | `/discover/:id`、`/shared/:id` | 只读阅读，"加入我的知识库" |
+| `?agent` | 账户菜单里的身份面板 | 我的 Agent：人格、记忆、模型与引用格式 |
+| `?settings` | `/settings` 弹窗；`/subscription` `/connections` 重定向到对应分类 | 账号、外观、套餐与额度、共享总览、外部连接（MCP 只读钥匙）、数据 |
+| `?inbox` | 现在侧栏的通知铃铛 | 通知收进账户菜单，红点挂在头像上 |
+| 账户菜单里的"管理后台" | `/admin/*` | 仅管理员可见 |
 
 ## 改真实页面时的规矩
 

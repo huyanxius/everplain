@@ -1,38 +1,40 @@
-import { useEffect, useState, type ReactElement, type ReactNode } from 'react'
+import { useEffect, useState, type ReactElement } from 'react'
 import {
-  BookmarkSimpleIcon,
-  BrainIcon,
+  CopyIcon,
+  CreditCardIcon,
   DesktopIcon,
   DownloadSimpleIcon,
-  FolderIcon,
+  KeyIcon,
   MoonIcon,
-  NoteIcon,
   PaletteIcon,
-  SmileyIcon,
+  PlusIcon,
+  ShareNetworkIcon,
   SunIcon,
-  TelevisionSimpleIcon,
-  TrashIcon,
   UserIcon,
-  ArrowsClockwiseIcon,
+  DatabaseIcon,
 } from '@phosphor-icons/react'
 
-import { AgentAvatar, agentAvatarPresets } from '../../modules/agent-avatar'
-import { agentColors, memories } from '../data'
-import { useAgent } from '../state'
+import { connections, joinedLibraries, libraries, libraryById } from '../data'
 import { Dialog } from '../ui'
+import { Row } from './AgentPanel'
 
-type Tab = 'agent' | 'memory' | 'sources' | 'look' | 'account'
+type Tab = 'account' | 'look' | 'plan' | 'sharing' | 'connections' | 'data'
 
-/* 设置：叠在当前页上的弹窗，左边分类、右边内容；手机上分类变成顶部横排。 */
-export function SettingsDialog({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>('agent')
+/*
+ * 设置只放"账户和外部"的东西。和 Agent 有关的（人格、记忆、模型）去了「我的 Agent」，
+ * 导入来源去了「添加资料」。现在独立成页的 /subscription、/connections、/sharing（管理部分）收进这里，
+ * 真实路由保留并打开对应分类：/settings?tab=plan 等。
+ */
+export function SettingsDialog({ onClose, initial }: { onClose: () => void; initial?: string }) {
   const tabs: [Tab, string, ReactElement][] = [
-    ['agent', '我的 Agent', <SmileyIcon key="i" />],
-    ['memory', '记忆', <BrainIcon key="i" />],
-    ['sources', '导入来源', <FolderIcon key="i" />],
+    ['account', '账号', <UserIcon key="i" />],
     ['look', '外观', <PaletteIcon key="i" />],
-    ['account', '账号与数据', <UserIcon key="i" />],
+    ['plan', '套餐与额度', <CreditCardIcon key="i" />],
+    ['sharing', '共享', <ShareNetworkIcon key="i" />],
+    ['connections', '外部连接', <KeyIcon key="i" />],
+    ['data', '数据', <DatabaseIcon key="i" />],
   ]
+  const [tab, setTab] = useState<Tab>(tabs.some(([id]) => id === initial) ? (initial as Tab) : 'account')
   return (
     <Dialog title="设置" onClose={onClose} wide>
       <div className="mk-settings">
@@ -44,134 +46,15 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           ))}
         </nav>
         <div className="mk-settings__body">
-          {tab === 'agent' ? <AgentTab /> : null}
-          {tab === 'memory' ? <MemoryTab /> : null}
-          {tab === 'sources' ? <SourcesTab /> : null}
-          {tab === 'look' ? <LookTab /> : null}
           {tab === 'account' ? <AccountTab /> : null}
+          {tab === 'look' ? <LookTab /> : null}
+          {tab === 'plan' ? <PlanTab /> : null}
+          {tab === 'sharing' ? <SharingTab /> : null}
+          {tab === 'connections' ? <ConnectionsTab /> : null}
+          {tab === 'data' ? <DataTab /> : null}
         </div>
       </div>
     </Dialog>
-  )
-}
-
-function Row({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="mk-setrow">
-      <span className="mk-setrow__label">{label}</span>
-      <div className="mk-setrow__control">{children}</div>
-    </div>
-  )
-}
-
-function AgentTab() {
-  const { agent, setAgent } = useAgent()
-  const [style, setStyle] = useState('先给结论')
-  return (
-    <>
-      <div className="mk-agent-card">
-        <AgentAvatar avatar={agent.avatar} color={agent.color} size={88} state="greet" />
-        <input className="qx-input mk-name-input" value={agent.name} onChange={(e) => setAgent({ ...agent, name: e.target.value })} aria-label="名字" />
-      </div>
-      <Row label="外观">
-        <div className="mk-avatar-pick mk-avatar-pick--sm">
-          {agentAvatarPresets.map((p) => (
-            <button key={p.id} role="radio" aria-checked={agent.avatar === p.id} aria-label={p.name} onClick={() => setAgent({ ...agent, avatar: p.id, color: p.color })}>
-              <AgentAvatar avatar={p.id} color={agent.avatar === p.id ? agent.color : p.color} size={40} playing={false} />
-            </button>
-          ))}
-        </div>
-      </Row>
-      <Row label="颜色">
-        <div className="mk-color-pick mk-color-pick--sm">
-          {agentColors.map((c) => (
-            <button key={c} role="radio" aria-checked={agent.color === c} aria-label={c} style={{ background: c }} onClick={() => setAgent({ ...agent, color: c })} />
-          ))}
-        </div>
-      </Row>
-      <Row label="说话方式">
-        <div className="qx-segmented">
-          {['先给结论', '多问我', '详细展开'].map((s) => (
-            <button key={s} aria-pressed={style === s} onClick={() => setStyle(s)}>
-              {s}
-            </button>
-          ))}
-        </div>
-      </Row>
-      <Row label="引导">
-        <a className="qx-btn qx-btn--secondary" href="#/setup/1">
-          <ArrowsClockwiseIcon /> 重新走一遍
-        </a>
-      </Row>
-    </>
-  )
-}
-
-function MemoryTab() {
-  const [list, setList] = useState(memories)
-  return (
-    <>
-      <p className="mk-settings__lead">这些是它记住的关于你的事。删掉的不会再被用到。</p>
-      <ul className="mk-memories">
-        {list.map((m) => (
-          <li key={m.id} className="qx-card">
-            <div>
-              <p>{m.text}</p>
-              <span className="qx-meta">{m.source}</span>
-            </div>
-            <button className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="删除这条记忆" onClick={() => setList(list.filter((x) => x.id !== m.id))}>
-              <TrashIcon />
-            </button>
-          </li>
-        ))}
-      </ul>
-    </>
-  )
-}
-
-function SourcesTab() {
-  const [sync, setSync] = useState({ chrome: true, obsidian: true, bili: false, notes: false })
-  const items = [
-    { id: 'chrome', icon: <BookmarkSimpleIcon />, name: 'Chrome 书签', state: '248 条 · 今天' },
-    { id: 'obsidian', icon: <FolderIcon />, name: 'Obsidian', state: '63 条 · 昨天' },
-    { id: 'bili', icon: <TelevisionSimpleIcon />, name: 'B 站收藏夹', state: '未连接' },
-    { id: 'notes', icon: <NoteIcon />, name: 'Apple 备忘录', state: '未连接' },
-  ] as const
-  return (
-    <ul className="mk-sources">
-      {items.map((s) => (
-        <li key={s.id}>
-          <span className="mk-source__icon">{s.icon}</span>
-          <span className="mk-source__text">
-            <strong>{s.name}</strong>
-            <small>{s.state}</small>
-          </span>
-          <button className="qx-switch" role="switch" aria-checked={sync[s.id]} aria-label={`自动同步 ${s.name}`} onClick={() => setSync({ ...sync, [s.id]: !sync[s.id] })} />
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-function LookTab() {
-  const [scheme, setScheme] = useState(() => document.documentElement.style.colorScheme || 'system')
-  useEffect(() => {
-    document.documentElement.style.colorScheme = scheme === 'system' ? '' : scheme
-  }, [scheme])
-  return (
-    <Row label="主题">
-      <div className="qx-segmented">
-        <button aria-pressed={scheme === 'system'} onClick={() => setScheme('system')}>
-          <DesktopIcon /> 跟随系统
-        </button>
-        <button aria-pressed={scheme === 'light'} onClick={() => setScheme('light')}>
-          <SunIcon /> 浅色
-        </button>
-        <button aria-pressed={scheme === 'dark'} onClick={() => setScheme('dark')}>
-          <MoonIcon /> 深色
-        </button>
-      </div>
-    </Row>
   )
 }
 
@@ -181,17 +64,173 @@ function AccountTab() {
       <Row label="邮箱">
         <span>h*******s@gmail.com</span>
       </Row>
+      <Row label="昵称">
+        <input className="qx-input mk-select" defaultValue="huyan" />
+      </Row>
       <Row label="密码">
         <button className="qx-btn qx-btn--secondary">修改</button>
+      </Row>
+    </>
+  )
+}
+
+function LookTab() {
+  const [scheme, setScheme] = useState(() => document.documentElement.style.colorScheme || 'system')
+  const [lang, setLang] = useState('中文')
+  useEffect(() => {
+    document.documentElement.style.colorScheme = scheme === 'system' ? '' : scheme
+  }, [scheme])
+  return (
+    <>
+      <Row label="主题">
+        <div className="qx-segmented">
+          <button aria-pressed={scheme === 'system'} onClick={() => setScheme('system')}>
+            <DesktopIcon /> 跟随系统
+          </button>
+          <button aria-pressed={scheme === 'light'} onClick={() => setScheme('light')}>
+            <SunIcon /> 浅色
+          </button>
+          <button aria-pressed={scheme === 'dark'} onClick={() => setScheme('dark')}>
+            <MoonIcon /> 深色
+          </button>
+        </div>
+      </Row>
+      <Row label="语言">
+        <div className="qx-segmented">
+          {['中文', 'English'].map((l) => (
+            <button key={l} aria-pressed={lang === l} onClick={() => setLang(l)}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </Row>
+    </>
+  )
+}
+
+function PlanTab() {
+  return (
+    <>
+      <Row label="当前套餐">
+        <div className="mk-plan">
+          <strong>个人版</strong>
+          <span className="qx-meta">下次续费 10 月 28 日</span>
+          <button className="qx-btn qx-btn--primary">升级</button>
+        </div>
+      </Row>
+      <Row label="本月额度">
+        <div className="mk-usage">
+          <div className="mk-progress">
+            <span style={{ width: '62%' }} />
+          </div>
+          <span className="qx-meta">剩余 62% · 套餐 50%，赠送 12%</span>
+        </div>
       </Row>
       <Row label="存储">
         <div className="mk-usage">
           <div className="mk-progress">
             <span style={{ width: '34%' }} />
           </div>
-          <span className="qx-meta">已用 1.7 GB / 5 GB</span>
+          <span className="qx-meta">已用 1.7 GB / 5 GB · 3 / 10 个库</span>
         </div>
       </Row>
+      <Row label="加购">
+        <button className="qx-btn qx-btn--secondary">购买额外额度</button>
+      </Row>
+    </>
+  )
+}
+
+/* 共享总览：一眼看清哪些库对外开着。具体开关在库上，这里只是汇总和快捷入口。 */
+function SharingTab() {
+  const shared = libraries.filter((l) => l.shared)
+  return (
+    <>
+      <p className="qx-group-label">我共享出去的</p>
+      <ul className="mk-sources">
+        {shared.map((l) => (
+          <li key={l.id}>
+            <span className="mk-source__text">
+              <strong>{l.name}</strong>
+              <small>{l.shared === 'public' ? '公开到发现' : `邀请链接 · ${l.members} 人已加入`}</small>
+            </span>
+            <a className="qx-btn qx-btn--ghost" href={`#/library?lib=${l.id}&share`}>管理</a>
+          </li>
+        ))}
+      </ul>
+      <p className="qx-group-label">我加入的</p>
+      <ul className="mk-sources">
+        {joinedLibraries.map((l) => (
+          <li key={l.id}>
+            <span className="mk-source__text">
+              <strong>{l.name}</strong>
+              <small>{l.owner} 分享 · 只读</small>
+            </span>
+            <button className="qx-btn qx-btn--ghost">退出</button>
+          </li>
+        ))}
+      </ul>
+    </>
+  )
+}
+
+/*
+ * 外部连接：给 MCP 客户端的只读钥匙，按库授权。钥匙只显示一次——这句提示真实页面里要保留。
+ */
+function ConnectionsTab() {
+  const [creating, setCreating] = useState(false)
+  const [picked, setPicked] = useState<string[]>(['thesis'])
+  return (
+    <>
+      <p className="mk-settings__lead">让 Claude、Cursor 这类工具只读你选中的库。不建连接，资料不会开放给任何外部工具。</p>
+      <ul className="mk-sources">
+        {connections.map((c) => (
+          <li key={c.id}>
+            <span className="mk-source__icon">
+              <KeyIcon />
+            </span>
+            <span className="mk-source__text">
+              <strong>{c.name}</strong>
+              <small>
+                可读 {c.libraries.map((id) => libraryById[id].name).join('、')} · {c.lastUsed}用过
+              </small>
+            </span>
+            <button className="qx-btn qx-btn--ghost mk-danger">撤销</button>
+          </li>
+        ))}
+      </ul>
+      {creating ? (
+        <div className="qx-card mk-conn-new">
+          <input className="qx-input" placeholder="给这个连接起个名字，比如 Cursor" autoFocus />
+          <p className="qx-meta">允许读哪些库</p>
+          <div className="mk-filters">
+            {libraries.map((l) => (
+              <button key={l.id} className="qx-tag" aria-pressed={picked.includes(l.id)} onClick={() => setPicked(picked.includes(l.id) ? picked.filter((x) => x !== l.id) : [...picked, l.id])}>
+                {l.name}
+              </button>
+            ))}
+          </div>
+          <div className="qx-search mk-import__link">
+            <KeyIcon />
+            <input readOnly value="ep_live_••••••••••••3f9a" />
+            <button className="qx-btn qx-btn--secondary">
+              <CopyIcon /> 复制
+            </button>
+          </div>
+          <p className="qx-meta">密钥只显示这一次，关掉后看不到。</p>
+        </div>
+      ) : (
+        <button className="qx-btn qx-btn--secondary" onClick={() => setCreating(true)}>
+          <PlusIcon /> 新建连接
+        </button>
+      )}
+    </>
+  )
+}
+
+function DataTab() {
+  return (
+    <>
       <Row label="导出">
         <button className="qx-btn qx-btn--secondary">
           <DownloadSimpleIcon /> 导出全部资料

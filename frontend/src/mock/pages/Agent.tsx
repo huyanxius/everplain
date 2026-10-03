@@ -5,14 +5,15 @@ import {
   CopyIcon,
   DotsThreeIcon,
   PencilSimpleLineIcon,
+  ArrowRightIcon,
   ThumbsDownIcon,
   XIcon,
 } from '@phosphor-icons/react'
 
 import { AgentAvatar } from '../../modules/agent-avatar'
-import { conversations, materialById } from '../data'
+import { conversations, materialById, researches } from '../data'
 import { useAgent } from '../state'
-import { Composer, KindIcon, TopicChip } from '../ui'
+import { Composer, KindIcon, ScopePicker, TopicChip } from '../ui'
 
 interface Turn {
   readonly role: 'user' | 'agent'
@@ -21,21 +22,26 @@ interface Turn {
 }
 
 /*
+ * 对话页只负责"已经开始的对话"，空状态交给首页。
+ * 顶部给两样东西：它在哪些资料里找（范围），以及这段对话和研究的关系——
+ * 没挂研究的可以"转成研究"，挂了的直接回到工作台。研究就是从对话里长出来的。
+ *
  * 对话：用户一侧灰气泡，Agent 一侧是角色头像 + 衬线正文，不套气泡。
  * 引用编号点开后右侧滑出原文片段，不跳走、不丢掉对话位置。
  */
 export function AgentPage({ id }: { id?: string }) {
   const { agent } = useAgent()
   const [source, setSource] = useState<string | null>(null)
-  const conv = conversations.find((c) => c.id === id)
+  const conv = conversations.find((c) => c.id === id) ?? conversations[0]
+  const research = researches.find((r) => r.id === conv.researchId)
+  const [scope, setScope] = useState(research ? `research:${research.id}` : 'all')
   const cite = (n: number, mid: string) => (
     <button className="qx-cite" onClick={() => setSource(mid)} aria-label={`来源 ${n}：${materialById[mid].title}`}>
       {n}
     </button>
   )
 
-  const seed: Turn[] = conv
-    ? [
+  const seed: Turn[] = [
         { role: 'user', body: '第三空间这个概念，我的资料里有哪些支持和反驳？' },
         {
           role: 'agent',
@@ -53,7 +59,6 @@ export function AgentPage({ id }: { id?: string }) {
           ),
         },
       ]
-    : []
   const [turns, setTurns] = useState<Turn[]>(seed)
   const [thinking, setThinking] = useState(false)
   const end = useRef<HTMLDivElement>(null)
@@ -82,30 +87,30 @@ export function AgentPage({ id }: { id?: string }) {
     }, 1400)
   }
 
-  const empty = turns.length === 0
-
   return (
     <div className="mk-chat" data-source={source !== null}>
       <div className="mk-chat__main">
-        {!empty ? (
-          <header className="mk-chat__head">
-            <h1 className="qx-heading">{conv?.title ?? '新对话'}</h1>
+        <header className="mk-chat__head">
+          <div className="mk-chat__title">
+            <h1 className="qx-heading">{conv.title}</h1>
+            <ScopePicker value={scope} onChange={setScope} />
+          </div>
+          <div className="mk-chat__head-actions">
+            {research ? (
+              <a className="qx-btn qx-btn--secondary" href={`#/research/${research.id}`}>
+                {research.title} <ArrowRightIcon />
+              </a>
+            ) : (
+              <a className="qx-btn qx-btn--secondary" href="#/research?new=chat">
+                <PencilSimpleLineIcon /> 转成研究
+              </a>
+            )}
             <button className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="对话选项">
               <DotsThreeIcon weight="bold" />
             </button>
-          </header>
-        ) : null}
-
-        {empty ? (
-          <div className="mk-chat__empty">
-            <AgentAvatar avatar={agent.avatar} color={agent.color} size={96} state="greet" label={agent.name} />
-            <h1 className="qx-display">我是{agent.name}，你想聊点什么？</h1>
-            <div className="mk-chat__composer mk-chat__composer--center">
-              <Composer placeholder={`问${agent.name}`} onSend={send} autoFocus />
-            </div>
           </div>
-        ) : (
-          <>
+        </header>
+
             <div className="mk-chat__scroll">
               <div className="mk-chat__thread">
                 {turns.map((t, i) =>
@@ -158,8 +163,6 @@ export function AgentPage({ id }: { id?: string }) {
             <div className="mk-chat__composer">
               <Composer placeholder="接着问" onSend={send} />
             </div>
-          </>
-        )}
       </div>
 
       {source ? <SourceDrawer id={source} onClose={() => setSource(null)} /> : null}
@@ -186,7 +189,7 @@ function SourceDrawer({ id, onClose }: { id: string; onClose: () => void }) {
       </blockquote>
       <p className="qx-meta">引用位置：第 3 段</p>
       <a className="qx-btn qx-btn--secondary qx-btn--block" href={`#/library/${m.id}`}>
-        <ArrowSquareOutIcon /> 在知识库里打开
+        <ArrowSquareOutIcon /> 打开这份资料
       </a>
     </aside>
   )
