@@ -111,7 +111,6 @@ import { ResearchAgentShader } from './ResearchAgentShader'
 import { ResearchPromptCarousel } from './ResearchPromptCarousel'
 import deepResearchGuidance from '../../assets/agent/new-research-guidance.webp'
 import { useAppLocale, type AppLocale } from '../i18n/AppLocaleProvider'
-import './research-agent-page.css'
 import './research-agent-conversation.css'
 import './new-research-workspace.css'
 
