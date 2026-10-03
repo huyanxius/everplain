@@ -88,16 +88,16 @@ export function AccountMenu({ userId, accountName, onOpen }: { userId: string; a
     </button>
     {open ? <div ref={menu} id={id} role="menu" aria-label={text('账户菜单', 'Account menu')}
       className="qx-panel account-menu" onKeyDown={handleKey}>
+      <div className="account-menu__identity" role="presentation">
+        <AgentAvatar avatar={avatar.id} color={chosen?.color} size={32} state="idle" />
+        <div><strong>{accountName}</strong><span className="qx-meta" aria-live="polite">{planName}{planState ? ` · ${planState}` : ''}</span></div>
+      </div>
       <div className="account-menu__monthly" role="presentation">
         <div className="account-menu__monthly-heading"><span>{text('本月额度', 'Monthly allowance')}</span><span aria-live="polite">{monthlyRemaining}</span></div>
         {monthlyPercent !== null && !usage.data?.isUnlimited ? <div className="account-menu__meter" role="progressbar" aria-label={text('当前套餐周期剩余额度', 'Remaining allowance for the current plan period')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={monthlyPercent}>
           <span style={{ width: `${monthlyPercent}%` }} />
         </div> : <div className="account-menu__meter" aria-hidden="true" />}
         {subscriptionBuckets.length > 0 ? <small>{text('按当前套餐周期，非自然月统计', 'Current plan period, not calendar-month usage')}</small> : null}
-      </div>
-      <div className="account-menu__identity" role="presentation">
-        <AgentAvatar avatar={avatar.id} color={chosen?.color} size={32} state="idle" />
-        <div><strong>{accountName}</strong><span className="qx-meta" aria-live="polite">{planName}{planState ? ` · ${planState}` : ''}</span></div>
       </div>
       <button className="qx-item" role="menuitem" type="button" onClick={() => { trigger.current?.focus(); setOpen(false); setIdentityTab('identity'); setIdentityOpen(true) }}><NavIcon name="user" /><span>{text('Soul · 人格', 'Soul')}</span></button>
       <button className="qx-item" role="menuitem" type="button" onClick={() => { trigger.current?.focus(); setOpen(false); setIdentityTab('memory'); setIdentityOpen(true) }}><NavIcon name="library" /><span>{text('Memory · 记忆', 'Memory')}</span></button>
