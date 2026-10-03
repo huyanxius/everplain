@@ -1,7 +1,9 @@
 """Offline preflight tests: no SSH connection or real credential is used."""
 
+import hashlib
 import importlib.util
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -81,6 +83,11 @@ class SSHPreflightTests(unittest.TestCase):
 
 
 class InspectionTests(unittest.TestCase):
+    def setUp(self):
+        probe = patch.object(inspection, "inspect_upload", return_value={})
+        probe.start()
+        self.addCleanup(probe.stop)
+
     def test_output_contains_only_booleans_and_no_private_metadata(self):
         result = subprocess.CompletedProcess([], 0, "everplain-api\nprivate-fixture\n", "")
         with (
@@ -122,6 +129,65 @@ class InspectionTests(unittest.TestCase):
         self.assertIn("secrets.EVERPLAIN_SSH_PRIVATE_KEY", text)
         self.assertIn("SHA256:2QamxRsk36HjNhAek1+zT6Db1PtPKuuDoplLOCdTTmA", text)
         self.assertNotIn("transport.sh", text)
+
+
+class UploadInspectionTests(unittest.TestCase):
+    def test_growing_or_open_upload_is_not_hashed(self):
+        path = Path("/private-fixture/release.tar.gz")
+        with (
+            patch.object(
+                inspection, "upload_snapshot", side_effect=[{path: (1, 1)}, {path: (2, 2)}]
+            ),
+            patch.object(inspection, "upload_writers", return_value={path}),
+            patch.object(inspection.time, "sleep"),
+            patch.object(Path, "open", side_effect=AssertionError("must not open growing file")),
+        ):
+            result = inspection.inspect_upload()
+        self.assertTrue(result["upload_growing"])
+        self.assertTrue(result["upload_writer_present"])
+        self.assertFalse(result["upload_complete"])
+        self.assertTrue(all(type(value) is bool for value in result.values()))
+
+    def test_stable_upload_requires_exact_digest(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "release.tar.gz"
+            path.write_bytes(b"known-archive")
+            snapshot = {path: (13, 1)}
+            with (
+                patch.object(inspection, "upload_snapshot", return_value=snapshot),
+                patch.object(inspection, "upload_writers", return_value=set()),
+                patch.object(inspection.time, "sleep"),
+                patch.object(
+                    inspection, "UPLOAD_SHA256", hashlib.sha256(b"known-archive").hexdigest()
+                ),
+            ):
+                self.assertTrue(inspection.inspect_upload()["upload_complete"])
+                path.write_bytes(b"wrong-archive")
+                self.assertFalse(inspection.inspect_upload()["upload_complete"])
+
+    def test_snapshot_rejects_other_directories_and_symlinks(self):
+        with tempfile.TemporaryDirectory() as d:
+            parent = Path(d)
+            directory = parent / "everplain-candidate.valid"
+            directory.mkdir(mode=0o700)
+            (directory / "release.tar.gz").write_bytes(b"fixture")
+            (parent / "everplain-candidate.link").symlink_to(directory)
+            with patch.dict(os.environ, {"SUDO_UID": str(os.getuid())}):
+                self.assertEqual(
+                    list(inspection.upload_snapshot(parent)), [directory / "release.tar.gz"]
+                )
+
+    def test_detects_only_write_descriptors_for_known_upload(self):
+        with tempfile.TemporaryDirectory() as d:
+            parent = Path(d)
+            (parent / "123/fd").mkdir(parents=True)
+            (parent / "123/fdinfo").mkdir()
+            target = Path("/fixture/release.tar.gz")
+            (parent / "123/fd/4").symlink_to(target)
+            (parent / "123/fdinfo/4").write_text("flags:\t0100001\n")
+            self.assertEqual(inspection.upload_writers({target}, parent), {target})
+            (parent / "123/fdinfo/4").write_text("flags:\t0100000\n")
+            self.assertEqual(inspection.upload_writers({target}, parent), set())
 
 
 if __name__ == "__main__":
