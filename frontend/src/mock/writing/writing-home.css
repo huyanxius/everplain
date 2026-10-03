@@ -53,30 +53,10 @@
 @keyframes wh-caret { 50% { opacity: 0; } }
 /* 文档卡：摘要是衬线正文，左侧一条细线，像一页稿纸的开头 */
 .wh-main .personal-start__grid:first-of-type .personal-start__excerpt { padding-left: var(--qx-space-3); border-left: 2px solid var(--qx-color-rule-strong); color: var(--qx-color-ink-soft); font-family: var(--qx-font-reading); }
-/* 能力卡：按目录编号，「试试」写成衬线引语 */
-.wh-main section:nth-of-type(4) .personal-start__grid { counter-reset: wh-ability; }
-.wh-main section:nth-of-type(4) .wh-card { counter-increment: wh-ability; }
-.wh-main section:nth-of-type(4) .wh-card::before { color: var(--qx-color-faint); font-family: var(--qx-font-reading); font-size: var(--qx-text-meta); font-variant-numeric: tabular-nums; content: counter(wh-ability, decimal-leading-zero); }
-.wh-card__try { font-family: var(--qx-font-reading); font-style: italic; }
-.wh-card__try::before { content: '“'; }
-.wh-card__try::after { content: '”'; }
 
-/* ---- 写作页的招牌：模仿你的写法 ---- */
-.wh-mimic { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: var(--qx-space-8); align-items: center; margin-top: var(--qx-space-6); padding: var(--qx-space-8) 0; border-top: 1px solid var(--qx-color-rule); border-bottom: 1px solid var(--qx-color-rule); }
-.wh-mimic__copy { display: grid; justify-items: start; gap: var(--qx-space-4); }
-.wh-mimic__copy > p { max-width: 440px; color: var(--qx-color-ink-soft); font-size: var(--qx-text-body); line-height: 1.75; }
-.wh-mimic__upload { cursor: pointer; }
-.wh-mimic__genres { display: flex; flex-wrap: wrap; gap: var(--qx-space-2); margin: 0; padding: 0; list-style: none; }
-.wh-mimic__genres li { display: inline-flex; align-items: center; gap: var(--qx-space-2); min-height: 32px; padding: 0 var(--qx-space-3); border-radius: var(--qx-radius-pill); background: var(--qx-color-surface-strong); font-size: var(--qx-text-meta); }
-.wh-mimic__genres li span { color: var(--qx-color-ink); }
-.wh-mimic__genres li b { color: var(--qx-color-muted); font-weight: 400; }
-.wh-mimic__genres li[data-empty='true'] { background: transparent; box-shadow: var(--qx-shadow-ring); }
-.wh-mimic__genres li[data-empty='true'] b { color: var(--qx-color-faint); }
-.wh-mimic__compare { display: grid; gap: var(--qx-space-3); }
-.wh-mimic__compare figure { margin: 0; padding: var(--qx-space-4) var(--qx-space-5); border-radius: var(--qx-radius-card); background: var(--qx-color-surface-muted); }
-.wh-mimic__compare figcaption { margin-bottom: var(--qx-space-2); color: var(--qx-color-faint); font-size: var(--qx-text-meta); }
-.wh-mimic__compare figure p { color: var(--qx-color-muted); font-family: var(--qx-font-reading); font-size: var(--qx-text-body); line-height: 1.8; }
-.wh-mimic__compare figure[data-mine='true'] { background: var(--qx-color-surface); box-shadow: var(--qx-shadow-card), 0 0 0 1px color-mix(in srgb, var(--qx-color-highlight) 35%, transparent); }
-.wh-mimic__compare figure[data-mine='true'] figcaption { color: var(--qx-color-highlight); font-weight: 600; }
-.wh-mimic__compare figure[data-mine='true'] p { color: var(--qx-color-ink); }
-@media (max-width: 900px) { .wh-mimic { grid-template-columns: minmax(0, 1fr); } }
+/* 学过的文章：一条安静的横条，上下细线，不做卡片、不做演示 */
+.wh-mimic { display: flex; align-items: center; justify-content: space-between; gap: var(--qx-space-4); margin-top: var(--qx-space-4); padding: var(--qx-space-4) 0; border-top: 1px solid var(--qx-color-rule); border-bottom: 1px solid var(--qx-color-rule); }
+.wh-mimic__text { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--qx-space-1) var(--qx-space-4); color: var(--qx-color-ink-soft); font-size: var(--qx-text-control); }
+.wh-mimic__text b { color: var(--qx-color-ink); font-weight: 600; }
+.wh-mimic__genres { color: var(--qx-color-faint); font-size: var(--qx-text-meta); }
+.wh-mimic__upload { flex: none; cursor: pointer; }

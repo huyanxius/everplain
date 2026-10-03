@@ -112,30 +112,15 @@ function WritingHome({ onOpen }: { onOpen: (title: string) => void }) {
           </section>
 
 
-          <section className="wh-mimic" aria-labelledby="writing-mimic">
-            <div className="wh-mimic__copy">
-              <h2 id="writing-mimic" className="qx-section-title">写出来，像你自己写的</h2>
-              <p>上传你以前写过的文章，澄会按文体分开学你的用词、句子长短和起笔方式。之后无论起稿、续写还是改写，读起来都是你的口气。</p>
-              <label className="qx-btn qx-btn--primary wh-mimic__upload">
-                <UploadSimpleIcon /> 上传我的文章
-                <input type="file" multiple accept=".md,.txt,.docx,.pdf,.html" hidden />
-              </label>
-              <ul className="wh-mimic__genres" aria-label="按文体已学">
-                {([['公文', 8], ['报告', 3], ['正式文体', 5], ['随笔', 12], ['小说', 0]] as const).map(([g, n]) => (
-                  <li key={g} data-empty={n === 0}><span>{g}</span><b>{n ? `已学 ${n} 篇` : '还没学'}</b></li>
-                ))}
-              </ul>
-            </div>
-            <div className="wh-mimic__compare" aria-label="同一句话的两种写法">
-              <figure>
-                <figcaption>通用 AI 写法</figcaption>
-                <p>在快节奏的城市生活中，便利店作为一种重要的公共空间，为都市人群提供了宝贵的情感慰藉与社交连接。</p>
-              </figure>
-              <figure data-mine="true">
-                <figcaption>照你的写法</figcaption>
-                <p>加班到很晚，我总会进楼下那家便利店买一瓶热豆浆。店员抬头看我一眼，又低头理货。我们没说过话。</p>
-              </figure>
-            </div>
+          <section className="wh-mimic" aria-label="澄学过的你的文章">
+            <p className="wh-mimic__text">
+              澄已经读过你的 <b>28</b> 篇文章
+              <span className="wh-mimic__genres">公文 8 · 报告 3 · 正式文体 5 · 随笔 12 · 小说还没学</span>
+            </p>
+            <label className="qx-btn qx-btn--secondary wh-mimic__upload">
+              <UploadSimpleIcon /> 上传我的文章
+              <input type="file" multiple accept=".md,.txt,.docx,.pdf,.html" hidden />
+            </label>
           </section>
 
           <section className="personal-start__section" aria-labelledby="writing-recent">
