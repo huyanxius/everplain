@@ -67,11 +67,18 @@
   .model-selection { gap: var(--qx-space-2) var(--qx-space-3); }
   .model-selection__effort { flex: 1 1 216px; }
 }
-.model-selection-settings__toggle { width: 100%; min-height: calc(var(--qx-space-10) + var(--qx-space-1)); gap: var(--qx-space-2); justify-content: flex-start; }
-.model-selection-settings__summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: end; font-size: var(--qx-text-meta); line-height: var(--qx-text-meta--line-height); color: var(--qx-color-muted); }
-.model-selection-settings__toggle > svg { flex: none; }
-.model-selection-settings__toggle[aria-expanded="true"] > svg { transform: rotate(180deg); }
-.model-selection-settings__panel { display: grid; gap: var(--qx-space-2); min-width: 0; padding: var(--qx-space-2); }
-.model-selection-settings__panel > p { margin: 0; }
-.model-selection-settings__panel .model-selection { display: grid; gap: var(--qx-space-3); }
-.model-selection-settings__panel .model-selection__model, .model-selection-settings__panel .model-selection__effort { min-width: 0; width: 100%; }
+.model-selection-settings { display: grid; gap: var(--qx-space-1); min-width: 0; }
+.model-selection-settings > p { margin: 0; }
+.model-selection-settings > button { justify-self: start; }
+.model-selection--compact { display: grid; grid-template-columns: minmax(0, 156px) minmax(0, 1fr); gap: var(--qx-space-3); max-width: 416px; }
+.model-selection--compact .model-selection__model,
+.model-selection--compact .model-selection__effort { min-width: 0; width: 100%; }
+.model-selection--compact .qx-select__trigger { background: transparent; box-shadow: none; }
+.model-selection--compact .qx-select__trigger:hover { background: var(--qx-color-surface-muted); }
+.model-selection--compact .model-selection__ticks span { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+  .model-selection--compact { grid-template-columns: minmax(0, 128px) minmax(0, 1fr); }
+  .model-selection--compact .qx-select__trigger { padding-inline: var(--qx-space-2); }
+  .model-selection--compact .qx-select__trigger,
+  .model-selection--compact .model-selection__range { min-height: 44px; }
+}

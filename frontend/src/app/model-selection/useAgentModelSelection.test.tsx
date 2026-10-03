@@ -5,9 +5,48 @@ vi.mock('../../modules/research-agent', () => ({ getAgentModelCatalog: loadCatal
 import { useAgentModelSelection } from './useAgentModelSelection'
 
 const catalog = { runtimeMode: 'base', models: [{ id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoningEfforts: ['low', 'medium', 'high'], defaultReasoningEffort: 'medium' }] }
-afterEach(() => { cleanup(); loadCatalog.mockReset() })
+afterEach(() => { cleanup(); loadCatalog.mockReset(); localStorage.clear() })
 
 describe('owner-scoped live model catalog', () => {
+  it('keeps a choice across route mounts only after revalidating the live catalog', async () => {
+    loadCatalog.mockResolvedValue(catalog)
+    const first = renderHook(() => useAgentModelSelection('owner'))
+    await waitFor(() => expect(first.result.current.status).toBe('ready'))
+    act(() => first.result.current.onChange({ modelId: 'gpt-6-luna', reasoningEffort: 'high' }))
+    first.unmount()
+    const next = renderHook(() => useAgentModelSelection('owner'))
+    expect(next.result.current.requestFields()).toEqual({})
+    await waitFor(() => expect(next.result.current.status).toBe('ready'))
+    expect(next.result.current.requestFields()).toEqual({ model_id: 'gpt-6-luna', reasoning_effort: 'high' })
+    expect(loadCatalog).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not send a saved effort that the latest catalog no longer supports', async () => {
+    loadCatalog.mockResolvedValueOnce(catalog).mockResolvedValueOnce({ ...catalog, models: [{ ...catalog.models[0], reasoningEfforts: ['low', 'medium'] }] })
+    const first = renderHook(() => useAgentModelSelection('owner'))
+    await waitFor(() => expect(first.result.current.status).toBe('ready'))
+    act(() => first.result.current.onChange({ modelId: 'gpt-6-luna', reasoningEffort: 'high' }))
+    first.unmount()
+    const next = renderHook(() => useAgentModelSelection('owner'))
+    await waitFor(() => expect(next.result.current.status).toBe('ready'))
+    expect(next.result.current.requestFields()).toEqual({ model_id: 'gpt-6-luna', reasoning_effort: 'medium' })
+  })
+
+  it('restores each account’s own choice without sharing it with another account', async () => {
+    loadCatalog.mockResolvedValue(catalog)
+    const { result, rerender } = renderHook(({ owner }) => useAgentModelSelection(owner), { initialProps: { owner: 'a' } })
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    act(() => result.current.onChange({ modelId: 'gpt-6-luna', reasoningEffort: 'high' }))
+    rerender({ owner: 'b' })
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    expect(result.current.selection?.reasoningEffort).toBe('medium')
+    act(() => result.current.onChange({ modelId: 'gpt-6-luna', reasoningEffort: 'low' }))
+    rerender({ owner: 'a' })
+    expect(result.current.requestFields()).toEqual({})
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    expect(result.current.selection?.reasoningEffort).toBe('high')
+  })
+
   it('uses only server-supported stops and validates every change against that subset', async () => {
     loadCatalog.mockResolvedValue(catalog)
     const { result } = renderHook(() => useAgentModelSelection('owner'))
