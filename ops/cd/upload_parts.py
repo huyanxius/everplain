@@ -170,20 +170,43 @@ def assemble(directory, parts, plan, uid, expected=EXPECTED):
     os.replace(output, prefix)
 
 
+def upload_command(source, destination, received):
+    # OpenSSH cannot resume a remote file that does not exist yet.
+    flag = "-a " if received else ""
+    return f'put {flag}"{source}" "{destination}"\n'
+
+
 def transfer(command, seconds):
     process = subprocess.Popen(
-        command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+        command,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
     )
+    timed_out = False
     try:
-        return process.wait(timeout=seconds) == 0
+        _stdout, error = process.communicate(timeout=seconds)
     except subprocess.TimeoutExpired:
+        timed_out = True
         os.killpg(process.pid, signal.SIGTERM)
         try:
-            process.wait(timeout=10)
+            _stdout, error = process.communicate(timeout=10)
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
-        return False
+            _stdout, error = process.communicate()
+    # Raw stderr stays private; output only boolean classifications, never paths or argv.
+    error = error.lower()
+    return {
+        "ok": process.returncode == 0,
+        "timed_out": timed_out,
+        "exit_1": process.returncode == 1,
+        "exit_255": process.returncode == 255,
+        "missing_file": "no such file" in error,
+        "permission_denied": "permission denied" in error,
+        "network_error": "connection" in error or "timed out" in error,
+        "protocol_error": "protocol" in error,
+    }
 
 
 def local(args):
@@ -216,7 +239,7 @@ def local(args):
         if prior["size"] == item["size"]:
             continue
         batch = scratch / (item["name"] + ".batch")
-        batch.write_text(f'put -a "{path}" "{directory}/parts/{item["name"]}"\n')
+        batch.write_text(upload_command(path, f"{directory}/parts/{item['name']}", prior["size"]))
         commands.append(
             [
                 "sftp",
@@ -239,13 +262,27 @@ def local(args):
     after = remote("host-status")
     moved = sum(p["size"] for p in after) - sum(p["size"] for p in before)
     elapsed = max(1, time.monotonic() - started)
+    complete = all(outcome["ok"] for outcome in outcomes)
     report = {
         "parallel_progress": moved > 0,
         "parallel_at_least_64_kib_per_second": moved / elapsed >= 64 * 1024,
-        "parallel_parts_complete": all(outcomes),
+        "parallel_parts_complete": complete,
+        **{
+            f"sftp_{key}": any(outcome[key] for outcome in outcomes)
+            for key in (
+                "timed_out",
+                "exit_1",
+                "exit_255",
+                "missing_file",
+                "permission_denied",
+                "network_error",
+                "protocol_error",
+            )
+        },
     }
     print(json.dumps(report), flush=True)
-    if all(outcomes):
+    require(all(outcome["ok"] or outcome["timed_out"] for outcome in outcomes))
+    if complete:
         remote("host-assemble")
         return True
     return False
