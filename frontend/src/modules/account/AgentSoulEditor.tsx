@@ -11,7 +11,7 @@ export function AgentSoulEditor({ flow, text }: {
   const latestAvatar = agentAvatarPresets.find(avatar => avatar.id === flow.conflict?.avatar_id)
   return <div className="ep-soul-editor">
     <label className="ep-soul-editor__field"><span>{text('人格描述（Markdown）', 'Soul description (Markdown)')}</span>
-      <textarea className="qx-input" rows={10} maxLength={8000} disabled={flow.pending} value={flow.draft.soul}
+      <textarea className="qx-textarea" rows={7} maxLength={8000} disabled={flow.pending} value={flow.draft.soul}
         placeholder={text('例如：你是我的阅读伙伴。先听我说完，再提出不同解释；有疑问时坦诚说明。', 'For example: Be my reading companion. Listen first, offer alternative explanations, and be honest about uncertainty.')}
         onChange={event => flow.patch({ soul: event.target.value })} />
     </label>
