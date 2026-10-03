@@ -131,6 +131,7 @@ def reusable_stage(base):
 
 
 def inspect_image_archive(path, expected, report, role):
+    config = None
     with tarfile.open(path, "r") as archive:
         names = set(archive.getnames())
         report[f"{role}_archive_docker_manifest"] = "manifest.json" in names
@@ -149,6 +150,54 @@ def inspect_image_archive(path, expected, report, role):
             report[f"{role}_archive_linux_amd64"] = (
                 config.get("architecture") == "amd64" and config.get("os") == "linux"
             )
+            report[f"{role}_archive_revision_label_matches"] = (
+                (config.get("config") or {}).get("Labels") or {}
+            ).get("org.opencontainers.image.revision") == REVISION
+        if "manifest.json" in names:
+            manifest = json.load(archive.extractfile("manifest.json"))
+            expected_entries = [item for item in manifest if item.get("Config") in options]
+            report[f"{role}_archive_manifest_references_expected_config"] = bool(expected_entries)
+            report[f"{role}_archive_tag_references_expected_config"] = any(
+                "everplain-" + role + ":" + REVISION in (item.get("RepoTags") or [])
+                for item in expected_entries
+            )
+    return config
+
+
+def loaded_image(expected, role, report, archive_config=None):
+    found = {}
+    for reference, name in ((expected, "id"), ("everplain-" + role + ":" + REVISION, "tag")):
+        result = subprocess.run(
+            ["docker", "image", "inspect", reference],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        report[f"{role}_inspect_{name}_succeeded"] = result.returncode == 0
+        if result.returncode:
+            continue
+        value = json.loads(result.stdout)[0]
+        found[name] = value
+        report[f"{role}_{name}_identity_matches"] = value.get("Id") == expected
+        report[f"{role}_{name}_amd64"] = value.get("Architecture") == "amd64"
+        report[f"{role}_{name}_linux"] = value.get("Os") == "linux"
+        report[f"{role}_{name}_revision_label_matches"] = (
+            (value.get("Config") or {}).get("Labels") or {}
+        ).get("org.opencontainers.image.revision") == REVISION
+        if archive_config:
+            layers = (archive_config.get("rootfs") or {}).get("diff_ids")
+            report[f"{role}_{name}_rootfs_matches_archive"] = bool(layers) and (
+                (value.get("RootFS") or {}).get("Layers") == layers
+            )
+            report[f"{role}_{name}_labels_match_archive"] = (value.get("Config") or {}).get(
+                "Labels"
+            ) == (archive_config.get("config") or {}).get("Labels")
+            report[f"{role}_{name}_architecture_matches_archive"] = value.get(
+                "Architecture"
+            ) == archive_config.get("architecture")
+    require("id" in found)
+    return found["id"]
 
 
 def metadata(name):
@@ -369,14 +418,15 @@ class ExistingRelease:
         self.report["docker_load_budget_verified"] = True
         for role, image in (("api", API_IMAGE), ("web", WEB_IMAGE)):
             archive_path = release / "images" / (role + ".tar")
-            inspect_image_archive(archive_path, image, self.report, role)
+            archive_config = inspect_image_archive(archive_path, image, self.report, role)
             self.report[role + "_load_started"] = True
             run(
                 ["docker", "load", "--input", str(archive_path)],
                 report=self.report,
                 prefix=role + "_load_",
             )
-            info = json.loads(run(["docker", "image", "inspect", image]))[0]
+            info = loaded_image(image, role, self.report, archive_config)
+            require(info.get("Id") == image)
             require(info["Architecture"] == "amd64" and info["Os"] == "linux")
             require(info["Config"]["Labels"].get("org.opencontainers.image.revision") == REVISION)
             self.report[role + "_image_verified"] = True
