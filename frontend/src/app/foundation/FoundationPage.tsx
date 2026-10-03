@@ -147,8 +147,18 @@ export function FoundationPage({ authenticated = false }: { authenticated?: bool
     <div className="ep-companion"><Companion size={190} /></div>
 
     <footer className="ep-footer">
-      <Link className="ep-brand" to="/welcome"><span className="ep-brand-mark" aria-hidden="true" /><span>Everplain</span></Link>
-      <small>© 2026 Everplain</small>
+      <div className="ep-footer__brand">
+        <Link className="ep-brand" to="/welcome"><span className="ep-brand-mark" aria-hidden="true" /><span>Everplain</span></Link>
+        <small>© 2026 Everplain</small>
+      </div>
+      <nav className="ep-footer__column" aria-labelledby="ep-footer-code-title">
+        <h2 id="ep-footer-code-title">代码仓库</h2>
+        <a href="https://github.com/huyanxius/everplain" target="_blank" rel="noopener noreferrer">Everplain · GitHub<ArrowUpRightIcon size={15} aria-hidden="true" /><span className="ep-visually-hidden">（在新窗口打开）</span></a>
+      </nav>
+      <section className="ep-footer__column" aria-labelledby="ep-footer-contact-title">
+        <h2 id="ep-footer-contact-title">联系我们</h2>
+        <address><a href="mailto:huyanxius@gmail.com">huyanxius@gmail.com</a></address>
+      </section>
     </footer>
   </div>
 }
