@@ -56,7 +56,7 @@ describe('conversation model selection integration', () => {
     expect(screen.queryByRole('group', { name: '研究工具栏' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '查看材料库' })).not.toBeInTheDocument()
     expect(screen.queryByText('问题示例')).not.toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Chat' })).toHaveTextContent('对话')
+    expect(screen.getByRole('tab', { name: 'Chat' })).not.toHaveTextContent('对话')
     fireEvent.click(screen.getByRole('tab', { name: 'Research' }))
     const toolbar = await screen.findByRole('group', { name: '研究工具栏' })
     expect(form).not.toContainElement(toolbar)
