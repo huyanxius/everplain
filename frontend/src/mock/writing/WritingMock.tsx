@@ -215,6 +215,21 @@ export function WritingMock() {
     window.setTimeout(() => settle(target.id, true), 2300)
   }
 
+  /* 选区浮条演示：在最后一段选中一截文字，走和真实鼠标一样的定位逻辑 */
+  const floatDemo = () => {
+    const target = editor.current?.querySelector<HTMLElement>('p[data-pid][contenteditable]:last-of-type') ?? editor.current?.querySelector<HTMLElement>('p[data-pid][contenteditable]')
+    const node = target?.firstChild
+    if (!node) return
+    const range = document.createRange()
+    const len = node.textContent?.length ?? 0
+    range.setStart(node, Math.min(5, Math.max(0, len - 1)))
+    range.setEnd(node, Math.min(15, len))
+    const sel = window.getSelection()
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+    placeBar()
+  }
+
   return (
     <div className="wr-page">
       <aside className="wr-shell-gap" aria-label="应用侧栏位置说明">
@@ -223,6 +238,14 @@ export function WritingMock() {
           <p>全局导航（新对话、知识库、研究、写作、最近）由应用外壳提供。</p>
           <p>本页常驻在它右侧，这里只占位，不重复设计。</p>
         </div>
+        <MotionDemos
+          onSweep={() => { setTab('collab'); demoRewrite() }}
+          onStream={stream}
+          onFloat={floatDemo}
+          onSettle={demoSettle}
+          onLearn={learn}
+          onReset={reset}
+        />
       </aside>
 
       <div className="wr-workbench">
@@ -286,26 +309,6 @@ export function WritingMock() {
         </div>
       </div>
 
-      <MotionDemos
-        onSweep={() => { setTab('collab'); demoRewrite() }}
-        onStream={stream}
-        onFloat={() => {
-          const target = editor.current?.querySelector<HTMLElement>('p[data-pid][contenteditable]:last-of-type') ?? editor.current?.querySelector<HTMLElement>('p[data-pid][contenteditable]')
-          const node = target?.firstChild
-          if (!node) return
-          const range = document.createRange()
-          const len = node.textContent?.length ?? 0
-          range.setStart(node, Math.min(5, Math.max(0, len - 1)))
-          range.setEnd(node, Math.min(15, len))
-          const sel = window.getSelection()
-          sel?.removeAllRanges()
-          sel?.addRange(range)
-          placeBar()
-        }}
-        onSettle={demoSettle}
-        onLearn={learn}
-        onReset={reset}
-      />
     </div>
   )
 }
@@ -495,30 +498,24 @@ function Revisions({ items, onSettle, onAll }: { items: Revision[]; onSettle: (p
   )
 }
 
-/* 右下角：动效演示。只为评审看动效，真实页面里没有这张卡。 */
+/* 动效演示：放在左侧占位区，用侧栏条目样式。只为评审看动效，真实页面里没有。 */
 function MotionDemos(props: { onSweep: () => void; onStream: () => void; onFloat: () => void; onSettle: () => void; onLearn: () => void; onReset: () => void }) {
-  const [open, setOpen] = useState(true)
-  const items: { title: string; note: string; run: () => void }[] = [
-    { title: '光影扫过 · 改写', note: '旧字划掉淡出，新字由一道光从左往右扫出来', run: props.onSweep },
-    { title: '逐段流入 · 续写', note: '文字一小段一小段写入，每段带短扫光和光标', run: props.onStream },
-    { title: '选区浮条', note: '选中正文任意文字，浮条带回弹弹出', run: props.onFloat },
-    { title: '落定 · 接受修改', note: '待定标记收起，新字沉成正文颜色', run: props.onSettle },
-    { title: '文风学习', note: '吸收新样本，特征条依次重新生长', run: props.onLearn },
+  const items: [string, () => void][] = [
+    ['光影扫过 · 改写', props.onSweep],
+    ['逐段流入 · 续写', props.onStream],
+    ['选区浮条', props.onFloat],
+    ['落定 · 接受修改', props.onSettle],
+    ['文风学习', props.onLearn],
   ]
-  if (!open) return <button type="button" className="wr-demos-toggle" onClick={() => setOpen(true)}><PlayIcon weight="fill" /> 动效演示</button>
   return (
-    <section className="wr-demos" aria-label="动效演示">
-      <header>
-        <strong>动效演示</strong>
-        <button type="button" onClick={props.onReset}>重置</button>
-        <button type="button" aria-label="收起" onClick={() => setOpen(false)}><XIcon /></button>
-      </header>
-      {items.map((it) => (
-        <button key={it.title} type="button" className="wr-demo" onMouseDown={(e) => e.preventDefault()} onClick={it.run}>
-          <PlayIcon weight="fill" />
-          <span><b>{it.title}</b><small>{it.note}</small></span>
+    <nav className="wr-demos" aria-label="动效演示">
+      <p className="qx-group-label">动效演示 · 点一下播放</p>
+      {items.map(([label, run]) => (
+        <button key={label} type="button" className="qx-item" onMouseDown={(e) => e.preventDefault()} onClick={run}>
+          <PlayIcon /><span>{label}</span>
         </button>
       ))}
-    </section>
+      <button type="button" className="qx-item wr-demos__reset" onClick={props.onReset}>重置正文</button>
+    </nav>
   )
 }

@@ -6,12 +6,12 @@ import '../../styles/tokens.css'
 import '../../styles/components.css'
 import '../../styles/base.css'
 import '../shared/composer.css'
-import './chat.css'
-import { ChatMock } from './ChatMock'
+import './editor.css'
+import { EditorPage } from './EditorPage'
 
-/* 对话页单页 Mock：只在 vite dev 下以 /chat.html 访问，不接后端。 */
+/* 共享编辑器展示页：只在 vite dev 下以 /editor.html 访问，不接后端。 */
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ChatMock />
+    <EditorPage />
   </StrictMode>,
 )

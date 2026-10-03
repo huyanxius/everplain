@@ -16,8 +16,8 @@ button { font: inherit; }
 }
 
 /* ---------- 应用侧栏位置：占位说明 ---------- */
-.wr-shell-gap { padding: var(--qx-space-5) var(--qx-space-4); background: var(--qx-color-surface-muted); color: var(--qx-color-faint); }
-.wr-shell-gap > div { display: grid; gap: var(--qx-space-2); }
+.wr-shell-gap { display: flex; flex-direction: column; padding: var(--qx-space-5) var(--qx-space-3); background: var(--qx-color-surface-muted); color: var(--qx-color-faint); }
+.wr-shell-gap > div { display: grid; gap: var(--qx-space-2); padding: 0 var(--qx-space-1); }
 .wr-shell-gap strong { color: var(--qx-color-muted); font-size: var(--qx-text-control); font-weight: 600; }
 .wr-shell-gap p { font-size: var(--qx-text-meta); line-height: 1.6; }
 
@@ -216,19 +216,11 @@ button { font: inherit; }
 .wr-empty { display: grid; justify-items: center; gap: var(--qx-space-2); padding: var(--qx-space-16) 0; color: var(--qx-color-faint); font-size: var(--qx-text-meta); }
 .wr-empty svg { font-size: 28px; }
 
-/* ---------- 动效演示卡（仅参照稿） ---------- */
-.wr-demos { position: fixed; right: 384px; bottom: 56px; z-index: 30; display: grid; gap: 2px; width: 280px; padding: 8px; border-radius: var(--qx-radius-card); background: color-mix(in srgb, var(--qx-color-surface) 92%, transparent); backdrop-filter: blur(12px); box-shadow: var(--qx-shadow-float); }
-.wr-demos header { display: flex; align-items: center; gap: var(--qx-space-2); padding: 4px 6px 8px; }
-.wr-demos header strong { flex: 1; color: var(--qx-color-ink); font-size: var(--qx-text-control); }
-.wr-demos header button { display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border: 0; border-radius: var(--qx-radius-pill); color: var(--qx-color-muted); background: none; font-size: 12px; cursor: pointer; }
-.wr-demos header button:hover { background: var(--qx-color-surface-strong); }
-.wr-demo { display: flex; align-items: flex-start; gap: 10px; padding: 8px; border: 0; border-radius: var(--qx-radius-item); background: none; text-align: left; cursor: pointer; }
-.wr-demo:hover { background: var(--qx-color-surface-strong); }
-.wr-demo > svg { flex: none; margin-top: 3px; color: var(--glow); font-size: 12px; }
-.wr-demo span { display: grid; gap: 1px; }
-.wr-demo b { color: var(--qx-color-ink); font-size: var(--qx-text-meta); font-weight: 600; }
-.wr-demo small { color: var(--qx-color-muted); font-size: 12px; line-height: 1.45; }
-.wr-demos-toggle { position: fixed; right: 384px; bottom: 56px; z-index: 30; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border: 0; border-radius: var(--qx-radius-pill); color: var(--qx-color-ink); background: var(--qx-color-surface); box-shadow: var(--qx-shadow-float); font-size: var(--qx-text-meta); cursor: pointer; }
+/* ---------- 动效演示（在左侧占位区，用 qx-item） ---------- */
+.wr-demos { display: grid; gap: 2px; margin-top: var(--qx-space-6); }
+.wr-demos .qx-item { font-size: var(--qx-text-control); }
+.wr-demos .qx-item > svg { color: var(--glow); }
+.wr-demos__reset { color: var(--qx-color-muted); }
 
 @media (prefers-reduced-motion: reduce) {
   .wr-page *, .wr-page *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
