@@ -1,3 +1,4 @@
+import { Select } from '../../ui/Select'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   confirmMethodPlan, createMethodPlan, getCurrentMethodPlan, listMethodPlanVersions,
@@ -5,7 +6,7 @@ import {
   resolveMethodPlanReview, reviewMethodPlan, restoreMethodPlan, updateMethodPlan,
   type MethodKind, type MethodPlan,
 } from './researchMethodApi'
-import './research-method.css'
+import './method-plan-view.css'
 
 const METHOD_LABELS: Record<MethodKind, string> = {
   undecided: '暂缓决定',
@@ -148,211 +149,51 @@ export function MethodPlanWorkspace({ taskId }: { taskId: string }) {
   }).length
   const canConfirm = Boolean(plan && plan.status !== 'confirmed' && plan.status !== 'stale' && missingDecisionCount === 0 && pendingReviewCount === 0)
 
-  if (loading) {
-    return (
-      <section className="research-method" aria-label="研究方法计划">
-        <p className="research-method__muted" role="status">正在恢复方法计划…</p>
-      </section>
-    )
-  }
+  const isLocked = plan?.status === 'confirmed' || plan?.status === 'stale' || busy
+  const pathOptions = (Object.keys(METHOD_LABELS) as MethodKind[]).map(value => ({ value, label: METHOD_LABELS[value] }))
 
-  if (!plan && error) {
-    return (
-      <section className="research-method" aria-label="研究方法计划">
-        <p className="research-method__error qx-notice-surface" role="alert">{error}</p>
-        <button className="qx-button" type="button" onClick={() => void load()}>重新加载</button>
-      </section>
-    )
-  }
+  if (loading) return <section className="ep-method" aria-label="研究方法计划"><p className="qx-meta" role="status">正在恢复方法计划…</p></section>
+  if (!plan && error) return <section className="ep-method" aria-label="研究方法计划"><p className="ep-method__error" role="alert">{error}</p><button className="qx-btn qx-btn--secondary" type="button" onClick={() => void load()}>重新加载</button></section>
 
-  if (!plan) {
-    return (
-      <section className="research-method" aria-label="研究方法计划">
-        <header className="research-method__intro">
-          <p className="research-method__eyebrow">研究设计</p>
-          <h1>方法设计</h1>
-          <p>在已确认的研究框架与理论方案基础上，选择质性、定量、混合，或暂缓决定。</p>
-        </header>
-        <div className="research-method__create-card">
-          <label>
-            先选一个路径
-            <select value={kind} disabled={busy} onChange={(event) => setKind(event.target.value as MethodKind)}>
-              {(Object.keys(METHOD_LABELS) as MethodKind[]).map((value) => <option key={value} value={value}>{METHOD_LABELS[value]}</option>)}
-            </select>
-          </label>
-          <p>{METHOD_DESCRIPTIONS[kind]}</p>
-          <button className="qx-button qx-button--primary" type="button" disabled={busy} onClick={() => void create()}>
-            建立方法计划草案
-          </button>
-        </div>
-        {error ? <p className="research-method__error qx-notice-surface" role="alert">{error}</p> : null}
-      </section>
-    )
-  }
-
-  const isLocked = plan.status === 'confirmed' || plan.status === 'stale' || busy
-  return (
-    <section className="research-method" aria-label="研究方法计划">
-      <header className="research-method__header">
-        <div className="research-method__intro">
-          <p className="research-method__eyebrow">研究设计</p>
-          <h1>方法设计</h1>
-          <p>{plan.research_question}</p>
-        </div>
-        <div className={`research-method__status research-method__status--${plan.status}`}>
-          <span>版本 v{plan.version}</span>
-          <strong>{STATUS_LABELS[plan.status]}</strong>
-          <small>{plan.decision_source === 'user_decision' ? '用户决定' : '系统建议'}</small>
-        </div>
-      </header>
-
-      {plan.status === 'stale' ? (
-        <section className="research-method__stale-banner qx-notice-surface" role="status">
-          <div><strong>这份计划所依据的框架或理论已经变化。</strong><p>{plan.stale_reason || '旧版本仍可在历史中查看，但不能继续确认或编辑。'}</p></div>
-          <button className="qx-button qx-button--primary" type="button" disabled={busy} onClick={() => void create()}>根据当前依据重新建立计划</button>
+  return <section className="ep-method" aria-label="研究方法计划">
+    <header className="ep-method__head">
+      <div><h1 className="qx-section-title">方法设计</h1><p className="qx-card__body">{plan?.research_question || '选择一种适合研究问题的路径，再逐步补充研究设计。'}</p></div>
+      {plan ? <span className="ep-method__status">v{plan.version} · {STATUS_LABELS[plan.status]}</span> : null}
+    </header>
+    {!plan ? <form className="qx-card ep-method__start" onSubmit={event => { event.preventDefault(); void create() }}>
+      <label className="ep-method__field">先选一个路径<Select className="qx-input" value={kind} disabled={busy} onChange={nextValue => setKind(nextValue as MethodKind)} options={pathOptions} /></label>
+      <p className="qx-card__body">{METHOD_DESCRIPTIONS[kind]}</p><button className="qx-btn qx-btn--primary" type="submit" disabled={busy}>建立方法计划草案</button>
+    </form> : <>
+      {plan.status === 'stale' ? <section className="ep-method__stale" role="status"><strong>这份计划所依据的框架或理论已经变化。</strong><p>{plan.stale_reason || '旧版本仍可在历史中查看，但不能继续确认或编辑。'}</p><button className="qx-btn qx-btn--primary" type="button" disabled={busy} onClick={() => void create()}>根据当前依据重新建立计划</button></section> : null}
+      <form className="ep-method__document" onSubmit={event => { event.preventDefault(); void save() }}>
+        <section aria-labelledby="method-path-heading">
+          <h2 id="method-path-heading" className="qx-heading">研究路径</h2>
+          <label className="ep-method__field">选择研究路径<Select className="qx-input" value={kind} disabled={isLocked} onChange={nextValue => setKind(nextValue as MethodKind)} options={pathOptions} /></label>
+          <p className="qx-meta">{METHOD_DESCRIPTIONS[kind]}</p>
+          <label className="ep-method__field">方法理由<textarea className="qx-textarea" value={rationale} disabled={isLocked} onChange={event => setRationale(event.target.value)} /></label>
         </section>
-      ) : null}
-
-      <div className="research-method__layout">
-        <main className="research-method__main">
-          <section className="research-method__card" aria-labelledby="research-method-choice">
-            <div className="research-method__card-heading">
-              <div><p className="research-method__eyebrow">01 · 路径决定</p><h2 id="research-method-choice">研究路径</h2></div>
-              <span className="research-method__source-chip">{plan.decision_source === 'user_decision' ? '用户决定' : '系统建议'}</span>
-            </div>
-            <label>
-              选择研究路径
-              <select value={kind} disabled={isLocked} onChange={(event) => setKind(event.target.value as MethodKind)}>
-                {(Object.keys(METHOD_LABELS) as MethodKind[]).map((value) => <option key={value} value={value}>{METHOD_LABELS[value]}</option>)}
-              </select>
-            </label>
-            <p className="research-method__hint">{METHOD_DESCRIPTIONS[kind]}</p>
-            <label>
-              方法理由
-              <textarea value={rationale} disabled={isLocked} onChange={(event) => setRationale(event.target.value)} />
-            </label>
-          </section>
-
-          <section className="research-method__card" aria-labelledby="research-method-sections">
-            <div className="research-method__card-heading">
-              <div><p className="research-method__eyebrow">02 · 研究设计</p><h2 id="research-method-sections">计划章节</h2></div>
-              <span className="research-method__progress">{userDecisionCount}/{sections.length} 已由用户决定</span>
-            </div>
-            <p className="research-method__hint">系统建议只作为草案提示；每个章节都需要用户编辑并留下“用户决定”标记，才能进入确认。</p>
-            <fieldset disabled={isLocked} className="research-method__sections">
-              <legend className="sr-only">方法计划章节</legend>
-              {sections.map((section, index) => (
-                <label className="research-method__section" key={section.key}>
-                  <span className="research-method__section-title">
-                    <span>{section.title}</span>
-                    <small className={section.source === 'user' ? 'is-user' : 'is-system'}>
-                      {section.source === 'user' ? '用户决定' : '系统建议'}
-                    </small>
-                  </span>
-                  <textarea
-                    aria-label={section.title}
-                    value={section.content}
-                    onChange={(event) => setSections((items) => items.map((item, itemIndex) => itemIndex === index
-                      ? { ...item, content: event.target.value, source: 'user' }
-                      : item))}
-                  />
-                </label>
-              ))}
-            </fieldset>
-            <div className="research-method__actions">
-              <button className="qx-button qx-button--primary" type="button" disabled={isLocked} onClick={() => void save()}>保存新版本</button>
-              <button className="qx-button" type="button" disabled={!canConfirm || busy} onClick={() => void act(() => confirmMethodPlan(plan.plan_id, { expected_version: plan.version, reason: '用户确认方法计划' }))}>确认计划</button>
-            </div>
-          </section>
-
-          <section className="research-method__card" aria-labelledby="research-method-context">
-            <div className="research-method__card-heading"><div><p className="research-method__eyebrow">03 · 共同依据</p><h2 id="research-method-context">理论、证据与约束</h2></div></div>
-            <dl className="research-method__context">
-              <div><dt>理论摘要</dt><dd>{plan.theory_summary}</dd></div>
-              <div><dt>理论概念</dt><dd>{plan.theory_concepts.join('；') || '当前框架未列出'}</dd></div>
-              <div><dt>证据引用</dt><dd>{plan.evidence_ref_ids.join('、') || '当前框架未列出'}</dd></div>
-              <div><dt>材料约束</dt><dd>{plan.material_constraints.join('；') || '未记录'}</dd></div>
-              <div><dt>伦理约束</dt><dd>{plan.ethical_constraints.join('；') || '未记录'}</dd></div>
-              <div><dt>知识发布版本</dt><dd>{plan.knowledge_release_id || '未记录'}</dd></div>
-            </dl>
-            {plan.shared_context?.length ? (
-              <div className="research-method__shared-context" aria-label="已固定的上游依据">
-                <h3>已固定的上游依据</h3>
-                {plan.shared_context.map((item) => (
-                  <article key={item.key}>
-                    <strong>{item.title}</strong>
-                    <p>{item.content}</p>
-                    {item.evidence_refs.length ? (
-                      <small>证据定位：{item.evidence_refs.map((ref) => ref.evidence_ref_id).join('、')}</small>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            ) : null}
-          </section>
-        </main>
-
-        <aside className="research-method__aside">
-          <section className="research-method__card research-method__readiness" aria-labelledby="research-method-readiness">
-            <p className="research-method__eyebrow">CHECK · 确认门槛</p>
-            <h2 id="research-method-readiness">确认前检查</h2>
-            <ul>
-              <li className={missingDecisionCount === 0 ? 'is-ready' : ''}>{missingDecisionCount === 0 ? '所有章节已由用户决定' : `还有 ${missingDecisionCount} 个章节保留为系统建议`}</li>
-              <li className={pendingReviewCount === 0 ? 'is-ready' : ''}>{pendingReviewCount === 0 ? '没有未处理的阻断审校' : `有 ${pendingReviewCount} 条阻断审校待处理`}</li>
-              <li className={plan.status === 'stale' ? 'is-warning' : 'is-ready'}>{plan.status === 'stale' ? (plan.stale_reason || '依据版本已变化，请重新建立计划') : '理论与材料依据已固定'}</li>
-            </ul>
-          </section>
-
-          <section className="research-method__card" aria-labelledby="research-method-reviews">
-            <div className="research-method__card-heading"><div><p className="research-method__eyebrow">REVIEW · 审校</p><h2 id="research-method-reviews">审校记录</h2></div></div>
-            <label>
-              审校意见
-              <textarea value={reviewNote} disabled={isLocked} onChange={(event) => setReviewNote(event.target.value)} />
-            </label>
-            <label className="research-method__review-blocking">
-              <input type="checkbox" checked={reviewBlocking} disabled={isLocked} onChange={(event) => setReviewBlocking(event.target.checked)} />
-              阻断确认
-            </label>
-            <button
-              className="qx-button"
-              type="button"
-              disabled={isLocked || reviewNote.trim().length === 0}
-              onClick={() => void act(async () => {
-                const updated = await reviewMethodPlan(plan.plan_id, {
-                  expected_version: plan.version,
-                  note: reviewNote.trim(),
-                  blocking: reviewBlocking,
-                })
-                setReviewNote('')
-                setReviewBlocking(false)
-                return updated
-              })}
-            >提交审校</button>
-            {plan.reviews.length === 0 ? <p className="research-method__muted">尚无审校意见。</p> : plan.reviews.map((review) => (
-              <article className="research-method__review" key={review.review_id}>
-                <strong>{review.blocking ? '阻断审校' : '建议'}</strong>
-                <p>{review.note}</p>
-                {review.resolved_at
-                  ? <small>已处理</small>
-                  : <button className="qx-button" type="button" disabled={busy || plan.status === 'stale'} onClick={() => void act(() => resolveMethodPlanReview(plan.plan_id, review.review_id, { expected_version: plan.version, reason: '已处理审校意见' }))}>标记已处理</button>}
-              </article>
-            ))}
-          </section>
-
-          <section className="research-method__card" aria-labelledby="research-method-history">
-            <div className="research-method__card-heading"><div><p className="research-method__eyebrow">HISTORY · 版本</p><h2 id="research-method-history">历史版本</h2></div></div>
-            <ol className="research-method__history">
-              {versions.map((item) => (
-                <li key={`${item.plan_id}-${item.version}`}>
-                  <div><strong>v{item.version}</strong><span>{item.change_summary}</span><small>{item.actor === 'user' ? '用户决定' : '系统记录'}</small></div>
-                  {item.version !== plan.version ? <button className="qx-button" type="button" disabled={busy || plan.status === 'stale'} onClick={() => void act(() => restoreMethodPlan(plan.plan_id, { source_version: item.version, expected_version: plan.version, reason: `恢复版本 ${item.version}` }))}>恢复</button> : null}
-                </li>
-              ))}
-            </ol>
-          </section>
-        </aside>
-      </div>
-      {error ? <p className="research-method__error qx-notice-surface" role="alert">{error}</p> : null}
-    </section>
-  )
+        <section aria-labelledby="method-sections-heading">
+          <div className="ep-method__section-heading"><h2 id="method-sections-heading" className="qx-heading">计划章节</h2><span className="qx-meta">{userDecisionCount}/{sections.length} 已由用户决定</span></div>
+          <fieldset className="ep-method__chapters" disabled={isLocked}><legend className="ep-method__sr">方法计划章节</legend>
+            {sections.map((section, index) => <label key={section.key} className="ep-method__chapter"><span><span className="ep-method__number">{index + 1}</span><strong>{section.title}</strong><small>{section.source === 'user' ? '用户决定' : '系统建议'}</small></span><textarea className="qx-textarea" aria-label={section.title} value={section.content} onChange={event => setSections(items => items.map((item, itemIndex) => itemIndex === index ? { ...item, content: event.target.value, source: 'user' } : item))} /></label>)}
+          </fieldset>
+        </section>
+        <section className="ep-method__check" aria-labelledby="method-check-heading"><h2 id="method-check-heading" className="qx-heading">确认前检查</h2><ul><li>{missingDecisionCount === 0 ? '所有章节已由用户决定' : `还有 ${missingDecisionCount} 个章节保留为系统建议`}</li><li>{pendingReviewCount === 0 ? '没有未处理的阻断审校' : `有 ${pendingReviewCount} 条阻断审校待处理`}</li><li>{plan.status === 'stale' ? (plan.stale_reason || '依据版本已变化，请重新建立计划') : '理论与材料依据已固定'}</li></ul></section>
+        <footer className="ep-method__actions"><button className="qx-btn qx-btn--primary" type="submit" disabled={isLocked}>保存新版本</button><button className="qx-btn qx-btn--secondary" type="button" disabled={!canConfirm || busy} onClick={() => void act(() => confirmMethodPlan(plan.plan_id, { expected_version: plan.version, reason: '用户确认方法计划' }))}>确认计划</button></footer>
+      </form>
+      <details className="ep-method__details"><summary>理论、证据与约束</summary><dl className="ep-method__context">{[['理论摘要', plan.theory_summary], ['理论概念', plan.theory_concepts.join('；') || '当前框架未列出'], ['证据引用', plan.evidence_ref_ids.join('、') || '当前框架未列出'], ['材料约束', plan.material_constraints.join('；') || '未记录'], ['伦理约束', plan.ethical_constraints.join('；') || '未记录'], ['知识发布版本', plan.knowledge_release_id || '未记录']].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+        {plan.shared_context?.length ? <section aria-label="已固定的上游依据"><h3 className="qx-heading">已固定的上游依据</h3>{plan.shared_context.map(item => <article className="ep-method__upstream" key={item.key}><strong>{item.title}</strong><p>{item.content}</p>{item.evidence_refs.length ? <p className="qx-meta">证据定位：{item.evidence_refs.map(ref => ref.evidence_ref_id).join('、')}</p> : null}</article>)}</section> : null}
+      </details>
+      <details className="ep-method__details" open={pendingReviewCount > 0}><summary>审校记录</summary>
+        <form className="ep-method__review-form" onSubmit={event => { event.preventDefault(); void act(async () => { const updated = await reviewMethodPlan(plan.plan_id, { expected_version: plan.version, note: reviewNote.trim(), blocking: reviewBlocking }); setReviewNote(''); setReviewBlocking(false); return updated }) }}>
+          <label className="ep-method__field">审校意见<textarea className="qx-textarea" value={reviewNote} disabled={isLocked} onChange={event => setReviewNote(event.target.value)} /></label>
+          <label className="ep-method__checkbox"><input type="checkbox" checked={reviewBlocking} disabled={isLocked} onChange={event => setReviewBlocking(event.target.checked)} />阻断确认</label>
+          <button className="qx-btn qx-btn--secondary" type="submit" disabled={isLocked || !reviewNote.trim()}>提交审校</button>
+        </form>
+        {!plan.reviews.length ? <p className="qx-meta">尚无审校意见。</p> : plan.reviews.map(review => <article className="ep-method__review" key={review.review_id}><strong>{review.blocking ? '阻断审校' : '建议'}</strong><p>{review.note}</p>{review.resolved_at ? <span className="qx-meta">已处理</span> : <button className="qx-btn qx-btn--secondary" type="button" disabled={busy || plan.status === 'stale'} onClick={() => void act(() => resolveMethodPlanReview(plan.plan_id, review.review_id, { expected_version: plan.version, reason: '已处理审校意见' }))}>标记已处理</button>}</article>)}
+      </details>
+      <details className="ep-method__details"><summary>历史版本</summary><ol className="ep-method__versions">{versions.map(item => <li key={`${item.plan_id}-${item.version}`}><div><strong>v{item.version}</strong><span>{item.change_summary}</span><small>{item.actor === 'user' ? '用户决定' : '系统记录'}</small></div>{item.version !== plan.version ? <button className="qx-btn qx-btn--secondary" type="button" disabled={busy || plan.status === 'stale'} onClick={() => void act(() => restoreMethodPlan(plan.plan_id, { source_version: item.version, expected_version: plan.version, reason: `恢复版本 ${item.version}` }))}>恢复</button> : <span className="qx-meta">当前版本</span>}</li>)}</ol></details>
+    </>}
+    {error ? <p className="ep-method__error" role="alert">{error}</p> : null}
+  </section>
 }

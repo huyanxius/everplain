@@ -1,3 +1,5 @@
+import { Select } from '../../ui/Select'
+import './research-analysis-view.css'
 import { useMemo, useState } from 'react'
 
 import type { AnalysisMemoKind, CreateAnalysisMemoInput, CreateCaseComparisonInput, ResearchAnalysisSnapshot } from './researchAnalysisModel'
@@ -86,103 +88,26 @@ export function ResearchAnalysisWorkspace({
     }
   }
 
-  return (
-    <section className="research-analysis" role="region" aria-label="研究分析">
-      <header className="research-analysis__header">
-        <div>
-          <strong>分析记录</strong>
-          <span>{snapshot.annotations.length} 处标记 · {confirmedMemos.length} 则备忘 · {snapshot.comparisons.filter((item) => item.status === 'confirmed').length} 组比较</span>
-        </div>
-        <div className="research-analysis__scope" aria-label="分析范围">
-          {selectedMaterialId ? <button type="button" aria-pressed={scope === 'material'} onClick={() => setScope('material')}>当前材料</button> : null}
-          <button type="button" aria-pressed={scope === 'task'} onClick={() => setScope('task')}>全部研究</button>
-        </div>
-      </header>
-
-      <div className="research-analysis__actions" aria-label="分析动作">
-        <button className="qx-button" type="button" onClick={() => { resetComposer(); setComposer('memo') }}>写分析备忘</button>
-      </div>
-
-      <div className="research-analysis__annotations" aria-label="原文标记">
-        {visibleAnnotations.map((annotation) => (
-          <article key={annotation.annotation_id}>
-            <blockquote>{annotation.quote}</blockquote>
-            <p>{annotation.note}</p>
-            {annotation.reflection ? <p className="is-reflection"><span>研究者反思</span>{annotation.reflection}</p> : null}
-            <small>{[annotation.case_label, annotation.observed_at, formatMaterialLocator({
-              page: annotation.locator.page,
-              headingPath: annotation.locator.section_path,
-              paragraph: annotation.locator.paragraph,
-              lineStart: annotation.locator.line_start,
-              lineEnd: annotation.locator.line_end,
-              charStart: annotation.locator.char_start,
-              charEnd: annotation.locator.char_end,
-            })].filter(Boolean).join(' · ')}</small>
-          </article>
-        ))}
-        {!visibleAnnotations.length ? <p className="research-analysis__empty">先在材料原文中拖选关键片段。原文证据会在这里逐步形成批注、分析备忘与案例比较。</p> : null}
-      </div>
-
-      {candidateMemos.length ? (
-        <section className="research-analysis__candidates" aria-label="待确认的 Agent 建议">
-          <h4>待你判断</h4>
-          {candidateMemos.map((memo) => (
-            <ResearchAnalysisCandidateCard
-              key={memo.memo_id}
-              kindLabel="备忘草稿"
-              title={memo.title}
-              detail={memo.content}
-              version={memo.version}
-              onDecide={(decision, reason, version) => onDecideMemo(memo.memo_id, decision, reason, version)}
-            />
-          ))}
-        </section>
-      ) : null}
-
-      <section className="research-analysis__confirmed" aria-label="已确认分析">
-        {confirmedMemos.map((memo) => (
-          <article key={memo.memo_id}>
-            <span>研究者确认 · {memoKindLabels[memo.memo_kind]}</span>
-            <strong>{memo.title}</strong>
-            <p>{memo.content}</p>
-          </article>
-        ))}
-      </section>
-
-      <ResearchCaseComparison
-        annotations={snapshot.annotations}
-        comparisons={snapshot.comparisons}
-        materialNames={materialNames}
-        onCreate={onCreateComparison}
-        onDecide={onDecideComparison}
-      />
-
-      {composer ? (
-        <form className="research-analysis__composer" aria-label="写分析备忘" onSubmit={(event) => {
-          event.preventDefault()
-          void submitMemo()
-        }}>
-          <fieldset>
-            <legend>关联原文标记（可选）</legend>
-            {visibleAnnotations.map((annotation) => (
-              <label key={annotation.annotation_id}>
-                <input type="checkbox" checked={selectedAnnotationIds.includes(annotation.annotation_id)} onChange={() => toggle(selectedAnnotationIds, annotation.annotation_id, setSelectedAnnotationIds)} />
-                <span>{annotation.quote}</span>
-              </label>
-            ))}
-          </fieldset>
-          <label><span>备忘标题</span><input aria-label="备忘标题" value={memoTitle} onChange={(event) => setMemoTitle(event.target.value)} /></label>
-          <label><span>备忘类型</span><select aria-label="备忘类型" value={memoKind} onChange={(event) => setMemoKind(event.target.value as AnalysisMemoKind)}>{Object.entries(memoKindLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label><span>备忘内容</span><textarea aria-label="备忘内容" value={memoContent} onChange={(event) => setMemoContent(event.target.value)} rows={4} /></label>
-          {error ? <p role="alert">{error}</p> : null}
-          <footer>
-            <button className="qx-button" type="button" onClick={resetComposer}>取消</button>
-            <button className="qx-button qx-button--primary" type="submit" disabled={pending || !memoTitle.trim() || !memoContent.trim()}>{pending ? '正在保存' : '保存备忘'}</button>
-          </footer>
-        </form>
-      ) : null}
+  return <section className="ep-analysis" role="region" aria-label="研究分析">
+    <header className="ep-analysis__bar"><p className="qx-meta">{snapshot.annotations.length} 处标记 · {confirmedMemos.length} 则备忘 · {snapshot.comparisons.filter(item => item.status === 'confirmed').length} 组比较</p><button className="qx-btn qx-btn--secondary" type="button" onClick={() => { resetComposer(); setComposer('memo') }}>写分析备忘</button></header>
+    {composer ? <form className="ep-analysis-form qx-card" aria-label="写分析备忘" onSubmit={event => { event.preventDefault(); void submitMemo() }}>
+      <h3 className="qx-heading">写分析备忘</h3>
+      <label>备忘标题<input className="qx-input" aria-label="备忘标题" value={memoTitle} onChange={event => setMemoTitle(event.target.value)} /></label>
+      <label>备忘类型<Select className="qx-input" aria-label="备忘类型" value={memoKind} onChange={nextValue => setMemoKind(nextValue as AnalysisMemoKind)} options={Object.entries(memoKindLabels).map(([value, label]) => ({ value: value, label: label }))} /></label>
+      <label>备忘内容<textarea className="qx-textarea" aria-label="备忘内容" value={memoContent} onChange={event => setMemoContent(event.target.value)} rows={5} /></label>
+      <fieldset><legend>关联原文标记（可选）</legend>{visibleAnnotations.map(annotation => <label className="ep-analysis-form__check" key={annotation.annotation_id}><input type="checkbox" checked={selectedAnnotationIds.includes(annotation.annotation_id)} onChange={() => toggle(selectedAnnotationIds, annotation.annotation_id, setSelectedAnnotationIds)} /><span>{annotation.quote}</span></label>)}</fieldset>
+      {error ? <p role="alert">{error}</p> : null}
+      <footer><button className="qx-btn qx-btn--ghost" type="button" disabled={pending} onClick={resetComposer}>取消</button><button className="qx-btn qx-btn--primary" type="submit" disabled={pending || !memoTitle.trim() || !memoContent.trim()}>{pending ? '正在保存' : '保存备忘'}</button></footer>
+    </form> : null}
+    {candidateMemos.length ? <section className="ep-analysis__group" aria-label="待确认的 Agent 建议"><h3 className="qx-heading">待你判断</h3>{candidateMemos.map(memo => <ResearchAnalysisCandidateCard key={memo.memo_id} kindLabel="备忘草稿" title={memo.title} detail={memo.content} version={memo.version} onDecide={(decision, reason, version) => onDecideMemo(memo.memo_id, decision, reason, version)} />)}</section> : null}
+    <section className="ep-analysis__group" aria-label="原文标记">
+      <div className="ep-analysis__group-head"><h3 className="qx-heading">原文标记</h3><div className="qx-segmented" aria-label="分析范围">{selectedMaterialId ? <button type="button" aria-pressed={scope === 'material'} onClick={() => setScope('material')}>当前材料</button> : null}<button type="button" aria-pressed={scope === 'task'} onClick={() => setScope('task')}>全部研究</button></div></div>
+      {visibleAnnotations.map(annotation => <article className="ep-analysis__annotation" key={annotation.annotation_id}><blockquote>{annotation.quote}</blockquote><p>{annotation.note}</p>{annotation.reflection ? <p className="ep-analysis__reflection"><strong>研究者反思</strong>{annotation.reflection}</p> : null}<p className="qx-meta">{[materialNames?.[annotation.material_id], annotation.case_label, annotation.observed_at, formatMaterialLocator({ page: annotation.locator.page, headingPath: annotation.locator.section_path, paragraph: annotation.locator.paragraph, lineStart: annotation.locator.line_start, lineEnd: annotation.locator.line_end, charStart: annotation.locator.char_start, charEnd: annotation.locator.char_end })].filter(Boolean).join(' · ')}</p></article>)}
+      {!visibleAnnotations.length ? <p className="ep-analysis__empty">先在材料原文中拖选关键片段。原文证据会在这里逐步形成批注、分析备忘与案例比较。</p> : null}
     </section>
-  )
+    <section className="ep-analysis__group" aria-label="已确认分析"><h3 className="qx-heading">分析备忘</h3>{confirmedMemos.map(memo => <article className="qx-card ep-analysis__memo" key={memo.memo_id}><span className="qx-meta">研究者确认 · {memoKindLabels[memo.memo_kind]}</span><h4 className="qx-card__title">{memo.title}</h4><p className="qx-card__body">{memo.content}</p></article>)}{!confirmedMemos.length ? <p className="ep-analysis__empty">把观察和判断写成备忘，保留你思考的过程。</p> : null}</section>
+    <ResearchCaseComparison annotations={snapshot.annotations} comparisons={snapshot.comparisons} materialNames={materialNames} onCreate={onCreateComparison} onDecide={onDecideComparison} />
+  </section>
 }
 
 export type { ResearchAnalysisWorkspaceProps }

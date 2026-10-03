@@ -445,7 +445,7 @@ export async function stopAgentRun(runId: string, options: { keepalive?: boolean
 export async function saveCanvasNode(conversationId: string, nodeId: string, body: AgentCanvasNodeEditRequest): Promise<AgentConversation> {
   const result = await editAgentCanvasNode({ client: apiClient, headers: { 'Idempotency-Key': crypto.randomUUID() }, path: { conversation_id: conversationId, node_id: nodeId }, body })
   if (!result.data) {
-    throw new Error(result.response.status === 409 ? '卡片已在另一处更新。你的草稿仍保留，请载入最新版本后核对。' : '卡片未保存，请检查连接后重试。')
+    throw new Error(result.response?.status === 409 ? '卡片已在另一处更新。你的草稿仍保留，请载入最新版本后核对。' : '卡片未保存，请检查连接后重试。')
   }
   return result.data as AgentConversation
 }

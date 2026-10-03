@@ -96,7 +96,8 @@ describe('ResearchAnalysisWorkspace', () => {
     fireEvent.click(within(form).getByRole('checkbox', { name: /姐姐承担了大部分照护/ }))
     fireEvent.change(within(form).getByRole('textbox', { name: '备忘标题' }), { target: { value: '并非唯一解释' } })
     fireEvent.change(within(form).getByRole('textbox', { name: '备忘内容' }), { target: { value: '还需检查经济资源差异' } })
-    fireEvent.change(within(form).getByRole('combobox', { name: '备忘类型' }), { target: { value: 'reflexive' } })
+    fireEvent.click(within(form).getByRole('combobox', { name: '备忘类型' }))
+    fireEvent.click(screen.getByRole('option', { name: '反思备忘' }))
     fireEvent.click(within(form).getByRole('button', { name: '保存备忘' }))
 
     expect(createMemo).toHaveBeenCalledWith({

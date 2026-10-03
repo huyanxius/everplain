@@ -43,15 +43,15 @@ export function CanvasCardEditor({ conversation, node, onSaved, draftCache }: {
     finally { setPending(false) }
   }
 
-  return <div className="canvas-card-editor">
+  return <div className="ep-canvas-editor">
     {draft ? <form onSubmit={event => { event.preventDefault(); void save() }}>
-      <label>标题<input aria-label="标题" value={draft.title} required maxLength={240} disabled={pending} onChange={event => setDraft({ ...draft, title: event.target.value })} /></label>
-      <label>说明<textarea aria-label="说明" value={draft.summary} maxLength={1200} rows={6} disabled={pending} onChange={event => setDraft({ ...draft, summary: event.target.value })} /></label>
+      <label>标题<input className="qx-input" aria-label="标题" value={draft.title} required maxLength={240} disabled={pending} onChange={event => setDraft({ ...draft, title: event.target.value })} /></label>
+      <label>说明<textarea className="qx-textarea" aria-label="说明" value={draft.summary} maxLength={1200} rows={6} disabled={pending} onChange={event => setDraft({ ...draft, summary: event.target.value })} /></label>
       <p>引用保留；改写后的判断需要重新验证。</p>
-      <div className="canvas-card-editor__actions"><button type="submit" disabled={pending || !draft.title.trim()}>{pending ? '正在保存…' : '保存修改'}</button><button type="button" disabled={pending} onClick={() => { setDraft(null); setError('') }}>取消</button></div>
-    </form> : <button type="button" onClick={() => { setDraft({ title: node.title, summary: node.summary ?? '', original: node, version: conversation.canvas_edit_version ?? 0 }); setNotice('') }}>编辑卡片</button>}
-    {error ? <div role="alert"><p>{error}</p><button type="button" disabled={pending} onClick={() => void reload()}>载入最新版本，保留草稿</button></div> : null}
+      <footer className="ep-canvas-editor__actions"><button className="qx-btn qx-btn--primary" type="submit" disabled={pending || !draft.title.trim()}>{pending ? '正在保存…' : '保存修改'}</button><button className="qx-btn qx-btn--ghost" type="button" disabled={pending} onClick={() => { setDraft(null); setError('') }}>取消</button></footer>
+    </form> : <button className="qx-btn qx-btn--ghost" type="button" onClick={() => { setDraft({ title: node.title, summary: node.summary ?? '', original: node, version: conversation.canvas_edit_version ?? 0 }); setNotice('') }}>编辑卡片</button>}
+    {error ? <div role="alert"><p>{error}</p><button className="qx-btn qx-btn--ghost" type="button" disabled={pending} onClick={() => void reload()}>载入最新版本，保留草稿</button></div> : null}
     {notice ? <p role="status">{notice}</p> : null}
-    {!draft && suggestion ? <section className="canvas-card-editor__suggestion" aria-label="Agent 修改建议"><span>Agent 建议 · 等待你确认</span><h4>{suggestion.title}</h4><p>{suggestion.summary}</p><div className="canvas-card-editor__actions"><button type="button" onClick={() => setDraft({ title: suggestion.title, summary: suggestion.summary ?? '', original: node, version: conversation.canvas_edit_version ?? 0 })}>核对并采纳</button><button type="button" onClick={() => setDismissed([...dismissed, suggestion.key])}>暂不采纳</button></div></section> : null}
+    {!draft && suggestion ? <section className="ep-canvas-editor__suggestion" aria-label="Agent 修改建议"><p className="qx-meta">Agent 建议 · 等待你确认</p><h4 className="qx-heading">{suggestion.title}</h4><p>{suggestion.summary}</p><footer className="ep-canvas-editor__actions"><button className="qx-btn qx-btn--ghost" type="button" onClick={() => setDraft({ title: suggestion.title, summary: suggestion.summary ?? '', original: node, version: conversation.canvas_edit_version ?? 0 })}>核对并采纳</button><button className="qx-btn qx-btn--ghost" type="button" onClick={() => setDismissed([...dismissed, suggestion.key])}>暂不采纳</button></footer></section> : null}
   </div>
 }

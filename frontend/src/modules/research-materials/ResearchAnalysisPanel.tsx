@@ -9,7 +9,7 @@ import type { CreateAnalysisMemoInput, CreateCaseComparisonInput, ResearchAnalys
 import type { ResearchCycleSnapshot } from './researchCycleModel'
 import { listResearchMaterials } from './researchMaterialsApi'
 import type { ResearchMaterial } from './researchMaterialsModel'
-import './research-materials.css'
+import './research-analysis-view.css'
 
 type ResearchAnalysisPanelProps = {
   readonly embedded?: boolean
@@ -136,45 +136,17 @@ export function ResearchAnalysisPanel({ taskId, refreshKey = 0, embedded = false
     setNotice(decision === 'confirmed' ? '案例比较已确认。' : '案例比较已拒绝。')
   }
 
-  return (
-    <section className={`qx-analysis${embedded ? ' is-embedded' : ''}`} role="region" aria-label="分析">
-      {!embedded ? <header className="qx-analysis__head">
-        <span className="qx-eyebrow">研究分析工作台</span>
-        <h2>从原文证据到分析结论</h2>
-        <p className="qx-analysis__summary">
-          {snapshot
-            ? `${snapshot.annotations.length} 条片段标记 · ${snapshot.memos.length} 条备忘`
-            : '在材料里标出的片段会收拢到这里，做成备忘和案例比较。'}
-        </p>
-      </header> : null}
-
-      {notice ? <p className="qx-message is-success" role="status">{notice}</p> : null}
-      {error ? <p className="qx-message is-error" role="alert"><WarningCircleIcon size={15} aria-hidden="true" />{error}</p> : null}
-      {cycleError ? <p className="qx-message is-error" role="alert"><WarningCircleIcon size={15} aria-hidden="true" />{cycleError}</p> : null}
-      {cycleLoading && !cycle ? <p className="qx-message" role="status"><CircleNotchIcon className="is-spinning" size={16} aria-hidden="true" />正在整理证据缺口</p> : null}
-
-      {loading && !snapshot ? (
-        <p className="qx-message" role="status"><CircleNotchIcon className="is-spinning" size={16} aria-hidden="true" />正在加载分析记录</p>
-      ) : snapshot ? (
-        <>
-          {cycle?.gaps.length ? embedded ? <details className="coding-workspace__gaps"><summary>研究检查 · {cycle.gaps.length} 项待完善</summary><ResearchCyclePanel snapshot={cycle} /></details> : <ResearchCyclePanel snapshot={cycle} /> : null}
-          <ResearchAnalysisWorkspace
-            snapshot={snapshot}
-            // 分析页是项目级的，没有「当前材料」这回事；传第一份材料只会凭空多出一个
-            // 意义不明的筛选按钮。要按单份材料看，入口在材料阅读台那边。
-            selectedMaterialId={null}
-            materialNames={Object.fromEntries(materials.map((material) => [material.materialId, material.filename]))}
-            onCreateMemo={saveMemo}
-            onDecideMemo={decideMemo}
-            onCreateComparison={saveComparison}
-            onDecideComparison={decideComparison}
-          />
-        </>
-      ) : (
-        <p className="research-analysis__empty">研究分析记录暂时无法加载。</p>
-      )}
-    </section>
-  )
+  return <section className={`ep-analysis-page${embedded ? ' ep-analysis-page--embedded' : ''}`} role="region" aria-label="分析">
+    {!embedded ? <header className="ep-analysis-page__head"><h2 className="qx-section-title">研究分析</h2><p className="qx-card__body">从原文证据到分析结论</p></header> : null}
+    {notice ? <p className="ep-analysis-notice" role="status">{notice}</p> : null}
+    {error ? <div className="ep-analysis-notice" role="alert"><WarningCircleIcon size={16} /><span>{error}</span><button className="qx-btn qx-btn--secondary" type="button" onClick={() => void loadAnalysis()}>重试读取分析</button></div> : null}
+    {cycleError ? <p className="ep-analysis-notice" role="alert">{cycleError}</p> : null}
+    {cycleLoading && !cycle ? <p className="qx-meta" role="status"><CircleNotchIcon size={16} />正在整理证据缺口</p> : null}
+    {loading && !snapshot ? <p className="qx-meta" role="status">正在加载分析记录</p> : snapshot ? <>
+      <ResearchAnalysisWorkspace snapshot={snapshot} selectedMaterialId={null} materialNames={Object.fromEntries(materials.map(material => [material.materialId, material.filename]))} onCreateMemo={saveMemo} onDecideMemo={decideMemo} onCreateComparison={saveComparison} onDecideComparison={decideComparison} />
+      {cycle?.gaps.length ? <details className="ep-analysis-page__cycle"><summary>研究检查 · {cycle.gaps.length} 项待完善</summary><ResearchCyclePanel snapshot={cycle} /></details> : null}
+    </> : !error ? <p className="qx-meta">研究分析记录暂时无法加载。</p> : null}
+  </section>
 }
 
 export type { ResearchAnalysisPanelProps }

@@ -1,3 +1,5 @@
+import { Select } from '../../ui/Select'
+import './research-analysis-view.css'
 import { useMemo, useState } from 'react'
 
 import type {
@@ -85,27 +87,27 @@ function ComparisonDiagnostics({ comparison }: { comparison: CaseComparison }) {
   const gaps = distinct([...(grouped.evidence_gap ?? []), ...comparison.evidence_gaps])
 
   return (
-    <div className="research-comparison__diagnostics">
+    <dl className="ep-comparison__diagnostics">
       {(['support', 'counterexample', 'contradict'] as const).map((kind) => (
         grouped[kind]?.length ? (
-          <section key={kind}>
-            <h5>{findingLabels[kind]}</h5>
-            {grouped[kind].map((statement) => <p key={statement}>{statement}</p>)}
-          </section>
+          <div key={kind}>
+            <dt>{findingLabels[kind]}</dt>
+            {grouped[kind].map((statement) => <dd key={statement}>{statement}</dd>)}
+          </div>
         ) : null
       ))}
-      {competing.length ? <section><h5>竞争解释</h5>{competing.map((item) => <p key={item}>{item}</p>)}</section> : null}
-      {gaps.length ? <section><h5>证据缺口</h5>{gaps.map((item) => <p key={item}>{item}</p>)}</section> : null}
+      {competing.length ? <div><dt>竞争解释</dt>{competing.map(item => <dd key={item}>{item}</dd>)}</div> : null}
+      {gaps.length ? <div><dt>证据缺口</dt>{gaps.map(item => <dd key={item}>{item}</dd>)}</div> : null}
       {comparison.next_steps.length ? (
-        <section>
-          <h5>下一步行动</h5>
+        <div>
+          <dt>下一步行动</dt>
           {comparison.next_steps.map((step) => (
-            <p key={`${step.kind}:${step.action}`}><span>{nextStepLabels[step.kind] ?? step.kind}</span>{step.action}</p>
+            <dd key={`${step.kind}:${step.action}`}><span>{nextStepLabels[step.kind] ?? step.kind}</span>{step.action}</dd>
           ))}
-        </section>
+        </div>
       ) : null}
-      <section className="research-comparison__theory"><h5>理论含义</h5><p>{comparison.theory_implication}</p></section>
-    </div>
+      <div className="ep-comparison__theory"><dt>理论含义</dt><dd>{comparison.theory_implication}</dd></div>
+    </dl>
   )
 }
 
@@ -135,21 +137,21 @@ function CandidateComparison({
   }
 
   return (
-    <article className="research-comparison research-comparison--candidate" aria-label={`案例比较候选：${comparison.title}`}>
-      <header><span>Agent 建议 · 待确认</span><small>{comparison.case_labels.join(' · ')}</small></header>
-      <strong>{comparison.title}</strong>
-      <p className="research-comparison__question">{comparison.question}</p>
+    <article className="qx-card ep-comparison ep-comparison--candidate" aria-label={`案例比较候选：${comparison.title}`}>
+      <header><span className="qx-meta">{comparison.case_labels.join(' · ')}</span><span className="qx-badge">Agent 建议 · 待确认</span></header>
+      <h4 className="qx-card__title">{comparison.title}</h4>
+      <p className="ep-comparison__question">{comparison.question}</p>
       <ComparisonDiagnostics comparison={comparison} />
       {onDecide ? (
         <>
           <label>
             <span>判断依据</span>
-            <textarea aria-label="案例比较判断依据" value={reason} disabled={pending !== null} onChange={(event) => setReason(event.target.value)} rows={2} />
+            <textarea className="qx-textarea" aria-label="案例比较判断依据" value={reason} disabled={pending !== null} onChange={(event) => setReason(event.target.value)} rows={2} />
           </label>
-          {error ? <p role="alert" className="research-analysis-candidate__error">{error}</p> : null}
+          {error ? <p role="alert" className="ep-analysis-error">{error}</p> : null}
           <footer>
-            <button type="button" disabled={!normalizedReason || pending !== null} onClick={() => { void decide('rejected') }}>拒绝案例比较</button>
-            <button type="button" disabled={!normalizedReason || pending !== null} onClick={() => { void decide('confirmed') }}>确认案例比较</button>
+            <button className="qx-btn qx-btn--ghost" type="button" disabled={!normalizedReason || pending !== null} onClick={() => { void decide('rejected') }}>拒绝案例比较</button>
+            <button className="qx-btn qx-btn--ghost" type="button" disabled={!normalizedReason || pending !== null} onClick={() => { void decide('confirmed') }}>确认案例比较</button>
           </footer>
         </>
       ) : null}
@@ -159,10 +161,10 @@ function CandidateComparison({
 
 function ConfirmedComparison({ comparison }: { comparison: CaseComparison }) {
   return (
-    <article className="research-comparison" aria-label={`已确认案例比较：${comparison.title}`}>
-      <header><span>研究者确认 · 案例比较</span><small>{comparison.case_labels.join(' · ')}</small></header>
-      <strong>{comparison.title}</strong>
-      <p className="research-comparison__question">{comparison.question}</p>
+    <article className="qx-card ep-comparison" aria-label={`已确认案例比较：${comparison.title}`}>
+      <header><span className="qx-meta">研究者确认 · 案例比较</span><span className="qx-meta">{comparison.case_labels.join(' · ')}</span></header>
+      <h4 className="qx-card__title">{comparison.title}</h4>
+      <p className="ep-comparison__question">{comparison.question}</p>
       <ComparisonDiagnostics comparison={comparison} />
     </article>
   )
@@ -259,12 +261,13 @@ export function ResearchCaseComparison({
   }
 
   return (
-    <section className="research-comparisons" aria-label="案例比较">
-      {candidates.length ? <div className="research-comparisons__list"><h4>待你判断的比较</h4>{candidates.map((comparison) => <CandidateComparison key={comparison.comparison_id} comparison={comparison} onDecide={onDecide} />)}</div> : null}
-      {confirmed.length ? <div className="research-comparisons__list"><h4>已确认的比较</h4>{confirmed.map((comparison) => <ConfirmedComparison key={comparison.comparison_id} comparison={comparison} />)}</div> : null}
-      {onCreate ? <button className="research-comparisons__create" type="button" onClick={() => setComposerOpen(true)}>建立案例比较</button> : null}
+    <section className="ep-comparisons" aria-label="案例比较">
+      <header className="ep-analysis__group-head"><h3 className="qx-heading">案例比较</h3>{onCreate ? <button className="qx-btn qx-btn--secondary" type="button" onClick={() => setComposerOpen(true)}>建立案例比较</button> : null}</header>
+      {candidates.length ? <div className="ep-comparisons__list"><h4>待你判断的比较</h4>{candidates.map((comparison) => <CandidateComparison key={comparison.comparison_id} comparison={comparison} onDecide={onDecide} />)}</div> : null}
+      {confirmed.length ? <div className="ep-comparisons__list"><h4>已确认的比较</h4>{confirmed.map((comparison) => <ConfirmedComparison key={comparison.comparison_id} comparison={comparison} />)}</div> : null}
+      {!candidates.length && !confirmed.length && !composerOpen ? <p className="ep-analysis__empty">把不同材料、案例或时间点放在一起，比较它们的共同点与差异。</p> : null}
       {composerOpen ? (
-        <form className="research-comparison-form" aria-label="建立案例比较" onSubmit={(event) => { event.preventDefault(); void submit() }}>
+        <form className="ep-comparison-form" aria-label="建立案例比较" onSubmit={(event) => { event.preventDefault(); void submit() }}>
           <fieldset>
             <legend>比较单元 <small>至少选择两个材料、案例或时间点</small></legend>
             {units.map((unit) => <label key={unit.id}><input type="checkbox" checked={selectedUnitIds.includes(unit.id)} onChange={() => toggle(selectedUnitIds, unit.id, setSelectedUnitIds)} /><span>{unit.label}</span></label>)}
@@ -273,21 +276,21 @@ export function ResearchCaseComparison({
             <legend>原文证据</legend>
             {annotations.map((annotation) => <label key={annotation.annotation_id}><input type="checkbox" checked={selectedAnnotationIds.includes(annotation.annotation_id)} onChange={() => toggle(selectedAnnotationIds, annotation.annotation_id, setSelectedAnnotationIds)} /><span>{annotation.quote}</span></label>)}
           </fieldset>
-          <label><span>比较标题</span><input aria-label="比较标题" value={title} onChange={(event) => setTitle(event.target.value)} /></label>
-          <label><span>比较问题</span><textarea aria-label="比较问题" value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} /></label>
-          <label><span>支持证据</span><textarea aria-label="支持证据" value={support} onChange={(event) => setSupport(event.target.value)} rows={2} /></label>
-          <label><span>反例</span><textarea aria-label="反例" value={counterexample} onChange={(event) => setCounterexample(event.target.value)} rows={2} /></label>
-          <label><span>矛盾材料</span><textarea aria-label="矛盾材料" value={contradiction} onChange={(event) => setContradiction(event.target.value)} rows={2} /></label>
-          <label><span>竞争解释</span><textarea aria-label="竞争解释" value={competingExplanation} onChange={(event) => setCompetingExplanation(event.target.value)} rows={2} /></label>
-          <label><span>证据缺口</span><textarea aria-label="证据缺口" value={evidenceGap} onChange={(event) => setEvidenceGap(event.target.value)} rows={2} /></label>
-          <label><span>理论含义</span><textarea aria-label="理论含义" value={theoryImplication} onChange={(event) => setTheoryImplication(event.target.value)} rows={3} /></label>
-          <div className="research-comparison-form__next-step">
-            <label><span>行动类型</span><select aria-label="行动类型" value={nextStepKind} onChange={(event) => setNextStepKind(event.target.value)}>{Object.entries(nextStepLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label><span>优先级</span><select aria-label="优先级" value={nextStepPriority} onChange={(event) => setNextStepPriority(event.target.value)}><option value="high">高</option><option value="medium">中</option><option value="low">低</option></select></label>
+          <label><span>比较标题</span><input className="qx-input" aria-label="比较标题" value={title} onChange={(event) => setTitle(event.target.value)} /></label>
+          <label><span>比较问题</span><textarea className="qx-textarea" aria-label="比较问题" value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} /></label>
+          <label><span>支持证据</span><textarea className="qx-textarea" aria-label="支持证据" value={support} onChange={(event) => setSupport(event.target.value)} rows={2} /></label>
+          <label><span>反例</span><textarea className="qx-textarea" aria-label="反例" value={counterexample} onChange={(event) => setCounterexample(event.target.value)} rows={2} /></label>
+          <label><span>矛盾材料</span><textarea className="qx-textarea" aria-label="矛盾材料" value={contradiction} onChange={(event) => setContradiction(event.target.value)} rows={2} /></label>
+          <label><span>竞争解释</span><textarea className="qx-textarea" aria-label="竞争解释" value={competingExplanation} onChange={(event) => setCompetingExplanation(event.target.value)} rows={2} /></label>
+          <label><span>证据缺口</span><textarea className="qx-textarea" aria-label="证据缺口" value={evidenceGap} onChange={(event) => setEvidenceGap(event.target.value)} rows={2} /></label>
+          <label><span>理论含义</span><textarea className="qx-textarea" aria-label="理论含义" value={theoryImplication} onChange={(event) => setTheoryImplication(event.target.value)} rows={3} /></label>
+          <div className="ep-comparison-form__next-step">
+            <label><span>行动类型</span><Select aria-label="行动类型" value={nextStepKind} onChange={(nextValue) => setNextStepKind(nextValue)} options={Object.entries(nextStepLabels).map(([value, label]) => ({ value: value, label: label }))} /></label>
+            <label><span>优先级</span><Select aria-label="优先级" value={nextStepPriority} onChange={(nextValue) => setNextStepPriority(nextValue)} options={[{ value: "high", label: "高" }, { value: "medium", label: "中" }, { value: "low", label: "低" }]} /></label>
           </div>
-          <label><span>下一步行动</span><textarea aria-label="下一步行动" value={nextStepAction} onChange={(event) => setNextStepAction(event.target.value)} rows={2} /></label>
+          <label><span>下一步行动</span><textarea className="qx-textarea" aria-label="下一步行动" value={nextStepAction} onChange={(event) => setNextStepAction(event.target.value)} rows={2} /></label>
           {error ? <p role="alert">{error}</p> : null}
-          <footer><button type="button" onClick={resetComposer}>取消</button><button type="submit" disabled={!canSubmit || pending}>{pending ? '正在保存' : '保存案例比较'}</button></footer>
+          <footer><button className="qx-btn qx-btn--ghost" type="button" onClick={resetComposer}>取消</button><button className="qx-btn qx-btn--primary" type="submit" disabled={!canSubmit || pending}>{pending ? '正在保存' : '保存案例比较'}</button></footer>
         </form>
       ) : null}
     </section>

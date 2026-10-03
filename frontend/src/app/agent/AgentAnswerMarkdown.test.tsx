@@ -16,7 +16,7 @@ it('keeps source numbering stable across Markdown blocks and delegates the exact
   }</AgentAnswerMarkdown>)
   const chips = screen.getAllByRole('button', { name: '查看来源 2：研究笔记' })
   expect(chips).toHaveLength(2)
-  expect(chips[0]).toHaveTextContent('[2]')
+  expect(chips[0]).toHaveTextContent(/^2$/)
   fireEvent.click(chips[1])
   expect(select).toHaveBeenCalledWith(citations[1])
   expect(screen.getByRole('link', { name: '外部链接' })).toHaveAttribute('href', 'https://example.com')
@@ -33,5 +33,89 @@ it('waits for a matching source before rendering a chip and removes it when dele
   rerender(<AgentAnswerMarkdown citations={[citation]} onSelectCitation={select}>结论【material:document:segment】</AgentAnswerMarkdown>)
   expect(screen.getByRole('button', { name: '查看来源 1：研究笔记' })).toBeVisible()
   rerender(<AgentAnswerMarkdown citations={[{ ...citation, deleted: true }]} onSelectCitation={select}>结论【material:document:segment】</AgentAnswerMarkdown>)
+  expect(screen.queryByRole('button')).not.toBeInTheDocument()
+})
+
+
+it('retains citation buttons across updates and dispatches to the latest handler', () => {
+  const citation: AgentCitation = { citation_id: 'material:document:segment', label: '研究笔记', kind: 'research_material' }
+  const first = vi.fn()
+  const latest = vi.fn()
+  const { rerender } = render(<AgentAnswerMarkdown citations={[citation]} onSelectCitation={first}>结论【material:document:segment】</AgentAnswerMarkdown>)
+  const trigger = screen.getByRole('button', { name: '查看来源 1：研究笔记' })
+  trigger.focus()
+  rerender(<AgentAnswerMarkdown citations={[citation]} onSelectCitation={latest}>结论【material:document:segment】</AgentAnswerMarkdown>)
+  expect(screen.getByRole('button', { name: '查看来源 1：研究笔记' })).toBe(trigger)
+  expect(trigger).toHaveFocus()
+  fireEvent.click(trigger)
+  expect(latest).toHaveBeenCalledWith(citation)
+  expect(first).not.toHaveBeenCalled()
+})
+
+it('renders URL citation aliases before GFM can swallow their Chinese punctuation', () => {
+  const citation: AgentCitation = {
+    citation_id: 'web:https://example.invalid/qa-source-36', label: '网页资料',
+    kind: 'source', source_kind: 'web', source_id: 'https://example.invalid/qa-source-36',
+  }
+  const select = vi.fn()
+  const { container } = render(<AgentAnswerMarkdown citations={[{ citation_id: 'unused', label: '其他资料', kind: 'source' }, citation]} onSelectCitation={select}>{
+    '结论【web:https://example.invalid/qa-source-36】。后一句，再次【web:https://example.invalid/qa-source-36】；也见[web:https://example.invalid/qa-source-36]。'
+  }</AgentAnswerMarkdown>)
+  const chips = screen.getAllByRole('button', { name: '查看来源 2：网页资料' })
+  expect(chips).toHaveLength(3)
+  expect(container).toHaveTextContent('结论2。后一句，再次2；也见2。')
+  expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  fireEvent.click(chips[1])
+  expect(select).toHaveBeenCalledWith(citation)
+})
+
+it('preserves ordinary links and literal citation syntax inside code', () => {
+  const citation: AgentCitation = {
+    citation_id: 'web:https://example.invalid/qa-source-36', label: '网页资料',
+    kind: 'source', source_kind: 'web', source_id: 'https://example.invalid/qa-source-36',
+  }
+  render(<AgentAnswerMarkdown citations={[citation]} onSelectCitation={vi.fn()}>{[
+    'https://example.invalid/plain',
+    '[网页](https://example.invalid/page)',
+    '[web:https://example.invalid/qa-source-36](https://example.invalid/explicit)',
+    '[引用【web:https://example.invalid/qa-source-36】](https://example.invalid/label)',
+    '[web:https://example.invalid/qa-source-36][reference]',
+    '[reference]: https://example.invalid/reference',
+    '`【web:https://example.invalid/qa-source-36】`',
+    '```text\n【web:https://example.invalid/qa-source-36】\n```',
+  ].join('\n\n')}</AgentAnswerMarkdown>)
+  expect(screen.getByRole('link', { name: 'https://example.invalid/plain' })).toHaveAttribute('href', 'https://example.invalid/plain')
+  expect(screen.getByRole('link', { name: '网页' })).toHaveAttribute('href', 'https://example.invalid/page')
+  expect(screen.getAllByRole('link', { name: 'web:https://example.invalid/qa-source-36' })[0]).toHaveAttribute('href', 'https://example.invalid/explicit')
+  expect(screen.getByRole('link', { name: '引用【web:https://example.invalid/qa-source-36】' })).toHaveAttribute('href', 'https://example.invalid/label')
+  expect(screen.getAllByRole('link', { name: 'web:https://example.invalid/qa-source-36' })).toHaveLength(2)
+  expect(screen.getAllByText('【web:https://example.invalid/qa-source-36】', { selector: 'code' })).toHaveLength(2)
+  expect(screen.queryByRole('button')).not.toBeInTheDocument()
+})
+
+
+it('keeps the existing hidden-marker contract for unmatched, deleted and partial URL citations', () => {
+  const citation: AgentCitation = { citation_id: 'web:https://example.invalid/qa-source-36', label: '网页资料', kind: 'source', source_kind: 'web', source_id: 'https://example.invalid/qa-source-36' }
+  const select = vi.fn()
+  const { container, rerender } = render(<AgentAnswerMarkdown citations={[]} onSelectCitation={select}>结论【web:https://example.invalid/qa-source-36】。普通【未知标注】。</AgentAnswerMarkdown>)
+  expect(container).toHaveTextContent('结论。普通【未知标注】。')
+  expect(container).not.toHaveTextContent('example.invalid')
+  expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  rerender(<AgentAnswerMarkdown citations={[{ ...citation, deleted: true }]} onSelectCitation={select}>结论【web:https://example.invalid/qa-source-36】。</AgentAnswerMarkdown>)
+  expect(container).toHaveTextContent('结论。')
+  expect(container).not.toHaveTextContent('example.invalid')
+  rerender(<AgentAnswerMarkdown citations={[citation]} onSelectCitation={select}>结论【web:https://example.invalid/qa-source-</AgentAnswerMarkdown>)
+  expect(container).toHaveTextContent(/^结论$/)
+  expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button')).not.toBeInTheDocument()
+})
+
+it('leaves a citation-shaped shortcut reference as an authored Markdown link', () => {
+  const citation: AgentCitation = { citation_id: 'source:known', label: '来源', kind: 'source' }
+  render(<AgentAnswerMarkdown citations={[citation]} onSelectCitation={vi.fn()}>{
+    '[source:known]\n\n[source:known]: https://example.invalid/reference'
+  }</AgentAnswerMarkdown>)
+  expect(screen.getByRole('link', { name: 'source:known' })).toHaveAttribute('href', 'https://example.invalid/reference')
   expect(screen.queryByRole('button')).not.toBeInTheDocument()
 })

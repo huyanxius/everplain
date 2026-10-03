@@ -274,4 +274,20 @@ describe('M5 research delivery controls', () => {
     expect(screen.getByText('知识版本 release-7')).toBeVisible()
     expect(screen.queryByRole('button', { name: '生成研究框架草稿' })).not.toBeInTheDocument()
   })
+
+  it('completes a ready saved version only once and enables the next version separately', async () => {
+    const first = deferred<void>()
+    const onConfirm = vi.fn(() => first.promise)
+    const props = { gate: { ready: true, checks: [{ code: 'review', label: '章节已审阅', passed: true }], blockers: [] }, saveState: 'saved' as const, onConfirm }
+    const { rerender } = render(<M5CompletionGate {...props} version={1} />)
+    const confirm = screen.getByRole('button', { name: '完成研究' })
+    fireEvent.click(confirm)
+    fireEvent.click(confirm)
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(confirm).toBeDisabled()
+    first.resolve()
+    expect(await screen.findByRole('button', { name: '研究已完成' })).toBeDisabled()
+    rerender(<M5CompletionGate {...props} version={2} />)
+    expect(await screen.findByRole('button', { name: '完成研究' })).toBeEnabled()
+  })
 })

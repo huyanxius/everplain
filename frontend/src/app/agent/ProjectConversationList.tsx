@@ -27,7 +27,7 @@ export function ProjectConversationList({ projects, conversations, activeTaskId,
       const open = expanded.has(project.task_id)
       return <section role="group" aria-label={project.project_title} key={project.task_id} className="project-conversation-list__project">
         <div className="project-conversation-list__heading" data-current={activeTaskId === project.task_id || undefined}>
-          <button type="button" aria-expanded={open} onClick={() => setExpanded((current) => {
+          <button className="qx-btn qx-btn--ghost" type="button" aria-expanded={open} onClick={() => setExpanded((current) => {
             const next = new Set(current)
             if (open) next.delete(project.task_id)
             else next.add(project.task_id)
@@ -38,7 +38,7 @@ export function ProjectConversationList({ projects, conversations, activeTaskId,
             <span>{project.project_title}</span>
           </button>
           {onDeleteProject ? <ProjectActionsMenu taskId={project.task_id} title={project.project_title} onDelete={onDeleteProject} /> : null}
-          {project.status !== 'archived' ? <button type="button" className="project-conversation-list__new" aria-label={text(`在${project.project_title}中新建对话`, `New conversation in ${project.project_title}`)} title={text('新建对话', 'New conversation')} onClick={() => onStart(project.task_id)}><PlusIcon size={15} /></button> : null}
+          {project.status !== 'archived' ? <button type="button" className="qx-btn qx-btn--ghost project-conversation-list__new" aria-label={text(`在${project.project_title}中新建对话`, `New conversation in ${project.project_title}`)} title={text('新建对话', 'New conversation')} onClick={() => onStart(project.task_id)}><PlusIcon size={15} /></button> : null}
         </div>
         {open ? <div className="project-conversation-list__children">
           <div className="project-conversation-list__resources">
@@ -52,7 +52,7 @@ export function ProjectConversationList({ projects, conversations, activeTaskId,
     })}
     <section role="group" aria-label={text('独立对话', 'Independent conversations')}>
       <div className="project-conversation-list__independent-heading"><h3>{text('独立对话', 'Independent conversations')}</h3>
-        {onStartIndependent ? <button type="button" className="agent-conversation-history__new" aria-label={text('开始新对话', 'Start a new conversation')} title={text('开始新对话', 'Start a new conversation')} onClick={onStartIndependent}><PlusIcon size={15} /></button> : null}
+        {onStartIndependent ? <button type="button" className="qx-btn qx-btn--ghost agent-conversation-history__new" aria-label={text('开始新对话', 'Start a new conversation')} title={text('开始新对话', 'Start a new conversation')} onClick={onStartIndependent}><PlusIcon size={15} /></button> : null}
       </div>
       {groups.unassigned.map(renderConversation)}
       {!groups.unassigned.length ? <p>{text('未归属项目的对话会显示在这里', 'Conversations without a project appear here')}</p> : null}

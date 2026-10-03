@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as archiveApi from './professionalMaterialsApi'
 import { ProfessionalMaterialArchivePanel } from './ProfessionalMaterialArchive'
@@ -48,6 +48,8 @@ const archive = {
   },
 }
 
+afterEach(cleanup)
+
 describe('professional material archive panel', () => {
   beforeEach(() => {
     vi.mocked(archiveApi.getProfessionalMaterialArchive).mockResolvedValue(archive)
@@ -69,8 +71,10 @@ describe('professional material archive panel', () => {
     expect(await screen.findByText('当前材料仍可人工阅读。')).toBeInTheDocument()
     expect(screen.getByText('限制模型处理').nextSibling).toHaveTextContent('1')
 
-    fireEvent.change(screen.getByLabelText('去标识化'), { target: { value: 'complete' } })
-    fireEvent.change(screen.getByLabelText('模型处理'), { target: { value: 'external_allowed' } })
+    fireEvent.click(screen.getByLabelText('去标识化'))
+    fireEvent.click(screen.getByRole('option', { name: '已完成' }))
+    fireEvent.click(screen.getByLabelText('模型处理'))
+    fireEvent.click(screen.getByRole('option', { name: '允许外部模型' }))
     fireEvent.click(screen.getByRole('button', { name: '保存材料档案' }))
 
     await waitFor(() => expect(archiveApi.updateProfessionalMaterialProfile).toHaveBeenCalledWith(
@@ -82,5 +86,23 @@ describe('professional material archive panel', () => {
       }),
     ))
     expect(await screen.findByText('材料档案已保存。')).toBeInTheDocument()
+  })
+
+  it('keeps profile edits while opening the new organization and literature views', async () => {
+    render(<ProfessionalMaterialArchivePanel taskId="task-1" selectedMaterial={selectedMaterial} materials={[selectedMaterial]} onMaterialsChanged={vi.fn()} />)
+    await screen.findByRole('tab', { name: '材料信息' })
+    fireEvent.change(screen.getByLabelText('专业类型'), { target: { value: '补充访谈' } })
+    fireEvent.click(screen.getByRole('tab', { name: '组织材料' }))
+    expect(screen.getByRole('textbox', { name: '新批次名称' })).toBeVisible()
+    expect(screen.getByRole('textbox', { name: '集合名称' })).toBeVisible()
+    expect(screen.getByRole('textbox', { name: '个案名称' })).toBeVisible()
+    expect(screen.getByRole('combobox', { name: '关联材料' })).toBeVisible()
+    fireEvent.click(screen.getByRole('tab', { name: '文献交换' }))
+    expect(screen.getByRole('textbox', { name: 'DOI' })).toBeVisible()
+    expect(screen.getByRole('combobox', { name: '文献交换格式' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '导入条目' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '导出' })).toBeVisible()
+    fireEvent.click(screen.getByRole('tab', { name: '材料信息' }))
+    expect(screen.getByLabelText('专业类型')).toHaveValue('补充访谈')
   })
 })

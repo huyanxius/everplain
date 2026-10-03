@@ -46,8 +46,8 @@ export function ProjectCreatePopover({ anchor, title, saving, error, onTitleChan
       <input aria-label={text('项目名称', 'Project name')} value={title} maxLength={300} disabled={saving}
         placeholder={text('项目名称', 'Project name')} onChange={(event) => onTitleChange(event.target.value)} />
       <div>
-        <button type="button" disabled={saving} onClick={() => { onCancel(); anchor.focus() }}>{text('取消', 'Cancel')}</button>
-        <button className="is-primary" type="submit" disabled={saving || !title.trim()}>{saving ? text('创建中…', 'Creating…') : text('创建', 'Create')}</button>
+        <button className="qx-btn qx-btn--ghost" type="button" disabled={saving} onClick={() => { onCancel(); anchor.focus() }}>{text('取消', 'Cancel')}</button>
+        <button className="qx-btn qx-btn--primary is-primary" type="submit" disabled={saving || !title.trim()}>{saving ? text('创建中…', 'Creating…') : text('创建', 'Create')}</button>
       </div>
     </form>
     {error ? <p role="alert">{error}</p> : null}

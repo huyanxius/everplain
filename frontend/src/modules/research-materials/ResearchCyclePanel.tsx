@@ -1,3 +1,4 @@
+import './research-analysis-view.css'
 import type { ResearchCycleSnapshot } from './researchCycleModel'
 
 const destinationLabels: Record<string, string> = {
@@ -19,50 +20,9 @@ const sourceLabels: Record<string, string> = {
 export function ResearchCyclePanel({ snapshot }: { snapshot: ResearchCycleSnapshot }) {
   const visibleHints = snapshot.reporting_hints.filter((item) => item.status !== 'present')
 
-  return (
-    <section className="research-cycle" role="region" aria-label="证据缺口与下一轮材料">
-      <header>
-        <div>
-          <strong>证据缺口与下一轮材料</strong>
-          <span>从已确认分析和理论判断回到材料选择</span>
-        </div>
-        <code title={snapshot.content_hash}>循环 v{snapshot.version}</code>
-      </header>
-
-      {snapshot.gaps.length ? (
-        <div className="research-cycle__gaps">
-          {snapshot.gaps.map((gap) => (
-            <article key={gap.gap_id}>
-              <div className="research-cycle__tags">
-                <span>{destinationLabels[gap.destination] ?? gap.destination}</span>
-                <span>{priorityLabels[gap.priority] ?? gap.priority}</span>
-              </div>
-              <strong>{gap.description}</strong>
-              <p>{gap.suggested_action}</p>
-              <small>
-                依据：{sourceLabels[gap.source_kind] ?? gap.source_kind} {gap.source_id}
-                {gap.theory_plan_version ? ` · 理论计划 v${gap.theory_plan_version}` : ''}
-                {` · 循环 v${snapshot.version}`}
-              </small>
-            </article>
-          ))}
-        </div>
-      ) : <p className="research-cycle__empty">当前已确认分析没有形成新的材料缺口。</p>}
-
-      {visibleHints.length ? (
-        <details className="research-cycle__reporting">
-          <summary>报告覆盖提示（{visibleHints.length}）</summary>
-          <p>只提示报告覆盖，不影响理论或方法判断。</p>
-          <ul>
-            {visibleHints.map((hint) => (
-              <li key={`${hint.guideline}:${hint.item_key}`}>
-                <strong>{hint.guideline} · {hint.label}</strong>
-                <span>{hint.message}</span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-    </section>
-  )
+  return <section className="ep-cycle" role="region" aria-label="证据缺口与下一轮材料">
+    <header><h3 className="qx-heading">证据缺口与下一轮材料</h3><span className="qx-meta" title={snapshot.content_hash}>循环 v{snapshot.version}</span></header>
+    {snapshot.gaps.length ? <ol className="ep-cycle__gaps">{snapshot.gaps.map(gap => <li key={gap.gap_id}><div className="ep-cycle__meta"><span>{destinationLabels[gap.destination] ?? gap.destination}</span><span>{priorityLabels[gap.priority] ?? gap.priority}</span></div><h4 className="qx-card__title">{gap.description}</h4><p className="qx-card__body">{gap.suggested_action}</p><p className="qx-meta">依据：{sourceLabels[gap.source_kind] ?? gap.source_kind} {gap.source_id}{gap.theory_plan_version ? ` · 理论计划 v${gap.theory_plan_version}` : ''}{` · 循环 v${snapshot.version}`}</p></li>)}</ol> : <p className="ep-analysis__empty">当前已确认分析没有形成新的材料缺口。</p>}
+    {visibleHints.length ? <details className="ep-cycle__reporting"><summary>报告覆盖提示（{visibleHints.length}）</summary><p className="qx-meta">只提示报告覆盖，不影响理论或方法判断。</p><ul>{visibleHints.map(hint => <li key={`${hint.guideline}:${hint.item_key}`}><strong>{hint.guideline} · {hint.label}</strong><p>{hint.message}</p></li>)}</ul></details> : null}
+  </section>
 }

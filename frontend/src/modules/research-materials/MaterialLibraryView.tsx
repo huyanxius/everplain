@@ -1,8 +1,10 @@
+import { Select } from '../../ui/Select'
 import {
   ArrowClockwiseIcon,
   CheckCircleIcon,
   CircleNotchIcon,
   FilePlusIcon,
+  FileTextIcon,
   IdentificationCardIcon,
   MagnifyingGlassIcon,
   TrashIcon,
@@ -19,6 +21,7 @@ import {
   type ResearchMaterialKind,
   type ResearchMaterialSearchHit,
 } from './researchMaterialsModel'
+import './material-views.css'
 
 const MATERIAL_KINDS: readonly ResearchMaterialKind[] = [
   'paper',
@@ -63,7 +66,7 @@ function statusSummary(material: ResearchMaterial) {
     return { tone: 'pending' as const, icon: null, text: '等待解析' }
   }
   if (material.ingestionStatus === 'processing' || material.status === 'processing') {
-    return { tone: 'processing' as const, icon: <CircleNotchIcon className="is-spinning" size={14} aria-hidden="true" />, text: '正在解析' }
+    return { tone: 'processing' as const, icon: <CircleNotchIcon className="ep-material-library__spin" size={14} aria-hidden="true" />, text: '正在解析' }
   }
   if (material.ingestionStatus === 'failed' || material.status === 'failed') {
     return { tone: 'failed' as const, icon: <WarningCircleIcon size={14} aria-hidden="true" />, text: '解析失败' }
@@ -90,6 +93,7 @@ type MaterialLibraryViewProps = {
   readonly onOpenMaterial: (material: ResearchMaterial) => void
   readonly onOpenArchive: (material: ResearchMaterial) => void
   readonly onRetry: (material: ResearchMaterial) => void
+  readonly onReload: () => void
   readonly onDelete: (material: ResearchMaterial) => void
   readonly searchQuery: string
   readonly searchResults: readonly ResearchMaterialSearchHit[]
@@ -119,6 +123,7 @@ export function MaterialLibraryView({
   onOpenMaterial,
   onOpenArchive,
   onRetry,
+  onReload,
   onDelete,
   searchQuery,
   searchResults,
@@ -127,159 +132,51 @@ export function MaterialLibraryView({
   onSearchQueryChange,
   onOpenSearchResult,
 }: MaterialLibraryViewProps) {
-  const readyCount = materials.filter((material) => material.status === 'ready').length
-  const empty = !loading && !materials.length
-
-  const fileField = (
-    <input
-      ref={fileInputRef}
-      className="qx-library__file-input"
-      type="file"
-      accept={RESEARCH_MATERIAL_ACCEPT}
-      aria-label="选择研究材料文件"
-      onChange={onFileChange}
-    />
-  )
-
-  const kindField = (
-    <label className="qx-library__kind">
-      <span>类型</span>
-      <select
-        id="research-material-kind"
-        value={kind}
-        aria-label="材料类型"
-        onChange={(event) => onKindChange(event.target.value as ResearchMaterialKind)}
-      >
-        {MATERIAL_KINDS.map((item) => <option key={item} value={item}>{materialKindLabel(item)}</option>)}
-      </select>
-    </label>
-  )
-
-  const pickButton = (
-    <button type="button" className="qx-button qx-button--primary" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
-      {uploading ? <CircleNotchIcon className="is-spinning" size={16} aria-hidden="true" /> : <FilePlusIcon size={16} aria-hidden="true" />}
-      {uploading ? '正在上传' : '选择文件'}
-    </button>
-  )
-
-  return (
-    <section className="qx-library" aria-label="材料库">
-      <header className="qx-library__head">
-        <span className="qx-eyebrow">当前研究</span>
-        <h2 id="research-materials-heading">研究材料</h2>
-        <p className="qx-library__summary">
-          {materials.length
-            ? `${materials.length} 份材料${readyCount ? ` · ${readyCount} 份可检索` : ''}`
-            : '把论文、访谈和田野记录放在同一处'}
-        </p>
-      </header>
-
-      {error ? <p className="qx-message is-error" role="alert"><WarningCircleIcon size={15} aria-hidden="true" />{error}</p> : null}
-      {notice ? <p className="qx-message is-success" role="status"><CheckCircleIcon size={15} aria-hidden="true" />{notice}</p> : null}
-      {loading ? <p className="qx-message" role="status"><CircleNotchIcon className="is-spinning" size={16} aria-hidden="true" />正在加载材料</p> : null}
-
-      {!empty && !loading ? (
-        <div className="qx-library__search-area">
-          <label className="qx-library__search">
-            <MagnifyingGlassIcon size={17} aria-hidden="true" />
-            <span className="sr-only">检索全部材料</span>
-            <input
-              type="search"
-              aria-label="检索全部材料"
-              value={searchQuery}
-              placeholder="检索全部材料中的原文"
-              onChange={(event) => onSearchQueryChange(event.target.value)}
-            />
-            {searchLoading ? <CircleNotchIcon className="is-spinning" size={15} aria-label="正在检索" /> : null}
-          </label>
-          {searchError ? <p className="qx-library__search-note is-error" role="alert">{searchError}</p> : null}
-          {searchQuery.trim() && !searchLoading && !searchError ? (
-            <div className="qx-library__search-results" aria-label="材料检索结果">
-              <p>{searchResults.length ? `${searchResults.length} 处命中` : '没有找到匹配原文'}</p>
-              {searchResults.map((hit) => (
-                <button
-                  type="button"
-                  key={`${hit.materialId}:${hit.parseId}:${hit.segmentId}`}
-                  aria-label={`打开检索结果：${hit.title}，${searchLocator(hit)}`}
-                  onClick={() => onOpenSearchResult(hit)}
-                >
-                  <span><strong>{hit.title}</strong><small>{materialKindLabel(hit.materialKind)} · {searchLocator(hit)}</small></span>
-                  <q>{hit.excerpt}</q>
-                </button>
-              ))}
+  const readyCount = materials.filter(material => material.status === 'ready').length
+  const empty = !loading && !error && !materials.length
+  return <section className="ep-material-library" aria-label="材料库">
+    <header className="ep-material-library__header">
+      <div><h2 className="qx-section-title" id="research-materials-heading">研究材料</h2><p className="qx-meta">{materials.length ? `${materials.length} 份材料 · ${readyCount} 份可检索` : '把论文、访谈和田野记录放在同一处'}</p></div>
+      <button type="button" className="qx-btn qx-btn--primary" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
+        {uploading ? <CircleNotchIcon className="ep-material-library__spin" size={17} aria-hidden="true" /> : <FilePlusIcon size={17} aria-hidden="true" />}{uploading ? '正在上传' : '选择文件'}
+      </button>
+    </header>
+    <input ref={fileInputRef} className="ep-material-library__file-input" type="file" accept={RESEARCH_MATERIAL_ACCEPT} aria-label="选择研究材料文件" onChange={onFileChange} />
+    <div className="ep-material-library__toolbar">
+      {!empty && !loading ? <label className="qx-search ep-material-library__search"><MagnifyingGlassIcon size={18} aria-hidden="true" /><input type="search" aria-label="检索全部材料" value={searchQuery} placeholder="检索全部材料中的原文" onChange={event => onSearchQueryChange(event.target.value)} />{searchLoading ? <CircleNotchIcon className="ep-material-library__spin" size={16} aria-label="正在检索" /> : null}</label> : null}
+      <label className="ep-material-library__kind"><span className="qx-meta">导入类型</span><Select className="qx-input" value={kind} aria-label="材料类型" onChange={nextValue => onKindChange(nextValue as ResearchMaterialKind)} options={MATERIAL_KINDS.map(item => ({ value: item, label: materialKindLabel(item) }))} /></label>
+    </div>
+    {error ? <div className="ep-material-notice" role="alert"><WarningCircleIcon size={17} aria-hidden="true" /><span>{error}</span><button className="qx-btn qx-btn--secondary" type="button" onClick={onReload}>重新加载材料</button></div> : null}
+    {notice ? <p className="ep-material-notice" role="status"><CheckCircleIcon size={17} aria-hidden="true" />{notice}</p> : null}
+    {loading ? <p className="ep-material-notice" role="status"><CircleNotchIcon className="ep-material-library__spin" size={17} aria-hidden="true" />正在加载材料</p> : null}
+    {searchError ? <p className="ep-material-notice" role="alert">{searchError}</p> : null}
+    {searchQuery.trim() && !searchLoading && !searchError ? <section className="ep-material-library__results" aria-label="材料检索结果">
+      <p className="qx-meta">{searchResults.length ? `${searchResults.length} 处命中` : '没有找到匹配原文'}</p>
+      {searchResults.map(hit => <button className="qx-card qx-card--interactive ep-material-library__hit" type="button" key={`${hit.materialId}:${hit.parseId}:${hit.segmentId}`} aria-label={`打开检索结果：${hit.title}，${searchLocator(hit)}`} onClick={() => onOpenSearchResult(hit)}>
+        <span className="qx-meta">{materialKindLabel(hit.materialKind)} · {searchLocator(hit)}</span><strong className="qx-card__title">{hit.title}</strong><span className="qx-card__body">{hit.excerpt}</span>
+      </button>)}
+    </section> : null}
+    {empty ? <div className="ep-material-library__empty"><FilePlusIcon size={30} aria-hidden="true" /><h3 className="qx-card__title">还没有研究材料</h3><p>先加入一份论文、访谈转录或田野笔记，Agent 才能在本次研究中引用它。</p><p className="qx-meta">支持文档、MP3、M4A、WAV、MP4、WebM</p></div> : null}
+    {!loading && !searchQuery.trim() && materials.length ? <ul className="ep-material-library__grid" aria-label="研究材料卡片">
+      {materials.map(material => {
+        const status = statusSummary(material)
+        const busy = busyMaterialId === material.materialId
+        return <li className="qx-card ep-material-library__card" key={material.materialId} data-status={material.status}>
+          <button type="button" className="ep-material-library__open" aria-label={`查看材料：${material.filename}`} onClick={() => onOpenMaterial(material)}>
+            <span className="ep-material-library__format qx-meta"><FileTextIcon size={18} aria-hidden="true" />{materialMediaLabel(material.mediaType, material.filename)}</span>
+            <strong className="qx-card__title">{material.filename}</strong>
+            <span className="qx-card__body">{material.materialKind ? materialKindLabel(material.materialKind) : '研究材料'}</span>
+            <span className="ep-material-library__status qx-meta" data-tone={status.tone}>{status.icon}{status.text}</span>
+          </button>
+          <footer className="ep-material-library__footer"><span className="qx-meta">{formatMaterialSize(material.sizeBytes)}{formatUpdatedAt(material.updatedAt) ? ` · ${formatUpdatedAt(material.updatedAt)}` : ''}</span>
+            <div className="ep-material-library__actions">
+              <button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={`材料档案：${material.filename}`} title="材料档案" onClick={() => onOpenArchive(material)}><IdentificationCardIcon size={16} aria-hidden="true" /></button>
+              {material.status === 'failed' || material.ingestionStatus === 'failed' ? <button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={`重新解析：${material.filename}`} title="重新解析" disabled={busy} onClick={() => onRetry(material)}><ArrowClockwiseIcon size={16} aria-hidden="true" /></button> : null}
+              <button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={`删除材料：${material.filename}`} title="删除材料" disabled={busy} onClick={() => onDelete(material)}><TrashIcon size={16} aria-hidden="true" /></button>
             </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {empty ? (
-        <div className="qx-library__empty">
-          <FilePlusIcon size={26} aria-hidden="true" />
-          <strong>还没有研究材料</strong>
-          <p>先加入一份论文、访谈转录或田野笔记，Agent 才能在本次研究中引用它。</p>
-          <div className="qx-library__empty-actions">
-            {kindField}
-            {pickButton}
-          </div>
-          <small>支持文档、MP3、M4A、WAV、MP4、WebM</small>
-          {fileField}
-        </div>
-      ) : (
-        <>
-          <ul className="qx-library__list" hidden={Boolean(searchQuery.trim())}>
-            {materials.map((material) => {
-              const status = statusSummary(material)
-              const busy = busyMaterialId === material.materialId
-              return (
-                <li className="qx-library__row" key={material.materialId} data-status={material.status}>
-                  <button
-                    type="button"
-                    className="qx-library__open"
-                    aria-label={`查看材料：${material.filename}`}
-                    onClick={() => onOpenMaterial(material)}
-                  >
-                    <span className="qx-library__mark" aria-hidden="true">{materialMediaLabel(material.mediaType, material.filename)}</span>
-                    <span className="qx-library__identity">
-                      <strong>{material.filename}</strong>
-                      <small>
-                        {material.materialKind ? materialKindLabel(material.materialKind) : '研究材料'}
-                        {' · '}{formatMaterialSize(material.sizeBytes)}
-                        {formatUpdatedAt(material.updatedAt) ? ` · ${formatUpdatedAt(material.updatedAt)}` : ''}
-                      </small>
-                    </span>
-                    <span className={`qx-library__status is-${status.tone}`}>{status.icon}{status.text}</span>
-                  </button>
-                  <div className="qx-library__row-actions">
-                    <button type="button" aria-label={`材料档案：${material.filename}`} title="材料档案" onClick={() => onOpenArchive(material)}>
-                      <IdentificationCardIcon size={15} aria-hidden="true" />
-                    </button>
-                    {material.status === 'failed' ? (
-                      <button type="button" aria-label={`重新解析：${material.filename}`} title="重新解析" disabled={busy} onClick={() => onRetry(material)}>
-                        {busy ? <CircleNotchIcon className="is-spinning" size={15} aria-hidden="true" /> : <ArrowClockwiseIcon size={15} aria-hidden="true" />}
-                      </button>
-                    ) : null}
-                    <button type="button" aria-label={`删除材料：${material.filename}`} title="删除材料" disabled={busy} onClick={() => onDelete(material)}>
-                      <TrashIcon size={15} aria-hidden="true" />
-                    </button>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-
-          <div className="qx-library__add">
-            <div className="qx-library__add-copy">
-              <strong>添加材料</strong>
-              <small>支持文档、MP3、M4A、WAV、MP4、WebM</small>
-            </div>
-            <div className="qx-library__add-actions">
-              {kindField}
-              {pickButton}
-            </div>
-            {fileField}
-          </div>
-        </>
-      )}
-    </section>
-  )
+          </footer>
+        </li>
+      })}
+    </ul> : null}
+  </section>
 }

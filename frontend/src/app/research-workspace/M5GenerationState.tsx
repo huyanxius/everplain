@@ -1,6 +1,7 @@
-import { ArrowClockwiseIcon, CircleNotchIcon, SparkleIcon } from '@phosphor-icons/react'
+import { ArrowClockwiseIcon, SparkleIcon } from '@phosphor-icons/react'
 import { useRef, useState } from 'react'
 
+import { AgentLoading } from '../ui/AgentLoading'
 import './m5-research-delivery.css'
 
 export type M5GenerationAttempt = Readonly<{
@@ -42,29 +43,12 @@ export function M5GenerationState({ theoryPlanLabel, createIdempotencyKey, onGen
     }
   }
 
-  return (
-    <section className="m5-generation" aria-labelledby="m5-generation-heading" aria-busy={state === 'running'}>
-      <SparkleIcon className="m5-generation__mark" aria-hidden="true" weight="fill" />
-      <span className="m5-panel-kicker">M5 · 正式研究框架</span>
-      <h3 id="m5-generation-heading">从已确认方案开始</h3>
-      <p>{theoryPlanLabel}</p>
-      <small>Agent 会提出一份完整草稿。每项建议都需由你接受，正式文档才会改变。</small>
-
-      {state === 'failed' ? (
-        <button type="button" className="m5-secondary-button" onClick={() => void run(true)}>
-          <ArrowClockwiseIcon aria-hidden="true" />
-          重试原请求
-        </button>
-      ) : state !== 'succeeded' ? (
-        <button type="button" className="m5-primary-button" disabled={state === 'running'} onClick={() => void run(false)}>
-          {state === 'running' ? <CircleNotchIcon className="m5-spin" aria-hidden="true" /> : <SparkleIcon aria-hidden="true" />}
-          {state === 'running' ? '正在生成草稿' : '生成研究框架草稿'}
-        </button>
-      ) : null}
-
-      <p className={`m5-live-message ${error ? 'is-error' : ''}`} role="status" aria-live="polite">
-        {error ?? (state === 'succeeded' ? '草稿已生成，等待你逐条审阅建议。' : '')}
-      </p>
-    </section>
-  )
+  return <section className="qx-card ep-delivery-generation" aria-labelledby="m5-generation-heading" aria-busy={state === 'running'}>
+    <header className="ep-delivery-section-head"><h3 className="qx-card__title" id="m5-generation-heading">从已确认方案开始</h3><SparkleIcon size={22} aria-hidden="true" /></header>
+    <p className="ep-delivery-generation__plan">{theoryPlanLabel}</p>
+    <p className="qx-card__body">Agent 会提出一份完整草稿。每项建议都需由你接受，正式文档才会改变。</p>
+    <div className="ep-delivery-actions">{state === 'failed' ? <button type="button" className="qx-btn qx-btn--secondary" onClick={() => void run(true)}><ArrowClockwiseIcon aria-hidden="true" />重试原请求</button> : state !== 'succeeded' ? <button type="button" className="qx-btn qx-btn--primary" disabled={state === 'running'} onClick={() => void run(false)}>{state !== 'running' && <SparkleIcon aria-hidden="true" />}{state === 'running' ? '正在生成草稿' : '生成研究框架草稿'}</button> : null}</div>
+    {state === 'running' && <AgentLoading compact state="work" message="正在根据已确认方案整理草稿…" />}
+    <p className="ep-delivery-message" data-error={Boolean(error)} role="status" aria-live="polite">{error ?? (state === 'succeeded' ? '草稿已生成，等待你逐条审阅建议。' : '')}</p>
+  </section>
 }

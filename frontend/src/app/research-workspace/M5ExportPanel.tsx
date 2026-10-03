@@ -37,28 +37,16 @@ export function M5ExportPanel({ confirmed, gateReady, saveState, onExport }: Pro
     }
   }
 
-  return (
-    <section className="m5-export-panel" aria-labelledby="m5-export-heading" aria-busy={busyFormat !== null}>
-      <div className="m5-panel-heading">
-        <div>
-          <span className="m5-panel-kicker">完整研究成果包</span>
-          <h3 id="m5-export-heading">导出与交付</h3>
-        </div>
-      </div>
-      <p>Markdown 便于审阅与归档；JSON 保留章节、证据、决策、版本与来源结构。</p>
-      <div className="m5-panel-actions">
-        <button type="button" className="m5-secondary-button" disabled={!ready || busyFormat !== null} onClick={() => void exportAs('markdown')}>
-          {busyFormat === 'markdown' ? <CircleNotchIcon className="m5-spin" aria-hidden="true" /> : <FileTextIcon aria-hidden="true" />}
-          下载 Markdown
-        </button>
-        <button type="button" className="m5-primary-button" disabled={!ready || busyFormat !== null} onClick={() => void exportAs('json')}>
-          {busyFormat === 'json' ? <CircleNotchIcon className="m5-spin" aria-hidden="true" /> : <FileTsIcon aria-hidden="true" />}
-          下载 JSON
-        </button>
-      </div>
-      <p className={`m5-live-message ${error ? 'is-error' : ''}`} role="status" aria-live="polite">
-        {message ?? (!ready ? '研究完成并通过门禁后，才会生成可审查的成果包。' : '成果包已就绪。')}
-      </p>
-    </section>
-  )
+  return <section className="qx-card ep-delivery-export" aria-labelledby="m5-export-heading" aria-busy={busyFormat !== null}>
+    <header className="ep-delivery-section-head"><h3 className="qx-card__title" id="m5-export-heading">导出与交付</h3><span className="qx-meta">完整研究成果包</span></header>
+    <div className="ep-delivery-export__formats">
+      <button type="button" className="ep-delivery-export__format" aria-label="下载 Markdown" disabled={!ready || busyFormat !== null} onClick={() => void exportAs('markdown')}>
+        {busyFormat === 'markdown' ? <CircleNotchIcon className="ep-delivery-spin" size={22} aria-hidden="true" /> : <FileTextIcon size={22} aria-hidden="true" />}<span><strong>下载 Markdown</strong><span>便于审阅与归档</span></span>
+      </button>
+      <button type="button" className="ep-delivery-export__format" aria-label="下载 JSON" disabled={!ready || busyFormat !== null} onClick={() => void exportAs('json')}>
+        {busyFormat === 'json' ? <CircleNotchIcon className="ep-delivery-spin" size={22} aria-hidden="true" /> : <FileTsIcon size={22} aria-hidden="true" />}<span><strong>下载 JSON</strong><span>保留章节、证据、决策、版本与来源结构</span></span>
+      </button>
+    </div>
+    <p className="ep-delivery-message" data-error={error} role="status" aria-live="polite">{message ?? (!ready ? '研究完成并通过门禁后，才会生成可审查的成果包。' : '成果包已就绪。')}</p>
+  </section>
 }
