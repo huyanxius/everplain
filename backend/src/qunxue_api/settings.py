@@ -131,6 +131,23 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5196",
         "http://localhost:5196",
     )
+    billing_credits_per_usd: int | None = Field(default=None, gt=0)
+    billing_price_version: str | None = None
+    billing_fx_cny_per_usd_micro: int | None = Field(default=None, gt=0)
+    billing_fx_snapshot_id: str | None = None
+    billing_fx_as_of: str | None = None
+    billing_fx_source: str | None = None
+    billing_model_aliases: dict[str, str] = Field(default_factory=dict)
+    billing_usage_policies: dict[str, Literal["omitted_cache_subsets_are_zero"]] = Field(
+        default_factory=dict
+    )
+    billing_phase_policies: dict[str, Literal["user", "operator"]] = Field(default_factory=dict)
+    billing_max_attempt_usd_micro: int | None = Field(default=None, gt=0)
+    billing_max_operation_usd_micro: int | None = Field(default=None, gt=0)
+    billing_daily_budget_usd_micro: int | None = Field(default=None, gt=0)
+    billing_deepseek_time_basis: Literal["server_dispatch_at"] | None = None
+    billing_calendar_version: str | None = None
+    billing_max_attempts: int = Field(default=64, gt=0, le=256)
     model_base_url: str | None = None
     model_api_key: SecretStr | None = None
     model_fallbacks: list[ModelFallbackSettings] = Field(default_factory=list)
@@ -138,6 +155,11 @@ class Settings(BaseSettings):
     model_reasoning_effort: (
         Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None
     ) = None
+    # Explicit per-turn model choices are opt-in; legacy calls keep the old route.
+    agent_model_protocol: Literal["chat_completions", "responses"] = "chat_completions"
+    agent_model_supported_efforts: tuple[
+        Literal["none", "low", "medium", "high", "xhigh", "max"], ...
+    ] = ()
     model_timeout_seconds: float = Field(default=30, gt=0)
     model_max_input_tokens: int = Field(default=32000, gt=0)
     model_max_output_tokens: int = Field(default=3000, gt=0)

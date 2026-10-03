@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from qunxue_api.api.contracts.research_tasks import ResearchTaskNavigationResponse
 from qunxue_api.modules.research_intake import ResearchStartProposal
@@ -122,6 +122,16 @@ class AgentConversationUpdateRequest(BaseModel):
 
 
 class AgentTurnRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model_id: str | None = Field(default=None, min_length=1, max_length=80)
+    reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] | None = None
+
+    @model_validator(mode="after")
+    def require_model_for_effort(self):
+        if self.reasoning_effort is not None and self.model_id is None:
+            raise ValueError("model_id is required when reasoning_effort is specified")
+        return self
+
     reference_knowledge_base_id: UUID | None = None
     conversation_id: UUID | None = None
     message: str = Field(min_length=1, max_length=12000)
@@ -137,6 +147,18 @@ class AgentTurnRequest(BaseModel):
     deep_research_run_id: UUID | None = None
     deep_research_action: Literal["clarify", "confirm", "skip"] | None = None
     deep_research_selection: str | None = Field(default=None, max_length=4000)
+
+
+class AgentModelChoiceResponse(BaseModel):
+    model_id: str
+    label: str
+    reasoning_efforts: list[Literal["none", "low", "medium", "high", "xhigh", "max"]]
+    default_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"]
+
+
+class AgentModelCatalogResponse(BaseModel):
+    items: list[AgentModelChoiceResponse]
+    runtime_mode: Literal["mock", "base", "sft"]
 
 
 class AgentRunRecoveryResponse(BaseModel):
