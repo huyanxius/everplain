@@ -1,25 +1,31 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowUpIcon,
-  BookmarkSimpleIcon,
+  ArrowClockwiseIcon,
+  DotsThreeIcon,
+  FileDocIcon,
   FilePdfIcon,
+  FilePptIcon,
   GlobeIcon,
+  ImageIcon,
   NoteIcon,
+  TrashIcon,
+  WarningCircleIcon,
   PaperclipIcon,
   PlusIcon,
-  VideoCameraIcon,
   XIcon,
   CaretDownIcon,
   CheckIcon,
 } from '@phosphor-icons/react'
 
-import { libraries, joinedLibraries, researches, topicById, type Material, type MaterialKind } from './data'
+import { libraries, libraryById, joinedLibraries, researches, topicById, type Material, type MaterialKind } from './data'
 
 export function KindIcon({ kind }: { kind: MaterialKind }) {
   if (kind === '网页') return <GlobeIcon />
   if (kind === 'PDF') return <FilePdfIcon />
-  if (kind === '视频') return <VideoCameraIcon />
-  if (kind === '书签') return <BookmarkSimpleIcon />
+  if (kind === 'Word') return <FileDocIcon />
+  if (kind === '演示文稿') return <FilePptIcon />
+  if (kind === '图片') return <ImageIcon />
   return <NoteIcon />
 }
 
@@ -42,22 +48,71 @@ export function TopicChip({ topicId, as = 'span', pressed, onClick }: { topicId:
   return <span className="qx-tag qx-tag--outline">{content}</span>
 }
 
-export function MaterialCard({ m }: { m: Material }) {
+const stateText: Record<NonNullable<Material['state']>, string> = {
+  parsing: '正在解析，完成后即可阅读原文',
+  organizing: '原文可读，正在整理知识点',
+  indexing: '原文可读，正在建立语义索引',
+  'failed-parse': '解析失败',
+  'failed-knowledge': '知识整理失败',
+  'failed-index': '语义索引失败',
+}
+
+/*
+ * 资料卡片。三段处理状态（解析 / 整理 / 索引）只在没好或出错时露一行，正常完成什么都不显示；
+ * 出错时给原因和重试。卡片自己的菜单里是重试和删除——原来这两个按钮只在进了某个库之后才出现。
+ * showLibrary：在「全部资料」里显示所属库，点了进库；在某个库里就不显示。
+ */
+export function MaterialCard({ m, showLibrary, onDelete }: { m: Material; showLibrary?: boolean; onDelete?: (m: Material) => void }) {
+  const [menu, setMenu] = useState(false)
+  const failed = m.state?.startsWith('failed')
+  const readable = m.state !== 'parsing' && m.state !== 'failed-parse'
   return (
-    <a className="qx-card qx-card--interactive mk-mcard" href={`#/library/${m.id}`}>
+    <article className="qx-card qx-card--interactive mk-mcard" data-failed={failed}>
       <div className="mk-mcard__top">
         <span className="mk-mcard__kind">
           <KindIcon kind={m.kind} />
-          {m.host ?? m.kind}
+          {m.kind}
         </span>
-        <i className="mk-dot" style={{ background: topicById[m.topicId].color }} title={topicById[m.topicId].name} />
+        {showLibrary ? (
+          <a className="mk-mcard__lib" href={`#/library?lib=${m.libraryId}`}>
+            {libraryById[m.libraryId].name}
+          </a>
+        ) : null}
+        <div className="mk-menu-anchor">
+          <button className="qx-btn qx-btn--ghost qx-btn--icon mk-mcard__more" aria-label={`管理 ${m.title}`} aria-expanded={menu} onClick={() => setMenu(!menu)}>
+            <DotsThreeIcon weight="bold" />
+          </button>
+          {menu ? (
+            <div className="qx-menu mk-menu" role="menu">
+              {failed && m.state !== 'failed-parse' ? (
+                <button className="qx-item" role="menuitem" onClick={() => setMenu(false)}>
+                  <ArrowClockwiseIcon /> 重试处理
+                </button>
+              ) : null}
+              <button className="qx-item mk-danger" role="menuitem" onClick={() => { setMenu(false); onDelete?.(m) }}>
+                <TrashIcon /> 删除
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
-      <h3 className="qx-card__title">{m.title}</h3>
-      <p className="qx-card__body mk-clamp">{m.summary}</p>
+      <h3 className="qx-card__title">{readable ? <a href={`#/library/${m.id}`}>{m.title}</a> : m.title}</h3>
+      <p className="qx-card__body mk-clamp">{m.state === 'failed-parse' ? '资料解析失败，可查看原因后重新上传。' : m.summary}</p>
+      {m.state ? (
+        <p className="mk-mcard__state" data-failed={failed}>
+          {failed ? <WarningCircleIcon /> : <ArrowClockwiseIcon className="mk-spin" />}
+          <span>
+            {stateText[m.state]}
+            {m.error ? `：${m.error}` : ''}
+          </span>
+          {failed && m.state !== 'failed-parse' ? <button className="qx-btn qx-btn--ghost">重试</button> : null}
+        </p>
+      ) : null}
       <div className="qx-card__meta">
-        {m.addedAt} · {m.points.length} 个知识点
+        {m.size}
+        {readable ? ` · ${m.points.length} 个知识点` : ''} · {m.addedAt}
       </div>
-    </a>
+    </article>
   )
 }
 

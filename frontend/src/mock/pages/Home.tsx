@@ -71,7 +71,7 @@ export function HomePage() {
         </a>
         <div className="mk-grid mk-grid--3">
           {materials.slice(0, 3).map((m) => (
-            <MaterialCard key={m.id} m={m} />
+            <MaterialCard key={m.id} m={m} showLibrary />
           ))}
         </div>
       </section>

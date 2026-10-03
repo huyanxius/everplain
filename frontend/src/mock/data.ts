@@ -5,8 +5,9 @@ import type { AgentAvatarId } from '../modules/agent-avatar'
  * `src/api/generated/` 为准。主题颜色取自角色调色板，是数据色，不是界面强调色。
  */
 
-export type MaterialKind = '网页' | 'PDF' | '笔记' | '视频' | '书签'
-export type MaterialSource = 'Chrome 书签' | 'Obsidian' | 'B 站收藏' | '印象笔记' | '上传'
+/* 和真实代码 documentKind() 的分法一致：按扩展名分，不是按来源分。B 站收藏转写后是笔记。 */
+export type MaterialKind = 'PDF' | 'Word' | '演示文稿' | '图片' | '网页' | '笔记'
+export type MaterialSource = '浏览器收藏' | 'Obsidian' | 'B 站收藏' | '印象笔记' | 'Apple 备忘录' | '上传'
 
 export interface Topic {
   readonly id: string
@@ -25,8 +26,15 @@ export interface Material {
   readonly points: readonly string[]
   readonly related: readonly string[]
   readonly host?: string
-  /* 属于哪个库。一份资料只在一个库里；主题是跨库的自动归类，两者不要混。 */
+  /* 属于哪个库。一份资料只在一个库里；主题是个人图谱里跨库的自动归类，两者不要混。 */
   readonly libraryId: string
+  readonly size: string
+  /*
+   * 处理状态。真实数据是三段：解析（status）→ 知识整理（knowledgeStatus）→ 语义索引（indexStatus）。
+   * 卡片上不再逐段列出，只在"还没好"或"出错了"时露一行；ready 什么都不显示。
+   */
+  readonly state?: 'parsing' | 'organizing' | 'indexing' | 'failed-parse' | 'failed-knowledge' | 'failed-index'
+  readonly error?: string
 }
 
 export const topics: readonly Topic[] = [
@@ -40,67 +48,69 @@ export const topicById = Object.fromEntries(topics.map((t) => [t.id, t])) as Rec
 
 export const materials: readonly Material[] = [
   {
-    id: 'm1', libraryId: 'thesis', title: '为什么城市需要第三空间', kind: '网页', source: 'Chrome 书签', topicId: 'city', host: 'aeon.co',
+    id: 'm1', libraryId: 'thesis', size: '48 KB', title: '为什么城市需要第三空间', kind: '网页', source: '浏览器收藏', topicId: 'city', host: 'aeon.co',
     summary: '奥尔登堡把家和单位之外的咖啡馆、书店、理发店称为第三空间，它们让陌生人以很低的成本保持联系。',
     addedAt: '3 天前', points: ['第三空间的八个特征', '常客是第三空间的核心', '中立地带降低社交成本'], related: ['m3', 'm5'],
   },
   {
-    id: 'm2', libraryId: 'reading', title: '乡土中国', kind: 'PDF', source: '上传', topicId: 'rural',
+    id: 'm2', libraryId: 'reading', size: '3.4 MB', title: '乡土中国', kind: 'PDF', source: '上传', topicId: 'rural',
     summary: '差序格局、礼治秩序、无讼。整理出 18 个知识点，其中 6 个和你的城市研究有关。',
     addedAt: '上周', points: ['差序格局', '礼治秩序', '长老统治', '无讼', '血缘与地缘'], related: ['m1', 'm7'],
   },
   {
-    id: 'm3', libraryId: 'thesis', title: '访谈提纲草稿', kind: '笔记', source: '印象笔记', topicId: 'city',
+    id: 'm3', libraryId: 'thesis', size: '6 KB', title: '访谈提纲草稿', kind: '笔记', source: 'Apple 备忘录', topicId: 'city',
     summary: '先问日常动线，再问"你上一次和陌生人聊天是在哪里"。最后留十分钟给对方补充。',
     addedAt: '昨天', points: ['从动线切入', '追问具体场景'], related: ['m1'],
   },
   {
-    id: 'm4', libraryId: 'inbox', title: '注意力是怎样被设计出来的', kind: '视频', source: 'B 站收藏', topicId: 'media', host: 'bilibili.com',
+    id: 'm4', libraryId: 'inbox', size: '92 KB', state: 'organizing', title: '注意力是怎样被设计出来的', kind: '笔记', source: 'B 站收藏', topicId: 'media', host: 'bilibili.com',
     summary: '从无限滚动到红点提醒，讲产品如何把"可变奖励"嵌进界面。附转写稿 42 分钟。',
     addedAt: '5 天前', points: ['可变奖励', '无限滚动', '通知的节奏'], related: ['m6'],
   },
   {
-    id: 'm5', libraryId: 'thesis', title: '雅各布斯：街道眼', kind: '笔记', source: 'Obsidian', topicId: 'city',
+    id: 'm5', libraryId: 'thesis', size: '12 KB', title: '雅各布斯：街道眼', kind: '笔记', source: 'Obsidian', topicId: 'city',
     summary: '人行道上持续有人看着，是街道安全的来源。混合功能让一天里不同时段都有人。',
     addedAt: '2 周前', points: ['街道眼', '混合功能', '短街区'], related: ['m1', 'm3'],
   },
   {
-    id: 'm6', libraryId: 'reading', title: '《娱乐至死》读书笔记', kind: '笔记', source: 'Obsidian', topicId: 'media',
+    id: 'm6', libraryId: 'reading', size: '18 KB', title: '《娱乐至死》读书笔记', kind: '笔记', source: 'Obsidian', topicId: 'media',
     summary: '媒介即隐喻。电视让一切公共话语都变成娱乐的形式，问题不在内容而在形式。',
     addedAt: '3 周前', points: ['媒介即隐喻', '信息-行动比'], related: ['m4'],
   },
   {
-    id: 'm7', libraryId: 'inbox', title: '县城的消费与面子', kind: '网页', source: 'Chrome 书签', topicId: 'rural', host: 'thepaper.cn',
+    id: 'm7', libraryId: 'inbox', size: '—', state: 'failed-parse', error: '网页需要登录才能读取', title: '县城的消费与面子', kind: '网页', source: '浏览器收藏', topicId: 'rural', host: 'thepaper.cn',
     summary: '县城婚礼与购房里的熟人社会逻辑，面子消费如何沿着人情网络扩散。',
     addedAt: '1 个月前', points: ['熟人社会', '面子消费'], related: ['m2'],
   },
   {
-    id: 'm8', libraryId: 'inbox', title: '写作：先找到你的问题', kind: '书签', source: 'Chrome 书签', topicId: 'writing', host: 'paulgraham.com',
+    id: 'm8', libraryId: 'inbox', size: '31 KB', title: '写作：先找到你的问题', kind: '网页', source: '浏览器收藏', topicId: 'writing', host: 'paulgraham.com',
     summary: '好的文章从一个你真的想知道答案的问题开始，而不是从一个主题开始。',
     addedAt: '1 个月前', points: ['问题先于主题', '写作即思考'], related: ['m9'],
   },
   {
-    id: 'm9', libraryId: 'thesis', title: '论文开题的五个坑', kind: '笔记', source: '印象笔记', topicId: 'writing',
+    id: 'm9', libraryId: 'thesis', size: '210 KB', state: 'failed-index', error: '语义索引失败：服务暂时不可用', title: '论文开题的五个坑', kind: 'Word', source: '上传', topicId: 'writing',
     summary: '题目太大、问题不可回答、文献只罗列不对话、方法和问题对不上、没有预期发现。',
     addedAt: '6 天前', points: ['问题可回答', '文献对话'], related: ['m8'],
   },
 ]
 
 /*
- * 库：用户自己建的资料容器，共享、公开、外部连接都以库为单位授权。
+ * 库：用户自己建的资料容器。从别处导入的东西由后端自动放进「我的资料」（application/knowledge_import.py），
+ * 直接上传则进当前选中的库。，共享、公开、外部连接都以库为单位授权。
  * joined 是别人分享给我的只读库——能读、能被 Agent 引用，不能往里加东西。
  */
 export interface Library {
   readonly id: string
   readonly name: string
+  readonly description?: string
   readonly owner?: string
   readonly shared?: 'link' | 'public'
   readonly members?: number
 }
 
 export const libraries: readonly Library[] = [
-  { id: 'inbox', name: '随手收藏' },
-  { id: 'thesis', name: '毕业论文', shared: 'link', members: 2 },
+  { id: 'inbox', name: '我的资料', description: '从收藏和笔记导入的个人资料' },
+  { id: 'thesis', name: '毕业论文', description: '开题和写作要用的文献、访谈材料', shared: 'link', members: 2 },
   { id: 'reading', name: '读书笔记', shared: 'public' },
 ]
 
