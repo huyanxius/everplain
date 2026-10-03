@@ -13,9 +13,9 @@ describe('ResearchMemoryPanel', () => {
   it('opens with a readable overview and reveals individual records on request', () => {
     setup()
     expect(screen.getByRole('region', { name: '记忆概览' })).toHaveTextContent('知识生产')
-    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: '个人记忆列表' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /查看记忆明细/ }))
-    expect(screen.getByRole('table', { name: '个人记忆列表' })).toBeVisible()
+    expect(screen.getByRole('list', { name: '个人记忆列表' })).toBeVisible()
   })
   it('previews creation, editing, history and deletion without network writes', async () => {
     const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher); setup()
@@ -204,4 +204,150 @@ function installMemoryServer({ entries, maxEntries = 100, nextWriteVersion = 4, 
     return json({ items: entries, limits: { max_entries: maxEntries, max_content_bytes: 2000 } })
   }))
   return { overviewVersions }
+}
+
+describe('memory conflict refresh', () => {
+  it('retains the draft and requires review before saving against the latest version', async () => {
+    const server = await openConflictingEditor()
+    fireEvent.click(screen.getByRole('button', { name: '刷新记录' }))
+    const comparison = await screen.findByRole('region', { name: '核对最新记忆' })
+    expect(screen.getByRole('textbox')).toHaveValue('我的草稿')
+    expect(comparison).toHaveTextContent('最新记录 · 第 2 版')
+    expect(comparison).toHaveTextContent('远端更新')
+    expect(screen.getByRole('button', { name: '保存记忆' })).toBeDisabled()
+    expect(server.writes).toEqual([{ content: '我的草稿', expected_version: 1 }])
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '我的草稿，保留远端更新' } })
+    fireEvent.click(screen.getByRole('button', { name: '已核对，基于最新版本继续编辑' }))
+    expect(server.writes).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: '保存记忆' }))
+    await screen.findByText('记忆已保存。')
+    expect(server.writes).toEqual([{ content: '我的草稿', expected_version: 1 }, { content: '我的草稿，保留远端更新', expected_version: 2 }])
+  })
+
+  it('keeps a concurrently deleted record draft visible without recreating it', async () => {
+    const server = await openConflictingEditor()
+    server.entries = []
+    fireEvent.click(screen.getByRole('button', { name: '刷新记录' }))
+    await screen.findByText(/这条记忆已被删除/)
+    expect(screen.getByRole('textbox')).toHaveValue('我的草稿')
+    expect(screen.getByRole('button', { name: '保存记忆' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: '已核对，基于最新版本继续编辑' })).not.toBeInTheDocument()
+    expect(server.writes).toHaveLength(1)
+    expect(server.creates).toBe(0)
+  })
+
+  it('retains the draft when refresh fails and permits retrying the refresh', async () => {
+    const server = await openConflictingEditor()
+    server.refresh = () => Promise.resolve(json({ detail: 'unavailable' }, 503))
+    fireEvent.click(screen.getByRole('button', { name: '刷新记录' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('暂时无法保存或读取'))
+    expect(screen.getByRole('textbox')).toHaveValue('我的草稿')
+    server.refresh = undefined
+    fireEvent.click(screen.getByRole('button', { name: '刷新记录' }))
+    await screen.findByRole('region', { name: '核对最新记忆' })
+    expect(screen.getByRole('textbox')).toHaveValue('我的草稿')
+  })
+
+  it('does not replace a new selection when a slow refresh finishes', async () => {
+    const server = await openConflictingEditor()
+    let resolveRefresh!: (response: Response) => void
+    const pending = new Promise<Response>(resolve => { resolveRefresh = resolve })
+    server.refresh = () => pending
+    fireEvent.click(screen.getByRole('button', { name: '刷新记录' }))
+    expect(screen.getByRole('textbox')).toHaveValue('我的草稿')
+    expect(screen.getByRole('button', { name: '保存记忆' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: '关闭编辑' }))
+    fireEvent.click(screen.getByRole('button', { name: '查看记忆：另一条记忆' }))
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '另一条草稿' } })
+    await act(async () => { resolveRefresh(json({ items: server.entries, limits: { max_entries: 100, max_content_bytes: 2000 } })); await pending })
+    server.refresh = undefined
+    expect(screen.getByRole('textbox')).toHaveValue('另一条草稿')
+    expect(screen.queryByRole('region', { name: '核对最新记忆' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '保存记忆' }))
+    await screen.findByText('记忆已保存。')
+    expect(server.writtenIds).toEqual(['memory-1', 'memory-2'])
+  })
+
+  it('still uses CAS when the record changes again after reconciliation', async () => {
+    const server = await openConflictingEditor()
+    fireEvent.click(screen.getByRole('button', { name: '刷新记录' }))
+    fireEvent.click(await screen.findByRole('button', { name: '已核对，基于最新版本继续编辑' }))
+    server.entries[0] = { ...server.entries[0], content: '再次远端更新', version: 3 }
+    fireEvent.click(screen.getByRole('button', { name: '保存记忆' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('已在别处更新'))
+    expect(screen.getByRole('textbox')).toHaveValue('我的草稿')
+    expect(server.writes.at(-1)).toEqual({ content: '我的草稿', expected_version: 2 })
+    fireEvent.click(screen.getByRole('button', { name: '刷新记录' }))
+    const comparison = await screen.findByRole('region', { name: '核对最新记忆' })
+    expect(comparison).toHaveTextContent('最新记录 · 第 3 版')
+    expect(comparison).toHaveTextContent('再次远端更新')
+    expect(screen.getByRole('button', { name: '保存记忆' })).toBeDisabled()
+  })
+
+  it('requires a fresh delete confirmation after a conflict refresh', async () => {
+    const server = await openConflictingEditor()
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    fireEvent.click(screen.getByRole('button', { name: '删除' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
+    await waitFor(() => expect(server.deletions).toEqual([1]))
+    await waitFor(() => expect(screen.getByRole('button', { name: '刷新记录' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: '刷新记录' }))
+    await screen.findByRole('button', { name: '查看记忆：远端更新' })
+    expect(screen.queryByRole('button', { name: '确认删除' })).not.toBeInTheDocument()
+    expect(server.deletions).toEqual([1])
+    fireEvent.click(screen.getByRole('button', { name: '删除' }))
+    fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
+    await screen.findByText('记忆已删除。')
+    expect(server.deletions).toEqual([1, 2])
+  })
+
+})
+
+async function openConflictingEditor() {
+  const server = {
+    entries: [record('原记忆'), { ...record('另一条记忆'), memory_id: 'memory-2' }],
+    writes: [] as { content: string; expected_version: number }[],
+    writtenIds: [] as string[],
+    creates: 0,
+    deletions: [] as number[],
+    refresh: undefined as (() => Promise<Response>) | undefined,
+  }
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const req = input instanceof Request ? input : new Request(String(input), init)
+    const path = new URL(req.url).pathname
+    if (path.endsWith('/overview')) return json({ summary: '概览', scope_version: 2, memory_count: server.entries.length })
+    if (path.endsWith('/settings')) return json({ task_id: null, version: 2, use_memory: true, learn_memory: true })
+    if (req.method === 'DELETE') {
+      const expected = Number(new URL(req.url).searchParams.get('expected_version'))
+      server.deletions.push(expected)
+      const current = server.entries.find(item => path.endsWith(item.memory_id))
+      if (!current || current.version !== expected) return json({ detail: 'conflict' }, 409)
+      server.entries = server.entries.filter(item => item !== current)
+      return new Response(null, { status: 204 })
+    }
+    if (req.method === 'POST') { server.creates++; return json({}, 500) }
+    if (req.method === 'PATCH') {
+      const body = await req.json() as { content: string; expected_version: number }
+      server.writes.push(body)
+      const id = path.split('/').at(-1)!
+      server.writtenIds.push(id)
+      const current = server.entries.find(item => item.memory_id === id)
+      if (!current || current.version !== body.expected_version) return json({ detail: 'conflict' }, 409)
+      const updated = { ...current, content: body.content, version: current.version + 1 }
+      server.entries = server.entries.map(item => item.memory_id === id ? updated : item)
+      return json(updated)
+    }
+    return server.refresh?.() ?? json({ items: server.entries, limits: { max_entries: 100, max_content_bytes: 2000 } })
+  }))
+  setup(false)
+  await screen.findByText('概览')
+  fireEvent.click(screen.getByRole('button', { name: /查看记忆明细/ }))
+  fireEvent.click(screen.getByRole('button', { name: '查看记忆：原记忆' }))
+  fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: '我的草稿' } })
+  server.entries[0] = { ...server.entries[0], content: '远端更新', version: 2 }
+  fireEvent.click(screen.getByRole('button', { name: '保存记忆' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('已在别处更新')
+  return server
 }

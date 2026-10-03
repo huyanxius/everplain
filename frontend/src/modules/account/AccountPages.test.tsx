@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { loginViaApi } from './accountApi'
@@ -12,6 +12,7 @@ vi.mock('@paper-design/shaders-react', () => ({
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe('account pages', () => {
@@ -25,6 +26,8 @@ describe('account pages', () => {
       />,
     )
 
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'reader@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
     const password = screen.getByLabelText('密码')
     fireEvent.change(password, { target: { value: 'research-passphrase' } })
 
@@ -60,6 +63,7 @@ describe('account pages', () => {
     fireEvent.change(screen.getByLabelText('邮箱'), {
       target: { value: 'unknown@example.com' },
     })
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
     fireEvent.change(screen.getByLabelText('密码'), {
       target: { value: 'research-passphrase' },
     })
@@ -88,6 +92,7 @@ describe('account pages', () => {
     fireEvent.change(screen.getByLabelText('邮箱'), {
       target: { value: 'known@example.com' },
     })
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
     fireEvent.change(screen.getByLabelText('密码'), {
       target: { value: 'research-passphrase' },
     })
@@ -113,6 +118,7 @@ describe('account pages', () => {
     fireEvent.change(screen.getByLabelText('邮箱'), {
       target: { value: 'known@example.com' },
     })
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
     fireEvent.change(screen.getByLabelText('密码'), {
       target: { value: 'research-passphrase' },
     })
@@ -230,5 +236,96 @@ describe('account pages', () => {
         '123456',
       )
     })
+  })
+})
+
+describe('auth flow interruption and repeat handling', () => {
+  it('keeps expiry and redirect links while allowing email changes from the password step', () => {
+    render(<LoginPage onLogin={vi.fn()} onAuthenticated={vi.fn()} registerHref="/register?redirect=%2Flibrary" sessionExpired />)
+    expect(screen.getByRole('status')).toHaveTextContent('登录已过期')
+    expect(screen.getByRole('link', { name: '创建账号' })).toHaveAttribute('href', '/register?redirect=%2Flibrary')
+    expect(screen.queryByRole('button', { name: /Google/ })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'old@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'old-passphrase' } })
+    fireEvent.click(screen.getByRole('button', { name: '显示密码' }))
+    fireEvent.click(screen.getByRole('button', { name: '返回' }))
+    expect(screen.getByLabelText('邮箱')).toHaveValue('old@example.com')
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'new@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
+    expect(screen.getByLabelText('密码')).toHaveValue('')
+    expect(screen.getByLabelText('密码')).toHaveAttribute('type', 'password')
+  })
+
+  it('locks repeated login submits and calls the existing redirect callback once', async () => {
+    let finish!: () => void
+    const login = vi.fn(() => new Promise<void>(resolve => { finish = resolve }))
+    const authenticated = vi.fn()
+    render(<LoginPage onLogin={login} onAuthenticated={authenticated} registerHref="/register" />)
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: ' reader@example.com ' } })
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'research-passphrase' } })
+    const form = screen.getByRole('form', { name: '登录到 Everplain' })
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    expect(login).toHaveBeenCalledTimes(1)
+    expect(login).toHaveBeenCalledWith('reader@example.com', 'research-passphrase')
+    expect(screen.getByRole('button', { name: '返回' })).toBeDisabled()
+    await act(async () => finish())
+    expect(authenticated).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores a login completion after the view has been dismissed', async () => {
+    let finish!: () => void
+    const authenticated = vi.fn()
+    const view = render(<LoginPage onLogin={() => new Promise<void>(resolve => { finish = resolve })} onAuthenticated={authenticated} registerHref="/register" />)
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'reader@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'research-passphrase' } })
+    fireEvent.click(screen.getByRole('button', { name: '登录并继续' }))
+    view.unmount()
+    await act(async () => finish())
+    expect(authenticated).not.toHaveBeenCalled()
+  })
+
+  it('counts down resend availability and clears the code when changing email', async () => {
+    vi.useFakeTimers()
+    const sendCode = vi.fn(async () => ({ resendAfterSeconds: 2 }))
+    render(<RegisterPage onRegister={vi.fn()} onSendRegistrationCode={sendCode} onAuthenticated={vi.fn()} loginHref="/login?redirect=%2Flibrary" />)
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'new@example.com' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '发送验证码' })) })
+    expect(screen.getByRole('button', { name: '2 秒后可重新发送' })).toBeDisabled()
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(screen.getByRole('button', { name: '1 秒后可重新发送' })).toBeDisabled()
+    act(() => { vi.advanceTimersByTime(1000) })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '重新发送验证码' })) })
+    expect(sendCode).toHaveBeenCalledTimes(2)
+    fireEvent.change(screen.getByLabelText('验证码'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: '修改邮箱' }))
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'other@example.com' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '发送验证码' })) })
+    expect(screen.getByLabelText('验证码')).toHaveValue('')
+    expect(sendCode).toHaveBeenLastCalledWith('other@example.com')
+    expect(screen.getByRole('link', { name: '返回登录' })).toHaveAttribute('href', '/login?redirect=%2Flibrary')
+  })
+
+  it('locks repeated registration requests without losing the email and code', async () => {
+    let finish!: () => void
+    const register = vi.fn(() => new Promise<void>(resolve => { finish = resolve }))
+    const authenticated = vi.fn()
+    render(<RegisterPage onRegister={register} onSendRegistrationCode={vi.fn(async () => ({ resendAfterSeconds: 0 }))} onAuthenticated={authenticated} loginHref="/login" />)
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'new@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
+    fireEvent.change(await screen.findByLabelText('验证码'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: '继续设置密码' }))
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'research-passphrase' } })
+    fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'research-passphrase' } })
+    const form = screen.getByRole('form', { name: '创建 Everplain 账号' })
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    expect(register).toHaveBeenCalledTimes(1)
+    expect(register).toHaveBeenCalledWith('new@example.com', 'research-passphrase', '123456')
+    await act(async () => finish())
+    expect(authenticated).toHaveBeenCalledTimes(1)
   })
 })
