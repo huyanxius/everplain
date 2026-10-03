@@ -455,6 +455,7 @@ if __name__ == "__main__":
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
                 signal.signal(number, interrupted)
+            print(json.dumps({"deployment_started": True}), flush=True)
             updater = ExistingRelease(sys.argv[1])
             print(json.dumps(updater.execute()))
     except BaseException:
