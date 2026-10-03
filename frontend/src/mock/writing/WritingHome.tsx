@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowRightIcon, FilesIcon, NotePencilIcon, XIcon } from '@phosphor-icons/react'
+import { ArrowRightIcon, FilesIcon, NotePencilIcon, UploadSimpleIcon, XIcon } from '@phosphor-icons/react'
 
 import { AgentAvatar } from '../../modules/agent-avatar'
 import { AgentComposer } from '../shared/Composer'
@@ -100,7 +100,7 @@ function WritingHome({ onOpen }: { onOpen: (title: string) => void }) {
         <main className="personal-start wh-main">
           <section className="personal-start__hero">
             <AgentAvatar avatar="cheng" color="#5d8fe6" size={84} state={thinking ? 'think' : 'greet'} label="澄" />
-            <h1 className="qx-display">{greeting}，今天写点什么？</h1>
+            <h1 className="qx-display">{greeting}，我来学你怎么写</h1>
             <div className="wh-hero-composer" ref={hero}>
               {docked ? <div className="wh-hero-composer__ghost" /> : <AgentComposer placeholder="说说你要写什么，或者丢一份范文进来" prefill={prefill} onSend={send} />}
             </div>
@@ -108,6 +108,33 @@ function WritingHome({ onOpen }: { onOpen: (title: string) => void }) {
               <button className="qx-tag qx-tag--outline" type="button" onClick={() => ask('帮我起草一份读书月活动的通知，下周一发')}>起草一份通知</button>
               <button className="qx-tag qx-tag--outline" type="button" onClick={() => ask('用我平时写随笔的语气，写一段下雨天的开头')}>照我的写法写一段</button>
               <button className="qx-tag qx-tag--outline" type="button" onClick={() => onOpen(documents[0].title)}>接着写《{documents[0].title}》</button>
+            </div>
+          </section>
+
+
+          <section className="wh-mimic" aria-labelledby="writing-mimic">
+            <div className="wh-mimic__copy">
+              <h2 id="writing-mimic" className="qx-section-title">写出来，像你自己写的</h2>
+              <p>上传你以前写过的文章，澄会按文体分开学你的用词、句子长短和起笔方式。之后无论起稿、续写还是改写，读起来都是你的口气。</p>
+              <label className="qx-btn qx-btn--primary wh-mimic__upload">
+                <UploadSimpleIcon /> 上传我的文章
+                <input type="file" multiple accept=".md,.txt,.docx,.pdf,.html" hidden />
+              </label>
+              <ul className="wh-mimic__genres" aria-label="按文体已学">
+                {([['公文', 8], ['报告', 3], ['正式文体', 5], ['随笔', 12], ['小说', 0]] as const).map(([g, n]) => (
+                  <li key={g} data-empty={n === 0}><span>{g}</span><b>{n ? `已学 ${n} 篇` : '还没学'}</b></li>
+                ))}
+              </ul>
+            </div>
+            <div className="wh-mimic__compare" aria-label="同一句话的两种写法">
+              <figure>
+                <figcaption>通用 AI 写法</figcaption>
+                <p>在快节奏的城市生活中，便利店作为一种重要的公共空间，为都市人群提供了宝贵的情感慰藉与社交连接。</p>
+              </figure>
+              <figure data-mine="true">
+                <figcaption>照你的写法</figcaption>
+                <p>加班到很晚，我总会进楼下那家便利店买一瓶热豆浆。店员抬头看我一眼，又低头理货。我们没说过话。</p>
+              </figure>
             </div>
           </section>
 
