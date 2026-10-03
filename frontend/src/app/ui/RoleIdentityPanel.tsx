@@ -72,7 +72,7 @@ function RoleIdentityPanelContent({ open, onClose, userId, accountName, initialT
     <div className="ep-role-panel__surface">
       <header className="ep-role-panel__top"><span>{text('我的 AI 伙伴', 'My AI companion')}</span><button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label={text('关闭角色面板', 'Close companion panel')} onClick={onClose}><XIcon aria-hidden="true" /></button></header>
       <div className="ep-role-panel__identity">
-        <div className="ep-role-panel__portrait"><AgentAvatar avatar={avatar} color={draft?.color ?? flow.profile.data?.color} size={104} state="greet" playing={open} label={text('角色预览', 'Character preview')} /></div>
+        <div className="ep-role-panel__portrait"><AgentAvatar avatar={avatar} color={draft?.color ?? flow.profile.data?.color} size={56} state="greet" playing={open} label={text('角色预览', 'Character preview')} /></div>
         <h2>{displayName}</h2>
         <p>{accountName ? text(`${accountName} 的 AI 伙伴`, `${accountName}’s AI companion`) : text('为你整理知识，一起探索想法', 'Organize knowledge and explore ideas together')}</p>
       </div>
@@ -81,7 +81,7 @@ function RoleIdentityPanelContent({ open, onClose, userId, accountName, initialT
       </div>
       <div className="ep-role-panel__body">
         <section id={`${id}-identity-panel`} role="tabpanel" aria-labelledby={`${id}-identity-tab`} hidden={tab !== 'identity'}>
-          {!draft ? flow.profile.isError ? <div role="alert"><p>{text('暂时无法读取角色身份。', 'Could not load your companion.')}</p><button className="qx-btn qx-btn--secondary" type="button" onClick={() => void flow.profile.refetch()}>{text('重试', 'Try again')}</button></div> : <p role="status">{text('正在读取角色身份…', 'Loading your companion…')}</p> : <form className="ep-role-panel__form" noValidate onSubmit={event => void flow.save(event)}>
+          {!draft ? flow.profile.isError ? <div role="alert"><p>{text('暂时无法读取角色身份。', 'Could not load your companion.')}</p><button className="qx-btn qx-btn--secondary" type="button" onClick={() => void flow.profile.refetch()}>{text('重试', 'Try again')}</button></div> : <p role="status">{text('正在读取角色身份…', 'Loading your companion…')}</p> : <form id={`${id}-form`} className="ep-role-panel__form" noValidate onSubmit={event => void flow.save(event)}>
             <fieldset disabled={flow.pending} className="ep-role-panel__field"><legend>{text('角色形象', 'Character')}</legend><div className="ep-role-panel__avatars">
               {agentAvatarPresets.map(preset => <button className="ep-role-panel__avatar" key={preset.id} type="button" aria-label={preset.name} aria-pressed={draft.avatar === preset.id} onClick={() => flow.patch({ avatar: preset.id, color: preset.color })}><AgentAvatar avatar={preset.id} color={draft.avatar === preset.id ? draft.color : preset.color} size={36} playing={false} /><span>{preset.name}</span></button>)}
             </div></fieldset>
@@ -94,11 +94,11 @@ function RoleIdentityPanelContent({ open, onClose, userId, accountName, initialT
             </div></fieldset>
             <AgentSoulEditor flow={flow} text={text} />
             {flow.error ? <p className="qx-notice qx-notice--danger" role="alert">{flow.error}</p> : null}
-            <footer className="ep-role-panel__save"><span className="qx-meta" role={flow.saved ? 'status' : undefined}>{flow.saved ? text('已保存', 'Saved') : text('关闭面板会保留未保存的修改', 'Unsaved edits stay here when you close')}</span><button className="qx-btn qx-btn--primary" type="submit" disabled={flow.pending || !!flow.conflict}>{flow.pending ? text('正在保存…', 'Saving…') : text('保存角色', 'Save identity')}</button></footer>
           </form>}
         </section>
         <section id={`${id}-memory-panel`} role="tabpanel" aria-labelledby={`${id}-memory-tab`} hidden={tab !== 'memory'}>{memoryVisited ? <ResearchMemoryPanel taskId={null} /> : null}</section>
       </div>
+      {tab === 'identity' && draft ? <footer className="ep-role-panel__save"><span className="qx-meta" role={flow.saved ? 'status' : undefined}>{flow.saved ? text('已保存', 'Saved') : text('关闭后保留草稿', 'Draft stays when closed')}</span><button className="qx-btn qx-btn--primary" type="submit" form={`${id}-form`} disabled={flow.pending || !!flow.conflict}>{flow.pending ? text('正在保存…', 'Saving…') : text('保存角色', 'Save identity')}</button></footer> : null}
     </div>
   </dialog>
 }
