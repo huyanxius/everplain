@@ -39,6 +39,16 @@ export function AccountMenu({ userId, accountName, onOpen }: { userId: string; a
     : usage.data.remainingPercent === null ? text('额度信息暂不可用', 'Usage unavailable')
     : text(`剩余 ${usage.data.remainingPercent}%`, `${usage.data.remainingPercent}% left`)
   const buckets = usage.isError ? [] : usage.data?.buckets ?? []
+  // Only a single current subscription pool can describe the plan allowance.
+  // Never relabel a welcome gift, top-up, or lifetime balance as monthly usage.
+  const subscriptionBuckets = buckets.filter(bucket => bucket.kind === 'subscription')
+  const monthlyPercent = subscriptionBuckets.length === 1 ? subscriptionBuckets[0].remainingPercent : null
+  const monthlyRemaining = usage.isError ? text('暂不可用', 'Unavailable')
+    : !usage.data ? text('正在读取…', 'Loading…')
+    : usage.data.isUnlimited ? text('不限量', 'Unlimited')
+    : subscriptionBuckets.length === 0 ? text('暂无月度额度', 'No monthly allowance')
+    : monthlyPercent === null ? text('待确认', 'Unconfirmed')
+    : text(`剩余 ${monthlyPercent}%`, `${monthlyPercent}% left`)
 
   useEffect(() => { setOpen(false); setIdentityOpen(false) }, [location.pathname, location.search])
   useEffect(() => {
@@ -81,6 +91,13 @@ export function AccountMenu({ userId, accountName, onOpen }: { userId: string; a
       <div className="account-menu__identity" role="presentation">
         <AgentAvatar avatar={avatar.id} color={chosen?.color} size={32} state="idle" />
         <div><strong>{accountName}</strong><span className="qx-meta" aria-live="polite">{planName}{planState ? ` · ${planState}` : ''}</span></div>
+      </div>
+      <div className="account-menu__monthly" role="presentation">
+        <div className="account-menu__monthly-heading"><span>{text('本月额度', 'Monthly allowance')}</span><span aria-live="polite">{monthlyRemaining}</span></div>
+        {monthlyPercent !== null && !usage.data?.isUnlimited ? <div className="account-menu__meter" role="progressbar" aria-label={text('当前套餐周期剩余额度', 'Remaining allowance for the current plan period')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={monthlyPercent}>
+          <span style={{ width: `${monthlyPercent}%` }} />
+        </div> : <div className="account-menu__meter" aria-hidden="true" />}
+        {subscriptionBuckets.length > 0 ? <small>{text('按当前套餐周期，非自然月统计', 'Current plan period, not calendar-month usage')}</small> : null}
       </div>
       <button className="qx-item" role="menuitem" type="button" onClick={() => { trigger.current?.focus(); setOpen(false); setIdentityTab('identity'); setIdentityOpen(true) }}><NavIcon name="user" /><span>{text('Soul · 人格', 'Soul')}</span></button>
       <button className="qx-item" role="menuitem" type="button" onClick={() => { trigger.current?.focus(); setOpen(false); setIdentityTab('memory'); setIdentityOpen(true) }}><NavIcon name="library" /><span>{text('Memory · 记忆', 'Memory')}</span></button>
