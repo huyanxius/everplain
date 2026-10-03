@@ -1,0 +1,77 @@
+.model-selection {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--qx-space-3) var(--qx-space-5);
+  min-width: 0;
+  font-family: var(--qx-font-ui);
+  font-size: var(--qx-text-meta);
+  line-height: var(--qx-text-meta--line-height);
+  color: var(--qx-color-muted);
+}
+.model-selection__model { flex: 0 1 156px; min-width: 136px; }
+.model-selection__model .qx-select__trigger { min-height: calc(var(--qx-space-10) + var(--qx-space-1)); font-size: var(--qx-text-meta); line-height: var(--qx-text-meta--line-height); }
+.model-selection__effort { flex: 0 1 248px; min-width: 216px; }
+.model-selection__effort-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--qx-space-3); }
+.model-selection__effort-heading label { cursor: pointer; }
+.model-selection__effort-heading output { color: var(--qx-color-ink); }
+.model-selection__range {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: calc(var(--qx-space-10) + var(--qx-space-1));
+  appearance: none;
+  background: transparent;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--qx-color-accent);
+  cursor: pointer;
+}
+.model-selection__range::-webkit-slider-runnable-track {
+  height: var(--qx-space-1);
+  border-radius: var(--qx-radius-pill);
+  background: linear-gradient(to right, var(--qx-color-accent) var(--model-effort-progress), var(--qx-color-rule-strong) var(--model-effort-progress));
+}
+.model-selection__range::-moz-range-track {
+  height: var(--qx-space-1);
+  border-radius: var(--qx-radius-pill);
+  background: var(--qx-color-rule-strong);
+}
+.model-selection__range::-moz-range-progress { height: var(--qx-space-1); border-radius: var(--qx-radius-pill); background: var(--qx-color-accent); }
+.model-selection__range::-webkit-slider-thumb {
+  appearance: none;
+  width: var(--qx-space-4);
+  height: var(--qx-space-4);
+  margin-top: calc((var(--qx-space-1) - var(--qx-space-4)) / 2);
+  border: 2px solid var(--qx-color-accent);
+  border-radius: var(--qx-radius-pill);
+  background: var(--qx-color-surface-raised);
+}
+.model-selection__range::-moz-range-thumb {
+  box-sizing: border-box;
+  width: var(--qx-space-4);
+  height: var(--qx-space-4);
+  border: 2px solid var(--qx-color-accent);
+  border-radius: var(--qx-radius-pill);
+  background: var(--qx-color-surface-raised);
+}
+.model-selection__range:focus-visible { outline: 2px solid var(--qx-color-accent); outline-offset: 2px; border-radius: var(--qx-radius-mark); }
+.model-selection__range:disabled { opacity: 0.5; cursor: not-allowed; }
+.model-selection__ticks { display: flex; align-items: center; justify-content: space-between; gap: var(--qx-space-1); }
+.model-selection__ticks span { flex: 1; text-align: center; }
+.model-selection__ticks span:first-child { text-align: start; }
+.model-selection__ticks span:last-child { text-align: end; }
+.model-selection__ticks [data-selected="true"] { color: var(--qx-color-ink); }
+.model-selection__error { flex-basis: 100%; margin: 0; color: var(--qx-color-danger); }
+@media (max-width: 480px) {
+  .model-selection { gap: var(--qx-space-2) var(--qx-space-3); }
+  .model-selection__effort { flex: 1 1 216px; }
+}
+.model-selection-settings__toggle { width: 100%; min-height: calc(var(--qx-space-10) + var(--qx-space-1)); gap: var(--qx-space-2); justify-content: flex-start; }
+.model-selection-settings__summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: end; font-size: var(--qx-text-meta); line-height: var(--qx-text-meta--line-height); color: var(--qx-color-muted); }
+.model-selection-settings__toggle > svg { flex: none; }
+.model-selection-settings__toggle[aria-expanded="true"] > svg { transform: rotate(180deg); }
+.model-selection-settings__panel { display: grid; gap: var(--qx-space-2); min-width: 0; padding: var(--qx-space-2); }
+.model-selection-settings__panel > p { margin: 0; }
+.model-selection-settings__panel .model-selection { display: grid; gap: var(--qx-space-3); }
+.model-selection-settings__panel .model-selection__model, .model-selection-settings__panel .model-selection__effort { min-width: 0; width: 100%; }
