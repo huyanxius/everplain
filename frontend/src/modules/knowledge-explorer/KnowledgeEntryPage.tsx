@@ -78,13 +78,13 @@ export function KnowledgeEntryPage({
     >
       <header className="knowledge-reader__actions">
         {onReturnToResearch ? (
-          <button type="button" aria-label="返回研究任务" onClick={onReturnToResearch}>
+          <button className="qx-btn qx-btn--ghost" type="button" aria-label="返回研究任务" onClick={onReturnToResearch}>
             <ArrowLeftIcon size={14} weight="bold" aria-hidden="true" />
             返回研究任务
           </button>
         ) : null}
         {onReturnToKnowledge ? (
-          <button type="button" aria-label={returnToKnowledgeLabel} onClick={onReturnToKnowledge}>
+          <button className="qx-btn qx-btn--ghost" type="button" aria-label={returnToKnowledgeLabel} onClick={onReturnToKnowledge}>
             <ArrowLeftIcon size={14} weight="bold" aria-hidden="true" />
             {returnToKnowledgeLabel}
           </button>

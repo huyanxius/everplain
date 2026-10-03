@@ -54,7 +54,7 @@ export function KnowledgeEntryList({
       {state === 'error' ? (
         <div className="knowledge-explorer__state" role="alert">
           <strong>条目没有成功载入</strong><p>{error}</p>
-          <button type="button" onClick={onRetry}>重新读取</button>
+          <button className="qx-btn qx-btn--ghost" type="button" onClick={onRetry}>重新读取</button>
         </div>
       ) : null}
       {state === 'empty' ? (
@@ -77,7 +77,7 @@ export function KnowledgeEntryList({
               <span className="knowledge-explorer__result-index" aria-hidden="true">
                 {entry.knowledgeId.split(':').at(-1)}
               </span>
-              <button className="knowledge-explorer__result-main" type="button" aria-label={`打开 ${entry.title}`} onClick={() => onSelect(entry.knowledgeId)}>
+              <button className="qx-btn qx-btn--ghost knowledge-explorer__result-main" type="button" aria-label={`打开 ${entry.title}`} onClick={() => onSelect(entry.knowledgeId)}>
                 <span className="knowledge-explorer__result-kicker">
                   <span>{entry.dimensionId} {entry.dimension}</span>
                   <span data-node-kind={category.kind}>{category.badge ?? '分类'} {category.label}</span>
@@ -87,7 +87,7 @@ export function KnowledgeEntryList({
               </button>
               <div className="knowledge-explorer__result-meta">
                 {onLocate ? (
-                  <button type="button" aria-label={`在图中定位 ${entry.title}`} onClick={() => onLocate(entry)}>
+                  <button className="qx-btn qx-btn--ghost" type="button" aria-label={`在图中定位 ${entry.title}`} onClick={() => onLocate(entry)}>
                     定位图谱 <ArrowSquareOutIcon size={13} weight="regular" aria-hidden="true" />
                   </button>
                 ) : null}
@@ -99,7 +99,7 @@ export function KnowledgeEntryList({
       ) : null}
 
       {hasNextPage ? (
-        <button className="knowledge-explorer__load-more" type="button" disabled={loadingMore} aria-label={`继续加载 ${remaining} 条未显示`} onClick={onLoadMore}>
+        <button className="qx-btn qx-btn--ghost knowledge-explorer__load-more" type="button" disabled={loadingMore} aria-label={`继续加载 ${remaining} 条未显示`} onClick={onLoadMore}>
           <span>{loadingMore ? '正在读取下一批' : '继续加载'}</span>
           <small>{remaining} 条未显示</small>
         </button>

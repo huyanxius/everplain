@@ -461,7 +461,7 @@ describe('knowledge pages', () => {
     expect(screen.getByRole('radio', { name: '点击批注显示文献' })).toHaveAttribute('aria-checked', 'true')
 
     fireEvent.click(screen.getByRole('button', { name: '打开第 1 条文献依据' }))
-    expect(screen.getByRole('note', { name: '文献依据，1 条' })).toHaveAttribute('data-open', 'true')
+    await waitFor(() => expect(screen.getByRole('note', { name: '文献依据，1 条' })).toHaveAttribute('data-open', 'true'))
 
     fireEvent.click(screen.getByRole('radio', { name: '悬浮正文显示文献' }))
     expect(articleContent).toHaveAttribute('data-evidence-display', 'hover')

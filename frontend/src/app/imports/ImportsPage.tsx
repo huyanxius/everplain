@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
-import { ArrowLeftIcon, ArrowRightIcon, CheckCircleIcon, FileArrowUpIcon, FolderOpenIcon, GlobeIcon, ImageIcon, NotebookIcon, PlayCircleIcon, PuzzlePieceIcon } from '@phosphor-icons/react'
+import { ArrowLeftIcon, ArrowRightIcon, ArrowClockwiseIcon, CheckCircleIcon, FileArrowUpIcon, FolderOpenIcon, GlobeIcon, ImageIcon, NotebookIcon, PlayCircleIcon, PuzzlePieceIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import { importFiles, importBilibili, readImportBatches, retryImport, type ImportSourceType } from '../../modules/knowledge-import'
-import { PageContent, PageShell } from '../ui/PageShell'
+import { KnowledgePage, KnowledgePageHead } from '../courses/KnowledgeLayout'
+import { AgentLoading } from '../ui/AgentLoading'
 import './imports.css'
 const sources = [
   { id: 'chrome', title: '浏览器收藏', description: 'Chrome、Edge 等导出的书签 HTML', accept: '.html,.htm', icon: GlobeIcon },
@@ -26,27 +27,40 @@ export function ImportsPage({ userId }: { userId: string | null }) {
   const batches = useQuery({ queryKey: ['import-batches', userId], queryFn: readImportBatches,
     refetchInterval: q => q.state.data?.some(b => b.status === 'processing') ? 1500 : false })
   const source = sources.find(s => s.id === selected)!
-  async function upload(files: FileList | null) {
-    if (!files?.length) return
+  async function upload(files: FileList | File[] | null) {
+    if (busy || !files?.length) return
     setBusy(true); setError(''); setNotice('')
     try { const batch = await importFiles(selected as ImportSourceType, Array.from(files)); setNotice(`已接收 ${batch.total} 条资料，正在后台导入`); await batches.refetch() }
     catch (e) { setError(e instanceof Error ? e.message : '导入失败，请重试') }
     finally { setBusy(false) }
   }
   async function favorites() {
+    if (busy) return
     setBusy(true); setError(''); setNotice('')
     try { await importBilibili(uid.trim()); setNotice('已开始读取公开收藏，字幕提取会在后台继续'); await batches.refetch() }
     catch (e) { setError(e instanceof Error ? e.message : '暂时无法读取收藏') }
     finally { setBusy(false) }
   }
-  return <PageShell wide><PageContent><main className="ep-imports">
-    <Link to="/app" className="ep-imports-back"><ArrowLeftIcon size={16} />我的空间</Link>
-    <header><p>BRING YOUR WORLD</p><h1>把散落的收藏，带回同一个地方。</h1><span>选择来源，保留原文。重复导入会自动去重，失败的条目可以单独再试。</span></header>
-    <div className="ep-imports-layout"><section><div className="ep-imports-sources" aria-label="导入来源">{sources.map(s => <button key={s.id} aria-pressed={selected === s.id} onClick={() => { setSelected(s.id); setError(''); setNotice('') }}><s.icon size={23} weight="light" /><strong>{s.title}</strong><span>{s.description}</span></button>)}</div>
-      <div className="ep-imports-upload"><source.icon size={30} weight="light" /><h2>{source.title}</h2><p>{source.description}</p>
-        {selected === 'bilibili' ? <form onSubmit={e => { e.preventDefault(); void favorites() }}><label>公开账户 UID<input value={uid} onChange={e => setUid(e.target.value)} inputMode="numeric" pattern="[0-9]{1,20}" required placeholder="例如：123456" /></label><button disabled={busy}>{busy ? '正在开始…' : '读取公开收藏'}<ArrowRightIcon size={15} /></button><small>只读取匿名可见的公开收藏，不需要 Cookie。无字幕的视频需要专用转写服务。</small></form> : <><label className="ep-upload-button"><FileArrowUpIcon size={16} />{busy ? '正在上传…' : '选择文件'}<input type="file" multiple accept={source.accept} disabled={busy} onChange={e => { void upload(e.target.files); e.target.value = '' }} /></label>{selected === 'obsidian' && <label className="ep-upload-folder">或选择整个文件夹<input type="file" multiple {...{ webkitdirectory: '' }} disabled={busy} onChange={e => { void upload(e.target.files); e.target.value = '' }} /></label>}<small>{selected === 'image' ? '图片识别需配置 Everplain 专用视觉模型；未配置的条目会显示原因并保留重试入口。' : '单个文件最多 16 MB，每批最多 64 MB；资料默认仅你可见。'}</small></>}
-      </div>{error && <p role="alert" className="ep-imports-error">{error}</p>}{notice && <p role="status" className="ep-imports-notice"><CheckCircleIcon size={16} />{notice}</p>}
-      <div className="ep-imports-extension"><PuzzlePieceIcon size={23} weight="light" /><div><strong>让下一次收藏更轻松</strong><p>Chrome 扩展支持一键收藏当前页、导入书签，无需复制链接。</p></div><a href="/downloads/everplain-clipper.zip" download>下载扩展 <ArrowRightIcon size={15} /></a></div>
-    </section><aside className="ep-imports-history"><header><h2>导入记录</h2><button onClick={() => { void batches.refetch() }}>刷新</button></header>{batches.isError && <p role="alert">{batches.error.message}</p>}{batches.isPending && <p role="status">正在读取记录…</p>}{batches.data?.length === 0 && <p className="ep-imports-muted">带来第一份资料，这里就会留下它的旅程。</p>}{batches.data?.map(batch => <section key={batch.id} className="ep-import-batch"><div><strong>{sources.find(s => s.id === batch.source_type)?.title ?? batch.source_type}</strong><span>{batch.finished} / {batch.total}</span></div><progress value={batch.finished} max={Math.max(batch.total,1)} /><small>{batch.imported} 条已入库 · {batch.duplicates} 条重复{batch.failed ? ` · ${batch.failed} 条待重试` : ''}</small><details><summary>查看条目</summary>{batch.items.map(i => <div className="ep-import-item" key={i.id}><span>{i.title}<small>{i.error ?? ({ imported: '已入库', duplicate: '已存在', queued: '等待处理', running: '正在处理', failed: '失败' })[i.status]}</small></span>{i.status === 'failed' && <button onClick={() => { void retryImport(batch.id,i.id).then(() => batches.refetch()).catch(e => setError(String(e))) }}>重试</button>}</div>)}</details><Link to={`/library?kb_id=${encodeURIComponent(batch.library_id)}`}>打开资料库 <ArrowRightIcon size={12} /></Link></section>)}</aside></div>
-  </main></PageContent></PageShell>
+  return <KnowledgePage>
+    <KnowledgePageHead title="导入资料" actions={<Link className="qx-btn qx-btn--ghost" to="/library"><ArrowLeftIcon size={18} />知识库</Link>}><p className="qx-meta">选择来源，保留原文。重复导入会自动去重，失败的条目可以单独再试。</p></KnowledgePageHead>
+    <div className="ep-import">
+      <section aria-label="添加资料" className="ep-import__create">
+        {selected === 'bilibili' ? <form className="qx-panel ep-import__bilibili" onSubmit={event => { event.preventDefault(); void favorites() }}><PlayCircleIcon size={28} /><h2 className="qx-card__title">B 站公开收藏</h2><label>公开账户 UID<input className="qx-input" value={uid} onChange={event => setUid(event.target.value)} inputMode="numeric" pattern="[0-9]{1,20}" required placeholder="例如：123456" /></label><button className="qx-btn qx-btn--primary" disabled={busy}>{busy ? '正在开始…' : '读取公开收藏'}<ArrowRightIcon size={15} /></button><p className="qx-meta">只读取匿名可见的公开收藏，不需要 Cookie。无字幕的视频需要专用转写服务。</p></form> : <>
+          <label className="ep-import__dropzone" data-busy={busy} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); void upload(Array.from(event.dataTransfer.files)) }}>
+            <FileArrowUpIcon size={28} /><strong>{busy ? '正在上传…' : '拖文件到这里，或点击选择'}</strong><span>{source.title}</span><small>{source.description}</small><input type="file" aria-label="选择文件" multiple accept={source.accept} disabled={busy} onChange={event => { void upload(event.target.files); event.target.value = '' }} />
+          </label>
+          <div className="ep-import__upload-note">{selected === 'obsidian' && <label className="qx-btn qx-btn--secondary ep-import__folder">或选择整个文件夹<input type="file" multiple {...{ webkitdirectory: '' }} disabled={busy} onChange={event => { void upload(event.target.files); event.target.value = '' }} /></label>}<p className="qx-meta">{selected === 'image' ? '图片识别需配置 Everplain 专用视觉模型；未配置的条目会显示原因并保留重试入口。' : '单个文件最多 16 MB，每批最多 64 MB；资料默认仅你可见。'}</p></div>
+        </>}
+        <div><h2 className="qx-heading">从别处导入</h2><div className="ep-import__sources" aria-label="导入来源">{sources.map(item => <button type="button" className="qx-btn qx-btn--secondary" key={item.id} aria-pressed={selected === item.id} disabled={busy} title={item.description} onClick={() => { setSelected(item.id); setError(''); setNotice('') }}><item.icon size={18} />{item.title}</button>)}</div></div>
+      </section>
+      {busy && <AgentLoading compact state="work" message={selected === 'bilibili' ? '正在读取公开收藏…' : '正在上传资料…'} />}
+      {error && <p role="alert" className="qx-notice qx-notice--danger">{error}</p>}{notice && <p role="status" className="qx-notice"><CheckCircleIcon size={17} />{notice}</p>}
+      <section className="ep-import__history" aria-label="导入记录"><header><h2 className="qx-heading">导入记录</h2><button type="button" className="qx-btn qx-btn--ghost" onClick={() => void batches.refetch()}><ArrowClockwiseIcon size={16} />刷新</button></header>
+        {batches.isError && <p role="alert" className="qx-notice qx-notice--danger">{batches.error.message}</p>}{batches.isPending && <AgentLoading compact message="正在读取记录…" />}{batches.data?.length === 0 && <p className="qx-meta">还没有导入记录。</p>}
+        {!busy && batches.data?.some(batch => batch.status === 'processing') && <AgentLoading compact state="work" message="正在整理导入的资料…" />}
+        <ul className="ep-import__batches">{batches.data?.map(batch => <li key={batch.id}><section className="ep-import__batch"><header>{batch.status === 'processing' ? <ArrowClockwiseIcon size={18} /> : batch.failed ? <WarningCircleIcon size={18} /> : <CheckCircleIcon size={18} />}<strong>{sources.find(item => item.id === batch.source_type)?.title ?? batch.source_type}</strong><span className="qx-meta">{batch.finished} / {batch.total}</span><Link className="qx-btn qx-btn--ghost" to={`/library?kb_id=${encodeURIComponent(batch.library_id)}`}>打开资料库<ArrowRightIcon size={14} /></Link></header><progress aria-label="导入进度" value={batch.finished} max={Math.max(batch.total, 1)} /><p className="qx-meta">{batch.imported} 条已入库 · {batch.duplicates} 条重复{batch.failed ? ` · ${batch.failed} 条待重试` : ''}</p><details><summary>查看条目</summary><ul className="ep-import__items">{batch.items.map(item => <li key={item.id} data-failed={item.status === 'failed'}><span>{item.title}<small>{item.error ?? ({ imported: '已入库', duplicate: '已存在', queued: '等待处理', running: '正在处理', failed: '失败' })[item.status]}</small></span>{item.status === 'failed' && <button type="button" className="qx-btn qx-btn--ghost" onClick={() => void retryImport(batch.id, item.id).then(() => batches.refetch()).catch(e => setError(String(e)))}>重试</button>}</li>)}</ul></details></section></li>)}</ul>
+      </section>
+      <section className="ep-import__extension"><PuzzlePieceIcon size={24} /><div><h2 className="qx-heading">让下一次收藏更轻松</h2><p className="qx-meta">Chrome 扩展支持一键收藏当前页、导入书签，无需复制链接。</p></div><a className="qx-btn qx-btn--secondary" href="/downloads/everplain-clipper.zip" download>下载扩展<ArrowRightIcon size={15} /></a></section>
+    </div>
+  </KnowledgePage>
 }

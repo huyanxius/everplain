@@ -33,7 +33,7 @@ export function KnowledgeGraphPreview({
     return (
       <div className="graph-preview-state" role="status">
         <p>暂时无法读取图谱预览。</p>
-        <button type="button" onClick={() => preview.refetch()}>重新加载图谱</button>
+        <button className="qx-btn qx-btn--ghost" type="button" onClick={() => preview.refetch()}>重新加载图谱</button>
       </div>
     )
   }

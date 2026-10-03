@@ -243,7 +243,7 @@ export function KnowledgeGraphWorkspace({
           <strong>结构目录</strong>
           <span>点击维度或目录节点逐级加载；不会一次铺满全部条目。</span>
         </div>
-        <button
+        <button className="qx-btn qx-btn--ghost"
           type="button"
           disabled={!focusEntry}
           aria-pressed={candidateEnabled}
