@@ -1,3 +1,5 @@
+/* App imports this control before theme.css; establish the shared order first. */
+@layer theme, base, components, utilities;
 @layer components {
   .qx-select { position: relative; display: inline-grid; width: 100%; min-width: 0; vertical-align: middle; }
   .qx-select__trigger { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--qx-space-2); text-align: left; cursor: pointer; }

@@ -8,6 +8,8 @@
  * 命名：块用 `qx-btn`，变体用 `qx-btn--primary`，状态走原生属性（:disabled、
  * aria-current、aria-pressed、aria-selected），不另起 `is-active` 一类的类名。
  */
+/* Preserve reset < components even when a shared control loads before theme.css. */
+@layer theme, base, components, utilities;
 @layer components {
   /* ---- 按钮 ----
    * primary 一页最多一个，是这页要你做的那件事；secondary 是并列的其他选择；
