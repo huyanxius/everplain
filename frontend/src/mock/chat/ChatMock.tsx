@@ -1,169 +1,302 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  ArrowClockwiseIcon,
   ArrowUpIcon,
   BooksIcon,
   CaretDownIcon,
+  CheckIcon,
   FilePlusIcon,
   FileTextIcon,
   FolderIcon,
   FolderOpenIcon,
-  GlobeHemisphereWestIcon,
   PlusIcon,
   StopIcon,
   XIcon,
 } from '@phosphor-icons/react'
 
-import { AgentAvatar } from '../../modules/agent-avatar'
-
 /*
- * 两个输入框的视觉参照，只看样子。功能以 conversation-view/ConversationComposer 和
- * ResearchAgentConversationPage 为准，这里只决定控件放在哪。
- *   简单版：/agent 普通对话。
- *   详细版：研究界面（新建研究工作区里的 Agent 栏，以及 /agent 的研究模式）。
- * 共同的骨架：上方是本轮附件，中间是输入，底栏左边是"这条消息怎么答"，右边是模型和发送。
+ * 两个输入框的视觉参照，可以点，不接后端。功能以 conversation-view/ConversationComposer 和
+ * ResearchAgentConversationPage 为准，这里只定控件放在哪、长什么样。
+ *
+ * 原则：平时露在外面的只有「+」、输入、模型、发送。其余都收进「+」菜单，用到才出现。
+ *
+ * 联网：去掉开关，默认开启。真实代码里 webSearchEnabled 初始值改成 true，「⋯」菜单里的「联网搜索」按钮删掉；
+ * 请求照旧带上这个字段，后端不用改。
+ *
+ * 研究框只在有内容时才出现的东西（这里没画，位置照下面）：
+ *   「正在讨论：X」、材料来源导入状态 → 框内顶部，和附件同一行区；
+ *   问题示例 → 空状态时在托盘下面，一次四条，可换一组。
  */
 export function ChatMock() {
   return (
     <main className="ch-page">
-      <section className="ch-block">
-        <h2 className="ch-block__title">Agent 页面</h2>
-        <ModeSwitch initial="standard" />
-        <SimpleComposer />
-      </section>
-      <section className="ch-block">
-        <h2 className="ch-block__title">研究界面</h2>
-        <ModeSwitch initial="deep-research" />
-        <ResearchComposer />
-      </section>
+      <AgentComposer />
+      <ResearchComposer />
     </main>
   )
 }
 
-/*
- * 简单版：附件 + 输入 + 模型 + 发送。知识来源和联网也放在底栏，现在它们藏在顶栏「⋯」里，
- * 用户发消息时看不见它会不会查资料、会不会上网。
- */
-function SimpleComposer() {
+/* Agent 页：一横条。内容超过一行时整条长高，圆角从胶囊变成面板。 */
+function AgentComposer() {
   const [text, setText] = useState('')
-  const [web, setWeb] = useState(false)
+  const multiline = text.includes('\n') || text.length > 40
   return (
-    <form className="ch-composer" onSubmit={(e) => e.preventDefault()}>
-      <textarea rows={1} aria-label="问 Everplain" placeholder="问一个问题" value={text} onChange={(e) => setText(e.target.value)} />
-      <div className="ch-bar">
-        <PlusMenu />
-        <button type="button" className="qx-btn qx-btn--ghost ch-chip"><BooksIcon /> 不使用知识库 <CaretDownIcon /></button>
-        <button type="button" className="qx-btn qx-btn--ghost ch-chip" aria-pressed={web} onClick={() => setWeb(!web)}><GlobeHemisphereWestIcon /> 联网</button>
-        <span className="ch-spacer" />
-        <ModelChip />
-        <button type="submit" className="qx-btn qx-btn--primary qx-btn--icon" aria-label="发送给 Everplain" disabled={!text.trim()}><ArrowUpIcon /></button>
-      </div>
+    <form className="ch-bar-composer" data-multiline={multiline} onSubmit={(e) => e.preventDefault()}>
+      <PlusMenu />
+      <AutoTextarea value={text} onChange={setText} placeholder="问一个问题" label="问 Everplain" />
+      <ModelPicker />
+      <SendButton enabled={!!text.trim()} />
     </form>
   )
 }
 
-/*
- * 详细版，从上到下：
- *   正在讨论（研究地图里选中的节点，可继续研究或结束）；
- *   材料来源（从材料开始研究时的导入状态，失败可重试）；
- *   本轮附件（带解析状态：已添加 / 等待解析 / 解析失败 / 需要 OCR / 未配置转写 / 等待转写 / 处理中）；
- *   输入；
- *   底栏：附件、知识来源、联网 ｜ 所属项目、材料库 ｜ 模型、发送（生成中变停止）；
- *   框外下方：问题示例，一次四条，可换一组。
- */
+/* 研究页：上面写，底下一行操作；框下托盘放研究专属的项目和材料库。 */
 function ResearchComposer() {
-  const [busy, setBusy] = useState(false)
-  const [web, setWeb] = useState(true)
-  const [page, setPage] = useState(0)
-  const examples = [
-    ['从这些访谈中整理用户需求', '这份报告的结论有哪些依据', '分析材料中相互矛盾的观点', '找出这组材料中的证据缺口'],
-    ['把阅读笔记整理成知识框架', '围绕这个问题继续查找资料', '将研究发现组织成报告提纲', '沿着上次的研究继续推进'],
-  ]
+  const [text, setText] = useState('')
+  const [files, setFiles] = useState([{ name: '访谈记录-B.docx', status: '已添加' }, { name: '田野笔记.pdf', status: '等待解析' }])
   return (
     <div className="ch-research">
-      <div className="ch-discussion" role="status">
-        <span>正在讨论：<strong>第三空间的定义</strong></span>
-        <button type="button" className="qx-btn qx-btn--ghost">继续研究</button>
-        <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="结束当前讨论"><XIcon /></button>
-      </div>
-
-      <form className="ch-composer ch-composer--research" onSubmit={(e) => { e.preventDefault(); setBusy(!busy) }}>
-        <div className="ch-extras">
-          <div className="ch-import" role="status" aria-label="材料来源">
-            <FileTextIcon /> 材料来源 <strong>访谈记录-B.docx</strong> <small>另 3 份</small>
-            <span className="ch-import__state">导入失败</span>
-            <button type="button" className="qx-btn qx-btn--ghost ch-chip"><ArrowClockwiseIcon /> 重试导入</button>
+      <form className="ch-box" onSubmit={(e) => e.preventDefault()}>
+        {files.length ? (
+          <div className="ch-files">
+            {files.map((f) => (
+              <span key={f.name} className="ch-file">
+                <FileTextIcon />
+                <span className="ch-file__name">{f.name}</span>
+                <span className="ch-file__status">{f.status}</span>
+                <button type="button" aria-label={`移除附件 ${f.name}`} onClick={() => setFiles(files.filter((x) => x !== f))}><XIcon /></button>
+              </span>
+            ))}
           </div>
-          <div className="ch-attachments" aria-label="本轮附件">
-            <Attachment title="访谈记录-B.docx" status="已添加" />
-            <Attachment title="田野笔记.pdf" status="等待解析" />
-            <Attachment title="街角照片.png" status="需要 OCR" />
-          </div>
-        </div>
-        <textarea rows={2} aria-label="和 Agent 讨论你的研究" placeholder="描述你想弄清楚的问题" />
-        <div className="ch-bar">
+        ) : null}
+        <AutoTextarea value={text} onChange={setText} placeholder="描述你想弄清楚的问题" label="和 Agent 讨论你的研究" minRows={2} />
+        <div className="ch-box__row">
           <PlusMenu />
-          <button type="button" className="qx-btn qx-btn--ghost ch-chip"><BooksIcon /> 毕业论文 <CaretDownIcon /></button>
-          <button type="button" className="qx-btn qx-btn--ghost ch-chip" aria-pressed={web} onClick={() => setWeb(!web)}><GlobeHemisphereWestIcon /> 联网</button>
-          <span className="ch-sep" />
-          <button type="button" className="qx-btn qx-btn--ghost ch-chip" aria-label="对话所属项目"><FolderIcon /> 城市第三空间 <CaretDownIcon /></button>
-          <button type="button" className="qx-btn qx-btn--ghost ch-chip"><FolderOpenIcon /> 材料库</button>
           <span className="ch-spacer" />
-          <ModelChip />
-          {busy ? (
-            <button type="button" className="qx-btn qx-btn--primary qx-btn--icon" aria-label="停止生成" onClick={() => setBusy(false)}><StopIcon weight="fill" /></button>
-          ) : (
-            <button type="submit" className="qx-btn qx-btn--primary qx-btn--icon" aria-label="发送给 Everplain"><ArrowUpIcon /></button>
-          )}
+          <ModelPicker />
+          <SendButton enabled={!!text.trim()} stoppable />
         </div>
       </form>
-
-      <div className="ch-examples" aria-label="问题示例">
-        {examples[page].map((e) => <button key={e} type="button" className="qx-btn qx-btn--ghost ch-example">{e}</button>)}
-        <button type="button" className="qx-btn qx-btn--ghost ch-example ch-example--more" onClick={() => setPage((page + 1) % examples.length)}>换一组</button>
+      <div className="ch-tray">
+        <ProjectPicker />
+        <button type="button" className="ch-tray__btn"><FolderOpenIcon /> 材料库</button>
       </div>
     </div>
   )
 }
 
-function Attachment({ title, status }: { title: string; status: string }) {
-  return (
-    <span className="qx-tag ch-attachment">
-      <FileTextIcon /> <span className="ch-attachment__name">{title}</span> <span className="qx-meta">{status}</span>
-      <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label={`移除附件 ${title}`}><XIcon /></button>
-    </span>
-  )
+/* ---------------- 共用 ---------------- */
+
+function AutoTextarea({ value, onChange, placeholder, label, minRows = 1 }: { value: string; onChange: (v: string) => void; placeholder: string; label: string; minRows?: number }) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`
+  }, [value])
+  return <textarea ref={ref} rows={minRows} aria-label={label} placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
 }
 
-/* 「+」：上传文件 / 从研究材料添加，两项都保留。 */
-function PlusMenu() {
+function SendButton({ enabled, stoppable }: { enabled: boolean; stoppable?: boolean }) {
+  const [busy, setBusy] = useState(false)
+  if (busy) return <button type="button" className="ch-send" aria-label="停止生成" onClick={() => setBusy(false)}><StopIcon weight="fill" /></button>
+  return <button type="submit" className="ch-send" aria-label="发送给 Everplain" disabled={!enabled} onClick={() => stoppable && enabled && setBusy(true)}><ArrowUpIcon weight="bold" /></button>
+}
+
+/* 点外面或按 Esc 关闭的小弹层。 */
+function Popover({ trigger, children, align = 'left', className = '' }: { trigger: (open: boolean, toggle: () => void) => ReactNode; children: (close: () => void) => ReactNode; align?: 'left' | 'right'; className?: string }) {
   const [open, setOpen] = useState(false)
+  const root = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const off = (e: PointerEvent) => !root.current?.contains(e.target as Node) && setOpen(false)
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('pointerdown', off)
+    document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('pointerdown', off); document.removeEventListener('keydown', esc) }
+  }, [open])
   return (
-    <div className="ch-anchor">
-      <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="添加附件" aria-expanded={open} onClick={() => setOpen(!open)}><PlusIcon /></button>
-      {open ? (
-        <div className="qx-menu ch-menu" role="menu">
-          <button type="button" className="qx-item" role="menuitem" onClick={() => setOpen(false)}><FilePlusIcon /> 上传文件</button>
-          <button type="button" className="qx-item" role="menuitem" onClick={() => setOpen(false)}><FolderOpenIcon /> 从研究材料添加</button>
-        </div>
-      ) : null}
+    <div className="ch-anchor" ref={root}>
+      {trigger(open, () => setOpen(!open))}
+      {open ? <div className={`ch-pop ch-pop--${align} ${className}`}>{children(() => setOpen(false))}</div> : null}
     </div>
   )
 }
 
-function ModelChip() {
-  return <button type="button" className="qx-btn qx-btn--ghost ch-chip" aria-label="模型与思考强度：GPT 6 Luna · 中">GPT 6 Luna · 中 <CaretDownIcon /></button>
+/* 「+」：上传文件、从研究材料添加、知识来源（原来在顶栏「⋯」里）。 */
+function PlusMenu() {
+  const [kb, setKb] = useState('不使用知识库')
+  return (
+    <Popover
+      trigger={(open, toggle) => <button type="button" className="ch-icon" aria-label="添加" aria-expanded={open} onClick={toggle}><PlusIcon /></button>}
+    >
+      {(close) => (
+        <div className="ch-menu" role="menu">
+          <button type="button" className="ch-menu__item" role="menuitem" onClick={close}><FilePlusIcon /> 上传文件</button>
+          <button type="button" className="ch-menu__item" role="menuitem" onClick={close}><FolderOpenIcon /> 从研究材料添加</button>
+          <div className="ch-menu__rule" />
+          <p className="ch-menu__label"><BooksIcon /> 知识来源</p>
+          {['不使用知识库', '毕业论文', '读书笔记', '我的资料'].map((k) => (
+            <button key={k} type="button" className="ch-menu__item ch-menu__item--sub" role="menuitemradio" aria-checked={kb === k} onClick={() => setKb(k)}>
+              {k}{kb === k ? <CheckIcon className="ch-menu__check" /> : null}
+            </button>
+          ))}
+          <p className="ch-menu__hint">对话中切换会开启新对话</p>
+        </div>
+      )}
+    </Popover>
+  )
 }
 
-/* 模式栏照现有 AgentModeSwitch：左边是 Agent 头像（Chat），右边是「研究」。不改成文字。 */
-function ModeSwitch({ initial }: { initial: 'standard' | 'deep-research' }) {
-  const [mode, setMode] = useState(initial)
+/*
+ * 模型与思考强度。选模型 → 下面的强度档位只显示这个模型支持的；换模型时保留仍然可用的档位，否则回到默认。
+ * 档位是离散的六档（无 / 低 / 中 / 高 / 很高 / 最高），滑块只停在档位上。生成中整块禁用并提示"结束后可调整"。
+ */
+const models = [
+  { id: 'luna', name: 'GPT 6 Luna', note: '日常对话与研究', efforts: ['无', '低', '中', '高', '很高', '最高'], def: 2 },
+  { id: 'sol', name: 'GPT 6.1 Sol', note: '更强的推理，回答更慢', efforts: ['低', '中', '高', '很高'], def: 1 },
+  { id: 'mini', name: 'GPT 6 Mini', note: '快速回答', efforts: ['无', '低'], def: 0 },
+]
+
+function ModelPicker() {
+  const [modelId, setModelId] = useState('luna')
+  const [effort, setEffort] = useState('中')
+  const model = models.find((m) => m.id === modelId)!
+  const level = Math.max(0, model.efforts.indexOf(effort))
+  const pick = (id: string) => {
+    const next = models.find((m) => m.id === id)!
+    setModelId(id)
+    if (!next.efforts.includes(effort)) setEffort(next.efforts[next.def])
+  }
   return (
-    <div className="qx-segmented ch-modes" role="tablist" aria-label="Chat / Research">
-      <button type="button" role="tab" aria-label="Chat" aria-selected={mode === 'standard'} onClick={() => setMode('standard')}>
-        <AgentAvatar avatar="cheng" color="#5d8fe6" size={24} playing={false} />
-      </button>
-      <button type="button" role="tab" aria-label="Research" aria-selected={mode === 'deep-research'} onClick={() => setMode('deep-research')}>研究</button>
+    <Popover
+      align="right"
+      trigger={(open, toggle) => (
+        <button type="button" className="ch-model" aria-expanded={open} aria-label={`模型与思考强度：${model.name} · ${effort}`} onClick={toggle}>
+          {model.name} <span className="ch-model__effort">{effort}</span> <CaretDownIcon />
+        </button>
+      )}
+    >
+      {() => (
+        <div className="ch-modelpop" role="dialog" aria-label="选择模型与思考强度">
+          <p className="ch-modelpop__title">模型</p>
+          <div className="ch-modelpop__list" role="radiogroup">
+            {models.map((m) => (
+              <button key={m.id} type="button" role="radio" aria-checked={m.id === modelId} className="ch-modelpop__model" onClick={() => pick(m.id)}>
+                <span>
+                  <strong>{m.name}</strong>
+                  <small>{m.note}</small>
+                </span>
+                {m.id === modelId ? <CheckIcon /> : null}
+              </button>
+            ))}
+          </div>
+          <div className="ch-modelpop__effort">
+            <div className="ch-modelpop__effort-head">
+              <p className="ch-modelpop__title">思考强度</p>
+              <span>{effort}</span>
+            </div>
+            <EffortSlider steps={model.efforts} value={level} onChange={(i) => setEffort(model.efforts[i])} />
+            <p className="ch-modelpop__hint">越高想得越久，适合需要推理的问题</p>
+          </div>
+        </div>
+      )}
+    </Popover>
+  )
+}
+
+/* 对话所属项目：可搜索；第一项「独立对话」表示不归属项目。 */
+function ProjectPicker() {
+  const [value, setValue] = useState('城市第三空间')
+  const [q, setQ] = useState('')
+  const options = ['独立对话', '城市第三空间', '短视频与注意力', '县城的人情社会']
+  return (
+    <Popover
+      trigger={(open, toggle) => <button type="button" className="ch-tray__btn" aria-expanded={open} aria-label="对话所属项目" onClick={toggle}><FolderIcon /> {value} <CaretDownIcon /></button>}
+    >
+      {(close) => (
+        <div className="ch-menu" role="dialog" aria-label="切换项目">
+          <input className="ch-menu__search" placeholder="搜索项目" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+          {options.filter((o) => o.includes(q)).map((o) => (
+            <button key={o} type="button" className="ch-menu__item" role="menuitemradio" aria-checked={value === o} onClick={() => { setValue(o); close() }}>
+              <FolderIcon /> {o}{value === o ? <CheckIcon className="ch-menu__check" /> : null}
+            </button>
+          ))}
+        </div>
+      )}
+    </Popover>
+  )
+}
+
+/*
+ * 思考强度滑条。档位离散，但拖动是连续的：按住后圆点、填充条和上方气泡跟着指针走，气泡里的字实时换成最近的档位；
+ * 松手后带一点回弹吸到那一档。点轨道任意位置直接跳过去；键盘左右键、Home/End 也能调。
+ * 真实实现里 onChange 对应 selectionFromEffortStep()，只在松手或键盘时提交，拖动中不发请求。
+ */
+function EffortSlider({ steps, value, onChange }: { steps: readonly string[]; value: number; onChange: (i: number) => void }) {
+  const track = useRef<HTMLDivElement>(null)
+  const [drag, setDragState] = useState<number | null>(null)
+  const live = useRef<number | null>(null)
+  const setDrag = (v: number | null) => { live.current = v; setDragState(v) }
+  const last = steps.length - 1
+  const ratio = drag ?? (last ? value / last : 0)
+  const nearest = Math.round(ratio * last)
+  const shown = drag === null ? value : nearest
+  const toRatio = (x: number) => {
+    const r = track.current!.getBoundingClientRect()
+    return Math.min(1, Math.max(0, (x - r.left) / r.width))
+  }
+  const down = (e: React.PointerEvent) => {
+    if (!last) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setDrag(toRatio(e.clientX))
+  }
+  const move = (e: React.PointerEvent) => { if (live.current !== null) setDrag(toRatio(e.clientX)) }
+  const up = () => {
+    if (live.current === null) return
+    onChange(Math.round(live.current * last))
+    setDrag(null)
+  }
+  const key = (e: React.KeyboardEvent) => {
+    const next = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? value + 1 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? value - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? last : null
+    if (next === null) return
+    e.preventDefault()
+    onChange(Math.min(last, Math.max(0, next)))
+  }
+  return (
+    <div className="ch-effort" data-dragging={drag !== null}>
+      <div
+        ref={track}
+        className="ch-effort__track"
+        role="slider"
+        tabIndex={0}
+        aria-label="思考强度"
+        aria-valuemin={0}
+        aria-valuemax={last}
+        aria-valuenow={shown}
+        aria-valuetext={steps[shown]}
+        onPointerDown={down}
+        onPointerMove={move}
+        onPointerUp={up}
+        onPointerCancel={up}
+        onKeyDown={key}
+        style={{ ['--r' as string]: ratio }}
+      >
+        <div className="ch-effort__rail">
+          <div className="ch-effort__fill" />
+        </div>
+        {steps.map((s, i) => (
+          <span key={s} className="ch-effort__tick" data-on={i <= nearest} style={{ left: `${last ? (i / last) * 100 : 0}%` }} />
+        ))}
+        <div className="ch-effort__thumb">
+          <span className="ch-effort__bubble">{steps[shown]}</span>
+        </div>
+      </div>
+      <div className="ch-effort__labels">
+        {steps.map((s, i) => (
+          <button key={s} type="button" data-on={i === shown} style={{ left: `${last ? (i / last) * 100 : 0}%` }} onClick={() => onChange(i)}>{s}</button>
+        ))}
+      </div>
     </div>
   )
 }
