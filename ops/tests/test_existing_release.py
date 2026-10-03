@@ -275,7 +275,7 @@ class ExistingReleaseTests(unittest.TestCase):
         transport = (ROOT / "ops/cd/deploy-existing-ssh.sh").read_text()
         self.assertIn(release.ARCHIVE_SHA256, transport)
         self.assertIn("StrictHostKeyChecking=yes", transport)
-        self.assertLess(transport.index(release.ARCHIVE_SHA256), transport.index("scp "))
+        self.assertLess(transport.index(release.ARCHIVE_SHA256), transport.index("sftp "))
 
 
 if __name__ == "__main__":
