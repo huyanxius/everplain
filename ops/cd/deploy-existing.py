@@ -164,7 +164,42 @@ def inspect_image_archive(path, expected, report, role):
     return config
 
 
-def loaded_image(expected, role, report, archive_config=None):
+def archive_image_identities(path, expected):
+    """Prove config/manifest/index identities from the already checksum-verified archive."""
+    identities = {expected}
+    with tarfile.open(path, "r") as archive:
+        names = set(archive.getnames())
+        if "index.json" not in names:
+            return identities
+
+        def read_json(name, digest_value=None):
+            require(name in names and archive.getmember(name).size <= 2 * 1024**2)
+            data = archive.extractfile(name).read()
+            if digest_value:
+                require(hashlib.sha256(data).hexdigest() == digest_value[7:])
+            return json.loads(data)
+
+        def references_expected(descriptor, depth=0):
+            require(depth < 6)
+            identity = descriptor.get("digest", "")
+            require(re.fullmatch(r"sha256:[a-f0-9]{64}", identity))
+            node = read_json("blobs/sha256/" + identity[7:], identity)
+            matched = (node.get("config") or {}).get("digest") == expected
+            if "manifests" in node:
+                require(len(node["manifests"]) <= 64)
+                matched = any(references_expected(item, depth + 1) for item in node["manifests"])
+            if matched:
+                identities.add(identity)
+            return matched
+
+        root = read_json("index.json")
+        require(len(root["manifests"]) <= 64)
+        for descriptor in root["manifests"]:
+            references_expected(descriptor)
+    return identities
+
+
+def loaded_image(expected, role, report, archive_config=None, archive_path=None):
     found = {}
     for reference, name in ((expected, "id"), ("everplain-" + role + ":" + REVISION, "tag")):
         result = subprocess.run(
@@ -196,8 +231,25 @@ def loaded_image(expected, role, report, archive_config=None):
             report[f"{role}_{name}_architecture_matches_archive"] = value.get(
                 "Architecture"
             ) == archive_config.get("architecture")
-    require("id" in found)
-    return found["id"]
+    if "id" in found and found["id"].get("Id") == expected:
+        return found["id"]
+    # A containerd image store may address an image by manifest/index digest instead
+    # of config digest. Never trust a mutable tag without this complete archive proof.
+    require("tag" in found and archive_config and archive_path)
+    value = found["tag"]
+    require(report.get(f"{role}_archive_config_matches_image"))
+    require(report.get(f"{role}_archive_tag_references_expected_config"))
+    identities = archive_image_identities(archive_path, expected)
+    report[f"{role}_store_identity_proven_by_archive"] = value.get("Id") in identities
+    report[f"{role}_runtime_config_matches_archive"] = value.get("Config") == archive_config.get(
+        "config"
+    )
+    require(report[f"{role}_store_identity_proven_by_archive"])
+    require(report[f"{role}_runtime_config_matches_archive"])
+    require(report.get(f"{role}_tag_rootfs_matches_archive"))
+    require(report.get(f"{role}_tag_architecture_matches_archive"))
+    require(value.get("Os") == archive_config.get("os"))
+    return value
 
 
 def metadata(name):
@@ -299,6 +351,7 @@ class ExistingRelease:
         self.started = False
         self.stopped = False
         self.renamed = []
+        self.images = {}
         self.report = {
             name: False
             for name in (
@@ -339,6 +392,7 @@ class ExistingRelease:
                 "old_names": self.old_names,
                 "data": str(self.stage / "data"),
                 "report": self.report,
+                "images": self.images,
             },
         )
 
@@ -425,8 +479,8 @@ class ExistingRelease:
                 report=self.report,
                 prefix=role + "_load_",
             )
-            info = loaded_image(image, role, self.report, archive_config)
-            require(info.get("Id") == image)
+            info = loaded_image(image, role, self.report, archive_config, archive_path)
+            self.images[role] = info["Id"]
             require(info["Architecture"] == "amd64" and info["Os"] == "linux")
             require(info["Config"]["Labels"].get("org.opencontainers.image.revision") == REVISION)
             self.report[role + "_image_verified"] = True
@@ -448,7 +502,7 @@ class ExistingRelease:
                 str(release / "runtime.env"),
                 "--entrypoint",
                 "python",
-                API_IMAGE,
+                self.images["api"],
                 "/app/ops/preflight.py",
             ],
             report=self.report,
@@ -463,8 +517,8 @@ class ExistingRelease:
         self.record()
         if (
             self.old_revision == REVISION
-            and api.get("Image") == API_IMAGE
-            and web.get("Image") == WEB_IMAGE
+            and api.get("Image") == self.images["api"]
+            and web.get("Image") == self.images["web"]
         ):
             Controller(self.stage).health(REVISION)
             public_health(manifest, mode)
@@ -504,7 +558,7 @@ class ExistingRelease:
                     f"type=bind,src={backups},dst=/backups",
                     "--entrypoint",
                     "python",
-                    API_IMAGE,
+                    self.images["api"],
                     "/app/ops/database.py",
                     "backup",
                     "/source/everplain.db",
@@ -538,7 +592,7 @@ class ExistingRelease:
                     f"type=bind,src={data},dst=/data",
                     "--entrypoint",
                     "alembic",
-                    API_IMAGE,
+                    self.images["api"],
                     "upgrade",
                     "head",
                 ]
@@ -570,10 +624,12 @@ class ExistingRelease:
                     "127.0.0.1:8297:8297",
                     "--mount",
                     f"type=bind,src={data},dst=/data",
-                    API_IMAGE,
+                    self.images["api"],
                 ]
             )
             checker = Controller(self.stage)
+            require(metadata(NAMES["api"])["Config"]["Image"] == self.images["api"])
+            self.report["api_runtime_image_reference_verified"] = True
             checker.health(REVISION, web=False)
             self.report["api_health_ok"] = True
             address = metadata(NAMES["api"])["NetworkSettings"]["Networks"][network]["IPAddress"]
@@ -600,7 +656,7 @@ class ExistingRelease:
                     nginx_mount,
                     "--entrypoint",
                     "nginx",
-                    WEB_IMAGE,
+                    self.images["web"],
                     "-t",
                 ]
             )
@@ -621,9 +677,11 @@ class ExistingRelease:
                     "127.0.0.1:5196:8080",
                     "--mount",
                     nginx_mount,
-                    WEB_IMAGE,
+                    self.images["web"],
                 ]
             )
+            require(metadata(NAMES["web"])["Config"]["Image"] == self.images["web"])
+            self.report["web_runtime_image_reference_verified"] = True
             checker.health(REVISION)
             self.report["web_health_ok"] = True
             public_health(manifest, mode)

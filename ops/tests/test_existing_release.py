@@ -50,6 +50,7 @@ def container(role, source):
         if role == "api"
         else [],
         "Config": {
+            "Image": release.API_IMAGE if role == "api" else release.WEB_IMAGE,
             "Env": [
                 "EVERPLAIN_RUNTIME_MODE=base",
                 "EVERPLAIN_ALLOW_MODEL_FALLBACK=true",
@@ -57,7 +58,7 @@ def container(role, source):
                 "EVERPLAIN_RETRIEVAL_INDEX_PATH=/data/everplain-retrieval.db",
                 "EVERPLAIN_RELEASE_REVISION=" + release.PREVIOUS_REVISION,
                 "EVERPLAIN_RESEND_API_KEY=synthetic-private-value",
-            ]
+            ],
         },
     }
 
@@ -87,7 +88,11 @@ class ExistingReleaseTests(unittest.TestCase):
             return db.execute("SELECT * FROM " + table).fetchall()
 
     def metadata(self, name):
-        return container(name.removeprefix("everplain-"), self.source)
+        value = container(name.removeprefix("everplain-"), self.source)
+        value["Config"]["Image"] = getattr(self, "resolved_images", {}).get(
+            value["Config"]["Image"], value["Config"]["Image"]
+        )
+        return value
 
     def unpack(self, archive, destination, revision, checksum):
         self.assertEqual(revision, release.REVISION)
@@ -107,7 +112,7 @@ class ExistingReleaseTests(unittest.TestCase):
             return json.dumps(
                 [
                     {
-                        "Id": args[3],
+                        "Id": getattr(self, "resolved_images", {}).get(args[3], args[3]),
                         "Architecture": "amd64",
                         "Os": "linux",
                         "Config": {
@@ -201,6 +206,23 @@ class ExistingReleaseTests(unittest.TestCase):
         self.assertLess(stopped, backup)
         self.assertLess(backup, migrate)
         self.assertFalse(any(call[:3] == ["docker", "network", "create"] for call in self.calls))
+
+    def test_activation_uses_only_proven_immutable_store_ids_and_records_mapping(self):
+        self.resolved_images = {
+            release.API_IMAGE: "sha256:" + "1" * 64,
+            release.WEB_IMAGE: "sha256:" + "2" * 64,
+        }
+        report = self.execute()
+        self.assertTrue(report["deployment_succeeded"])
+        commands = [call for call in self.calls if call[:2] == ["docker", "run"]]
+        self.assertTrue(commands)
+        self.assertTrue(
+            all(
+                release.API_IMAGE not in call and release.WEB_IMAGE not in call for call in commands
+            )
+        )
+        saved = json.loads((self.updater.stage / "transaction.json").read_text())
+        self.assertEqual(saved["images"]["api"], self.resolved_images[release.API_IMAGE])
 
     def test_migration_failure_restores_untouched_old_containers_and_data(self):
         self.failure = "migration"
@@ -339,6 +361,73 @@ class ExistingReleaseTests(unittest.TestCase):
         self.assertFalse(report["api_id_revision_label_matches"])
         self.assertNotIn("must-not-print", json.dumps(report))
         self.assertTrue(all(type(value) is bool for value in report.values()))
+
+    def test_containerd_identity_requires_archive_chain_and_exact_config_and_layers(self):
+        config = {
+            "architecture": "amd64",
+            "os": "linux",
+            "config": {
+                "Env": ["FIXTURE=true"],
+                "Cmd": ["start"],
+                "Labels": {"org.opencontainers.image.revision": release.REVISION},
+            },
+            "rootfs": {"diff_ids": ["sha256:" + "a" * 64]},
+        }
+        blobs = {}
+
+        def blob(value):
+            data = json.dumps(value, sort_keys=True).encode()
+            identity = "sha256:" + hashlib.sha256(data).hexdigest()
+            blobs["blobs/sha256/" + identity[7:]] = data
+            return identity
+
+        expected = blob(config)
+        manifest = blob({"config": {"digest": expected}, "layers": []})
+        index = blob({"manifests": [{"digest": manifest}]})
+        blobs["index.json"] = json.dumps({"manifests": [{"digest": index}]}).encode()
+        path = self.root / "oci.tar"
+        with tarfile.open(path, "w") as archive:
+            for name, data in blobs.items():
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
+        self.assertEqual(
+            release.archive_image_identities(path, expected), {expected, manifest, index}
+        )
+        original = {
+            "Id": index,
+            "Architecture": "amd64",
+            "Os": "linux",
+            "Config": config["config"],
+            "RootFS": {"Layers": config["rootfs"]["diff_ids"]},
+        }
+        for difference in (None, "identity", "config", "layers"):
+            value = json.loads(json.dumps(original))
+            if difference == "identity":
+                value["Id"] = "sha256:" + "c" * 64
+            elif difference == "config":
+                value["Config"]["Cmd"] = ["different-command"]
+            elif difference == "layers":
+                value["RootFS"]["Layers"] = ["sha256:" + "d" * 64]
+            results = [
+                subprocess.CompletedProcess([], 1, "", "fixture-not-found"),
+                subprocess.CompletedProcess([], 0, json.dumps([value]), ""),
+            ]
+            report = {
+                "api_archive_config_matches_image": True,
+                "api_archive_tag_references_expected_config": True,
+            }
+            with patch.object(release.subprocess, "run", side_effect=results):
+                if difference:
+                    with self.assertRaises(RuntimeError):
+                        release.loaded_image(expected, "api", report, config, path)
+                else:
+                    loaded = release.loaded_image(expected, "api", report, config, path)
+                    self.assertEqual(loaded["Id"], index)
+                    self.assertTrue(report["api_store_identity_proven_by_archive"])
+        self.assertEqual(
+            release.archive_image_identities(path, "sha256:" + "e" * 64), {"sha256:" + "e" * 64}
+        )
 
     def test_failed_preflight_reports_only_known_field_flags(self):
         value = {"invalid_fields": ["EVERPLAIN_SESSION_COOKIE_SECURE", "private-field-value"]}
