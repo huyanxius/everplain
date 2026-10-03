@@ -53,7 +53,7 @@ export function ModelSelectionSettings({ state, disabled, activeRequest }: {
       const viewport = window.visualViewport
       const left = (viewport?.offsetLeft ?? 0) + 12
       const top = (viewport?.offsetTop ?? 0) + 12
-      const width = Math.max(0, Math.min(320, (viewport?.width ?? window.innerWidth) - 24))
+      const width = Math.max(0, Math.min(300, (viewport?.width ?? window.innerWidth) - 24))
       const bottom = top + (viewport?.height ?? window.innerHeight) - 24
       const above = Math.max(0, rect.top - top - 8)
       const below = Math.max(0, bottom - rect.bottom - 8)
@@ -64,7 +64,8 @@ export function ModelSelectionSettings({ state, disabled, activeRequest }: {
       menu.style.top = `${upwards ? Math.max(top, rect.top - Math.min(menu.scrollHeight, above, 400) - 8) : rect.bottom + 8}px`
     }
     place()
-    menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
+    const firstControl = menu.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]:not(:disabled)') ?? menu.querySelector<HTMLElement>('button:not(:disabled)') ?? menu
+    firstControl.focus()
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place)
     observer?.observe(menu)
     window.addEventListener('resize', place)
@@ -78,8 +79,10 @@ export function ModelSelectionSettings({ state, disabled, activeRequest }: {
     <button ref={trigger} type="button" className="qx-btn qx-btn--ghost model-selection-settings__summary"
       aria-label={`${text('模型与思考强度', 'Model and reasoning effort')}：${summary}`} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
       title={state.runtimeMode === 'mock' ? text('当前是隔离测试模型。', 'This is the isolated test runtime.') : undefined}
-      onClick={() => setOpen(value => !value)}><span>{summary}</span><CaretDownIcon size={14} aria-hidden="true" /></button>
-    {open && <div ref={panel} id={id} className="qx-menu model-selection-settings__popover" popover="manual" role="dialog" aria-label={text('选择模型与思考强度', 'Choose model and reasoning effort')}>
+      onClick={() => setOpen(value => !value)}>{state.status === 'ready' && model && selection && supported
+        ? <><span>{model.label}</span><span className="model-selection-settings__summary-effort">{text(effortLabels[selection.reasoningEffort][0], effortLabels[selection.reasoningEffort][1])}</span></>
+        : <span>{summary}</span>}<CaretDownIcon size={12} aria-hidden="true" /></button>
+    {open && <div ref={panel} id={id} className="qx-menu model-selection-settings__popover" popover="manual" role="dialog" tabIndex={-1} aria-label={text('选择模型与思考强度', 'Choose model and reasoning effort')}>
     {state.status === 'ready' && selection && supported ? <>
       <ModelSelectionControl className="model-selection--compact" catalog={state.catalog} value={selection} onChange={value => { if (!disabled) state.onChange(value) }} disabled={disabled} />
       {state.runtimeMode === 'mock' && <p className="qx-meta">{text('当前是隔离测试模型。', 'This is the isolated test runtime.')}</p>}
@@ -94,7 +97,6 @@ export function ModelSelectionSettings({ state, disabled, activeRequest }: {
           : text('模型选择尚未启用，本轮使用服务端默认设置。', 'Model selection is not enabled. This turn uses server defaults.')}</p>}
     {state.status === 'error' && <button type="button" className="qx-btn qx-btn--ghost" disabled={disabled} onClick={state.retry}>{text('重新读取模型', 'Reload models')}</button>}
     {disabled && supported && <p className="qx-meta">{text('当前回合进行中，结束后可调整。', 'You can change this after the current turn finishes.')}</p>}
-    <button type="button" className="qx-btn qx-btn--ghost" aria-label={text('关闭模型选择', 'Close model selection')} onClick={() => { setOpen(false); trigger.current?.focus() }}>{text('完成', 'Done')}</button>
     </div>}
   </section>
 }

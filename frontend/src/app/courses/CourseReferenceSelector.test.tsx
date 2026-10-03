@@ -42,3 +42,18 @@ it('keeps the selected source disabled during a busy conversation', async () => 
   fireEvent.click(screen.getByRole('combobox'))
   expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
 })
+
+it('renders the composer source section directly from owned libraries and keeps busy choices inert', async () => {
+  vi.mocked(listCourses).mockResolvedValue([library('mine-1', '真实项目资料'), library('other', '共享资料', 'reader')])
+  const onChange = vi.fn()
+  const view = render(<MemoryRouter><CourseReferenceSelector menu value="" hasConversation disabled={false} onChange={onChange} /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('menuitemradio', { name: '真实项目资料' }))
+  expect(onChange).toHaveBeenCalledExactlyOnceWith('mine-1')
+  expect(screen.queryByRole('menuitemradio', { name: '共享资料' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  expect(screen.getByText('切换将开启新对话')).toBeVisible()
+  view.rerender(<MemoryRouter><CourseReferenceSelector menu value="mine-1" hasConversation disabled onChange={onChange} /></MemoryRouter>)
+  expect(screen.getByRole('menuitemradio', { name: '真实项目资料' })).toHaveAttribute('aria-checked', 'true')
+  fireEvent.click(screen.getByRole('menuitemradio', { name: '不使用个人知识库' }))
+  expect(onChange).toHaveBeenCalledOnce()
+})
