@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,6 +16,33 @@ spec.loader.exec_module(parts)
 
 
 class ParallelUploadTests(unittest.TestCase):
+    @unittest.skipUnless(
+        shutil.which("sftp") and Path("/usr/lib/openssh/sftp-server").is_file(),
+        "local OpenSSH sftp-server is not installed",
+    )
+    def test_real_sftp_creates_new_shards_and_resumes_existing_prefixes(self):
+        body = b"checked-candidate" * 1234
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            source, destination, batch = root / "source", root / "remote", root / "batch"
+            source.write_bytes(body)
+            # Reproduce the original bug with an actually missing remote target.
+            batch.write_text(parts.upload_command(source, destination, 1))
+            command = ["sftp", "-q", "-D", "/usr/lib/openssh/sftp-server", "-b", str(batch)]
+            failed = parts.transfer(command, 5)
+            self.assertTrue(failed["missing_file"])
+            self.assertTrue(failed["exit_1"])
+            self.assertFalse(destination.exists())
+            # New file, existing empty file and two non-zero resumptions all use real SFTP.
+            for received in (0, 0, 31, 791):
+                if destination.exists():
+                    destination.write_bytes(body[:received])
+                batch.write_text(parts.upload_command(source, destination, received))
+                result = parts.transfer(command, 5)
+                self.assertTrue(result["ok"], result)
+                self.assertEqual(parts.digest(destination), hashlib.sha256(body).hexdigest())
+                self.assertTrue(all(type(value) is bool for value in result.values()))
+
     def test_split_and_assemble_preserve_prefix_and_exact_bytes(self):
         body = b"fixed-candidate" * 137
         prefix = body[:317]
