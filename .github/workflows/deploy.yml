@@ -1,0 +1,93 @@
+name: Release Everplain
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Recovery only: previous successfully activated release, retaining current data'
+        type: choice
+        options: [rollback-previous]
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: everplain-production
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: checks
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    outputs:
+      digest: ${{ steps.digest.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+      - name: Build immutable application artifact
+        run: bash ops/cd/build.sh
+      - name: Record artifact identity
+        id: digest
+        run: echo "sha256=$(sha256sum dist/release/everplain.tar.gz | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: everplain-${{ github.sha }}-${{ github.run_attempt }}
+          path: dist/release/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [checks, build]
+    environment: everplain-production
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: everplain-${{ github.sha }}-${{ github.run_attempt }}
+          path: dist/release
+      - name: Deploy the checked artifact
+        env:
+          EVERPLAIN_DEPLOY_HOST: ${{ vars.EVERPLAIN_DEPLOY_HOST }}
+          EVERPLAIN_DEPLOY_USER: ${{ vars.EVERPLAIN_DEPLOY_USER }}
+          EVERPLAIN_DEPLOY_PORT: ${{ vars.EVERPLAIN_DEPLOY_PORT }}
+          EVERPLAIN_SSH_PRIVATE_KEY: ${{ secrets.EVERPLAIN_SSH_PRIVATE_KEY }}
+          EVERPLAIN_SSH_KNOWN_HOSTS: ${{ secrets.EVERPLAIN_SSH_KNOWN_HOSTS }}
+          EXPECTED_SHA256: ${{ needs.build.outputs.digest }}
+        run: bash ops/cd/transport.sh deploy
+
+  recovery:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.operation == 'rollback-previous'
+    environment: everplain-production
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Roll back only the recorded previous release
+        env:
+          EVERPLAIN_DEPLOY_HOST: ${{ vars.EVERPLAIN_DEPLOY_HOST }}
+          EVERPLAIN_DEPLOY_USER: ${{ vars.EVERPLAIN_DEPLOY_USER }}
+          EVERPLAIN_DEPLOY_PORT: ${{ vars.EVERPLAIN_DEPLOY_PORT }}
+          EVERPLAIN_SSH_PRIVATE_KEY: ${{ secrets.EVERPLAIN_SSH_PRIVATE_KEY }}
+          EVERPLAIN_SSH_KNOWN_HOSTS: ${{ secrets.EVERPLAIN_SSH_KNOWN_HOSTS }}
+        run: bash ops/cd/transport.sh rollback-previous
