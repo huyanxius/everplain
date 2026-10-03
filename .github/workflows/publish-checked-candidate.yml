@@ -1,0 +1,43 @@
+name: Publish checked Everplain candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-checked-candidate.yml
+      - ops/cd/deploy-existing.py
+      - ops/cd/deploy-existing-ssh.sh
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: everplain-checked-candidate
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    environment: everplain-production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: everplain-0dae10baff6a78cb0e12f67cc6f5ad153336a8a4-1
+          run-id: 37101235437
+          github-token: ${{ github.token }}
+          path: dist/release
+      - name: Publish checked candidate using the existing containers
+        env:
+          EVERPLAIN_DEPLOY_HOST: ${{ vars.EVERPLAIN_DEPLOY_HOST || '43.142.87.170' }}
+          EVERPLAIN_DEPLOY_USER: ${{ vars.EVERPLAIN_DEPLOY_USER || 'ubuntu' }}
+          EVERPLAIN_DEPLOY_PORT: ${{ vars.EVERPLAIN_DEPLOY_PORT || '22' }}
+          EVERPLAIN_SSH_HOST_KEY_FINGERPRINT: SHA256:2QamxRsk36HjNhAek1+zT6Db1PtPKuuDoplLOCdTTmA
+          EVERPLAIN_SSH_PRIVATE_KEY: ${{ secrets.EVERPLAIN_SSH_PRIVATE_KEY }}
+        run: bash ops/cd/deploy-existing-ssh.sh
