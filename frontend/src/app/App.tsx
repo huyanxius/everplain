@@ -18,7 +18,6 @@ import {
   LoginPage,
   PasswordResetPage,
   RegisterPage,
-  RuntimeModeNotice,
   useAccount,
 } from '../modules/account'
 import { ResearchTaskNavigationRoute } from './ResearchTaskNavigationRoute'
@@ -30,6 +29,7 @@ import { ResearchProjectWorkspacePage } from './research-workspace/ResearchProje
 import { legacyResearchWorkspaceDestination } from './research-workspace/researchProjectWorkspaceModel'
 import { FoundationPage } from './foundation/FoundationPage'
 import { AppHomePage } from './home/AppHomePage'
+import { HomeCompanion } from './home/HomeCompanion'
 import { SharingPage, PublicDirectoryPage, SharedReaderPage, ConnectionsPage, SubscriptionPage } from './integrations/IntegrationPages'
 import { ImportsPage } from './imports/ImportsPage'
 import { PersonalGraphPage } from './personal-graph/PersonalGraphPage'
@@ -125,9 +125,9 @@ function AccountSettingsRoute() {
     })
   }
   return (
-    <SettingsModal onClose={() => location.state?.settingsBackground ? navigate(-1) : navigate('/app', { replace: true })}>
-        <button className="account-profile-setup" onClick={() => navigate('/welcome/setup')}>重新设置我的 AI 伙伴</button>
+    <SettingsModal userId={account.sessionState.status === 'authenticated' ? account.sessionState.session.user.userId : undefined} accountName={account.sessionState.status === 'authenticated' ? account.sessionState.session.user.displayName || account.sessionState.session.user.email : undefined} onClose={() => location.state?.settingsBackground ? navigate(-1) : navigate('/app', { replace: true })}>
         <AccountSettingsPage
+          onResetAgent={() => navigate('/welcome/setup')}
           onLogout={leaveAccount}
           onProfileUpdated={() => account.retrySession()}
           onSessionExpired={() => account.retrySession()}
@@ -161,7 +161,7 @@ function AdminOperationsRoute() {
           onForbidden={() => navigate('/settings', { replace: true })}
           onSessionExpired={() => navigate('/login?redirect=%2Fadmin%2Foperations', { replace: true })}
         />
-        <button className="admin-ops-back" type="button" onClick={() => navigate('/admin/users')}>返回用户管理</button>
+        <button className="qx-btn qx-btn--ghost admin-ops-back" type="button" onClick={() => navigate('/admin/users')}>返回用户管理</button>
       </PageContent>
     </PageShell>
   )
@@ -243,6 +243,7 @@ export function AppRoutes({
 
   return (
     <RailStateProvider>
+      <HomeCompanion active={resolvedSessionState.status === 'authenticated' && location.pathname === '/app'} />
       <RouteMotionSurface>
         <Routes location={settingsOpen ? settingsBackground ?? { pathname: '/app' } : location}>
       <Route
@@ -312,7 +313,6 @@ export function AppRoutes({
 export function App() {
   return (
     <BrowserRouter useTransitions={false}>
-      <RuntimeModeNotice />
       <AppRoutes />
     </BrowserRouter>
   )

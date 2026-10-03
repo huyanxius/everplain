@@ -1,37 +1,25 @@
-import { PersonalCompanion } from './PersonalCompanion'
+import { ConversationHistoryView, ConversationHistoryView as AgentConversationHistoryRail } from '../conversation-view/ConversationHistoryView'
+import { ConversationResearchFlow } from '../conversation-view/ConversationResearchFlow'
+import { ConversationSourcePanel } from '../conversation-view/ConversationSourcePanel'
+import { ConversationTurn } from '../conversation-view/ConversationThread'
+import type { ConversationAction, ConversationHandoff } from '../conversation-view/types'
+import { ConversationLayout } from '../conversation-view/ConversationLayout'
+import { ConversationComposer } from '../conversation-view/ConversationComposer'
+import { ModelSelectionSettings, useAgentModelSelection } from '../model-selection'
+import { AgentAvatar } from '../../modules/agent-avatar'
+import { AgentModeSwitch } from './AgentModeSwitch'
+import { ConversationActions } from './ConversationActions'
+import { CompanionStatusBar, PersonalCompanion } from './PersonalCompanion'
 import { CourseReferenceSelector } from '../courses/CourseReferenceSelector'
 import { composeResearchDiscussion, latestResearchAsk, resolveResearchCitation, type ResearchDiscussion } from '../../modules/research-workspace'
 import {
-  ArrowClockwiseIcon,
-  ArticleIcon,
-  ArrowUpIcon,
-  CaretDownIcon,
-  CaretRightIcon,
-  CheckIcon,
-  CheckCircleIcon,
-  CircleNotchIcon,
-  CirclesThreeIcon,
-  CompassIcon,
-  CopyIcon,
-  DotsThreeIcon,
-  DownloadSimpleIcon,
-  FilePdfIcon,
   FilePlusIcon,
   FileTextIcon,
   FolderOpenIcon,
   GlobeHemisphereWestIcon,
-  GlobeSimpleIcon,
-  LinkSimpleIcon,
   ListIcon,
-  MagnifyingGlassIcon,
-  TreeStructureIcon,
-  PencilLineIcon,
-  PlusIcon,
   SidebarSimpleIcon,
-  StopIcon,
-  TrashIcon,
   WarningCircleIcon,
-  XCircleIcon,
   XIcon,
 } from '@phosphor-icons/react'
 import {
@@ -47,12 +35,9 @@ import {
   type SetStateAction,
 } from 'react'
 import { createPortal, flushSync } from 'react-dom'
-import { AgentAnswerMarkdown } from './AgentAnswerMarkdown'
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
+import { useLocation, useNavigate, useSearchParams } from 'react-router'
 
 import {
-  ResearchContextRail,
-  ToolDetailDisclosure,
   type ResearchActivity,
   type ResearchCitation,
   type ResearchContextTab,
@@ -81,8 +66,6 @@ import {
   citationGroup,
   conclusionDigest,
   createResearchReportDocx,
-  displayAgentText,
-  formatElapsed,
   openResearchReportPrintWindow,
   researchReportDocxFilename,
 } from '../../modules/research-agent'
@@ -101,19 +84,10 @@ import {
   type ResearchMaterial,
   type ResearchMaterialLocator,
 } from '../../modules/research-materials'
-import { ProjectCreatePopover } from './ProjectCreatePopover'
 import { ProjectScopeMenu } from './ProjectScopeMenu'
-import { ProjectConversationList } from './ProjectConversationList'
 import { deleteResearchProject, listResearchProjects, type ResearchProject } from '../../modules/research-projects'
-import { createMaterialFirstResearchProject } from '../../modules/socio-match-workspace'
-import { ResearchAgentBot } from './ResearchAgentBot'
-import { ResearchAgentShader } from './ResearchAgentShader'
-import { ResearchPromptCarousel } from './ResearchPromptCarousel'
-import deepResearchGuidance from '../../assets/agent/new-research-guidance.webp'
+import { ConversationSuggestions } from '../conversation-view/ConversationSuggestions'
 import { useAppLocale, type AppLocale } from '../i18n/AppLocaleProvider'
-import './research-agent-page.css'
-import './research-agent-conversation.css'
-import './new-research-workspace.css'
 
 // The conversation controller is shared by the standalone Agent and embedded
 // research workspaces. Embedded callers provide the research context explicitly;
@@ -126,7 +100,7 @@ const KNOWLEDGE_RELEASE_STORAGE_KEY = 'everplain.agent.knowledge-releases.v1'
 const AGENT_RUNTIME_STORAGE_KEY = 'everplain.agent.runtime-modes.v1'
 const DEEP_RESEARCH_INTRO_SESSION_KEY = 'everplain.agent.deep-research-intro-session.v1'
 const DEEP_RESEARCH_INTRO_TIMEOUT_MS = 10_000
-// 退场动画时长，和 research-agent-conversation.css 里 agent-rail-leave 保持一致。
+// Keep the source selection mounted briefly while closing so focus can return safely.
 const RAIL_EXIT_MS = 220
 
 const DELETED_MATERIAL_ANSWER = '该回答引用的个人研究材料已删除，原回答内容已隐藏。'
@@ -189,155 +163,15 @@ function DeepResearchMockFlow({
   onContinueResearch?: () => void
   researchEntryBusy?: boolean
 }) {
-  const [customIntent, setCustomIntent] = useState('')
-  const [detailsOpen, setDetailsOpen] = useState(false)
-  // 选完到计划卡出现之间要等一次往返，中间没有反馈就像点空了。
-  const [chosenIntent, setChosenIntent] = useState<string | null>(null)
   if (stage === 'idle') return null
-
-  if (stage === 'clarifying') {
-    return (
-      <section
-        className={`deep-research-mock-card deep-research-mock-card--question${collaboration ? ' research-flow-card' : ''}${chosenIntent ? ' is-answered' : ''}`}
-        aria-label={collaboration ? "研究下一步" : "确认研究意图"}
-      >
-        <h2>{question}</h2>
-        <div className="deep-research-mock-card__options" role="radiogroup" aria-label="研究角度">
-          {options.filter((option) => option !== '更多自定义').map((option, index) => (
-            <button
-              key={option}
-              type="button"
-              role="radio"
-              aria-checked={chosenIntent === option}
-              disabled={chosenIntent !== null}
-              className={chosenIntent === option ? 'is-chosen' : undefined}
-              onClick={() => { setChosenIntent(option); onChooseIntent(option) }}
-            >
-              <b>{chosenIntent === option ? <CheckIcon size={14} weight="bold" /> : String.fromCharCode(65 + index)}</b>
-              {option}
-              {chosenIntent === option ? <em>已选择</em> : null}
-            </button>
-          ))}
-        </div>
-        <div className="deep-research-mock-card__options deep-research-mock-card__options--custom">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={chosenIntent === customIntent.trim() && customIntent.trim() !== ''}
-            disabled={chosenIntent !== null}
-            onClick={() => setCustomIntent((current) => current || ' ')}
-          >
-            <b>E</b>更多自定义
-          </button>
-          <button type="button" disabled={chosenIntent !== null} onClick={() => { setChosenIntent('跳过'); onSkip() }}>跳过</button>
-        </div>
-        {customIntent !== '' && chosenIntent === null ? (
-          <label className="deep-research-mock-card__other">
-            <span>补充方向</span>
-            <input autoFocus value={customIntent.trim()} onChange={(event) => setCustomIntent(event.target.value)} placeholder="写下你想研究的方向" />
-            <button type="button" disabled={!customIntent.trim()} onClick={() => { setChosenIntent(customIntent.trim()); onChooseIntent(customIntent.trim()) }}>继续</button>
-          </label>
-        ) : null}
-        {chosenIntent ? (
-          <p className="deep-research-mock-card__answered" aria-live="polite">
-            {collaboration ? <>正在根据你的选择继续讨论。</> : <>已按<strong>{chosenIntent}</strong>这个角度整理研究计划，稍等一下。</>}
-          </p>
-        ) : null}
-      </section>
-    )
-  }
-
-  if (stage === 'planning') {
-    return (
-      <section className="deep-research-mock-card" aria-label="研究计划">
-        <h2>研究：{question}</h2>
-        <div className="deep-research-mock-card__plan">
-          {options.map((step, index) => <div key={`${step}-${index}`}><strong>{index + 1}</strong><span>{step}</span></div>)}
-        </div>
-        <div className="deep-research-mock-card__actions">
-          <button type="button" className="is-primary" onClick={onConfirmPlan}>开始深入研究</button>
-          <button type="button" onClick={onEdit}>返回修改</button>
-        </div>
-      </section>
-    )
-  }
-
-  // 完成后以结论和后续操作替代过程清单，详细过程仍可展开工具调用查看。
-  const done = stage === 'completed'
-  const percent = done
-    ? 100
-    : Math.round(((Math.min(stepIndex, DEEP_RESEARCH_MOCK_STEPS.length - 1) + 0.5) / DEEP_RESEARCH_MOCK_STEPS.length) * 100)
-  const reachedIndex = done ? DEEP_RESEARCH_MOCK_STEPS.length : stepIndex
-  const toolCalls = toolSteps.length
-    ? toolSteps.map((step) => ({ tool: step.tool, label: step.label, detail: step.detail || '' }))
-    : [{ tool: 'research', label: done ? '工具调用已完成' : '等待工具调用', detail: done ? '' : '研究即将开始' }]
-  return (
-    <section
-      className={`deep-research-mock-card deep-research-mock-card--progress${done ? ' deep-research-mock-card--done' : ''}`}
-      aria-label={done ? '研究结论' : '研究进度'}
-      aria-live="polite"
-    >
-      <div className="deep-research-mock-card__eyebrow">{done ? '研究完成' : '正在深入研究'}</div>
-      <h2>{done ? '已经整理好一份带证据的结论' : '我正在逐步核对证据'}</h2>
-      <div className="deep-research-mock-card__progress-meta">
-        <span>{elapsedSeconds > 0 ? `${done ? '用时' : '已运行'} ${formatElapsed(elapsedSeconds)}` : done ? '研究已完成' : '正在开始'}</span>
-        <span>{percent}%</span>
-      </div>
-      <div className="deep-research-mock-card__progress-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
-        <span style={{ width: `${percent}%` }} />
-      </div>
-      {!done ? <div className="deep-research-mock-card__steps">
-        {DEEP_RESEARCH_MOCK_STEPS.map((step, index) => (
-          <div key={step} className={index < reachedIndex ? 'is-complete' : index === reachedIndex ? 'is-active' : ''}>
-            <span aria-hidden="true">{index < reachedIndex ? '✓' : index === reachedIndex ? '•' : '○'}</span>{step}
-          </div>
-        ))}
-      </div> : null}
-      {done ? (
-        <div className="deep-research-mock-card__conclusion">
-          <div className="deep-research-mock-card__eyebrow">研究结论</div>
-          <p>{conclusion || '这一轮没有产生可摘录的结论，完整回答见上方正文。'}</p>
-          <div className="deep-research-mock-card__result-meta">
-            <span>知识库 {knowledgeCount ?? 0} 条</span>
-            <span>网页资料 {webCount ?? 0} 条</span>
-          </div>
-        </div>
-      ) : null}
-      <button type="button" className="deep-research-mock-card__details-toggle" onClick={() => setDetailsOpen((open) => !open)} aria-expanded={detailsOpen}>
-        {detailsOpen ? '收起工具调用' : '查看工具调用'}<CaretDownIcon size={13} weight="bold" className={detailsOpen ? 'is-open' : ''} />
-      </button>
-      {detailsOpen ? (
-        <div className="deep-research-mock-card__tool-calls">
-          {toolCalls.map((call, index) => (
-            <div key={`${call.tool}-${index}`} className={toolSteps[index]?.status === 'completed' || index < reachedIndex ? 'is-complete' : index === reachedIndex ? 'is-active' : ''}>
-              <span>{toolSteps[index]?.status === 'completed' || index < reachedIndex ? '✓' : index === reachedIndex ? '•' : '○'}</span>
-              <strong>{call.label}</strong>
-              <small>{call.detail}</small>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {done ? (
-        <div className="deep-research-mock-card__export">
-          <p>这一轮的问答连同全部引用，可以直接导出成一份带来源的研究报告。</p>
-          <div className="deep-research-mock-card__export-actions">
-            {onExport ? <>
-              <button type="button" disabled={exportState !== 'idle'} onClick={() => onExport('docx')}>
-                <DownloadSimpleIcon size={14} weight="bold" />{exportState === 'docx' ? '正在生成 Word…' : '下载 Word'}
-              </button>
-              <button type="button" disabled={exportState !== 'idle'} onClick={() => onExport('pdf')}>
-                <FilePdfIcon size={14} />{exportState === 'pdf' ? '正在生成 PDF…' : '下载 PDF'}
-              </button>
-            </> : null}
-            <button type="button" className="deep-research-mock-card__continue"
-              disabled={researchEntryBusy} onClick={onContinueResearch}>
-              {researchEntryBusy ? '正在整理研究起点…' : '继续形成研究'}<CaretRightIcon size={14} />
-            </button>
-          </div>
-        </div>
-      ) : null}
-    </section>
-  )
+  return <ConversationResearchFlow stage={stage} question={question} options={options}
+    label={collaboration ? '研究下一步' : undefined}
+    toolSteps={toolSteps} elapsedSeconds={elapsedSeconds} phaseSteps={DEEP_RESEARCH_MOCK_STEPS} currentPhase={stepIndex}
+    progressPercent={stage === 'researching' ? Math.min(95, (stepIndex + 1) / DEEP_RESEARCH_MOCK_STEPS.length * 100) : stage === 'completed' ? 100 : undefined}
+    conclusion={conclusion} knowledgeCount={knowledgeCount} webCount={webCount}
+    busy={researchEntryBusy} exportState={exportState} onExport={onExport}
+    onChooseIntent={onChooseIntent} onSkip={onSkip} onConfirmPlan={onConfirmPlan} onEdit={onEdit}
+    onContinueResearch={onContinueResearch} />
 }
 
 const knowledgeTools = new Set([
@@ -531,72 +365,6 @@ function researchStartHandoffFromSteps(steps: ResearchToolStep[]): ResearchStart
   return null
 }
 
-function ResearchStartHandoffCard({ handoff, onContinueResearch, busy }: { handoff: ResearchStartHandoff; onContinueResearch?: () => void; busy?: boolean }) {
-  const { text } = useAppLocale()
-  return (
-    <section className="deep-research-mock-card research-flow-card" aria-label={text('研究建议', 'Research suggestion')} data-proposal-id={handoff.proposalId}>
-      <header className="research-flow-card__heading"><CompassIcon size={22} weight="regular" aria-hidden="true" /><h2>{handoff.phenomenon}</h2></header>
-      {handoff.researchIntent ? <div className="deep-research-mock-card__conclusion"><p>{handoff.researchIntent}</p></div> : null}
-      <div className="deep-research-mock-card__actions deep-research-mock-card__export-actions">
-        <button type="button" className="deep-research-mock-card__continue" disabled={busy} onClick={onContinueResearch}>
-          {busy ? text('正在整理研究起点…', 'Preparing research…') : text('去新建研究', 'Open new research')} <CaretRightIcon size={14} aria-hidden="true" />
-        </button>
-      </div>
-    </section>
-  )
-}
-
-function KnowledgeHandoffCards({
-  citation,
-  conversationId,
-  knowledgeReleaseId,
-}: {
-  citation: AgentCitation
-  conversationId: string
-  knowledgeReleaseId: string
-}) {
-  const { text } = useAppLocale()
-  if (!citation.knowledge_id) return null
-  const returnParams = new URLSearchParams({
-    conversation_id: conversationId,
-    knowledge_release_id: knowledgeReleaseId,
-  })
-  const entryParams = new URLSearchParams({
-    knowledge_release_id: knowledgeReleaseId,
-    return_to: `/agent?${returnParams.toString()}`,
-  })
-  const graphParams = new URLSearchParams({
-    knowledge_release_id: knowledgeReleaseId,
-    center: citation.knowledge_id,
-    query: citation.label,
-  })
-  const entryHref = `/knowledge/${encodeURIComponent(citation.knowledge_id)}?${entryParams.toString()}`
-  const graphHref = `/knowledge/graph?${graphParams.toString()}`
-
-  return (
-    <div className="research-agent-knowledge-handoffs">
-      <section className="research-agent-handoff research-agent-handoff--compact" aria-label={text('知识库建议', 'Knowledge base suggestion')}>
-        <span className="research-agent-handoff__mark" aria-hidden="true"><ArticleIcon size={23} weight="duotone" /></span>
-        <div className="research-agent-handoff__copy">
-          <small>{text('去知识库阅读', 'Read in the knowledge base')}</small>
-          <strong>{citation.label}</strong>
-          <p>{text('查看完整条目、来源与当前发布版本', 'View the full entry, its sources, and the current release')}</p>
-        </div>
-        <Link className="research-agent-handoff__link" to={entryHref}>{text('打开知识条目', 'Open knowledge entry')} <CaretRightIcon size={14} aria-hidden="true" /></Link>
-      </section>
-      <section className="research-agent-handoff research-agent-handoff--compact" aria-label={text('知识图谱建议', 'Knowledge graph suggestion')}>
-        <span className="research-agent-handoff__mark" aria-hidden="true"><TreeStructureIcon size={23} weight="duotone" /></span>
-        <div className="research-agent-handoff__copy">
-          <small>{text('沿知识关系探索', 'Explore related knowledge')}</small>
-          <strong>{citation.label}</strong>
-          <p>{text('从这个节点继续查看关联概念与理论', 'Continue from this node to related concepts and theories')}</p>
-        </div>
-        <Link className="research-agent-handoff__link" to={graphHref}>{text('查看知识节点', 'View knowledge node')} <CaretRightIcon size={14} aria-hidden="true" /></Link>
-      </section>
-    </div>
-  )
-}
-
 function conversationStorageScope(userId: string | null, conversationId: string | null, taskId: string | null, workspace: string) {
   return userId ? `${encodeURIComponent(userId)}.${conversationId ? `conversation.${encodeURIComponent(conversationId)}` : `draft.${workspace}.${encodeURIComponent(taskId ?? 'independent')}`}` : null
 }
@@ -655,6 +423,7 @@ function readPendingTurnAttempt(userId: string | null): PendingTurnAttempt | nul
       idempotencyKey: value.idempotencyKey,
       conversationId: value.conversationId ?? null,
       runId: typeof value.runId === 'string' && value.runId ? value.runId : null,
+      // Keep the original request, including model_id/reasoning_effort; never reselect on recovery.
       request: value.request && typeof value.request.message === 'string' ? value.request : undefined,
       materialIds: Array.isArray(value.materialIds)
         ? value.materialIds.filter((item): item is string => typeof item === 'string').slice(0, 20)
@@ -1080,235 +849,6 @@ function hasResearchMaterialActivity(steps: ResearchToolStep[]) {
   return steps.some((step) => researchMaterialTools.has(step.tool))
 }
 
-function AgentConversationHistoryRail({
-  projects,
-  setProjects,
-  projectListError = null,
-  selectedTaskId = null,
-  activeConversationId,
-  conversations,
-  loading,
-  onDelete,
-  onDeleteProject,
-  onNewConversation,
-  onOpen,
-  onRename,
-}: {
-  projects: ResearchProject[]
-  setProjects: (projects: ResearchProject[]) => void
-  projectListError?: string | null
-
-  selectedTaskId?: string | null
-  activeConversationId: string | null
-  conversations: AgentConversationSummary[]
-  loading: boolean
-  onDelete: (conversation: AgentConversationSummary) => Promise<void>
-  onDeleteProject: (taskId: string) => Promise<void>
-  onNewConversation: (taskId?: string) => void
-  onOpen: (conversation: AgentConversationSummary) => void
-  onRename: (conversation: AgentConversationSummary, title: string) => Promise<void>
-}) {
-  const { text } = useAppLocale()
-  const safeConversations = Array.isArray(conversations) ? conversations : []
-  const [projectError, setProjectError] = useState<string | null>(null)
-  const [projectCreateAnchor, setProjectCreateAnchor] = useState<HTMLElement | null>(null)
-  const [projectTitle, setProjectTitle] = useState('')
-  const [savingProject, setSavingProject] = useState(false)
-  async function createProject(event: FormEvent) {
-    event.preventDefault()
-    if (!projectTitle.trim() || savingProject) return
-    setSavingProject(true)
-    try {
-      const project = await createMaterialFirstResearchProject(crypto.randomUUID(), projectTitle.trim())
-      setProjects([{ task_id: project.taskId, project_title: projectTitle.trim(), status: project.status }, ...projects])
-      setProjectCreateAnchor(null)
-      setProjectTitle('')
-      onNewConversation(project.taskId)
-    } catch (cause) {
-      setProjectError(cause instanceof Error ? cause.message : text('项目创建失败', 'Project could not be created'))
-    } finally { setSavingProject(false) }
-  }
-  const railRef = useRef<HTMLElement>(null)
-  const popoverRef = useRef<HTMLDivElement>(null)
-  const [actionView, setActionView] = useState<{
-    conversationId: string
-    left: number
-    top: number
-    mode: 'menu' | 'rename' | 'delete'
-  } | null>(null)
-  const [draftTitle, setDraftTitle] = useState('')
-  const [busyId, setBusyId] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
-  const actionConversation = actionView
-    ? safeConversations.find((conversation) => conversation.conversation_id === actionView.conversationId) ?? null
-    : null
-
-  useEffect(() => {
-    if (!actionView) return undefined
-    const closePopover = (event: globalThis.PointerEvent) => {
-      const target = event.target as Node
-      if (!railRef.current?.contains(target) && !popoverRef.current?.contains(target)) {
-        setActionView(null)
-      }
-    }
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') setActionView(null)
-    }
-    const closeOnViewportChange = () => setActionView(null)
-    document.addEventListener('pointerdown', closePopover)
-    document.addEventListener('keydown', closeOnEscape)
-    window.addEventListener('resize', closeOnViewportChange)
-    window.addEventListener('scroll', closeOnViewportChange, true)
-    globalThis.requestAnimationFrame?.(() => {
-      popoverRef.current?.querySelector<HTMLElement>('button, input')?.focus()
-    })
-    return () => {
-      document.removeEventListener('pointerdown', closePopover)
-      document.removeEventListener('keydown', closeOnEscape)
-      window.removeEventListener('resize', closeOnViewportChange)
-      window.removeEventListener('scroll', closeOnViewportChange, true)
-    }
-  }, [actionView])
-
-  function switchActionMode(mode: 'rename' | 'delete') {
-    setActionView((current) => current ? { ...current, mode } : null)
-    setDraftTitle(actionConversation?.title ?? '')
-    setActionError(null)
-  }
-
-  async function submitRename(conversation: AgentConversationSummary) {
-    const title = draftTitle.trim()
-    if (!title || title === conversation.title) {
-      setActionView(null)
-      return
-    }
-    setBusyId(conversation.conversation_id)
-    setActionError(null)
-    try {
-      await onRename(conversation, title)
-      setActionView(null)
-    } catch (cause: unknown) {
-      setActionError(cause instanceof Error ? cause.message : text('对话名称修改失败', 'Conversation could not be renamed'))
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  async function confirmDelete(conversation: AgentConversationSummary) {
-    setBusyId(conversation.conversation_id)
-    setActionError(null)
-    try {
-      await onDelete(conversation)
-      setActionView(null)
-    } catch (cause: unknown) {
-      setActionError(cause instanceof Error ? cause.message : text('对话删除失败', 'Conversation could not be deleted'))
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  return (
-    <>
-      <section ref={railRef} className="agent-conversation-history" aria-label={text('Agent 对话记录', 'Agent conversation history')}>
-      <div className="agent-conversation-history__heading">
-        <h2>{text('项目', 'Projects')}</h2>
-        <button type="button" className="agent-conversation-history__new" aria-label={text('新建项目', 'New project')} title={text('新建项目', 'New project')} aria-expanded={Boolean(projectCreateAnchor)} onClick={(event) => { setProjectError(null); setActionView(null); setProjectCreateAnchor(projectCreateAnchor ? null : event.currentTarget) }}><PlusIcon size={16} /></button>
-      </div>
-      {projectCreateAnchor ? <ProjectCreatePopover anchor={projectCreateAnchor} title={projectTitle} saving={savingProject} error={projectError}
-        onTitleChange={setProjectTitle} onCancel={() => setProjectCreateAnchor(null)} onSubmit={(event) => { void createProject(event) }} /> : null}
-      {projectListError ? <p role="alert">{projectListError}</p> : null}
-      {loading ? <p role="status">{text('正在加载记录…', 'Loading history…')}</p> : (
-        <ProjectConversationList projects={projects} conversations={safeConversations} onDeleteProject={onDeleteProject}
-          activeTaskId={safeConversations.find((item) => item.conversation_id === activeConversationId)?.task_id ?? selectedTaskId}
-          onStart={onNewConversation} onStartIndependent={() => onNewConversation()} renderConversation={(conversation) => {
-            const conversationId = conversation.conversation_id
-            return (
-              <div className="agent-conversation-history__item" key={conversationId}>
-                <div className="agent-conversation-history__row" data-current={conversationId === activeConversationId ? 'true' : undefined}>
-                  <button
-                    className="agent-conversation-history__open"
-                    type="button"
-                    aria-current={conversationId === activeConversationId ? 'true' : undefined}
-                    onClick={() => onOpen(conversation)}
-                    title={conversation.title}
-                  >
-                    <span>{conversation.title}</span>
-                  </button>
-                  <button
-                    className="agent-conversation-history__actions"
-                    type="button"
-                    aria-label={text('打开对话操作', 'Open conversation actions')}
-                    aria-haspopup="menu"
-                    aria-expanded={actionView?.conversationId === conversationId}
-                    onClick={(event) => {
-                      if (actionView?.conversationId === conversationId) {
-                        setActionView(null)
-                        return
-                      }
-                      const rect = event.currentTarget.getBoundingClientRect()
-                      setActionError(null)
-                      setActionView({
-                        conversationId,
-                        left: Math.min(rect.right + 8, window.innerWidth - 260),
-                        top: Math.min(rect.top - 4, window.innerHeight - 160),
-                        mode: 'menu',
-                      })
-                    }}
-                  >
-                    <DotsThreeIcon size={18} weight="bold" aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
-            )
-          }} />
-      )}
-      </section>
-      {actionView && actionConversation ? createPortal(
-        <div
-          ref={popoverRef}
-          className={`agent-conversation-history__popover is-${actionView.mode}`}
-          style={{ left: actionView.left, top: actionView.top }}
-        >
-          {actionView.mode === 'menu' ? (
-            <div role="menu">
-              <button type="button" role="menuitem" onClick={() => switchActionMode('rename')}>
-                <PencilLineIcon size={14} aria-hidden="true" />{text('修改名称', 'Rename')}
-              </button>
-              <button className="is-danger" type="button" role="menuitem" onClick={() => switchActionMode('delete')}>
-                <TrashIcon size={14} aria-hidden="true" />{text('删除对话', 'Delete conversation')}
-              </button>
-            </div>
-          ) : actionView.mode === 'rename' ? (
-            <form aria-label={text('修改对话名称', 'Rename conversation')} onSubmit={(event) => { event.preventDefault(); void submitRename(actionConversation) }}>
-              <input
-                aria-label={text('修改对话名称', 'Rename conversation')}
-                disabled={busyId === actionConversation.conversation_id}
-                maxLength={120}
-                value={draftTitle}
-                onChange={(event) => setDraftTitle(event.target.value)}
-              />
-              <div>
-                <button type="button" disabled={busyId === actionConversation.conversation_id} onClick={() => setActionView(null)}>{text('取消', 'Cancel')}</button>
-                <button className="is-primary" type="submit" aria-label={text('保存对话名称', 'Save conversation name')} disabled={busyId === actionConversation.conversation_id || !draftTitle.trim()}>{text('保存', 'Save')}</button>
-              </div>
-            </form>
-          ) : (
-            <div role="dialog" aria-label={text('删除对话', 'Delete conversation')}>
-              <strong>{text('删除这段对话？', 'Delete this conversation?')}</strong>
-              <div>
-                <button type="button" disabled={busyId === actionConversation.conversation_id} onClick={() => setActionView(null)}>{text('取消', 'Cancel')}</button>
-                <button className="is-danger" type="button" disabled={busyId === actionConversation.conversation_id} aria-label={text('确认删除对话', 'Confirm delete conversation')} onClick={() => { void confirmDelete(actionConversation) }}>{text('删除', 'Delete')}</button>
-              </div>
-            </div>
-          )}
-          {actionError ? <p role="alert">{actionError}</p> : null}
-        </div>,
-        railRef.current?.closest('.app-frame') ?? document.body,
-      ) : null}
-    </>
-  )
-}
-
 function ConversationHistory({
   projects,
   setProjects,
@@ -1338,224 +878,15 @@ function ConversationHistory({
   onOpen: (conversation: AgentConversationSummary) => void
   onClose: () => void
 }) {
-  const { text } = useAppLocale()
-  const [query, setQuery] = useState('')
-  const closeButtonRef = useRef<HTMLButtonElement>(null)
-  const filtered = conversations.filter((conversation) => (
-    conversation.title.toLowerCase().includes(query.trim().toLowerCase())
-  ))
-
-  useEffect(() => {
-    closeButtonRef.current?.focus()
-    const handleEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', handleEscape)
-    return () => document.removeEventListener('keydown', handleEscape)
-  }, [onClose])
-
-  return (
-    <div className="new-research__history" role="dialog" aria-modal="true" aria-label={text('研究记录', 'Research history')}>
-      <header>
-        <div><span>{text('对话记录', 'Conversation history')}</span><strong>{text('继续一个已有问题', 'Continue an existing question')}</strong></div>
-        <button ref={closeButtonRef} type="button" aria-label={text('关闭研究记录', 'Close research history')} onClick={onClose}><XIcon size={16} /></button>
-      </header>
-      <label className="new-research__history-search">
-        <MagnifyingGlassIcon size={15} />
-        <input aria-label={text('搜索研究记录', 'Search research history')} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={text('搜索问题', 'Search questions')} />
-      </label>
-      <div className="new-research__history-list">
-        <AgentConversationHistoryRail projects={projects} setProjects={setProjects} conversations={filtered} activeConversationId={activeConversationId}
-          selectedTaskId={selectedTaskId} loading={loading} onOpen={onOpen}
-          onNewConversation={onNewConversation} onRename={onRename} onDelete={onDelete} onDeleteProject={onDeleteProject} />
-      </div>
-    </div>
-  )
-}
-
-// 每个工具保留自己的图标，但换掉过于具象的那几个（扳手、地图、书本），
-// 统一 light 权重的线条，状态只用颜色区分，和右侧研究面板一个语言。
-const toolIcons: Record<string, typeof ArticleIcon> = {
-  search_knowledge: MagnifyingGlassIcon,
-  read_knowledge_entry: ArticleIcon,
-  read_sources: LinkSimpleIcon,
-  browse_knowledge_directory: FolderOpenIcon,
-  search_research_materials: MagnifyingGlassIcon,
-  read_research_material_context: FileTextIcon,
-  search_web: GlobeSimpleIcon,
-  read_web_page: GlobeSimpleIcon,
-  update_research_map: TreeStructureIcon,
-  propose_start_research: CompassIcon,
-  get_research_workflow_state: CompassIcon,
-  start_theory_matching: CirclesThreeIcon,
-  save_confirmed_theory_plan: CheckCircleIcon,
-  read_research_document: FileTextIcon,
-  propose_document_revision: PencilLineIcon,
-  propose_document_creation: FilePlusIcon,
-}
-
-function ToolLogo({ tool, state }: { tool: string; state?: string }) {
-  const ToolIcon = toolIcons[tool] ?? ArticleIcon
-  return (
-    <span className={`research-agent-tool-logo${state ? ` is-${state}` : ''}`} aria-hidden="true">
-      <ToolIcon size={16} weight="light" />
-    </span>
-  )
-}
-
-function StreamingRunStatus({ status, steps }: { status: AgentPageStatus; steps: ResearchToolStep[] }) {
-  const { text } = useAppLocale()
-  const runningTool = [...steps].reverse().find((step) => step.status === 'running')?.tool
-  const phase = runningTool && ['read_knowledge_entry', 'read_sources', 'read_research_document', 'read_research_material_context'].includes(runningTool)
-    ? text('正在阅读研究材料', 'Reading research materials')
-    : runningTool === 'search_research_materials'
-      ? text('正在检索个人材料', 'Searching personal research materials')
-      : runningTool && ['search_knowledge', 'browse_knowledge_directory'].includes(runningTool)
-      ? text('正在检索知识库', 'Searching the knowledge base')
-      : runningTool === 'start_theory_matching'
-        ? text('正在比较理论视角', 'Comparing theoretical perspectives')
-        : runningTool && ['propose_document_creation', 'propose_document_revision'].includes(runningTool)
-          ? text('正在整理研究框架', 'Preparing the research framework')
-          : runningTool
-            ? text('正在更新研究进度', 'Updating research progress')
-            : status === 'answering'
-              ? text('正在生成回答', 'Writing the answer')
-              : text('正在理解并整理研究问题', 'Understanding and structuring the research question')
-  return (
-    <p className="new-research__run-status" role="status">
-      <strong>{phase}</strong>
-    </p>
-  )
-}
-
-function ToolTraceTimeline({ steps, onOpenActivity }: { steps: ResearchToolStep[]; onOpenActivity: () => void }) {
-  const { locale, text } = useAppLocale()
-  const running = steps.some((step) => step.status === 'running')
-  const interrupted = steps.some((step) => step.interrupted)
-  const failed = steps.some((step) => step.status === 'failed' && !step.interrupted)
-  const [expanded, setExpanded] = useState(false)
-
-  if (!steps.length) return null
-  const statusLabel = running
-    ? text('Agent 正在调用工具', 'Agent is using tools')
-    : interrupted
-      ? text('工具调用已中断', 'Tool activity was interrupted')
-      : failed
-        ? text('工具调用未完成', 'Tool activity did not complete')
-        : text('Agent 已完成工具调用', 'Agent completed its tool activity')
-
-  return (
-    <section className={`new-research__trace${expanded ? ' is-expanded' : ''}${running ? ' is-running' : ''}${failed ? ' is-failed' : ''}${interrupted ? ' is-interrupted' : ''}`} aria-label={text('Agent 工作过程', 'Agent activity')}>
-      <header className="new-research__trace-header">
-        <button
-          type="button"
-          className="research-agent-tool-summary"
-          aria-expanded={expanded}
-          onClick={() => setExpanded((value) => !value)}
-        >
-          <span className="research-agent-tool-logo-stack" aria-hidden="true">
-            {steps.slice(0, 3).map((step) => (
-              <ToolLogo key={step.id} tool={step.tool} state={step.interrupted ? 'interrupted' : step.status} />
-            ))}
-          </span>
-          <span className="research-agent-tool-summary__copy">
-            <strong>{statusLabel}</strong>
-            <small>{text(`${steps.length} 个实际步骤 · 按需使用知识库`, `${steps.length} actual steps · knowledge used as needed`)}</small>
-          </span>
-          <CaretRightIcon className="research-agent-tool-summary__caret" size={15} aria-hidden="true" />
-        </button>
-        <button className="research-agent-tool-activity" type="button" onClick={onOpenActivity}>{text('查看活动', 'View activity')}</button>
-      </header>
-      <ol className="new-research__trace-list" hidden={!expanded}>
-        {steps.map((step) => (
-          <li key={step.id} className={`new-research__trace-step is-${step.interrupted ? 'interrupted' : step.status}`}>
-            <ToolLogo tool={step.tool} state={step.interrupted ? 'interrupted' : step.status} />
-            <div>
-              <strong>{localizedToolLabel(step.tool, locale, step.label)}</strong>
-              <small>{step.interrupted ? text('已中断', 'Interrupted') : step.status === 'running' ? text('进行中', 'In progress') : step.status === 'failed' ? text('失败', 'Failed') : text('已完成', 'Completed')}</small>
-              <p className="new-research__trace-purpose">{localizedToolPurpose(step.tool, locale)}</p>
-              {step.input ? <p className="new-research__trace-input">{formatToolPayload(step.input)}</p> : null}
-              {step.detail ? <ToolDetailDisclosure detail={localizedToolDetail(step.detail, locale)} className="new-research__trace-detail" /> : null}
-              {resultItemsFromOutput(step.output).map((item) => (
-                <span className="new-research__trace-result" key={item.id}><FileTextIcon size={13} /><b>{item.title}</b></span>
-              ))}
-            </div>
-          </li>
-        ))}
-      </ol>
-    </section>
-  )
-}
-
-function SourcePills({ citations, onSelect }: { citations: AgentCitation[]; onSelect: (citation: AgentCitation) => void }) {
-  const { locale, text } = useAppLocale()
-  if (!citations.length) return null
-  return (
-    <div className="new-research__sources" aria-label={text('回答证据', 'Answer evidence')}>
-      <span className="new-research__sources-label">{text('依据', 'Evidence')}</span>
-      {citations.map((citation, index) => (
-        <button type="button" key={citation.citation_id} data-dimension={citationDimension(citation) ?? undefined} onClick={() => onSelect(citation)} aria-label={text(`查看证据：${citation.label}`, `View evidence: ${citation.label}`)}>
-          <b>{index + 1}</b><span>{citation.label}<small>{citationGroup(citation) === 'knowledge' ? text('知识库资料', 'Library material') : citationKindLabel(citation.kind, locale)}</small></span>
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function EvidenceOriginSummary({ citations }: { citations: AgentCitation[] }) {
-  const { text } = useAppLocale()
-  const materialCount = citations.filter((citation) => !citation.deleted && citationGroup(citation) === 'material').length
-  const knowledgeCount = citations.filter((citation) => !citation.deleted && citationGroup(citation) === 'knowledge').length
-  const webCount = citations.filter((citation) => !citation.deleted && citationGroup(citation) === 'web').length
-  if (!materialCount && !knowledgeCount && !webCount) return null
-  // 下面紧跟着的就是逐条依据，这里只需要一句话交代来源构成，不必再占一张卡片。
-  const parts = [
-    knowledgeCount ? `${text('知识库资料', 'Knowledge library')} ${knowledgeCount}` : null,
-    materialCount ? `${text('你的研究材料', 'Your materials')} ${materialCount}` : null,
-    webCount ? `${text('公开网页', 'Public web')} ${webCount}` : null,
-  ].filter(Boolean)
-  return (
-    <p
-      className="new-research__evidence-origin"
-      role="status"
-      aria-label={text('本轮证据来源', 'Evidence sources for this answer')}
-    >
-      {text('本轮引用', 'Cited this turn')} · {parts.join(' · ')}
-    </p>
-  )
-}
-
-function AssistantActions({ content, onRegenerate }: { content: string; onRegenerate: () => void }) {
-  const { text } = useAppLocale()
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
-
-  async function copyAnswer() {
-    try {
-      if (!navigator.clipboard?.writeText) throw new Error('clipboard_unavailable')
-      await navigator.clipboard.writeText(displayAgentText(content))
-      setCopyState('copied')
-    } catch {
-      setCopyState('failed')
-    }
-    window.setTimeout(() => setCopyState('idle'), 1_600)
-  }
-
-  return (
-    <div className="new-research__assistant-actions">
-      <button
-        type="button"
-        aria-label={copyState === 'copied' ? text('已复制', 'Copied') : copyState === 'failed' ? text('复制失败', 'Copy failed') : text('复制回答', 'Copy answer')}
-        title={copyState === 'copied' ? text('已复制', 'Copied') : copyState === 'failed' ? text('复制失败', 'Copy failed') : text('复制', 'Copy')}
-        onClick={() => { void copyAnswer() }}
-      >
-        {copyState === 'copied' ? <CheckIcon size={16} /> : copyState === 'failed' ? <XCircleIcon size={16} /> : <CopyIcon size={16} />}
-      </button>
-      <button type="button" aria-label={text('重新生成', 'Regenerate')} title={text('重新生成', 'Regenerate')} onClick={onRegenerate}><ArrowClockwiseIcon size={16} /></button>
-    </div>
-  )
+  return <ConversationHistoryView modal projects={projects} setProjects={setProjects}
+    onNewConversation={onNewConversation} onRename={onRename} onDelete={onDelete}
+    onDeleteProject={onDeleteProject} selectedTaskId={selectedTaskId}
+    conversations={conversations} activeConversationId={activeConversationId}
+    loading={loading} onOpen={onOpen} onClose={onClose} />
 }
 
 function AssistantTurn({
+  userId,
   question,
   answer,
   citations,
@@ -1575,6 +906,7 @@ function AssistantTurn({
   onContinueResearch,
   researchEntryBusy,
 }: {
+  userId: string | null
   question: string
   answer: string
   citations: AgentCitation[]
@@ -1588,74 +920,61 @@ function AssistantTurn({
   embedded?: boolean
   showResearchHandoff?: boolean
   knowledgeReleaseId: string | null
-  onOpenActivity: () => void
+  onOpenActivity: (step?: ResearchToolStep) => void
   onSelectCitation: (citation: AgentCitation, knowledgeReleaseId: string | null) => void
   onRegenerate?: () => void
   onContinueResearch?: () => void
   researchEntryBusy?: boolean
 }) {
-  const { text } = useAppLocale()
+  const { locale, text } = useAppLocale()
   const researchHandoff = researchStartHandoffFromSteps(toolSteps)
   const knowledgeHandoffCitation = showResearchHandoff && conversationId && knowledgeReleaseId
     && hasCompletedKnowledgeActivity(toolSteps)
     ? citations.find((citation) => Boolean(citation.knowledge_id)) ?? null
     : null
-  const completedStepCount = toolSteps.filter((step) => step.status === 'completed').length
-  return (
-    <article className={`new-research__turn${streaming ? ' is-streaming' : ''}`}>
-      <div className="new-research__user-message" data-role="user-message"><span>{question}</span></div>
-      <div className="new-research__assistant-message" data-role="assistant-response">
-        <div className="new-research__assistant-label" aria-label={text('Everplain', 'Everplain')}>
-          <ResearchAgentBot />
-        </div>
-        {streaming && streamingStatus ? <StreamingRunStatus status={streamingStatus} steps={toolSteps} /> : null}
-        <ToolTraceTimeline steps={toolSteps} onOpenActivity={onOpenActivity} />
-        {answer ? <div className="new-research__markdown">
-          {progressEnd > 0 ? <AgentAnswerMarkdown citations={citations} onSelectCitation={(citation) => onSelectCitation(citation, knowledgeReleaseId)} progress>{answer.slice(0, progressEnd)}</AgentAnswerMarkdown> : null}
-          <AgentAnswerMarkdown citations={citations} onSelectCitation={(citation) => onSelectCitation(citation, knowledgeReleaseId)}>{answer.slice(progressEnd)}</AgentAnswerMarkdown>
-        </div> : null}
-        {!streaming && !answer && !interrupted && !failure ? <p className="new-research__thinking" role="status"><CircleNotchIcon size={14} />{text('Agent 正在组织问题与证据…', 'Agent is organizing the question and evidence…')}</p> : null}
-        {interrupted ? (
-          <p className="qx-notice-surface new-research__turn-note is-interrupted">
-            <WarningCircleIcon size={14} />
-            {answer.trim() || embedded
-              ? text(`本轮已停止，已保留生成内容和 ${completedStepCount} 个已完成步骤。`, `This turn was stopped. Its generated content and ${completedStepCount} completed steps were retained.`)
-              : text('本轮已停止，未保存未完成的回答。', 'This turn was stopped before an unfinished answer was saved.')}
-          </p>
-        ) : null}
-        {failure ? <p className="qx-notice-surface new-research__turn-note is-failed"><XCircleIcon size={14} />{failure}</p> : null}
-        {(failure || interrupted) && onRegenerate ? (
-          <div className="new-research__assistant-actions">
-            <button
-              type="button"
-              aria-label={interrupted && !failure ? text('继续研究', 'Continue research') : text('重试本轮', 'Retry this turn')}
-              onClick={onRegenerate}
-            >
-              {interrupted ? <CaretRightIcon size={14} /> : <ArrowClockwiseIcon size={14} />}
-              {interrupted && !failure ? text('继续研究', 'Continue research') : text('从本轮问题重试', 'Retry this question')}
-            </button>
-          </div>
-        ) : null}
-        {!streaming && answer && !citations.length ? (
-          <p className="new-research__provenance-note">
-            <WarningCircleIcon size={14} />
-            {hasKnowledgeActivity(toolSteps)
-              ? text('已检索知识库，但没有可展示的来源，请谨慎引用。', 'The knowledge base was searched, but no displayable source was returned. Cite with care.')
-              : hasResearchMaterialActivity(toolSteps)
-                ? text('已检索个人材料，但没有可展示的原文位置，请谨慎引用。', 'Personal materials were searched, but no displayable source position was returned. Cite with care.')
-              : text('未调用知识库 · 以下内容仅作工作假设，请结合材料核验。', 'Knowledge base not searched · treat this as a working hypothesis and verify it against your materials.')}
-          </p>
-        ) : null}
-        <EvidenceOriginSummary citations={citations} />
-        <SourcePills citations={citations} onSelect={(citation) => onSelectCitation(citation, knowledgeReleaseId)} />
-        {knowledgeHandoffCitation && conversationId && knowledgeReleaseId
-          ? <KnowledgeHandoffCards citation={knowledgeHandoffCitation} conversationId={conversationId} knowledgeReleaseId={knowledgeReleaseId} />
-          : null}
-        {showResearchHandoff && researchHandoff ? <ResearchStartHandoffCard handoff={researchHandoff} onContinueResearch={onContinueResearch} busy={researchEntryBusy} /> : null}
-        {!streaming && answer && onRegenerate ? <AssistantActions content={answer} onRegenerate={onRegenerate} /> : null}
-      </div>
-    </article>
-  )
+  const completedStepCount = toolSteps.filter(step => step.status === 'completed').length
+  const handoffs: ConversationHandoff[] = []
+  if (knowledgeHandoffCitation?.knowledge_id && conversationId && knowledgeReleaseId) {
+    const returnParams = new URLSearchParams({ conversation_id: conversationId, knowledge_release_id: knowledgeReleaseId })
+    const entryParams = new URLSearchParams({ knowledge_release_id: knowledgeReleaseId, return_to: `/agent?${returnParams}` })
+    const graphParams = new URLSearchParams({ knowledge_release_id: knowledgeReleaseId, center: knowledgeHandoffCitation.knowledge_id, query: knowledgeHandoffCitation.label })
+    handoffs.push({ id: 'knowledge', label: text('知识库建议', 'Knowledge base suggestion'), title: knowledgeHandoffCitation.label, actions: [
+      { id: 'read', label: text('打开知识条目', 'Open knowledge entry'), href: `/knowledge/${encodeURIComponent(knowledgeHandoffCitation.knowledge_id)}?${entryParams}` },
+      { id: 'graph', label: text('查看知识节点', 'View knowledge node'), href: `/knowledge/graph?${graphParams}` },
+    ] })
+  }
+  if (showResearchHandoff && researchHandoff && onContinueResearch) handoffs.push({
+    id: researchHandoff.proposalId, label: text('研究建议', 'Research suggestion'), title: researchHandoff.phenomenon, description: researchHandoff.researchIntent ?? undefined,
+    actions: [{ id: 'start-research', label: text('去新建研究', 'Open new research'), onClick: onContinueResearch, disabled: researchEntryBusy }],
+  })
+  const provenance = !streaming && answer && !citations.length
+    ? hasKnowledgeActivity(toolSteps) ? text('已检索知识库，但没有可展示的来源，请谨慎引用。', 'The knowledge base was searched, but no displayable source was returned. Cite with care.')
+    : hasResearchMaterialActivity(toolSteps) ? text('已检索个人材料，但没有可展示的原文位置，请谨慎引用。', 'Personal materials were searched, but no displayable source position was returned. Cite with care.')
+    : text('未调用知识库 · 以下内容仅作工作假设，请结合材料核验。', 'Knowledge base not searched · treat this as a working hypothesis and verify it against your materials.') : undefined
+  const runningTool = [...toolSteps].reverse().find(step => step.status === 'running')?.tool
+  const statusText = runningTool && ['read_knowledge_entry', 'read_sources', 'read_research_document', 'read_research_material_context'].includes(runningTool)
+    ? text('正在阅读研究材料', 'Reading research materials')
+    : runningTool === 'search_research_materials' ? text('正在检索个人材料', 'Searching personal research materials')
+    : runningTool && ['search_knowledge', 'browse_knowledge_directory'].includes(runningTool) ? text('正在检索知识库', 'Searching the knowledge base')
+    : runningTool === 'start_theory_matching' ? text('正在比较理论视角', 'Comparing theoretical perspectives')
+    : runningTool && ['propose_document_creation', 'propose_document_revision'].includes(runningTool) ? text('正在整理研究框架', 'Preparing the research framework')
+    : runningTool ? text('正在更新研究进度', 'Updating research progress')
+    : streamingStatus === 'answering' ? text('正在生成回答', 'Writing the answer') : text('正在理解并整理研究问题', 'Understanding and structuring the research question')
+  return <ConversationTurn
+    turn={{ id: conversationId ?? 'current', question, answer, citations, knowledgeReleaseId,
+      toolSteps: toolSteps.map(step => ({ ...step, label: localizedToolLabel(step.tool, locale, step.label), detail: step.detail ? localizedToolDetail(step.detail, locale) : undefined, purpose: localizedToolPurpose(step.tool, locale), resultItems: resultItemsFromOutput(step.output) })),
+      streaming, statusText,
+      progressEnd, interrupted, failure, provenance, handoffs,
+      notice: interrupted ? answer.trim() || embedded
+        ? text(`本轮已停止，已保留生成内容和 ${completedStepCount} 个已完成步骤。`, `This turn was stopped. Generated content and ${completedStepCount} steps were retained.`)
+        : text('本轮已停止，未保存未完成的回答。', 'This turn stopped before an unfinished answer was saved.') : undefined,
+      onRegenerate, onResume: interrupted && !failure ? onRegenerate : undefined,
+      onCopy: onRegenerate && answer ? async content => { if (!navigator.clipboard?.writeText) throw new Error('clipboard_unavailable'); await navigator.clipboard.writeText(content) } : undefined,
+    }}
+    renderAvatar={state => <PersonalCompanion userId={userId} compact thinking={state === 'think'} working={state === 'work'} fallback={<AgentAvatar avatar="shi" size={32} state={state} />} />}
+    onSelectCitation={(citation, release) => onSelectCitation(citation, release)}
+    onOpenActivity={(_turnId, step) => onOpenActivity(step)}
+  />
 }
 
 type ResearchAgentConversationPageProps = {
@@ -1687,6 +1006,7 @@ type ResearchAgentConversationPageProps = {
   onClearDiscussion?: () => void
   citationRequest?: { id: string; key: number } | null
   enableResearchGuidance?: boolean
+  researchContext?: boolean
 }
 
 export function ResearchAgentConversationPage({
@@ -1718,8 +1038,10 @@ export function ResearchAgentConversationPage({
   onClearDiscussion,
   citationRequest = null,
   enableResearchGuidance = false,
+  researchContext = false,
 }: ResearchAgentConversationPageProps) {
   const { locale, text } = useAppLocale()
+  const modelSelection = useAgentModelSelection(userId)
   const location = useLocation()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -1778,6 +1100,7 @@ export function ResearchAgentConversationPage({
   const closeHistory = useCallback(() => setHistoryOpen(false), [])
   // 用户手动收起研究面板后就不再自动弹出，直到换一段对话。
   const researchPanelDismissed = useRef(false)
+  const sourceTriggerRef = useRef<HTMLElement | null>(null)
   // 收起时先播完退场动画再卸载，所以挂载状态比 contextOpen 多活一小会儿。
   const [railMounted, setRailMounted] = useState(false)
   const [contextTab, setContextTab] = useState<ResearchContextTab>('agent')
@@ -1790,8 +1113,9 @@ export function ResearchAgentConversationPage({
   const [attachedMaterials, setAttachedMaterials] = useState<ResearchMaterial[]>([])
   const [materialUploading, setMaterialUploading] = useState(false)
   const [materialMenuOpen, setMaterialMenuOpen] = useState(false)
-  const [modeMenuOpen, setModeMenuOpen] = useState(false)
   const [composerMode, setComposerMode] = useState<AgentComposerMode>(() => restoredPendingTurn.current?.request?.mode === 'deep_research' ? 'deep-research' : 'standard')
+  // Presentation context is distinct from the request workspace: a new research has no task yet.
+  const researchToolsVisible = researchContext || (embedded && workspace === 'research') || composerMode === 'deep-research'
   const [deepResearchIntroVisible, setDeepResearchIntroVisible] = useState(false)
   const deepResearchIntroShown = useRef(false)
   const [deepResearchMockStage, setDeepResearchMockStage] = useState<DeepResearchMockStage>('idle')
@@ -1810,7 +1134,7 @@ export function ResearchAgentConversationPage({
   const [materialLocatorTarget, setMaterialLocatorTarget] = useState<{ taskId?: string; materialId: string; parseId: string | null; segmentId: string | null } | null>(null)
   const [selectedCitationContext, setSelectedCitationContext] = useState<SelectedCitationContext | null>(null)
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null)
-  const [landingBackdropPhase, setLandingBackdropPhase] = useState<'visible' | 'leaving' | 'hidden'>('visible')
+  const [, setLandingBackdropPhase] = useState<'visible' | 'leaving' | 'hidden'>('visible')
   const streamAbortController = useRef<AbortController | null>(null)
   const activeRunId = useRef<string | null>(null)
   const pausePending = useRef(false)
@@ -1830,26 +1154,8 @@ export function ResearchAgentConversationPage({
   const materialMenuRef = useRef<HTMLDivElement>(null)
   const materialMenuButtonRef = useRef<HTMLButtonElement>(null)
   const materialFileInputRef = useRef<HTMLInputElement>(null)
-  const modeMenuRef = useRef<HTMLDivElement>(null)
-  const modeMenuButtonRef = useRef<HTMLButtonElement>(null)
 
-  useLayoutEffect(() => {
-    const input = composerInputRef.current
-    if (!input) return
-    const resize = () => {
-      input.style.height = 'auto'
-      input.style.height = `${input.scrollHeight}px`
-    }
-    resize()
-    let width = input.clientWidth
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
-      if (input.clientWidth === width) return
-      width = input.clientWidth
-      resize()
-    })
-    observer?.observe(input)
-    return () => observer?.disconnect()
-  }, [draft])
+
 
 
   function openMaterials() {
@@ -1883,26 +1189,7 @@ export function ResearchAgentConversationPage({
     }
   }, [materialMenuOpen])
 
-  useEffect(() => {
-    if (!modeMenuOpen) return undefined
 
-    function closeModeMenu(event: globalThis.KeyboardEvent | PointerEvent) {
-      if (event instanceof globalThis.KeyboardEvent) {
-        if (event.key !== 'Escape') return
-        setModeMenuOpen(false)
-        modeMenuButtonRef.current?.focus()
-        return
-      }
-      if (!modeMenuRef.current?.contains(event.target as Node)) setModeMenuOpen(false)
-    }
-
-    document.addEventListener('keydown', closeModeMenu)
-    document.addEventListener('pointerdown', closeModeMenu)
-    return () => {
-      document.removeEventListener('keydown', closeModeMenu)
-      document.removeEventListener('pointerdown', closeModeMenu)
-    }
-  }, [modeMenuOpen])
 
   function openResearchMaterials() {
     setMaterialMenuOpen(false)
@@ -2020,7 +1307,8 @@ export function ResearchAgentConversationPage({
     const resolved = resolveResearchCitation(activeConversation, citationRequest.id)
     if (resolved) {
       setSelectedCitationContext(resolved)
-      setContextTab('sources')
+      setSelectedActivityId(null)
+      setContextTab('basis')
       setContextOpen(true)
     } else setError('这条依据未在当前对话中找到，暂时无法打开原文。')
   }, [citationRequest, activeConversation])
@@ -2051,16 +1339,6 @@ export function ResearchAgentConversationPage({
     onStreamingTurnChange?.(streamingTurn)
   }, [onStreamingTurnChange, streamingTurn])
 
-  useEffect(() => {
-    const question = searchParams.get('prompt')
-    if (!question || requestedConversationId) return
-    updateDraft(question)
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current)
-      next.delete('prompt')
-      return next
-    }, { replace: true })
-  }, [searchParams, requestedConversationId, setSearchParams])
 
   useEffect(() => {
     if (!suggestedPrompt) return
@@ -2560,6 +1838,7 @@ export function ResearchAgentConversationPage({
       : activeTurnAttempt.current?.idempotencyKey === idempotencyKey
         ? activeTurnAttempt.current
         : null
+    const newModelFields = resumableAttempt?.request ? {} : modelSelection.requestFields()
     const attempt: PendingTurnAttempt = {
       question,
       idempotencyKey,
@@ -2568,6 +1847,30 @@ export function ResearchAgentConversationPage({
       materialIds: resumableAttempt?.materialIds ?? attachedMaterials.map((item) => item.materialId),
       request: resumableAttempt?.request,
     }
+    const request: AgentTurnRequest = attempt.request ? { ...attempt.request, conversation_id: attempt.conversationId } : {
+          ...newModelFields,
+          conversation_id: activeConversation?.conversation_id ?? pendingConversationId.current,
+          message: question,
+          mode: turnMode === 'deep-research' ? 'deep_research' : 'standard',
+          workspace,
+          web_search: webSearchEnabled,
+          task_id: workspace === 'research' ? taskId : null,
+          document_id: workspace === 'research' ? documentId : null,
+          section_id: workspace === 'research' ? (discussion && 'sectionId' in discussion ? discussion.sectionId : sectionId) : null,
+          document_version: workspace === 'research' ? documentVersion : null,
+          theory_plan_id: workspace === 'research' ? theoryPlanId : null,
+          material_ids: attempt.materialIds,
+          reference_knowledge_base_id: activeConversation ? activeConversation.reference_knowledge_base_id ?? null : embedded ? boundReferenceKnowledgeBaseId : searchParams.get('reference_knowledge_base_id'),
+          deep_research_run_id: deepAction ? (activeTurnAttempt.current?.runId ?? null) : null,
+          deep_research_action: deepAction?.action ?? null,
+          deep_research_selection: deepAction?.selection ?? null,
+    }
+    if (deepAction) {
+      request.deep_research_run_id = attempt.runId ?? null
+      request.deep_research_action = deepAction.action
+      request.deep_research_selection = deepAction.selection ?? null
+    }
+    attempt.request = request
     const previousAttempt = failedTurnAttempt.current ?? activeTurnAttempt.current
     const previousTurn = streamingTurnRef.current
     if (previousAttempt && previousAttempt.idempotencyKey !== idempotencyKey && previousTurn && (previousTurn.interrupted || previousTurn.failure)) {
@@ -2592,30 +1895,6 @@ export function ResearchAgentConversationPage({
     else setStreamingTurn(firstStreamingTurn)
     if (controller.signal.aborted || streamGeneration.current !== runGeneration) return null
 
-    const request: AgentTurnRequest = attempt.request ? { ...attempt.request, conversation_id: attempt.conversationId } : {
-          conversation_id: activeConversation?.conversation_id ?? pendingConversationId.current,
-          message: question,
-          mode: turnMode === 'deep-research' ? 'deep_research' : 'standard',
-          workspace,
-          web_search: webSearchEnabled,
-          task_id: workspace === 'research' ? taskId : null,
-          document_id: workspace === 'research' ? documentId : null,
-          section_id: workspace === 'research' ? (discussion && 'sectionId' in discussion ? discussion.sectionId : sectionId) : null,
-          document_version: workspace === 'research' ? documentVersion : null,
-          theory_plan_id: workspace === 'research' ? theoryPlanId : null,
-          material_ids: attempt.materialIds,
-          reference_knowledge_base_id: activeConversation ? activeConversation.reference_knowledge_base_id ?? null : embedded ? boundReferenceKnowledgeBaseId : searchParams.get('reference_knowledge_base_id'),
-          deep_research_run_id: deepAction ? (activeTurnAttempt.current?.runId ?? null) : null,
-          deep_research_action: deepAction?.action ?? null,
-          deep_research_selection: deepAction?.selection ?? null,
-    }
-    if (deepAction) {
-      request.deep_research_run_id = attempt.runId ?? null
-      request.deep_research_action = deepAction.action
-      request.deep_research_selection = deepAction.selection ?? null
-    }
-    attempt.request = request
-    persistPendingTurnAttempt(storageScope.current, attempt)
     try {
       await streamAgentTurn(
         { ...request, idempotencyKey },
@@ -3066,7 +2345,6 @@ export function ResearchAgentConversationPage({
   }, [citations])
   const citationsForRail = useMemo(() => citations.map((citation) => citationToRail(citation, locale)), [citations, locale])
   const selectedCitation = selectedCitationContext?.citation ?? null
-  const selectedCitationId = selectedCitation?.citation_id ?? null
   const selectedCitationReleaseId = selectedCitationContext?.knowledgeReleaseId ?? null
   const selectedMaterialCitation = materialCitationFields(selectedCitation)
   const selectedActivity = allToolSteps.find((activity) => activity.id === selectedActivityId)
@@ -3102,11 +2380,12 @@ export function ResearchAgentConversationPage({
   function closeResearchPanel() {
     researchPanelDismissed.current = true
     setContextOpen(false)
+    if (sourceTriggerRef.current?.isConnected) sourceTriggerRef.current.focus({ preventScroll: true })
+    sourceTriggerRef.current = null
   }
 
   function backToResearchPanel() {
     setSelectedActivityId(null)
-    setSelectedCitationContext(null)
     setContextTab('sources')
   }
 
@@ -3115,9 +2394,10 @@ export function ResearchAgentConversationPage({
     const conversationReleaseId = activeConversation?.conversation_id
       ? knowledgeReleaseByConversationId[activeConversation.conversation_id] ?? null
       : null
+    sourceTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setSelectedActivityId(null)
     setSelectedCitationContext({ citation, knowledgeReleaseId: knowledgeReleaseId?.trim() || (embedded ? conversationReleaseId : null) })
-    setContextTab('sources')
+    setContextTab('basis')
     setContextOpen(true)
   }
 
@@ -3179,84 +2459,29 @@ export function ResearchAgentConversationPage({
     : null
   const selectedWebSourceHref = selectedCitation ? webSourceHref(selectedCitation) : null
 
-  const basisContent = selectedActivity ? (
-    <div className="new-research__basis">
-      <span>{text('当前活动', 'Current activity')} · {selectedActivity.status === 'running' ? text('进行中', 'In progress') : selectedActivity.status === 'failed' ? text('失败', 'Failed') : text('已完成', 'Completed')}</span>
-      <strong>{localizedToolLabel(selectedActivity.tool, locale, selectedActivity.label)}</strong>
-      {selectedActivity.input ? <p>{formatToolPayload(selectedActivity.input)}</p> : null}
-      {selectedActivity.detail ? <ToolDetailDisclosure detail={localizedToolDetail(selectedActivity.detail, locale)} /> : <p>{text('本步骤没有返回额外说明。', 'This step returned no additional details.')}</p>}
-      {resultItemsFromOutput(selectedActivity.output).map((item) => <p key={item.id}><b>{item.title}</b>{item.excerpt ? ` · ${item.excerpt}` : ''}</p>)}
-    </div>
-  ) : selectedCitation ? (
-    <div className="new-research__basis">
-      <span>{text('当前证据', 'Current evidence')} · {citationGroup(selectedCitation) === 'knowledge' ? text('知识库资料', 'Library material') : citationKindLabel(selectedCitation.kind, locale)}</span>
-      <strong>{selectedCitation.label}</strong>
-      <p>{selectedCitation.deleted
-        ? text('这份研究材料已删除，原文不再可访问。', 'This research material was deleted and its source text is no longer available.')
-        : selectedCitation.excerpt || text('本轮 Agent 没有返回可展开的证据摘录。', 'The Agent returned no expandable evidence excerpt for this turn.')}</p>
-      {!selectedCitation.deleted && selectedCitation.knowledge_base_id && selectedCitation.material_id ? <Link
-        className="qx-button"
-        to={`/library?kb_id=${encodeURIComponent(selectedCitation.knowledge_base_id)}&document_id=${encodeURIComponent(selectedCitation.material_id)}&segment_id=${encodeURIComponent(selectedCitation.segment_id ?? '')}`}>打开资料原文</Link> : null}
-      {selectedMaterialCitation.locator
-        ? <p className="new-research__basis-locator">{formatMaterialLocator(selectedMaterialCitation.locator)}</p>
-        : null}
-      {citationGroup(selectedCitation) === 'material' && (typeof selectedCitation.locator?.task_id === 'string' || taskId || uploadTaskId.current) && selectedMaterialCitation.materialId && !selectedCitation.deleted
-        ? <div className="research-agent-basis-actions">
-            <button
-              type="button"
-              onClick={() => {
-                setMaterialLocatorTarget({
-                  taskId: typeof selectedCitation.locator?.task_id === 'string' ? selectedCitation.locator.task_id : taskId ?? uploadTaskId.current ?? undefined,
-                  materialId: selectedMaterialCitation.materialId as string,
-                  parseId: selectedMaterialCitation.parseId,
-                  segmentId: selectedMaterialCitation.segmentId,
-                })
-                setContextOpen(false)
-                openMaterials()
-              }}
-            >
-              {text('打开原文位置', 'Open source location')} <ArrowUpIcon size={13} />
-            </button>
-          </div>
-        : null}
-      {selectedKnowledgeEntryHref
-        ? <div className="research-agent-basis-actions">
-            <a href={selectedKnowledgeEntryHref}>{text('打开知识条目', 'Open knowledge entry')} <ArrowUpIcon size={13} /></a>
-            {selectedKnowledgeGraphHref
-              ? <a className="is-graph" href={selectedKnowledgeGraphHref}>{text('在知识图谱中查看', 'View in knowledge graph')} <TreeStructureIcon size={13} /></a>
-              : null}
-          </div>
-        : selectedCitation.knowledge_id
-          ? <span className="new-research__basis-note">{text('当前回合的知识版本尚未确认，暂不提供跳转。', 'The knowledge release for this turn is not confirmed, so navigation is unavailable.')}</span>
-          : null}
-      {selectedWebSourceHref
-        ? <div className="research-agent-basis-actions">
-            <a href={selectedWebSourceHref} target="_blank" rel="noreferrer">{text('打开网页', 'Open web page')} <ArrowUpIcon size={13} /></a>
-          </div>
-        : null}
-    </div>
-  ) : undefined
+  const sourceActions: ConversationAction[] = []
+  if (selectedCitation && !selectedCitation.deleted) {
+    if (selectedCitation.knowledge_base_id && selectedCitation.material_id) sourceActions.push({ id: 'material', label: '打开资料原文', href: `/library?kb_id=${encodeURIComponent(selectedCitation.knowledge_base_id)}&document_id=${encodeURIComponent(selectedCitation.material_id)}&segment_id=${encodeURIComponent(selectedCitation.segment_id ?? '')}` })
+    if (citationGroup(selectedCitation) === 'material' && (typeof selectedCitation.locator?.task_id === 'string' || taskId || uploadTaskId.current) && selectedMaterialCitation.materialId) sourceActions.push({ id: 'location', label: text('打开原文位置', 'Open source location'), onClick: () => {
+      setMaterialLocatorTarget({ taskId: typeof selectedCitation.locator?.task_id === 'string' ? selectedCitation.locator.task_id : taskId ?? uploadTaskId.current ?? undefined,
+        materialId: selectedMaterialCitation.materialId as string, parseId: selectedMaterialCitation.parseId, segmentId: selectedMaterialCitation.segmentId })
+      setContextOpen(false); openMaterials()
+    } })
+    if (selectedKnowledgeEntryHref) sourceActions.push({ id: 'knowledge', label: text('打开知识条目', 'Open knowledge entry'), href: selectedKnowledgeEntryHref })
+    if (selectedKnowledgeGraphHref) sourceActions.push({ id: 'graph', label: text('在知识图谱中查看', 'View in knowledge graph'), href: selectedKnowledgeGraphHref })
+    if (selectedWebSourceHref) sourceActions.push({ id: 'web', label: text('打开网页', 'Open web page'), href: selectedWebSourceHref, external: true })
+  }
 
-  const conversationSurface = (
-        <section
-          className={`research-agent-page new-research research-agent-conversation${embedded ? ' research-agent-conversation--embedded new-research__agent-panel is-agent-synced' : ''} ${isEmpty ? 'is-empty' : 'is-conversation'}${landingBackdropPhase === 'leaving' ? ' is-transitioning' : ''}${!embedded && railMounted ? ' is-rail-mounted' : ''}${!embedded && contextOpen ? ' is-rail-open' : ''}`}
-          aria-label={embedded ? text('研究 Agent 对话栏', 'Research Agent conversation panel') : text('Everplain Agent 对话', 'Everplain conversation')}
-          role={embedded ? 'complementary' : undefined}
-          data-runtime-mode={runtimeMode ?? 'unknown'}
-        >
-          {!embedded && showConversationManagement ? (
-            <button type="button" className="mobile-only mobile-agent-history" aria-label={text('打开研究记录', 'Open research history')} onClick={() => setHistoryOpen(true)}><ListIcon size={18} />{text('研究记录', 'History')}</button>
-          ) : null}
-          {!embedded && landingBackdropPhase !== 'hidden' ? (
-            <div className={`research-agent-conversation__landing-backdrop is-${landingBackdropPhase}`}>
-              <ResearchAgentShader />
-            </div>
-          ) : null}
-          {isEmpty && !embedded ? <div aria-hidden="true" className="research-agent-page__heading-placeholder" /> : (
-            <header className="research-agent-page__conversation-heading new-research__agent-header" aria-label={text('对话操作', 'Conversation actions')}>
-              <div className="new-research__agent-actions">
+  const conversationActions = (<>
+                <section className="cv-conversation-settings" aria-label={text('对话设置', 'Conversation settings')} onClick={event => event.stopPropagation()}>
+                  <h3 className="qx-meta">{text('知识来源与联网', 'Knowledge sources and web')}</h3>
+                  {!embedded ? <CourseReferenceSelector value={activeConversation ? activeConversation.reference_knowledge_base_id ?? '' : searchParams.get('reference_knowledge_base_id') ?? ''} hasConversation={Boolean(activeConversation)} disabled={isBusy}
+                    onChange={value => { newConversation(); setSearchParams(value ? { reference_knowledge_base_id: value } : {}) }} /> : null}
+                  <button type="button" className="qx-btn qx-btn--ghost" aria-label={text('联网搜索', 'Web search')} aria-pressed={webSearchEnabled} disabled={isBusy} onClick={() => setWebSearchEnabled(enabled => !enabled)}><GlobeHemisphereWestIcon size={16} /><span>{webSearchEnabled ? text('联网已开启', 'Web on') : text('联网搜索', 'Web search')}</span></button>
+                </section>
+
                 {workspace === 'research' && !embedded ? (
-                  <button
+                  <button className="qx-btn qx-btn--ghost"
                     type="button"
                     aria-label={text('研究材料', 'Research materials')}
                     aria-pressed={materialsOpen}
@@ -3270,26 +2495,34 @@ export function ResearchAgentConversationPage({
                       openMaterials()
                     }}
                   >
-                    <FileTextIcon size={16} />
+                    <FileTextIcon size={16} />{text('研究材料', 'Research materials')}
                   </button>
                 ) : null}
-                <button type="button" aria-label={text('研究面板', 'Research panel')} aria-pressed={contextOpen} aria-expanded={contextOpen} title={text('研究面板', 'Research panel')} onClick={toggleResearchPanel}><SidebarSimpleIcon size={16} />{citations.length ? <i>{citations.length}</i> : null}</button>
-              </div>
-            </header>
-          )}
+                <button className="qx-btn qx-btn--ghost" type="button" aria-label={text('研究面板', 'Research panel')} aria-pressed={contextOpen} aria-expanded={contextOpen} title={text('研究面板', 'Research panel')} onClick={toggleResearchPanel}><SidebarSimpleIcon size={16} />{!embedded && text('研究面板', 'Research panel')}{citations.length ? <i>{citations.length}</i> : null}</button>
 
-          <main className="research-agent-page__scroll-region new-research__conversation" aria-label={text('对话内容', 'Conversation content')} role="log">
-            {isEmpty ? (
-              <div className="research-agent-page__empty-state">
-                <div className="research-agent-page__empty-copy">
-                  <PersonalCompanion userId={userId} fallback={<ResearchAgentBot />} />
-                  <ResearchPromptCarousel onSelect={choosePrompt} />
-                </div>
-              </div>
-            ) : (
-              <div className="research-agent-page__transcript new-research__transcript">
+  </>)
+
+  const modeIntroduction = deepResearchIntroVisible ? <aside className="qx-panel cv-mode-intro" role="dialog" aria-label={text('深入研究介绍', 'Deep research introduction')}>
+    <header><h2 className="qx-card__title">{text('深入研究', 'Deep research')}</h2><button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={text('关闭深入研究介绍', 'Close deep research introduction')} onClick={() => setDeepResearchIntroVisible(false)}><XIcon /></button></header>
+    <p>{text('检索你的资料与网页，核对来源，整理成有依据的研究结果。', 'Search your materials and the web, check sources, and develop a grounded research result.')}</p>
+    <div><button className="qx-btn qx-btn--ghost" type="button" onClick={() => setDeepResearchIntroVisible(false)}>{text('稍后再说', 'Maybe later')}</button><button className="qx-btn qx-btn--primary" type="button" onClick={() => { setComposerMode('deep-research'); setDeepResearchIntroVisible(false) }}>{text('试试看', 'Try it')}</button></div>
+  </aside> : null
+
+  const conversationSurface = <ConversationLayout
+    embedded={embedded} empty={isEmpty} runtimeMode={runtimeMode ?? 'unknown'} research={composerMode === 'deep-research'}
+    sourceOpen={embedded ? contextOpen : railMounted}
+    title={activeConversation?.title || text('新对话', 'New conversation')}
+    label={embedded ? text('研究 Agent 对话栏', 'Research Agent conversation panel') : text('Everplain Agent 对话', 'Everplain conversation')}
+    modes={<AgentModeSwitch mode={composerMode} disabled={isBusy} avatar={<PersonalCompanion userId={userId} compact working={isBusy} fallback={<AgentAvatar avatar="shi" size={32} state={isBusy ? 'work' : 'idle'} />} />} onChange={mode => { setComposerMode(mode); setMaterialMenuOpen(false); if (mode === 'deep-research') setDeepResearchIntroVisible(false) }}>{modeIntroduction}</AgentModeSwitch>}
+    actions={<ConversationActions key={activeConversation?.conversation_id ?? 'new'} label={text('更多对话操作', 'More conversation actions')}>{conversationActions}</ConversationActions>}
+    history={!embedded && showConversationManagement ? <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon cv-layout__history-button" aria-label={text('打开研究记录', 'Open research history')} onClick={() => setHistoryOpen(true)}><ListIcon /></button> : null}
+    companionBar={<CompanionStatusBar userId={userId} status={status} />}
+    pet={<PersonalCompanion userId={userId} fallback={<AgentAvatar avatar="shi" size={96} state="greet" />} />}
+    prompt={composerMode === 'deep-research' ? text('你想弄清楚什么？', 'What would you like to investigate?') : text('今天想聊什么？', 'What is on your mind?')}
+    thread={              <div className="cv-thread">
                 {turns.map((turn) => (
                   <AssistantTurn
+                    userId={userId}
                     key={turn.turn_id}
                     question={turn.user.content}
                     answer={turn.assistant.content}
@@ -3301,7 +2534,7 @@ export function ResearchAgentConversationPage({
                   showResearchHandoff={!embedded}
                   onContinueResearch={() => { void continueResearch() }}
                   researchEntryBusy={researchEntryBusy || isBusy || materialUploading || attachedMaterials.some((material) => material.status !== 'ready')}
-                    onOpenActivity={() => { setContextTab('activity'); setContextOpen(true) }}
+                    onOpenActivity={step => { setSelectedCitationContext(null); setSelectedActivityId(step?.id ?? null); setContextTab(step ? 'basis' : 'activity'); setContextOpen(true) }}
                     onSelectCitation={openCitation}
                     onRegenerate={() => { void submitQuestion(turn.user.content) }}
                   />
@@ -3309,6 +2542,7 @@ export function ResearchAgentConversationPage({
                 {(activeConversation?.unfinished_runs ?? []).filter((run) => run.run_id !== streamingTurn?.runId).map((run) => {
                   const saved = recoveryTurn(run)
                   return <AssistantTurn
+                    userId={userId}
                     key={run.run_id}
                     question={saved.question}
                     answer={saved.answer}
@@ -3319,7 +2553,7 @@ export function ResearchAgentConversationPage({
                     interrupted={saved.interrupted}
                     failure={saved.failure}
                     embedded={embedded}
-                    onOpenActivity={() => { setContextTab('activity'); setContextOpen(true) }}
+                    onOpenActivity={step => { setSelectedCitationContext(null); setSelectedActivityId(step?.id ?? null); setContextTab(step ? 'basis' : 'activity'); setContextOpen(true) }}
                     onSelectCitation={openCitation}
                     onRegenerate={isBusy ? undefined : () => resumeRecovery(run)}
                   />
@@ -3344,9 +2578,10 @@ export function ResearchAgentConversationPage({
                   />
                 ) : null}
                 {status === 'pausing' ? <p role="status">正在暂停，等待当前操作结束…</p> : null}
-                {status === 'pause-failed' ? <button type="button" onClick={() => { void stopGeneration() }}>重试暂停</button> : null}
+                {status === 'pause-failed' ? <button className="qx-btn qx-btn--ghost" type="button" onClick={() => { void stopGeneration() }}>重试暂停</button> : null}
                 {streamingTurn ? (
                   <AssistantTurn
+                    userId={userId}
                     question={streamingTurn.question}
                     answer={streamingTurn.answer}
                     citations={streamingTurn.citations}
@@ -3359,7 +2594,7 @@ export function ResearchAgentConversationPage({
                     streamingStatus={status}
                     progressEnd={streamingTurn.progressEnd}
                     embedded={embedded}
-                    onOpenActivity={() => { setContextTab('activity'); setContextOpen(true) }}
+                    onOpenActivity={step => { setSelectedCitationContext(null); setSelectedActivityId(step?.id ?? null); setContextTab(step ? 'basis' : 'activity'); setContextOpen(true) }}
                     onSelectCitation={openCitation}
                     onRegenerate={isBusy ? undefined : () => retryFailedTurn(streamingTurn.question)}
                   />
@@ -3390,15 +2625,11 @@ export function ResearchAgentConversationPage({
                 ) : null}
                 {conversationTail}
                 <div ref={transcriptEndRef} />
-              </div>
-            )}
-          </main>
-
-          <footer className="research-agent-page__composer-dock new-research__composer-dock">
-            {error ? (
-              <div className="qx-notice-surface new-research__error" role="alert">
+              </div>}
+    composer={<>            {error ? (
+              <div className="cv-error" role="alert">
                 <WarningCircleIcon size={16} /><span>{error}</span>
-                <button type="button" aria-label={text('关闭错误提示', 'Close error message')} onClick={() => setError(null)}><XIcon size={14} /></button>
+                <button className="qx-btn qx-btn--ghost" type="button" aria-label={text('关闭错误提示', 'Close error message')} onClick={() => setError(null)}><XIcon size={14} /></button>
               </div>
             ) : null}
             {enableResearchGuidance && composerMode === 'standard' && currentResearchAsk && !isBusy && !guidanceDismissed && (researchAsk || !discussion) ? (
@@ -3410,7 +2641,7 @@ export function ResearchAgentConversationPage({
                 onSkip={() => setGuidanceDismissed(true)} onConfirmPlan={() => {}} onEdit={() => composerInputRef.current?.focus()}
               />
             ) : null}
-            {discussion ? <div className="research-discussion-focus" role="status"><span>正在讨论：{discussion.title}</span><button type="button" disabled={isBusy} onClick={() => { void submitQuestion('请围绕这项内容继续推进。先说明已有依据和待解决的问题，需要我判断时提出一个具体问题。') }}>继续研究</button><button type="button" aria-label="结束当前讨论" onClick={onClearDiscussion}><XIcon size={14} /></button></div> : null}
+            {discussion ? <div className="cv-discussion" role="status"><span>正在讨论：{discussion.title}</span><button className="qx-btn qx-btn--ghost" type="button" disabled={isBusy} onClick={() => { void submitQuestion('请围绕这项内容继续推进。先说明已有依据和待解决的问题，需要我判断时提出一个具体问题。') }}>继续研究</button><button className="qx-btn qx-btn--ghost" type="button" aria-label="结束当前讨论" onClick={onClearDiscussion}><XIcon size={14} /></button></div> : null}
             {composerMode === 'deep-research' && deepResearchMockStage === 'clarifying' && !streamingTurn ? (
               <DeepResearchMockFlow
                 stage={deepResearchMockStage}
@@ -3429,219 +2660,63 @@ export function ResearchAgentConversationPage({
                 }}
               />
             ) : null}
-            {!embedded ? <CourseReferenceSelector
-              value={activeConversation ? activeConversation.reference_knowledge_base_id ?? '' : searchParams.get('reference_knowledge_base_id') ?? ''}
-              hasConversation={Boolean(activeConversation)} disabled={status === 'thinking' || status === 'answering'}
-              onChange={(value) => { newConversation(); setSearchParams(value ? { reference_knowledge_base_id: value } : {}) }} /> : null}
-            <form onSubmit={handleSubmit} className="new-research__composer-form">
-              <div className={`new-research__composer research-agent-composer${composerPrefix ? ' has-prefix' : ''}${attachedMaterials.length || materialUploading ? ' has-attachments' : ''}${composerMode === 'deep-research' ? ' is-deep-research' : ''}${composerMode === 'deep-research' && isEmpty ? ' is-awaiting-first-message' : ''}`}>
-                {materialPickerOpen ? (
-                  <AgentMaterialAttachmentPicker
-                    inline
-                    loading={materialPickerLoading}
-                    materials={materialPickerLoading ? [] : availableMaterials}
-                    selectedIds={new Set(attachedMaterials.map((item) => item.materialId))}
-                    locale={locale}
-                    onToggle={toggleAttachedMaterial}
-                    onClose={() => setMaterialPickerOpen(false)}
-                  />
-                ) : null}
-                {composerPrefix}
-                {attachedMaterials.length || materialUploading ? (
-                  <div className="research-agent-composer__attachments" aria-label={text('本轮附件', 'Attachments for this turn')}>
-                    {attachedMaterials.map((material) => (
-                      <span className={`research-agent-composer__attachment is-${material.status}`} key={material.materialId}>
-                        <FileTextIcon size={14} aria-hidden="true" />
-                        <span title={material.filename}>{material.filename}</span>
-                        <small>{material.status === 'ready' ? text('已添加', 'Added') : attachmentStatusLabel(material, locale)}</small>
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          aria-label={text(`移除附件 ${material.filename}`, `Remove attachment ${material.filename}`)}
-                          onClick={() => setAttachedMaterials((current) => current.filter((item) => item.materialId !== material.materialId))}
-                        ><XIcon size={12} /></button>
-                      </span>
-                    ))}
-                    {materialUploading ? <span className="research-agent-composer__uploading" role="status"><CircleNotchIcon size={14} className="spin" />{text('正在上传…', 'Uploading…')}</span> : null}
-                  </div>
-                ) : null}
-                <textarea
-                  ref={composerInputRef}
-                  aria-label={composerAriaLabel ?? text('问 Everplain', 'Ask Everplain')}
-                  disabled={isBusy}
-                  maxLength={MAX_AGENT_MESSAGE_LENGTH}
-                  value={draft}
-                  onChange={(event) => updateDraft(event.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={text('问一个问题，或描述你想研究的主题', 'Ask a question or describe a phenomenon you are trying to understand')}
-                  rows={1}
-                />
-                <input
-                  ref={materialFileInputRef}
-                  className="research-agent-composer__file-input"
-                  type="file"
-                  multiple
-                  accept={RESEARCH_MATERIAL_ACCEPT}
-                  tabIndex={-1}
-                  aria-hidden="true"
-                  onChange={(event) => { void uploadComposerMaterials([...event.currentTarget.files ?? []]) }}
-                />
-                <div className="research-agent-composer__controls">
-                  <div className="research-agent-composer__material-entry" ref={materialMenuRef}>
-                    <button
-                      ref={materialMenuButtonRef}
-                      type="button"
-                      className="research-agent-composer__add"
-                      aria-label={text('添加研究材料', 'Add research material')}
-                      aria-expanded={materialMenuOpen}
-                      aria-controls="research-agent-material-menu"
-                      disabled={materialUploading || (isBusy && !embedded)}
-                      onClick={() => {
-                        setModeMenuOpen(false)
-                        setMaterialMenuOpen((open) => !open)
-                      }}
-                    >
-                      <PlusIcon size={18} />
-                    </button>
-                    {materialMenuOpen ? (
-                      <div
-                        id="research-agent-material-menu"
-                        className="research-agent-composer__material-menu"
-                        role="menu"
-                        aria-label={text('添加研究材料', 'Add research material')}
-                      >
-                        <button type="button" role="menuitem" disabled={isBusy} onClick={() => {
-                          setMaterialMenuOpen(false)
-                          materialFileInputRef.current?.click()
-                        }}>
-                          <FilePlusIcon size={18} /><span>{text('上传文件', 'Upload a file')}</span>
-                        </button>
-                        <button type="button" role="menuitem" disabled={isBusy} onClick={() => { void openMaterialAttachmentPicker() }}>
-                          <FolderOpenIcon size={18} /><span>{text('从研究材料添加', 'Add from research materials')}</span>
-                        </button>
-                        <button type="button" role="menuitem" onClick={openResearchMaterials}>
-                          <LinkSimpleIcon size={18} /><span>{text('查看材料库', 'Open material library')}</span>
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                  <button
-                    type="button"
-                    className={`research-agent-composer__web-search${webSearchEnabled ? ' is-active' : ''}`}
-                    aria-label={text('联网搜索', 'Web search')}
-                    aria-pressed={webSearchEnabled}
-                    disabled={isBusy}
-                    onClick={() => setWebSearchEnabled((enabled) => !enabled)}
-                  >
-                    <GlobeHemisphereWestIcon size={16} />
-                    <span>{webSearchEnabled ? text('联网已开启', 'Web on') : text('联网搜索', 'Web search')}</span>
-                  </button>
-                  <ProjectScopeMenu projects={projects} taskId={taskId} disabled={isBusy || materialUploading} onChange={switchComposerProject} />
-                </div>
-                <div className="research-agent-composer__mode-entry" ref={modeMenuRef}>
-                  {deepResearchIntroVisible ? (
-                    <aside className="deep-research-intro" role="dialog" aria-label={text('深入研究介绍', 'Deep research introduction')}>
-                      <button
-                        className="deep-research-intro__close"
-                        type="button"
-                        aria-label={text('关闭深入研究介绍', 'Close deep research introduction')}
-                        onClick={() => setDeepResearchIntroVisible(false)}
-                      >
-                        <XIcon size={16} weight="bold" />
-                      </button>
-                      <img src={deepResearchGuidance} alt="" />
-                      <div className="deep-research-intro__body">
-                        <p className="deep-research-intro__eyebrow">{text('新功能', 'New feature')}</p>
-                        <h2>{text('深入研究', 'Deep research')}</h2>
-                        <p>{text('让 Agent 多轮检索知识库与网页，整理出一份带证据的研究结果。', 'Ask the Agent to search your knowledge base and the web, then shape the evidence into a research result.')}</p>
-                        <div className="deep-research-intro__actions">
-                          <button type="button" className="deep-research-intro__dismiss" onClick={() => setDeepResearchIntroVisible(false)}>
-                            {text('稍后再说', 'Maybe later')}
-                          </button>
-                          <button type="button" className="deep-research-intro__try" onClick={() => {
-                            setComposerMode('deep-research')
-                            setDeepResearchIntroVisible(false)
-                          }}>
-                            {text('试试看', 'Try it')}
-                          </button>
-                        </div>
-                      </div>
-                    </aside>
-                  ) : null}
-                  <button
-                    ref={modeMenuButtonRef}
-                    type="button"
-                    className={`research-agent-composer__mode-button${composerMode === 'deep-research' ? ' is-deep-research' : ''}`}
-                    aria-label={text('选择 Agent 模式', 'Choose Agent mode')}
-                    aria-expanded={modeMenuOpen}
-                    aria-controls="research-agent-mode-menu"
-                    disabled={isBusy}
-                    onClick={() => {
-                      setMaterialMenuOpen(false)
-                      setModeMenuOpen((open) => !open)
-                    }}
-                  >
-                    <span className="research-agent-composer__mode-label">{composerMode === 'deep-research' ? text('深入研究', 'Deep research') : text('标准', 'Standard')}</span>
-                    <CaretDownIcon size={13} weight="bold" />
-                  </button>
-                  {modeMenuOpen ? (
-                    <div
-                      id="research-agent-mode-menu"
-                      className="research-agent-composer__material-menu research-agent-composer__mode-menu"
-                      role="menu"
-                      aria-label={text('选择 Agent 模式', 'Choose Agent mode')}
-                    >
-                      <button
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={composerMode === 'standard'}
-                        onClick={() => {
-                          setComposerMode('standard')
-                          setModeMenuOpen(false)
-                        }}
-                      >
-                        <span className="research-agent-composer__mode-copy">
-                          <strong>{text('标准模式', 'Standard mode')}</strong>
-                          <small>{text('知识库优先，按需补充联网资料', 'Knowledge first, with web sources as needed')}</small>
-                        </span>
-                        {composerMode === 'standard' ? <CheckIcon size={14} weight="bold" /> : null}
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={composerMode === 'deep-research'}
-                        onClick={() => {
-                          setComposerMode('deep-research')
-                          setDeepResearchIntroVisible(false)
-                          setModeMenuOpen(false)
-                        }}
-                      >
-                        <span className="research-agent-composer__mode-copy">
-                          <strong>{text('深入研究', 'Deep research')}</strong>
-                          <small>{text(
-                            '最大思考强度，多轮检索知识库与网页，并形成详细研究计划',
-                            'Maximum reasoning with multi-round knowledge and web research',
-                          )}</small>
-                        </span>
-                        {composerMode === 'deep-research' ? <CheckIcon size={14} weight="bold" /> : null}
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-                <button
-                  type={canStopGeneration ? 'button' : 'submit'}
-                  aria-label={canStopGeneration ? text('停止生成', 'Stop generating') : isBusy ? text('Agent 正在加载', 'Agent is loading') : text('发送给 Everplain', 'Send to Everplain')}
-                  className={`research-agent-composer__send${canStopGeneration ? ' is-stop' : ''}`}
-                  disabled={isBusy ? !canStopGeneration : !canSubmit}
-                  onClick={canStopGeneration ? stopGeneration : undefined}
-                >
-                  {canStopGeneration ? <StopIcon size={15} weight="fill" /> : <ArrowUpIcon size={18} />}
-                </button>
-              </div>
-            </form>
-          </footer>
 
-          {showConversationManagement && historyOpen ? (
+            <ConversationComposer
+              mode={composerMode} value={draft} label={composerAriaLabel ?? text('问 Everplain', 'Ask Everplain')}
+              placeholder={composerMode === 'deep-research' ? text('描述你想弄清楚的问题', 'Describe what you want to investigate') : text('问一个问题', 'Ask a question')}
+              maxLength={MAX_AGENT_MESSAGE_LENGTH} busy={isBusy} canSend={canSubmit} canStop={canStopGeneration}
+              uploading={materialUploading} toolsOpen={materialMenuOpen}
+              inputRef={composerInputRef} toolsRef={materialMenuRef} toolsButtonRef={materialMenuButtonRef}
+              fileRef={materialFileInputRef} accept={RESEARCH_MATERIAL_ACCEPT}
+              onChange={updateDraft} onKeyDown={handleKeyDown} onSubmit={handleSubmit}
+              onStop={() => { void stopGeneration() }} onToggleTools={() => setMaterialMenuOpen(open => !open)}
+              onUpload={files => { void uploadComposerMaterials(files) }}
+              onRemoveAttachment={id => setAttachedMaterials(items => items.filter(item => item.materialId !== id))}
+              attachments={attachedMaterials.map(material => ({ id: material.materialId, title: material.filename,
+                status: material.status === 'ready' ? text('已添加', 'Added') : attachmentStatusLabel(material, locale), removable: !isBusy }))}
+              researchLayout={researchToolsVisible}
+              modelSelector={<ModelSelectionSettings state={modelSelection} disabled={isBusy || materialUploading}
+                activeRequest={isBusy ? activeTurnAttempt.current?.request : null} />}
+              context={composerPrefix}
+              attachmentPicker={materialPickerOpen ? <AgentMaterialAttachmentPicker inline loading={materialPickerLoading}
+                materials={materialPickerLoading ? [] : availableMaterials} selectedIds={new Set(attachedMaterials.map(item => item.materialId))}
+                locale={locale} onToggle={toggleAttachedMaterial} onClose={() => setMaterialPickerOpen(false)} /> : null}
+              tools={<>
+                <section className="cv-tool-group" aria-label={text('添加内容', 'Add content')}>
+                  <h3 className="qx-meta">{text('添加内容', 'Add content')}</h3>
+                  <div className="cv-tool-attachments">
+                    <button className="qx-btn qx-btn--secondary" type="button" role="menuitem" disabled={isBusy} onClick={() => { setMaterialMenuOpen(false); materialFileInputRef.current?.click() }}><FilePlusIcon size={18} /><span>{text('上传文件', 'Upload a file')}</span></button>
+                    <button className="qx-btn qx-btn--secondary" type="button" role="menuitem" disabled={isBusy} onClick={() => { void openMaterialAttachmentPicker() }}><FolderOpenIcon size={18} /><span>{text('从研究材料添加', 'Add from research materials')}</span></button>
+                  </div>
+                </section>
+              </>}
+            />
+            {researchToolsVisible && <>
+              <div className="cv-research-base" role="group" aria-label={text('研究工具栏', 'Research tools')}>
+                {!embedded && <ProjectScopeMenu projects={projects} taskId={taskId} disabled={isBusy || materialUploading} onChange={switchComposerProject} />}
+                <button type="button" className="qx-btn qx-btn--ghost" aria-label={text('查看材料库', 'Open material library')} onClick={openResearchMaterials}><FolderOpenIcon size={16} /><span>{text('材料库', 'Materials')}</span></button>
+              </div>
+              <div className="cv-research-suggestions"><ConversationSuggestions onSelect={choosePrompt} /></div>
+            </>}
+</>}
+
+    source={<ConversationSourcePanel
+      detail={contextTab === 'basis' && selectedCitation && !selectedActivity ? { citation: selectedCitation,
+        kindLabel: citationGroup(selectedCitation) === 'knowledge' ? text('知识库资料', 'Library material') : citationKindLabel(selectedCitation.kind, locale),
+        locatorLabel: selectedMaterialCitation.locator ? formatMaterialLocator(selectedMaterialCitation.locator) : undefined,
+        unavailableReason: selectedCitation.knowledge_id && !selectedCitationReleaseId ? text('当前回合的知识版本尚未确认，暂不提供跳转。', 'The knowledge release for this turn has not been confirmed; navigation is unavailable.') : undefined,
+        actions: sourceActions } : null}
+      activity={contextTab === 'basis' && selectedActivity ? { ...selectedActivity, label: localizedToolLabel(selectedActivity.tool, locale, selectedActivity.label), detail: selectedActivity.detail ? localizedToolDetail(selectedActivity.detail, locale) : undefined, resultItems: resultItemsFromOutput(selectedActivity.output) } : null}
+      citations={citations} toolSteps={allToolSteps.map(step => ({ ...step, label: localizedToolLabel(step.tool, locale, step.label), detail: step.detail ? localizedToolDetail(step.detail, locale) : undefined, resultItems: resultItemsFromOutput(step.output) }))}
+      onClose={closeResearchPanel} onBack={backToResearchPanel}
+      onSelectActivity={step => { setSelectedCitationContext(null); setSelectedActivityId(step.id); setContextTab('basis') }}
+      onSelectCitation={citation => {
+        const context = selectedCitationContext?.citation.citation_id === citation.citation_id ? selectedCitationContext : citationContexts.find(item => item.citation.citation_id === citation.citation_id)
+        if (!context) return
+        setSelectedActivityId(null); setSelectedCitationContext(context); setContextTab('basis')
+      }}
+    />}
+    dialogs={<>          {showConversationManagement && historyOpen ? (
             <ConversationHistory
               projects={projects}
               setProjects={setProjects}
@@ -3656,36 +2731,6 @@ export function ResearchAgentConversationPage({
               onClose={closeHistory}
             />
           ) : null}
-
-          {(embedded ? contextOpen : railMounted) ? (
-            <ResearchContextRail
-              activeTab={contextTab}
-              activities={activities}
-              citations={citationsForRail}
-              selectedCitationId={selectedCitationId}
-              variant="sections"
-              elapsedSeconds={embedded ? null : deepResearchElapsedSeconds}
-              onClose={closeResearchPanel}
-              onBack={backToResearchPanel}
-              onPanelChange={setContextTab}
-              onActivitySelect={(activity) => {
-                setSelectedCitationContext(null)
-                setSelectedActivityId(activity.id)
-                setContextTab('basis')
-              }}
-              onCitationSelect={(citation) => {
-                const context = selectedCitationContext?.citation.citation_id === citation.id
-                  ? selectedCitationContext
-                  : citationContexts.find((item) => item.citation.citation_id === citation.id)
-                if (!context) return
-                setSelectedActivityId(null)
-                setSelectedCitationContext(context)
-                setContextTab('basis')
-              }}
-              basisContent={basisContent}
-            />
-          ) : null}
-
           {materialsOpen && (materialLocatorTarget?.taskId ?? taskId) ? (
             <ResearchMaterialsPanel
               taskId={(materialLocatorTarget?.taskId ?? taskId)!}
@@ -3698,10 +2743,8 @@ export function ResearchAgentConversationPage({
                 setMaterialLocatorTarget(null)
               }}
             />
-          ) : null}
-
-        </section>
-  )
+          ) : null}</>}
+  />
 
   if (embedded) {
     return (
@@ -3727,6 +2770,7 @@ export function ResearchAgentConversationPage({
 
   return (
     <PageShell
+      workspace
       railContent={(
         <AgentConversationHistoryRail
           projects={projects} setProjects={setProjects} projectListError={projectListError}
