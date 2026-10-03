@@ -14,11 +14,14 @@
   }
 }
 
+/* 声明必须留在 CSS：生产编译器会在同一选择器生成 light-dark() 降级开关。 */
 :root[data-color-scheme='dark'] {
+  color-scheme: dark;
   --qx-graph-filter: invert(.88) hue-rotate(180deg) saturate(.65);
 }
 
 :root[data-color-scheme='light'] {
+  color-scheme: light;
   --qx-graph-filter: none;
 }
 
