@@ -1,7 +1,6 @@
 import { useColorScheme } from '../../styles/useColorScheme'
 import { MeshGradient } from '@paper-design/shaders-react'
 import { useEffect, useState } from 'react'
-import './research-map-idle-shader.css'
 
 function usePrefersReducedMotion() {
   const [reducedMotion, setReducedMotion] = useState(() => (
