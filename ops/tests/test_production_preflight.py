@@ -4,7 +4,9 @@ import hashlib
 import importlib.util
 import json
 import os
+import sqlite3
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -93,6 +95,9 @@ class InspectionTests(unittest.TestCase):
         upstream = patch.object(inspection, "inspect_upstream", return_value={})
         upstream.start()
         self.addCleanup(upstream.stop)
+        presence = patch.object(inspection, "inspect_data_presence", return_value={})
+        presence.start()
+        self.addCleanup(presence.stop)
 
     def test_output_contains_only_booleans_and_no_private_metadata(self):
         result = subprocess.CompletedProcess([], 0, "everplain-api\nprivate-fixture\n", "")
@@ -138,6 +143,46 @@ class InspectionTests(unittest.TestCase):
 
 
 class UploadInspectionTests(unittest.TestCase):
+    def test_data_presence_distinguishes_empty_accounts_and_unknown_business_without_rows(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "fixture.db"
+            with sqlite3.connect(path) as db:
+                db.executescript(
+                    "CREATE TABLE users(id TEXT); CREATE TABLE alembic_version(version_num TEXT);"
+                    "INSERT INTO alembic_version VALUES ('fixture');"
+                )
+            code = inspection.DATA_PRESENCE_SCRIPT.replace(
+                "file:/data/everplain.db", path.resolve().as_uri()
+            )
+
+            def inspect_fixture():
+                result = subprocess.run(
+                    [sys.executable, "-c", code],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    env={"PATH": os.environ.get("PATH", "")},
+                )
+                self.assertNotIn("private-row", result.stdout + result.stderr)
+                return json.loads(result.stdout)
+
+            empty = inspect_fixture()
+            self.assertTrue(empty["data_presence_verified"])
+            self.assertFalse(empty["business_records_present"])
+            self.assertFalse(empty["account_records_present"])
+            self.assertFalse(empty["registration_email_configured"])
+            with sqlite3.connect(path) as db:
+                db.execute("INSERT INTO users VALUES ('private-row')")
+            accounts = inspect_fixture()
+            self.assertTrue(accounts["account_records_present"])
+            self.assertFalse(accounts["business_records_present"])
+            with sqlite3.connect(path) as db:
+                db.executescript(
+                    "CREATE TABLE unknown_records(value TEXT);"
+                    "INSERT INTO unknown_records VALUES ('private-row');"
+                )
+            self.assertTrue(inspect_fixture()["business_records_present"])
+
     def test_upstream_comparison_is_read_only_and_discloses_only_booleans(self):
         with tempfile.TemporaryDirectory() as d:
             config = Path(d) / "everplain-nginx.conf"
