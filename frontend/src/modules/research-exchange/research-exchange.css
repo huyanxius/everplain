@@ -72,10 +72,10 @@
   margin-top: 16px;
   padding: 17px;
   border-radius: var(--qx-radius-control);
-  background: var(--qx-color-surface-subtle);
+  background: var(--qx-color-surface-muted);
 }
 
-.research-exchange__preview > div span { color: var(--qx-color-muted); font-size: var(--qx-text-locator); font-weight: 700; letter-spacing: .08em; }
+.research-exchange__preview > div span { color: var(--qx-color-muted); font-size: var(--qx-text-locator); font-weight: 700; letter-spacing: normal; }
 .research-exchange__preview h3 { margin-top: 4px; font-size: var(--qx-text-title); }
 .research-exchange__preview > div p,
 .research-exchange__preview > p { margin-top: 5px; color: var(--qx-color-muted); font-size: var(--qx-text-locator); }

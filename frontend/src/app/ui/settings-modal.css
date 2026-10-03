@@ -1,40 +1,43 @@
-.settings-modal {
+/* Mock's wide dialog surface, contained by the native focus boundary. */
+.ep-settings-dialog {
   position: fixed;
   inset: 0;
-  width: min(920px, calc(100vw - 64px));
-  height: min(580px, calc(100dvh - 88px));
+  width: min(760px, calc(100vw - var(--qx-space-12)));
+  height: min(480px, calc(100dvh - var(--qx-space-12)));
   max-width: none;
   max-height: none;
   margin: auto;
   padding: 0;
-  border: 1px solid var(--qx-color-rule);
-  border-radius: 24px;
-  color: var(--qx-color-ink);
-  background: var(--qx-paper-surface);
-  box-shadow: 0 24px 100px rgb(0 0 0 / 28%);
-  overflow: hidden;
-}
-.settings-modal::backdrop { background: rgb(0 0 0 / 35%); backdrop-filter: blur(5px); }
-.settings-modal .qs-settings { height: 100%; min-height: 0; border: 0; border-radius: 0; }
-.settings-modal .qs-sidebar { min-height: 0; }
-.settings-modal .qs-content { overflow-y: auto; overscroll-behavior: contain; padding-top: 48px; }
-.settings-modal .qs-confirmation { position: absolute; }
-.settings-modal__close {
-  position: absolute;
-  z-index: 2;
-  top: 10px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
   border: 0;
-  border-radius: 50%;
+  overflow: visible;
   background: transparent;
-  color: var(--qx-paper-muted);
-  font-size: 26px;
-  cursor: pointer;
+  color: var(--qx-color-ink);
 }
-.settings-modal__close:hover { background: var(--qx-paper-selected); }
+.ep-settings-dialog:focus { outline: none; }
+.ep-settings-dialog::backdrop { background: var(--qx-color-overlay); }
+.ep-settings-dialog__surface { display: flex; flex-direction: column; gap: var(--qx-space-4); height: 100%; padding: var(--qx-space-6); overflow: hidden; }
+.ep-settings-dialog__heading { display: flex; flex: none; align-items: center; justify-content: space-between; gap: var(--qx-space-4); }
+.ep-settings-dialog__heading > button { flex: none; }
+.ep-settings-dialog__identity { display: flex; align-items: center; gap: var(--qx-space-3); min-width: 0; font-family: var(--qx-font-ui); }
+.ep-settings-dialog__identity > .agent-avatar { flex: none; }
+.ep-settings-dialog__identity > div { display: grid; min-width: 0; }
+.ep-settings-dialog__identity strong,
+.ep-settings-dialog__identity small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ep-settings-dialog__identity strong { font-size: var(--qx-text-control); font-weight: var(--qx-text-heading--font-weight); }
+.ep-settings-dialog__content { display: grid; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.ep-settings-dialog .ep-account-confirmation { position: absolute; border-radius: var(--qx-radius-modal); }
 @media (max-width: 640px) {
-  .settings-modal { width: calc(100vw - 24px); max-height: calc(100dvh - 32px); border-radius: 18px; }
-  .settings-modal .qs-settings { min-height: 0; }
+  .ep-settings-dialog {
+    --ep-settings-inset-top: max(var(--qx-space-2), env(safe-area-inset-top, 0px));
+    --ep-settings-inset-bottom: max(var(--qx-space-2), env(safe-area-inset-bottom, 0px));
+    top: calc(var(--app-viewport-offset-top, 0px) + var(--ep-settings-inset-top));
+    right: max(var(--qx-space-2), env(safe-area-inset-right, 0px));
+    bottom: auto;
+    left: max(var(--qx-space-2), env(safe-area-inset-left, 0px));
+    width: auto;
+    height: max(0px, calc(var(--app-viewport-height, 100dvh) - var(--ep-settings-inset-top) - var(--ep-settings-inset-bottom)));
+    margin: 0;
+  }
+  .ep-settings-dialog__surface { padding: var(--qx-space-4); gap: var(--qx-space-3); }
+  .ep-settings-dialog__heading > button { width: calc(var(--qx-control-height) + var(--qx-space-1)); min-height: calc(var(--qx-control-height) + var(--qx-space-1)); }
 }

@@ -1,6 +1,6 @@
 .research-table {
   width: 100%;
-  border-top: 1px solid var(--app-border);
+  border-top: 1px solid var(--qx-color-rule);
 }
 
 .research-table__header,
@@ -14,18 +14,18 @@
 
 .research-table__header {
   min-height: 38px;
-  color: var(--app-muted);
-  background: var(--app-surface-subtle);
-  font-size: 11px;
+  color: var(--qx-color-muted);
+  background: var(--qx-color-surface-muted);
+  font-size: var(--qx-text-meta);
 }
 
 .research-row {
   min-height: 72px;
-  border-top: 1px solid var(--app-border);
+  border-top: 1px solid var(--qx-color-rule);
 }
 
 .research-row:hover {
-  background: var(--app-surface-subtle);
+  background: var(--qx-color-surface-muted);
 }
 
 .research-row__question {
@@ -36,8 +36,8 @@
 
 .research-row__question a {
   overflow: hidden;
-  color: var(--app-ink);
-  font-size: 14px;
+  color: var(--qx-color-ink);
+  font-size: var(--qx-text-control);
   font-weight: 500;
   text-decoration: none;
   text-overflow: ellipsis;
@@ -52,18 +52,18 @@
 .research-row__question span,
 .research-row__next,
 .research-row time {
-  color: var(--app-muted);
-  font-size: 12px;
+  color: var(--qx-color-muted);
+  font-size: var(--qx-text-meta);
 }
 
 .research-row__stage {
   display: inline-flex;
   width: fit-content;
   padding: 3px 8px;
-  border-radius: 999px;
-  color: var(--app-ink-soft);
-  background: var(--app-surface);
-  font-size: 12px;
+  border-radius: var(--qx-radius-pill);
+  color: var(--qx-color-ink-soft);
+  background: var(--qx-color-surface-strong);
+  font-size: var(--qx-text-meta);
 }
 
 .research-row__actions {
@@ -73,21 +73,11 @@
 
 .research-row__actions > button {
   width: 32px;
-  height: 32px;
+  height: var(--qx-icon-control-size);
   display: grid;
   place-items: center;
   padding: 0;
-  border: 0;
-  border-radius: 8px;
-  color: var(--app-muted);
-  background: transparent;
   cursor: pointer;
-}
-
-.research-row__actions > button:hover,
-.research-row__actions > button[aria-expanded='true'] {
-  color: var(--app-ink);
-  background: var(--app-surface);
 }
 
 .research-row__menu {
@@ -97,10 +87,10 @@
   right: 0;
   width: 148px;
   padding: 5px;
-  border: 1px solid var(--app-border);
-  border-radius: 10px;
-  background: var(--app-canvas);
-  box-shadow: 0 8px 28px rgb(23 23 22 / 10%);
+  border: 1px solid var(--qx-color-rule);
+  border-radius: var(--qx-radius-tag);
+  background: var(--qx-color-canvas);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--qx-color-ink) 10%, transparent);
 }
 
 .research-row__menu a,
@@ -112,21 +102,17 @@
   gap: 8px;
   padding: 0 9px;
   border: 0;
-  border-radius: 7px;
-  color: var(--app-ink-soft);
+  border-radius: var(--qx-radius-pill);
+  color: var(--qx-color-ink-soft);
   background: transparent;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--qx-text-meta);
   text-decoration: none;
 }
 
 .research-row__menu a:hover,
 .research-row__menu button:hover {
-  background: var(--app-surface);
-}
-
-.research-row__menu button {
-  color: var(--app-danger);
+  background: var(--qx-color-surface-strong);
 }
 
 .research-library-state {
@@ -144,16 +130,16 @@
 }
 
 .research-library-state h2 {
-  color: var(--app-ink);
-  font-size: 17px;
+  color: var(--qx-color-ink);
+  font-size: var(--qx-text-reading);
   font-weight: 500;
 }
 
 .research-library-state p {
   max-width: 390px;
   margin-top: 8px;
-  color: var(--app-muted);
-  font-size: 14px;
+  color: var(--qx-color-muted);
+  font-size: var(--qx-text-control);
   line-height: 1.5;
 }
 
@@ -165,11 +151,11 @@
   margin-top: 18px;
   padding: 0 14px;
   border: 0;
-  border-radius: 999px;
-  color: var(--app-canvas);
-  background: var(--app-ink);
+  border-radius: var(--qx-radius-pill);
+  color: var(--qx-color-canvas);
+  background: var(--qx-color-ink);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--qx-text-meta);
   text-decoration: none;
 }
 
@@ -180,8 +166,8 @@
   place-items: center;
   margin-bottom: 18px;
   border-radius: 50%;
-  color: var(--app-muted);
-  background: var(--app-surface);
+  color: var(--qx-color-muted);
+  background: var(--qx-color-surface-strong);
 }
 
 .research-library-state--loading {
@@ -195,15 +181,15 @@
 
 .research-library-state--loading span {
   height: 13px;
-  border-radius: 3px;
-  background: var(--app-surface);
+  border-radius: var(--qx-radius-mark);
+  background: var(--qx-color-surface-strong);
   animation: loading-breathe 1.3s ease-in-out infinite;
 }
 
 .research-library-state--loading span:nth-child(1) { width: 66%; }
 .research-library-state--loading span:nth-child(2) { width: 48%; animation-delay: 100ms; }
 .research-library-state--loading span:nth-child(3) { width: 30%; animation-delay: 200ms; }
-.research-library-state--loading p { margin-top: 4px; font-size: 12px; }
+.research-library-state--loading p { margin-top: 4px; font-size: var(--qx-text-meta); }
 
 .delete-dialog-backdrop {
   position: fixed;
@@ -212,17 +198,17 @@
   display: grid;
   place-items: center;
   padding: 20px;
-  background: light-dark(rgb(23 23 22 / 24%), rgb(228 228 226 / 0.24));
+  background: color-mix(in srgb, var(--qx-color-ink) 24%, transparent);
   backdrop-filter: blur(2px);
 }
 
 .delete-dialog {
   width: min(420px, 100%);
   padding: 22px;
-  border: 1px solid var(--app-border);
-  border-radius: 14px;
-  background: var(--app-canvas);
-  box-shadow: 0 20px 60px rgb(23 23 22 / 18%);
+  border: 1px solid var(--qx-color-rule);
+  border-radius: var(--qx-radius-item);
+  background: var(--qx-color-canvas);
+  box-shadow: 0 20px 60px color-mix(in srgb, var(--qx-color-ink) 18%, transparent);
 }
 
 .delete-dialog__icon {
@@ -231,33 +217,33 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  color: var(--app-danger);
-  background: light-dark(#fff1f0, #1e1818);
+  color: var(--qx-color-danger);
+  background: var(--qx-color-canvas);
 }
 
 .delete-dialog h2 {
   margin: 16px 0 0;
-  color: var(--app-ink);
-  font-size: 17px;
+  color: var(--qx-color-ink);
+  font-size: var(--qx-text-reading);
   font-weight: 500;
 }
 
 .delete-dialog p {
   margin: 7px 0 0;
-  color: var(--app-muted);
-  font-size: 13px;
+  color: var(--qx-color-muted);
+  font-size: var(--qx-text-meta);
   line-height: 1.5;
 }
 
 .delete-dialog .delete-dialog__question {
   overflow: hidden;
-  color: var(--app-ink-soft);
+  color: var(--qx-color-ink-soft);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .delete-dialog .delete-dialog__error {
-  color: var(--app-danger);
+  color: var(--qx-color-danger);
 }
 
 .delete-dialog__actions {
@@ -268,20 +254,15 @@
 }
 
 .delete-dialog__actions button {
-  min-height: 36px;
+  min-height: var(--qx-control-height);
   padding: 0 14px;
-  border: 1px solid var(--app-border-strong);
-  border-radius: 999px;
-  color: var(--app-ink);
-  background: var(--app-canvas);
   cursor: pointer;
-  font-size: 13px;
 }
 
 .delete-dialog__actions .delete-dialog__confirm {
-  border-color: var(--app-danger);
-  color: light-dark(#fff, #212121);
-  background: var(--app-danger);
+  border-color: var(--qx-color-danger);
+  color: var(--qx-color-on-accent);
+  background: var(--qx-color-danger);
 }
 
 @media (max-width: 980px) {

@@ -1,0 +1,27 @@
+/* 单列居中认证流程。视觉来自 mock/Login，验证和提交仍由真实账户模块负责。 */
+.account-portal { position: relative; display: flex; min-height: 100dvh; flex-direction: column; justify-content: center; align-items: center; padding: var(--qx-space-16) var(--qx-space-4); color: var(--qx-color-ink); background: var(--qx-color-canvas); text-align: center; }
+.account-portal__back { position: absolute; top: var(--qx-space-6); left: var(--qx-space-6); }
+.account-portal__brand { display: inline-flex; align-items: center; gap: var(--qx-space-2); margin-bottom: var(--qx-space-8); color: var(--qx-color-ink); font-family: var(--qx-font-reading); font-size: var(--qx-text-title); text-decoration: none; }
+.account-portal__brand img { width: 26px; height: 26px; }
+.account-portal__center { display: grid; justify-items: center; gap: var(--qx-space-6); width: min(100%, 440px); }
+.account-portal__crowd { display: flex; align-items: flex-end; justify-content: center; gap: var(--qx-space-1); width: 100%; }
+.account-portal__crowd > * { flex-shrink: 1; min-width: 0; }
+.account-portal__entry { display: grid; gap: var(--qx-space-4); width: min(100%, 400px); }
+.account-portal .account-form { display: grid; gap: var(--qx-space-3); width: 100%; margin: 0; padding: 0; }
+.account-portal .account-form > label, .account-portal .account-field { display: grid; gap: var(--qx-space-2); text-align: left; }
+.account-portal .account-form :is(label > span, .account-field > label, .account-field > small) { padding-left: var(--qx-space-5); color: var(--qx-color-muted); font-size: var(--qx-text-meta); }
+.account-portal .account-form .qx-input { min-height: var(--qx-action-height); padding: 0 var(--qx-space-5); border: 0; border-radius: var(--qx-radius-pill); background: var(--qx-color-surface-strong); }
+.account-portal .account-form .qx-input:focus-visible { background: var(--qx-color-surface); }
+.account-portal .account-password-field { position: relative; display: flex; }
+.account-portal .account-password-field__input { padding-right: calc(var(--qx-space-12) + var(--qx-space-3)) !important; }
+.account-portal .account-password-field__toggle { position: absolute; top: 50%; right: var(--qx-space-2); transform: translateY(-50%); }
+.account-email-summary { margin: 0 0 var(--qx-space-2); color: var(--qx-color-muted); font-size: var(--qx-text-body); overflow-wrap: anywhere; }
+.account-portal .account-switch { margin: var(--qx-space-2) 0 0; color: var(--qx-color-muted); font-size: var(--qx-text-meta); }
+.account-switch a { margin-left: var(--qx-space-2); color: var(--qx-color-ink); text-underline-offset: var(--qx-space-1); }
+.account-portal .account-error, .account-portal .account-notice { margin: 0; padding: var(--qx-space-3) var(--qx-space-4); border: 0; border-radius: var(--qx-radius-card); text-align: left; font-size: var(--qx-text-meta); }
+.account-register-progress { display: grid; gap: var(--qx-space-2); color: var(--qx-color-muted); font-size: var(--qx-text-meta); text-align: center; }
+.account-register-progress__track { display: block; height: var(--qx-space-1); overflow: hidden; border-radius: var(--qx-radius-pill); background: var(--qx-color-surface-strong); }
+.account-register-progress__track > span { display: block; height: 100%; border-radius: inherit; background: var(--qx-color-ink); transition: width var(--qx-motion-base) var(--qx-ease); }
+.account-register-summary { display: grid; justify-items: center; gap: var(--qx-space-2); color: var(--qx-color-muted); font-size: var(--qx-text-meta); }
+.account-register-summary strong { color: var(--qx-color-ink); font-size: var(--qx-text-body); overflow-wrap: anywhere; }
+@media (max-width: 760px) { .account-portal__back { top: var(--qx-space-4); left: var(--qx-space-4); } }

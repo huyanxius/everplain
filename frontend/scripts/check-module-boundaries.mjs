@@ -9,7 +9,7 @@ const defaultSourceRoot = path.resolve(path.dirname(scriptPath), '../src')
 /** Every module is declared, even when it has no dependencies. */
 export const defaultBoundaryPolicy = Object.freeze({
   moduleDependencies: Object.freeze({
-    account: Object.freeze([]),
+    account: Object.freeze(['agent-avatar', 'agent-profile']),
     'agent-avatar': Object.freeze([]),
     companion: Object.freeze([]),
     'agent-profile': Object.freeze([]),

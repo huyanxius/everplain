@@ -2,19 +2,30 @@
   --qx-graph-filter: none;
 }
 
-/* Cytoscape 的位图画布独立于 CSS；只转换节点图层，页面内容和 Shader 使用各自配色。 */
+/* Cytoscape 位图沿用既有反转；显式外观必须与共享 light-dark() token 一致。 */
 .knowledge-graph__canvas canvas,
 .obsidian-knowledge-graph__canvas canvas {
   filter: var(--qx-graph-filter);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root { --qx-graph-filter: invert(.88) hue-rotate(180deg) saturate(.65); }
+  :root:not([data-color-scheme='light']) {
+    --qx-graph-filter: invert(.88) hue-rotate(180deg) saturate(.65);
+  }
+}
+
+:root[data-color-scheme='dark'] {
+  --qx-graph-filter: invert(.88) hue-rotate(180deg) saturate(.65);
+}
+
+:root[data-color-scheme='light'] {
+  --qx-graph-filter: none;
 }
 
 @media print {
-  :root {
-    color-scheme: light;
+  :root,
+  :root[data-color-scheme] {
+    color-scheme: light !important;
     --qx-graph-filter: none;
   }
 }

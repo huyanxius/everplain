@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "check:boundaries": "node --test scripts/check-module-boundaries-tests.mjs && node scripts/check-module-boundaries.mjs",
-    "check:styles": "node --test scripts/check-style-tokens-tests.mjs && node scripts/check-style-tokens.mjs src/app/research-workspace/research-document-workbench.css",
+    "check:styles": "node --test scripts/check-style-tokens-tests.mjs && node scripts/check-style-tokens.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "generate:api": "openapi-ts -i ../backend/openapi.json -o src/api/generated",
@@ -25,7 +25,6 @@
     "@tiptap/react": "3.31.3",
     "@tiptap/starter-kit": "3.31.3",
     "@xyflow/react": "^12.11.3",
-    "@ybouane/liquidglass": "^1.0.3",
     "citeproc": "2.4.63",
     "cytoscape": "3.34.0",
     "docx": "^9.7.1",
