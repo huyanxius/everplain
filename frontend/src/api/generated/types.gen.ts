@@ -655,6 +655,10 @@ export type AgentProfileResponse = {
      */
     setup_step: number;
     /**
+     * Soul Text
+     */
+    soul_text?: string;
+    /**
      * Speaking Style
      */
     speaking_style: string;
@@ -693,6 +697,10 @@ export type AgentProfileUpdate = {
      * Setup Step
      */
     setup_step?: number | null;
+    /**
+     * Soul Text
+     */
+    soul_text?: string | null;
     /**
      * Speaking Style
      */

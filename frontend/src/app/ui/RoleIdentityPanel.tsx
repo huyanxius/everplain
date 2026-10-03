@@ -1,7 +1,7 @@
 import { FingerprintIcon, BrainIcon, XIcon } from '@phosphor-icons/react'
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { useAppLocale } from '../../i18n/AppLocaleProvider'
-import { settingsAgentColors, settingsSpeakingStyles, useAgentSettingsController } from '../../modules/account'
+import { AgentSoulEditor, settingsAgentColors, settingsSpeakingStyles, useAgentSettingsController } from '../../modules/account'
 import { AgentAvatar, agentAvatarPresets } from '../../modules/agent-avatar'
 import { ResearchMemoryPanel } from '../research/ResearchMemoryPanel'
 import './role-identity-panel.css'
@@ -77,7 +77,7 @@ function RoleIdentityPanelContent({ open, onClose, userId, accountName, initialT
         <p>{accountName ? text(`${accountName} 的 AI 伙伴`, `${accountName}’s AI companion`) : text('为你整理知识，一起探索想法', 'Organize knowledge and explore ideas together')}</p>
       </div>
       <div className="ep-role-panel__tabs" role="tablist" aria-label={text('伙伴设置', 'Companion settings')}>
-        {(['identity', 'memory'] as const).map(value => <button key={value} id={`${id}-${value}-tab`} type="button" role="tab" aria-selected={tab === value} aria-controls={`${id}-${value}-panel`} tabIndex={tab === value ? 0 : -1} onClick={() => selectTab(value)} onKeyDown={tabKey}>{value === 'identity' ? <FingerprintIcon aria-hidden="true" /> : <BrainIcon aria-hidden="true" />}{value === 'identity' ? text('角色身份', 'Identity') : text('记忆', 'Memory')}</button>)}
+        {(['identity', 'memory'] as const).map(value => <button key={value} id={`${id}-${value}-tab`} type="button" role="tab" aria-selected={tab === value} aria-controls={`${id}-${value}-panel`} tabIndex={tab === value ? 0 : -1} onClick={() => selectTab(value)} onKeyDown={tabKey}>{value === 'identity' ? <FingerprintIcon aria-hidden="true" /> : <BrainIcon aria-hidden="true" />}{value === 'identity' ? text('Soul · 人格', 'Soul') : text('Memory · 记忆', 'Memory')}</button>)}
       </div>
       <div className="ep-role-panel__body">
         <section id={`${id}-identity-panel`} role="tabpanel" aria-labelledby={`${id}-identity-tab`} hidden={tab !== 'identity'}>
@@ -92,8 +92,9 @@ function RoleIdentityPanelContent({ open, onClose, userId, accountName, initialT
             <fieldset disabled={flow.pending} className="ep-role-panel__field"><legend>{text('说话方式', 'Speaking style')}</legend><div className="ep-role-panel__styles">
               {settingsSpeakingStyles.map(style => <button className="qx-btn qx-btn--secondary" key={style.id} type="button" aria-pressed={draft.style === style.id} onClick={() => flow.patch({ style: style.id })}>{text(style.zh, style.en)}</button>)}
             </div></fieldset>
+            <AgentSoulEditor flow={flow} text={text} />
             {flow.error ? <p className="qx-notice qx-notice--danger" role="alert">{flow.error}</p> : null}
-            <footer className="ep-role-panel__save"><span className="qx-meta" role={flow.saved ? 'status' : undefined}>{flow.saved ? text('已保存', 'Saved') : text('关闭面板会保留未保存的修改', 'Unsaved edits stay here when you close')}</span><button className="qx-btn qx-btn--primary" type="submit" disabled={flow.pending}>{flow.pending ? text('正在保存…', 'Saving…') : text('保存角色', 'Save identity')}</button></footer>
+            <footer className="ep-role-panel__save"><span className="qx-meta" role={flow.saved ? 'status' : undefined}>{flow.saved ? text('已保存', 'Saved') : text('关闭面板会保留未保存的修改', 'Unsaved edits stay here when you close')}</span><button className="qx-btn qx-btn--primary" type="submit" disabled={flow.pending || !!flow.conflict}>{flow.pending ? text('正在保存…', 'Saving…') : text('保存角色', 'Save identity')}</button></footer>
           </form>}
         </section>
         <section id={`${id}-memory-panel`} role="tabpanel" aria-labelledby={`${id}-memory-tab`} hidden={tab !== 'memory'}>{memoryVisited ? <ResearchMemoryPanel taskId={null} /> : null}</section>
