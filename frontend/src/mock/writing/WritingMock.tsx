@@ -28,7 +28,7 @@ import { AgentAvatar } from '../../modules/agent-avatar'
  * 布局（从左到右）：
  *   应用侧栏位置 —— 由应用外壳提供，本页只占位并写明，不重复设计；
  *   工作台 —— 一整块面板：顶栏（文档切换、排版、状态、版本、导出）、正文、底部状态栏；
- *   右栏 —— 同一块面板的右侧，三个标签：协作（和 Agent 对话）、文风（学到了什么）、修订（Agent 改过什么）。
+ *   右栏 —— 两个标签：协作（和 Agent 对话）、修订（Agent 改过什么）。文风由算法在后台学，界面不单独展示。
  *
  * 人机协作的规则：
  *   用户随时直接改正文；选中文字 → 浮条（改写 / 更像我 / 缩短 / 扩写）；在协作栏里说 → Agent 直接写进正文。
@@ -38,7 +38,7 @@ import { AgentAvatar } from '../../modules/agent-avatar'
 type Change = { start: number; end: number; after: string; phase: 'sweeping' | 'pending' }
 type Para = { id: string; text: string; change?: Change; stream?: string[]; streaming?: boolean; touched?: boolean }
 type Revision = { id: string; kind: string; before: string; after: string; state: 'pending' | 'accepted' | 'rejected'; pid: string; when: string }
-type Tab = 'collab' | 'style' | 'revisions'
+type Tab = 'collab' | 'revisions'
 
 const initialParas: Para[] = [
   { id: 'p1', text: '我第一次注意到楼下那家便利店，是在搬来这座城市的第三个冬天。' },
@@ -51,18 +51,7 @@ const docs = {
   samples: ['去年的公众号文章（12 篇）', '本科毕业论文致谢', '旅行随笔 · 京都'],
 }
 
-const traits = [
-  { label: '短句', value: 82, note: '平均每句 14 字，比一般写作短三分之一', eg: '雨停了。我们没走。' },
-  { label: '少用形容词', value: 74, note: '形容词密度低，靠动作和细节说话', eg: '他把伞往我这边偏了一点。' },
-  { label: '从具体细节开头', value: 68, note: '段落常以一个场景或物件起笔', eg: '桌上那杯茶已经凉了。' },
-  { label: '偶尔设问', value: 41, note: '每篇一到两处，用来转折', eg: '可那真的是孤独吗？' },
-]
 
-const samples = [
-  { name: '去年的公众号文章', count: '12 篇', on: true },
-  { name: '本科毕业论文致谢', count: '1 篇', on: true },
-  { name: '旅行随笔 · 京都', count: '1 篇', on: false },
-]
 
 const actions = [
   { id: 'rewrite', label: '改写', icon: <MagicWandIcon /> },
@@ -93,7 +82,6 @@ export function WritingMock() {
     { role: 'user', text: '帮我看看第二段，感觉有点啰嗦。' },
     { role: 'agent', text: '第二段最后一句用了三个并列的形容词，你平时很少这样写。选中它让我改，或者直接说"改得更像我"。' },
   ])
-  const [learning, setLearning] = useState<number | null>(null)
   const editor = useRef<HTMLDivElement>(null)
 
   const chars = paras.reduce((n, p) => n + (p.stream ? p.stream.join('').length : p.text.length), 0)
@@ -191,19 +179,6 @@ export function WritingMock() {
     setBar(null)
   }
 
-  const learn = () => {
-    setTab('style')
-    setLearning(0)
-    let v = 0
-    const t = window.setInterval(() => {
-      v += 4
-      setLearning(v)
-      if (v >= 100) {
-        window.clearInterval(t)
-        window.setTimeout(() => setLearning(null), 900)
-      }
-    }, 60)
-  }
 
   /* 落定演示：没有待定修改时先改一句，扫光结束后自动接受 */
   const demoSettle = () => {
@@ -243,7 +218,6 @@ export function WritingMock() {
           onStream={stream}
           onFloat={floatDemo}
           onSettle={demoSettle}
-          onLearn={learn}
           onReset={reset}
         />
       </aside>
@@ -289,21 +263,18 @@ export function WritingMock() {
               <span>约 {Math.max(1, Math.round(chars / 400))} 分钟读完</span>
               <span className="wr-statusbar__sep" />
               <button type="button" onClick={() => setTab('revisions')}>{pending ? <><i className="wr-dot" />{pending} 处修改待处理</> : '没有待处理的修改'}</button>
-              <span className="wr-spacer" />
-              <button type="button" onClick={() => setTab('style')}>文风贴合 <b>86%</b></button>
             </footer>
           </section>
 
           <aside className="wr-side">
             <div className="wr-tabs" role="tablist">
-              {([['collab', '协作'], ['style', '文风'], ['revisions', '修订']] as const).map(([id, label]) => (
+              {([['collab', '协作'], ['revisions', '修订']] as const).map(([id, label]) => (
                 <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>
                   {label}{id === 'revisions' && pending ? <span className="wr-badge">{pending}</span> : null}
                 </button>
               ))}
             </div>
             {tab === 'collab' ? <Collab messages={messages} busy={!!status} onSend={send} /> : null}
-            {tab === 'style' ? <StylePanel learning={learning} onLearn={learn} /> : null}
             {tab === 'revisions' ? <Revisions items={revisions} onSettle={settle} onAll={settleAll} /> : null}
           </aside>
         </div>
@@ -417,51 +388,6 @@ function Collab({ messages, busy, onSend }: { messages: { role: 'user' | 'agent'
   )
 }
 
-/* 文风：贴合度、学到的特征（每条带说明和样本里的例句）、参与学习的样本。 */
-function StylePanel({ learning, onLearn }: { learning: number | null; onLearn: () => void }) {
-  const [on, setOn] = useState(true)
-  const [list, setList] = useState(samples)
-  return (
-    <div className="wr-style" data-learning={learning !== null}>
-      <section className="wr-score">
-        <div className="wr-ring" style={{ ['--v' as string]: 86 }}><b>86</b><small>%</small></div>
-        <div>
-          <strong>文风贴合度</strong>
-          <p>{learning !== null ? `正在学习新样本 ${learning}%` : '本文与你过去的写法很接近'}</p>
-          {learning !== null ? <div className="wr-learnbar"><span style={{ width: `${learning}%` }} /></div> : null}
-        </div>
-      </section>
-      <div className="wr-row">
-        <span>按我的文风写<small>改写和续写都向下面的特征靠</small></span>
-        <button type="button" className="wr-switch" role="switch" aria-checked={on} aria-label="按我的文风写" onClick={() => setOn(!on)} />
-      </div>
-      <section>
-        <h3 className="wr-h">学到的特征</h3>
-        <ul className="wr-traits">
-          {traits.map((t, i) => (
-            <li key={t.label}>
-              <div className="wr-traits__head"><strong>{t.label}</strong><span>{t.value}</span></div>
-              <i><b style={{ width: `${t.value}%`, animationDelay: `${i * 90}ms` }} /></i>
-              <p>{t.note}</p>
-              <q>{t.eg}</q>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section>
-        <h3 className="wr-h">学习样本<span>14 篇</span></h3>
-        {list.map((s) => (
-          <div key={s.name} className="wr-row wr-row--sample">
-            <span><FeatherIcon /> {s.name}<small>{s.count}</small></span>
-            <button type="button" className="wr-switch" role="switch" aria-checked={s.on} aria-label={`用 ${s.name} 学习`} onClick={() => setList(list.map((x) => (x === s ? { ...x, on: !x.on } : x)))} />
-          </div>
-        ))}
-        <button type="button" className="wr-ghost" onClick={onLearn}><PlusIcon /> 添加样本</button>
-      </section>
-    </div>
-  )
-}
-
 /* 修订：Agent 每次动正文都留一条，新的在上。待定的可在这里接受 / 撤回，也可一次处理全部。 */
 function Revisions({ items, onSettle, onAll }: { items: Revision[]; onSettle: (pid: string, ok: boolean) => void; onAll: (ok: boolean) => void }) {
   const pending = items.some((r) => r.state === 'pending')
@@ -499,13 +425,12 @@ function Revisions({ items, onSettle, onAll }: { items: Revision[]; onSettle: (p
 }
 
 /* 动效演示：放在左侧占位区，用侧栏条目样式。只为评审看动效，真实页面里没有。 */
-function MotionDemos(props: { onSweep: () => void; onStream: () => void; onFloat: () => void; onSettle: () => void; onLearn: () => void; onReset: () => void }) {
+function MotionDemos(props: { onSweep: () => void; onStream: () => void; onFloat: () => void; onSettle: () => void; onReset: () => void }) {
   const items: [string, () => void][] = [
     ['光影扫过 · 改写', props.onSweep],
     ['逐段流入 · 续写', props.onStream],
     ['选区浮条', props.onFloat],
     ['落定 · 接受修改', props.onSettle],
-    ['文风学习', props.onLearn],
   ]
   return (
     <nav className="wr-demos" aria-label="动效演示">
