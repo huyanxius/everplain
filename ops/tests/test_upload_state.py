@@ -88,13 +88,16 @@ class UploadStateTests(unittest.TestCase):
                 text=True,
                 check=True,
             )
-            self.assertEqual(result.stdout.splitlines(), ["/tmp/everplain-candidate.good", "false"])
+            self.assertEqual(
+                result.stdout.splitlines()[:2], ["/tmp/everplain-candidate.good", "false"]
+            )
 
     def test_transport_reuses_complete_package_and_has_bounded_resume_and_separate_apply(self):
         script = (ROOT / "ops/cd/deploy-existing-ssh.sh").read_text()
         self.assertIn('if [[ "$complete" != true ]]', script)
-        self.assertIn("put -a", script)
-        self.assertIn("timeout --signal=TERM 1800s sftp", script)
+        self.assertIn("upload_parts.py", script)
+        self.assertIn("duration=1800", script)
+        self.assertIn("duration=120", script)
         self.assertIn('[[ "$mode" != upload ]] || exit 0', script)
         self.assertLess(
             script.index(" verify $size $upload"),

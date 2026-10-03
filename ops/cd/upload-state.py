@@ -51,7 +51,7 @@ def discover(size, uid, parent=Path("/tmp")):
         if path.is_symlink() or not path.is_file():
             continue
         before = path.stat()
-        if before.st_uid != uid or before.st_nlink != 1 or not 0 < before.st_size <= size:
+        if before.st_uid != uid or before.st_nlink != 1 or not 0 <= before.st_size <= size:
             continue
         digest = checksum(path)
         after = path.stat()
