@@ -1,3 +1,5 @@
+import { Select } from '../ui/Select'
+import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useEditor, EditorContent } from '@tiptap/react'
@@ -5,7 +7,7 @@ import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
 import { CheckCircleIcon, CircleNotchIcon, DownloadSimpleIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import { type CSSProperties, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router'
+import { Link, useLocation, useNavigate, useParams } from 'react-router'
 
 import {
   acceptResearchDocumentProposal,
@@ -134,6 +136,9 @@ type ResearchDocumentWorkbenchProps = {
   readonly userId?: string | null
   readonly citationMetadataResolver?: CitationMetadataResolver
   readonly embedded?: boolean
+  readonly outlineTarget?: HTMLElement | null
+  readonly toolbarTarget?: HTMLElement | null
+  readonly onNavigationGuardChange?: (guard: (() => Promise<boolean>) | null) => void
   readonly workspaceMode?: 'match' | 'framework'
   readonly focusDocument?: boolean
   readonly initialDocumentId?: string | null
@@ -181,6 +186,9 @@ export function ResearchDocumentWorkbench({
   userId = null,
   citationMetadataResolver = () => null,
   embedded = false,
+  outlineTarget = null,
+  toolbarTarget = null,
+  onNavigationGuardChange,
   workspaceMode,
   focusDocument = false,
   initialDocumentId = null,
@@ -222,15 +230,18 @@ export function ResearchDocumentWorkbench({
   const [researchCycle, setResearchCycle] = useState<ResearchCycleSnapshot | null>(null)
   const [relationDraft, setRelationDraft] = useState({ explanation: '', premise: '', supporting: '', excluding: '', distinguishing: '' })
   const [saveState, setSaveState] = useState<'saved' | 'saving' | 'unsaved'>('saved')
+  const saveStateRef = useRef(saveState)
+  saveStateRef.current = saveState
   const [agentConversation, setAgentConversation] = useState<AgentConversation | null>(null)
   const [discussion, setDiscussion] = useState<ResearchDiscussion | null>(null)
   const [citationRequest, setCitationRequest] = useState<{ id: string; key: number } | null>(null)
-  const [wholeDocument, setWholeDocument] = useState(true)
+  const [wholeDocument, setWholeDocument] = useState(!focusDocument)
   const [selectedPassage, setSelectedPassage] = useState<ResearchDiscussion | null>(null)
   const discuss = (value: ResearchDiscussion) => { setDiscussion(value); onDiscuss?.(value) }
 
   const sectionNodePrefix = `research-section:${taskId ?? 'unknown'}:${mode}:`
   const [selectedMapNodeId, setSelectedMapNodeId] = useState<string | null>(null)
+  const previousFocusDocument = useRef(focusDocument)
   const matchingAttemptKeyRef = useRef<string | null>(null)
   const matchingInFlightRef = useRef(false)
   const saveInFlightRef = useRef<Promise<ResearchDocumentResponse | null> | null>(null)
@@ -293,6 +304,13 @@ export function ResearchDocumentWorkbench({
     setActiveSectionId(requestedSection)
     if (focusDocument) setSelectedMapNodeId(`${sectionNodePrefix}document`)
   }, [focusDocument, initialSectionId, sectionNodePrefix, sections])
+
+  useEffect(() => {
+    if (previousFocusDocument.current && !focusDocument && !initialSectionId) {
+      setSelectedMapNodeId(current => current?.startsWith(sectionNodePrefix) ? null : current)
+    }
+    previousFocusDocument.current = focusDocument
+  }, [focusDocument, initialSectionId, sectionNodePrefix])
 
   useEffect(() => {
     if (loadState !== 'ready') return
@@ -485,7 +503,7 @@ export function ResearchDocumentWorkbench({
     const current = latestNavigation
       ? selectCurrentDocument(result.data.items, latestNavigation, mode, initialDocumentId)
       : (initialDocumentId ? result.data.items.find((item) => item.document_id === initialDocumentId) : undefined) ?? result.data.items[0] ?? null
-    setDocument(current)
+    if (saveStateRef.current === 'saved') setDocument(current)
     const taskProposals = await listResearchTaskDocumentProposals({ path: { task_id: taskId } })
     if (taskProposals.data) setProposals(taskProposals.data.items)
     if (current) {
@@ -546,6 +564,9 @@ export function ResearchDocumentWorkbench({
           setSaveState('saved')
           return latest
         }
+      } catch (cause) {
+        setSaveState('unsaved')
+        throw cause
       } finally {
         if (saveInFlightRef.current === request) saveInFlightRef.current = null
       }
@@ -559,6 +580,22 @@ export function ResearchDocumentWorkbench({
     const timer = window.setTimeout(() => { void saveSection().catch((reason: unknown) => { setSaveState('unsaved'); setError(reason instanceof Error ? reason.message : '自动保存失败。') }) }, 900)
     return () => window.clearTimeout(timer)
   }, [saveSection, saveState])
+
+  useEffect(() => {
+    const guard = async () => {
+      if (saveStateRef.current === 'saved') return true
+      try { return Boolean(await saveSection()) }
+      catch { setSaveState('unsaved'); setError('更改尚未保存，请重试后再离开。'); return false }
+    }
+    onNavigationGuardChange?.(guard)
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (saveStateRef.current === 'saved') return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', beforeUnload)
+    return () => { onNavigationGuardChange?.(null); window.removeEventListener('beforeunload', beforeUnload) }
+  }, [onNavigationGuardChange, saveSection])
 
   async function startMatching() {
     const phenomenon = navigation?.phenomenon_summary
@@ -659,10 +696,12 @@ export function ResearchDocumentWorkbench({
 
   async function restoreVersion(version: number) {
     if (!document || version === document.version) return
+    const latestDocument = saveStateRef.current === 'saved' ? document : await saveSection()
+    if (!latestDocument) return
     const result = await restoreResearchDocument({
-      path: { document_id: document.document_id },
+      path: { document_id: latestDocument.document_id },
       headers: { 'Idempotency-Key': key() },
-      body: { source_version: version, expected_version: document.version, reason: `恢复到第 ${version} 版` },
+      body: { source_version: version, expected_version: latestDocument.version, reason: `恢复到第 ${version} 版` },
     })
     if (result.data) {
       setDocument(result.data)
@@ -808,6 +847,12 @@ export function ResearchDocumentWorkbench({
     }
   }
 
+  async function performDocumentAction(action: () => Promise<unknown>) {
+    setError(null)
+    try { await action() }
+    catch (cause) { setError(cause instanceof Error ? cause.message : '操作未完成，当前内容仍保留，请重试。') }
+  }
+
   function openSectionNode(nodeId: string) {
     setSelectedMapNodeId(nodeId)
     if (nodeId.startsWith(sectionNodePrefix) && nodeId !== manuscriptNodeId) setActiveSectionId(nodeId.slice(sectionNodePrefix.length))
@@ -889,52 +934,84 @@ export function ResearchDocumentWorkbench({
     setSelectedPassage({ title: selectedSection?.title ?? document?.title ?? '研究方案文稿', content, sectionId: selectedSection?.section_id ?? null })
   }
 
-  const documentNodeContent = (
-    <section className="qx-surface research-document-node" aria-label="研究文档节点">
-      <div className="research-document-node__topbar">
-        <span className="research-document-node__chapter-status">
-          {activeSection?.status === 'confirmed' || activeSection?.status === 'reviewed' ? <><CheckCircleIcon /> 已审阅</> : null}
-        </span>
-        <div className="research-document-node__actions">
-          {statusText ? <span className={`document-save-status document-save-status--${saveState}`} role="status">{statusText}</span> : null}
-          <details className="document-export-menu">
-            <summary className="qx-tool-control" aria-label="导出研究文档"><DownloadSimpleIcon /> 导出</summary>
+  const sectionNavigation = (
+    <nav className="ep-document__sections" aria-label="文稿章节">
+      <p className="qx-group-label">大纲</p>
+      {sections.map((section, index) => <button className="qx-item" type="button" key={section.section_id} aria-label={`研究章节：${section.title}`} aria-pressed={!wholeDocument && activeSectionId === section.section_id} onClick={async () => {
+        if (saveState !== 'saved') { try { if (!await saveSection()) return } catch { setError('请先保存当前修改。'); return } }
+        setActiveSectionId(section.section_id); setSelectedPassage(null); setWholeDocument(false)
+      }}><span className="ep-document__section-number">{index + 1}</span><span>{section.title}</span></button>)}
+      <button className="qx-item ep-document__read-all" type="button" aria-pressed={wholeDocument} onClick={async () => { if (saveState !== 'saved') { try { if (!await saveSection()) return } catch { setError('请先保存当前修改。'); return } } setWholeDocument(true) }}>阅读全文</button>
+    </nav>
+  )
+
+  const exportControls = (
+<details className="ep-document__export">
+            <summary className="qx-btn qx-btn--secondary" aria-label="导出研究文档"><DownloadSimpleIcon /> 导出</summary>
             <div>
-              <button className="qx-tool-control" type="button" disabled={!document || exportState === 'working'} onClick={() => void exportFormalDocument('markdown')}>下载 Markdown</button>
-              <button className="qx-tool-control" type="button" disabled={!document || exportState === 'working'} onClick={() => void exportFormalDocument('docx')}>下载 DOCX</button>
-              <button className="qx-tool-control" type="button" disabled={!document || exportState === 'working'} onClick={() => void exportFormalDocument('pdf')}>打印或另存 PDF</button>
-              <button className="qx-tool-control" type="button" disabled={!document || exportState === 'working'} onClick={() => void exportFormalDocument('audit')}>下载审计 JSON</button>
+              <button className="qx-btn qx-btn--ghost" type="button" disabled={!document || exportState === 'working'} onClick={() => void performDocumentAction(() => exportFormalDocument('markdown'))}>下载 Markdown</button>
+              <button className="qx-btn qx-btn--ghost" type="button" disabled={!document || exportState === 'working'} onClick={() => void performDocumentAction(() => exportFormalDocument('docx'))}>下载 DOCX</button>
+              <button className="qx-btn qx-btn--ghost" type="button" disabled={!document || exportState === 'working'} onClick={() => void performDocumentAction(() => exportFormalDocument('pdf'))}>打印或另存 PDF</button>
+              <button className="qx-btn qx-btn--ghost" type="button" disabled={!document || exportState === 'working'} onClick={() => void performDocumentAction(() => exportFormalDocument('audit'))}>下载审计 JSON</button>
             </div>
           </details>
-          <button className="qx-tool-control" type="button" onClick={() => void confirmDocument()} disabled={!document || document.status === 'confirmed'}>{document?.status === 'confirmed' ? '已确认' : '确认版本'}</button>
-          {mode === 'framework' && document?.status === 'confirmed' && taskId ? <a href={embedded ? `/research/${taskId}/workspace/method` : `/research/${taskId}/method`}>制定研究方法</a> : null}
-          <button type="button" className="qx-tool-control research-document-node__collapse" onClick={(event) => { event.stopPropagation(); setSelectedMapNodeId(null) }}>收起</button>
-        </div>
-      </div>
+  )
 
-      <div className="research-document-node__body" onMouseUp={(event) => capturePassage(event.currentTarget)} onKeyUp={(event) => capturePassage(event.currentTarget)}>
-        <nav className="research-manuscript-sections" aria-label="文稿章节">
-          <button className="qx-tool-control" type="button" aria-pressed={wholeDocument} onClick={async () => { if (saveState !== 'saved') { try { await saveSection() } catch { setError('请先保存当前修改。'); return } } setWholeDocument(true) }}>全文</button>
-          {sections.map(section => <button className="qx-tool-control" type="button" key={section.section_id} aria-label={`研究章节：${section.title}`} aria-pressed={!wholeDocument && activeSectionId === section.section_id} onClick={async () => {
-            if (saveState !== 'saved') { try { await saveSection() } catch { setError('请先保存当前修改。'); return } }
-            setActiveSectionId(section.section_id); setSelectedPassage(null); setWholeDocument(false)
-          }}>{section.title}</button>)}
-        </nav>
-        {selectedPassage ? <button className="qx-tool-control" type="button" onMouseDown={event => event.preventDefault()} onClick={() => discuss(selectedPassage)}>讨论选中段落</button> : null}
-        <button className="qx-tool-control" type="button" onClick={() => discuss({ title: document?.title ?? '研究方案文稿', sectionId: null, content: document ? '请阅读当前文稿，结合研究地图检查尚缺的论证和依据，先提出下一步研究任务；需要修改时提交可确认的局部修订建议。' : '请承接已确认研究起点和前期调研，一起形成研究方案。先检查研究状态，已有内容直接复用；明确需要我决定什么，先提供依据再用 Ask 提问。理论取舍确认后，整理为可审批的完整研究方案文稿。' })}>围绕文稿继续研究</button>
-        {wholeDocument && document ? <div className="research-manuscript-full" aria-label="研究文稿全文">{document.sections.map(section => <section key={section.section_id} data-research-section={section.section_id}><h2>{section.title}</h2><ReactMarkdown remarkPlugins={[remarkGfm]}>{section.content || '这一节尚待共同补充。'}</ReactMarkdown><button className="qx-tool-control" type="button" onClick={() => { setActiveSectionId(section.section_id); setWholeDocument(false); setSelectedPassage(null) }}>编辑本节</button><button className="qx-tool-control" type="button" onClick={() => { setActiveSectionId(section.section_id); discuss({ title: section.title, content: section.content, sectionId: section.section_id }) }}>讨论本节</button></section>)}</div> : null}
+  const documentNodeContent = (
+    <article className="ep-document" aria-label="研究文档节点">
+      <header className="ep-document__toolbar">
+        <span className={`ep-document__save ep-document__save--${saveState}`} role="status">{statusText ?? (document ? `已保存 · v${document.version}` : '研究文稿')}</span>
+        {activeSection?.status === 'confirmed' || activeSection?.status === 'reviewed' ? <span className="ep-document__reviewed"><CheckCircleIcon />已审阅</span> : null}
+        {!toolbarTarget ? exportControls : null}
+        <button className="qx-btn qx-btn--ghost" type="button" onClick={() => void performDocumentAction(confirmDocument)} disabled={!document || document.status === 'confirmed'}>{document?.status === 'confirmed' ? '已确认' : '确认版本'}</button>
+        {!focusDocument ? <button type="button" className="qx-btn qx-btn--ghost" onClick={() => setSelectedMapNodeId(null)}>收起</button> : null}
+      </header>
+      <div className="ep-document__reading" onMouseUp={event => capturePassage(event.currentTarget)} onKeyUp={event => capturePassage(event.currentTarget)}>
+        {!focusDocument ? sectionNavigation : null}
+        {navigation?.phenomenon_summary?.phenomenon ? <p className="ep-document__question">{navigation.phenomenon_summary.phenomenon}</p> : null}
+        {error ? <p className="ep-document__notice" role="alert">{error}</p> : null}
+        {loadState === 'loading' ? <div className="ep-document__loading" role="status"><CircleNotchIcon className="spin" />正在恢复文档版本…</div> : <>
+          <h2 id="research-document-heading" aria-label="研究文档正文" className="ep-document__heading">{wholeDocument ? document?.title ?? '研究文稿' : activeSection?.title ?? '研究文稿'}</h2>
+          {runtimeBoundary && !error ? <p className="ep-document__notice"><WarningCircleIcon />当前 Agent 运行环境未连接；不会把静态示例当作真实研究结果。</p> : null}
+            {mode === 'match' && activeSection?.section_id === 'candidate_theories' && navigation?.allowed_actions?.includes('start_matching') && (!matchRun || matchRun.status === 'no_reliable_candidate') ? (
+              <section className="document-boundary document-boundary--action" aria-label="理论匹配操作" aria-busy={matchingActionState === 'loading'}>
+                <WarningCircleIcon />
+                <div>
+                  <strong>{navigation.blocker?.message ?? '现象已确认，可以开始理论匹配。'}</strong>
+                  {matchingActionError ? <p role="alert">{matchingActionError}</p> : null}
+                  <button className="qx-btn qx-btn--ghost" type="button" disabled={matchingActionState === 'loading'} onClick={() => void startMatching()}>
+                    {matchingActionState === 'loading' ? <><CircleNotchIcon className="spin" /> 正在匹配…</> : navigation.retry?.label ?? (matchRun?.status === 'no_reliable_candidate' ? '重新匹配' : '开始理论匹配')}
+                  </button>
+                </div>
+              </section>
+            ) : null}
+            {mode === 'match' && activeSection?.section_id === 'candidate_theories' && matchRun && matchRun.status !== 'no_reliable_candidate' ? <section className="theory-candidates" aria-label="候选理论">
+              <div className="theory-candidates__heading"><span>候选理论</span><small>{matchRun.candidate_page.candidates.length} 个候选</small></div>
+              {matchRun.retrieval ? <dl className="theory-retrieval-provenance" role="group" aria-label="匹配发布与检索证据链">
+                <div><dt>固定发布</dt><dd><code>{matchRun.knowledge_release_id}</code></dd></div>
+                <div><dt>检索模式</dt><dd>{matchRun.retrieval.mode}</dd></div>
+                <div><dt>索引</dt><dd><code>{matchRun.retrieval.retrieval_index_id ?? '未记录'}</code></dd></div>
+                <div><dt>Embedding</dt><dd>{matchRun.retrieval.embedding_model ?? '未记录'}</dd></div>
+                <div><dt>Reranker</dt><dd>{matchRun.retrieval.reranker_model ?? '未记录'}</dd></div>
+              </dl> : null}
+              {matchRun.candidate_page.candidates.map((candidate) => <article key={candidate.candidate_id} className="theory-candidate">
+                <div><h3>{candidate.title}</h3><p>{candidate.applicability_rationale}</p></div>
+                <div className="theory-candidate__actions"><button className="qx-btn qx-btn--ghost" type="button" aria-pressed={pendingTheoryDecisions[candidate.candidate_id]?.action === 'adopt'} onClick={() => recordTheoryDecision(candidate.candidate_id, candidate.version, 'adopt')}>采用</button><button className="qx-btn qx-btn--ghost" type="button" aria-pressed={pendingTheoryDecisions[candidate.candidate_id]?.action === 'combine'} onClick={() => recordTheoryDecision(candidate.candidate_id, candidate.version, 'combine')}>组合</button><button className="qx-btn qx-btn--ghost" type="button" aria-pressed={pendingTheoryDecisions[candidate.candidate_id]?.action === 'retain'} onClick={() => recordTheoryDecision(candidate.candidate_id, candidate.version, 'retain')}>保留</button><button className="qx-btn qx-btn--ghost" type="button" aria-pressed={pendingTheoryDecisions[candidate.candidate_id]?.action === 'exclude'} onClick={() => recordTheoryDecision(candidate.candidate_id, candidate.version, 'exclude')}>排除</button></div>
+              </article>)}
+              {selectedTheoryIds.length > 1 ? <fieldset className="theory-relation-editor"><legend>说明组合理论的关系</legend><textarea aria-label="组合关系说明" value={relationDraft.explanation} onChange={(event) => setRelationDraft((current) => ({ ...current, explanation: event.target.value }))} placeholder="两个理论如何共同解释研究问题" /><textarea aria-label="前提兼容性" value={relationDraft.premise} onChange={(event) => setRelationDraft((current) => ({ ...current, premise: event.target.value }))} placeholder="两者前提在哪些条件下兼容" /><textarea aria-label="支持证据要求" value={relationDraft.supporting} onChange={(event) => setRelationDraft((current) => ({ ...current, supporting: event.target.value }))} placeholder="什么证据支持组合解释" /><textarea aria-label="排除证据要求" value={relationDraft.excluding} onChange={(event) => setRelationDraft((current) => ({ ...current, excluding: event.target.value }))} placeholder="什么证据会排除组合解释" /><textarea aria-label="区分证据要求" value={relationDraft.distinguishing} onChange={(event) => setRelationDraft((current) => ({ ...current, distinguishing: event.target.value }))} placeholder="什么证据能区分各理论贡献" /></fieldset> : null}
+              <button className="qx-btn qx-btn--ghost" type="button" disabled={Object.keys(pendingTheoryDecisions).length !== matchRun.candidate_page.candidates.length || !multiTheoryRelationReady} onClick={() => void performDocumentAction(submitTheoryDecisions)}>保存完整理论决定</button>
+              {decisionSet ? <button className="qx-btn qx-btn--ghost" type="button" disabled={!decisionSet.allowed_actions.includes('confirm_theory_plan')} onClick={() => void performDocumentAction(confirmTheoryPlanChoice)}>确认理论方案，进入 M5</button> : null}
+            </section> : null}
 
-        {mode === 'framework' && taskId && navigation?.current_theory_plan_id ? (
-          <div className="research-document-workbench__delivery">
-            <M5ResearchDeliveryController
-              taskId={taskId}
-              theoryPlanId={navigation.current_theory_plan_id}
-              conversationId={navigation.conversation_id}
-              saveState={saveState}
-              onChanged={() => { void refreshDocumentState() }}
-            />
+          {document ? wholeDocument ? <div className="ep-document__manuscript qx-prose" aria-label="研究文稿全文">{document.sections.map(section => <section key={section.section_id} data-research-section={section.section_id}>
+            <h3>{section.title}</h3><ReactMarkdown remarkPlugins={[remarkGfm]}>{section.content || '这一节尚待共同补充。'}</ReactMarkdown>
+            <div className="ep-document__section-actions"><button className="qx-btn qx-btn--ghost" type="button" onClick={() => { setActiveSectionId(section.section_id); setWholeDocument(false); setSelectedPassage(null) }}>编辑本节</button><button className="qx-btn qx-btn--ghost" type="button" onClick={() => { setActiveSectionId(section.section_id); discuss({ title: section.title, content: section.content, sectionId: section.section_id }) }}>讨论本节</button></div>
+          </section>)}</div> : <EditorContent editor={editor} className="ep-document__editor qx-prose" aria-label="研究文档正文" /> : <p className="ep-document__empty" role="status">{activeSection?.section_id === 'candidate_theories' ? '在这个节点开始理论匹配，候选会直接回到画布。' : '这一部分会随着研究推进形成可编辑内容。'}</p>}
+          <div className="ep-document__discussion">
+            {selectedPassage ? <button className="qx-btn qx-btn--secondary" type="button" onMouseDown={event => event.preventDefault()} onClick={() => discuss(selectedPassage)}>讨论选中段落</button> : null}
+            <button className="qx-btn qx-btn--ghost" type="button" onClick={() => discuss({ title: document?.title ?? '研究方案文稿', sectionId: activeSection?.section_id ?? null, content: document ? '请阅读当前文稿，结合研究地图检查尚缺的论证和依据，先提出下一步研究任务；需要修改时提交可确认的局部修订建议。' : '请承接已确认研究起点和前期调研，一起形成研究方案。先检查研究状态，已有内容直接复用；明确需要我决定什么，先提供依据再提问。' })}>围绕文稿继续研究</button>
           </div>
-        ) : null}
+        </>}
         {proposals.some((proposal) => proposal.status === 'pending') ? (
           <section className="document-proposals" aria-label="Agent 修订建议">
             <header><span>Agent 修订建议</span><small>修改只会在你确认后写入正文</small></header>
@@ -961,10 +1038,10 @@ export function ResearchDocumentWorkbench({
                   </div>
                 })}
                 <div>
-                  <button className="qx-tool-control" type="button" disabled={proposal.kind !== 'create' && proposal.base_document_version !== document?.version} onClick={() => void acceptProposal(proposal)}>接受局部修改</button>
-                  <button className="qx-tool-control" type="button" onClick={() => void rejectProposal(proposal)}>拒绝建议</button>
+                  <button className="qx-btn qx-btn--ghost" type="button" disabled={proposal.kind !== 'create' && proposal.base_document_version !== document?.version} onClick={() => void performDocumentAction(() => acceptProposal(proposal))}>接受局部修改</button>
+                  <button className="qx-btn qx-btn--ghost" type="button" onClick={() => void performDocumentAction(() => rejectProposal(proposal))}>拒绝建议</button>
                   {proposal.kind !== 'create' && proposal.base_document_version !== document?.version
-                    ? <button className="qx-tool-control" type="button" onClick={() => setRebasedProposalIds((current) => new Set(current).add(proposal.proposal_id))}>按当前版本重新比较</button>
+                    ? <button className="qx-btn qx-btn--ghost" type="button" onClick={() => setRebasedProposalIds((current) => new Set(current).add(proposal.proposal_id))}>按当前版本重新比较</button>
                     : null}
                 </div>
               </article>
@@ -972,54 +1049,20 @@ export function ResearchDocumentWorkbench({
           </section>
         ) : null}
 
-        {loadState === 'loading' ? <div className="document-loading"><CircleNotchIcon className="spin" /> 正在恢复文档版本…</div> : (
-          <>
-            <h2 id="research-document-heading" aria-label="研究文档正文">{activeSection?.title ?? '研究文档正文'}</h2>
-            {runtimeBoundary && <div className="document-boundary"><WarningCircleIcon /> {error ?? '当前 Agent 运行环境未连接；不会把静态示例当作真实研究结果。'}</div>}
-            {mode === 'match' && activeSection?.section_id === 'candidate_theories' && navigation?.allowed_actions?.includes('start_matching') && (!matchRun || matchRun.status === 'no_reliable_candidate') ? (
-              <section className="document-boundary document-boundary--action" aria-label="理论匹配操作" aria-busy={matchingActionState === 'loading'}>
-                <WarningCircleIcon />
-                <div>
-                  <strong>{navigation.blocker?.message ?? '现象已确认，可以开始理论匹配。'}</strong>
-                  {matchingActionError ? <p role="alert">{matchingActionError}</p> : null}
-                  <button className="qx-tool-control" type="button" disabled={matchingActionState === 'loading'} onClick={() => void startMatching()}>
-                    {matchingActionState === 'loading' ? <><CircleNotchIcon className="spin" /> 正在匹配…</> : navigation.retry?.label ?? (matchRun?.status === 'no_reliable_candidate' ? '重新匹配' : '开始理论匹配')}
-                  </button>
-                </div>
-              </section>
-            ) : null}
-            {mode === 'match' && activeSection?.section_id === 'candidate_theories' && matchRun && matchRun.status !== 'no_reliable_candidate' ? <section className="theory-candidates" aria-label="候选理论">
-              <div className="theory-candidates__heading"><span>候选理论</span><small>{matchRun.candidate_page.candidates.length} 个候选</small></div>
-              {matchRun.retrieval ? <dl className="theory-retrieval-provenance" role="group" aria-label="匹配发布与检索证据链">
-                <div><dt>固定发布</dt><dd><code>{matchRun.knowledge_release_id}</code></dd></div>
-                <div><dt>检索模式</dt><dd>{matchRun.retrieval.mode}</dd></div>
-                <div><dt>索引</dt><dd><code>{matchRun.retrieval.retrieval_index_id ?? '未记录'}</code></dd></div>
-                <div><dt>Embedding</dt><dd>{matchRun.retrieval.embedding_model ?? '未记录'}</dd></div>
-                <div><dt>Reranker</dt><dd>{matchRun.retrieval.reranker_model ?? '未记录'}</dd></div>
-              </dl> : null}
-              {matchRun.candidate_page.candidates.map((candidate) => <article key={candidate.candidate_id} className="theory-candidate">
-                <div><h3>{candidate.title}</h3><p>{candidate.applicability_rationale}</p></div>
-                <div className="theory-candidate__actions"><button type="button" aria-pressed={pendingTheoryDecisions[candidate.candidate_id]?.action === 'adopt'} onClick={() => recordTheoryDecision(candidate.candidate_id, candidate.version, 'adopt')}>采用</button><button type="button" aria-pressed={pendingTheoryDecisions[candidate.candidate_id]?.action === 'combine'} onClick={() => recordTheoryDecision(candidate.candidate_id, candidate.version, 'combine')}>组合</button><button type="button" aria-pressed={pendingTheoryDecisions[candidate.candidate_id]?.action === 'retain'} onClick={() => recordTheoryDecision(candidate.candidate_id, candidate.version, 'retain')}>保留</button><button type="button" aria-pressed={pendingTheoryDecisions[candidate.candidate_id]?.action === 'exclude'} onClick={() => recordTheoryDecision(candidate.candidate_id, candidate.version, 'exclude')}>排除</button></div>
-              </article>)}
-              {selectedTheoryIds.length > 1 ? <fieldset className="theory-relation-editor"><legend>说明组合理论的关系</legend><textarea aria-label="组合关系说明" value={relationDraft.explanation} onChange={(event) => setRelationDraft((current) => ({ ...current, explanation: event.target.value }))} placeholder="两个理论如何共同解释研究问题" /><textarea aria-label="前提兼容性" value={relationDraft.premise} onChange={(event) => setRelationDraft((current) => ({ ...current, premise: event.target.value }))} placeholder="两者前提在哪些条件下兼容" /><textarea aria-label="支持证据要求" value={relationDraft.supporting} onChange={(event) => setRelationDraft((current) => ({ ...current, supporting: event.target.value }))} placeholder="什么证据支持组合解释" /><textarea aria-label="排除证据要求" value={relationDraft.excluding} onChange={(event) => setRelationDraft((current) => ({ ...current, excluding: event.target.value }))} placeholder="什么证据会排除组合解释" /><textarea aria-label="区分证据要求" value={relationDraft.distinguishing} onChange={(event) => setRelationDraft((current) => ({ ...current, distinguishing: event.target.value }))} placeholder="什么证据能区分各理论贡献" /></fieldset> : null}
-              <button type="button" disabled={Object.keys(pendingTheoryDecisions).length !== matchRun.candidate_page.candidates.length || !multiTheoryRelationReady} onClick={() => void submitTheoryDecisions()}>保存完整理论决定</button>
-              {decisionSet ? <button type="button" disabled={!decisionSet.allowed_actions.includes('confirm_theory_plan')} onClick={() => void confirmTheoryPlanChoice()}>确认理论方案，进入 M5</button> : null}
-            </section> : null}
-            {document ? <>
-              <section className="document-formatting" aria-label="论文与引用格式">
-                <label>论文模板<select className="qx-field-control" aria-label="论文模板" value={formattingDraft.template_id} onChange={(event) => setFormattingDraft((current) => ({ ...current, template_id: event.target.value }))}><option value="chinese-social-science">中文社会科学</option><option value="asa">ASA</option><option value="custom">自定义 CSS</option></select></label>
-                <label>引用样式<select className="qx-field-control" aria-label="引用样式" value={formattingDraft.csl_style_id} onChange={(event) => setFormattingDraft((current) => ({ ...current, csl_style_id: event.target.value }))}><option value="china-national-standard-gb-t-7714-2015-author-date">GB/T 7714</option><option value="american-sociological-association">ASA</option><option value="chicago-author-date">Chicago</option>{formattingDraft.csl_style_id.startsWith('custom-') ? <option value={formattingDraft.csl_style_id}>自定义 CSL</option> : null}</select></label>
-                <label>引用语言<select className="qx-field-control" aria-label="引用语言" value={formattingDraft.locale} onChange={(event) => setFormattingDraft((current) => ({ ...current, locale: event.target.value }))}><option value="zh-CN">简体中文</option><option value="en-US">English (US)</option></select></label>
+
+        {document ? <details className="ep-document__format"><summary>论文与引用格式</summary><div className="ep-document__format-fields">
+                <label>论文模板<Select className="qx-field-control" aria-label="论文模板" value={formattingDraft.template_id} onChange={(nextValue) => setFormattingDraft((current) => ({ ...current, template_id: nextValue }))} options={[{ value: "chinese-social-science", label: "中文社会科学" }, { value: "asa", label: "ASA" }, { value: "custom", label: "自定义 CSS" }]} /></label>
+                <label>引用样式<Select className="qx-field-control" aria-label="引用样式" value={formattingDraft.csl_style_id} onChange={(nextValue) => setFormattingDraft((current) => ({ ...current, csl_style_id: nextValue }))} options={[{ value: "china-national-standard-gb-t-7714-2015-author-date", label: "GB/T 7714" }, { value: "american-sociological-association", label: "ASA" }, { value: "chicago-author-date", label: "Chicago" }, ...(formattingDraft.csl_style_id.startsWith('custom-') ? [{ value: formattingDraft.csl_style_id, label: "自定义 CSL" }] : [])]} /></label>
+                <label>引用语言<Select className="qx-field-control" aria-label="引用语言" value={formattingDraft.locale} onChange={(nextValue) => setFormattingDraft((current) => ({ ...current, locale: nextValue }))} options={[{ value: "zh-CN", label: "简体中文" }, { value: "en-US", label: "English (US)" }]} /></label>
                 <label className="qx-field-control document-formatting__file">导入 .csl<input aria-label="导入 CSL 样式" type="file" accept=".csl,application/xml,text/xml" onChange={(event) => void importCsl(event.target.files?.[0])} /></label>
                 <label className="qx-field-control document-formatting__file">导入模板 CSS<input aria-label="导入模板 CSS" type="file" accept=".css,text/css" onChange={(event) => void importPrintCss(event.target.files?.[0])} /></label>
-                <button className="qx-tool-control" type="button" onClick={() => void applyFormatting()}>应用格式并形成新版本</button>
-              </section>
-              {!wholeDocument ? <EditorContent editor={editor} className="research-document-editor" aria-label="研究文档正文" /> : null}
-              {activeSection?.citation_refs?.length ? <aside className="document-citations" aria-label="结构化引用">
+                <button className="qx-btn qx-btn--ghost" type="button" onClick={() => void performDocumentAction(applyFormatting)}>应用格式并形成新版本</button>
+              </div></details> : null}
+        {document ? <div className="ep-document__source-details">              {activeSection?.citation_refs?.length ? <aside className="document-citations" aria-label="结构化引用">
                 <span>结构化引用</span>
                 <ul>{activeSection.citation_refs.map((citation) => <li key={citation.citation_id}>
                   <strong>{citation.kind === 'scholarly' ? '学术' : citation.kind === 'empirical' ? '经验' : '分析'}</strong>
-                  <code>{citation.source_id}</code>
+                  <button type="button" className="qx-cite" aria-label={`打开引用 ${citation.source_id}`} onClick={() => { setCitationRequest({ id: citation.citation_id, key: Date.now() }); onOpenCitation?.(citation.citation_id) }}>{citation.source_id}</button>
                   {citation.locator ? <small>{Object.entries(citation.locator).map(([label, value]) => `${label}: ${String(value)}`).join(' · ')}</small> : null}
                   <em>{citation.state === 'verified' ? '已核实' : citation.state === 'needs_verification' ? '待核实' : citation.state === 'broken' ? '断链' : '来源已删除'}</em>
                 </li>)}</ul>
@@ -1036,82 +1079,38 @@ export function ResearchDocumentWorkbench({
                 <ol>
                   {(versions.length ? versions : [document]).map((version) => <li key={version.version}>
                     <span>v{version.version} · {version.actor}</span>
-                    <button type="button" disabled={version.version === document.version} onClick={() => void restoreVersion(version.version)}>{version.version === document.version ? '当前版本' : '恢复'}</button>
+                    <button className="qx-btn qx-btn--ghost" type="button" disabled={version.version === document.version} onClick={() => void performDocumentAction(() => restoreVersion(version.version))}>{version.version === document.version ? '当前版本' : '恢复'}</button>
                   </li>)}
                 </ol>
               </details>
-            </> : <div className="document-empty" role="status">{activeSection?.section_id === 'candidate_theories' ? '在这个节点开始理论匹配，候选会直接回到画布。' : '这一部分会随着研究推进形成可编辑内容。'}</div>}
-          </>
-        )}
+</div> : null}
+        {mode === 'framework' && taskId && navigation?.current_theory_plan_id ? <details className="ep-document__delivery"><summary>研究方案交付</summary><M5ResearchDeliveryController taskId={taskId} theoryPlanId={navigation.current_theory_plan_id} conversationId={navigation.conversation_id} saveState={saveState} onChanged={() => { void refreshDocumentState() }} /></details> : null}
       </div>
-
-    </section>
+    </article>
   )
 
   const workbench = (
-        <main className={`research-document-workbench${embedded ? ' research-document-workbench--embedded' : ''}`} data-stage={mode}>
-          <h1 className="research-document-workbench__title">
-            {mode === 'framework' ? '研究框架文档' : '理论判断文档'}
-          </h1>
-          <div
-            ref={workspaceRef}
-            className="research-document-workbench__workspace"
-            data-resizing={resizingAgentPanel}
-            style={{ '--rdw-agent-width': `${agentPanelWidth}px` } as CSSProperties}
-          >
-            <ResearchMapCanvas
-              projection={mapProjection}
-              conversation={mapConversation}
-              onConversationChange={setEditedConversation}
-              selectedNodeId={selectedMapNodeId}
-              onSelectNode={(node) => node.kind === 'document' ? openSectionNode(node.id) : setSelectedMapNodeId(node.id)}
-              onClearSelection={() => setSelectedMapNodeId(null)}
-              onContinueNode={(node) => openSectionNode(node.id)}
-              onOpenCitation={(id) => { setCitationRequest({ id, key: Date.now() }); onOpenCitation?.(id) }}
-              expandedNodeContent={selectedMapNodeId?.startsWith(sectionNodePrefix) ? { [selectedMapNodeId]: documentNodeContent } : {}}
-            />
-
-            {!embedded ? (
-              <>
-                <div
-                  className="research-document-workbench__resize-handle"
-                  role="separator"
-                  tabIndex={0}
-                  aria-label="调整 Agent 对话栏宽度"
-                  aria-orientation="vertical"
-                  aria-valuemin={MIN_AGENT_PANEL_WIDTH}
-                  aria-valuemax={agentPanelMaxWidth}
-                  aria-valuenow={agentPanelWidth}
-                  onKeyDown={handleResizeKey}
-                  onMouseDown={startMouseResize}
-                  onPointerDown={startPointerResize}
-                  onPointerMove={movePointerResize}
-                  onPointerUp={finishPointerResize}
-                  onPointerCancel={finishPointerResize}
-                />
-
-                <ResearchAgentConversationPage
-                  embedded
-                  userId={userId}
-                  conversationId={navigation?.conversation_id ?? null}
-                  knowledgeReleaseId={navigation?.knowledge_release_id ?? document?.knowledge_release_id ?? null}
-                  workspace="research"
-                  taskId={taskId ?? null}
-                  documentId={document?.document_id ?? null}
-                  sectionId={activeSection?.section_id ?? null}
-                  documentVersion={document?.version ?? null}
-                  theoryPlanId={navigation?.current_theory_plan_id ?? null}
-                  onConversationChange={setAgentConversation}
-                  discussion={discussion}
-                  onClearDiscussion={() => setDiscussion(null)}
-                  citationRequest={citationRequest}
-                  enableResearchGuidance={Boolean(navigation?.phenomenon_summary)}
-                  onTurnCompleted={() => { void refreshDocumentState() }}
-                />
-              </>
-            ) : null}
+    <section className={`ep-document-workbench${embedded ? ' ep-document-workbench--embedded' : ''}`} data-stage={mode}>
+      {outlineTarget && focusDocument ? createPortal(sectionNavigation, outlineTarget) : null}
+      {toolbarTarget ? createPortal(exportControls, toolbarTarget) : null}
+      <div ref={workspaceRef} className="ep-document-workbench__body" data-resizing={resizingAgentPanel} style={{ '--rdw-agent-width': `${agentPanelWidth}px` } as CSSProperties}>
+        <div className="ep-document-workbench__content">
+          {focusDocument ? <div className="ep-document-workbench__paper" data-external-outline={Boolean(outlineTarget)}>
+            {!outlineTarget ? <aside className="ep-document-workbench__outline" aria-label="文稿大纲">{sectionNavigation}{taskId ? <Link className="qx-item" to={`/research/${encodeURIComponent(taskId)}/workspace/map`}>查看研究地图</Link> : null}</aside> : null}
+            {documentNodeContent}
+          </div> : null}
+          <div className="ep-document-workbench__map" hidden={focusDocument}>
+            <ResearchMapCanvas projection={mapProjection} conversation={mapConversation} onConversationChange={setEditedConversation} selectedNodeId={selectedMapNodeId}
+              onSelectNode={node => node.kind === 'document' ? openSectionNode(node.id) : setSelectedMapNodeId(node.id)} onClearSelection={() => setSelectedMapNodeId(null)} onContinueNode={node => openSectionNode(node.id)}
+              onOpenCitation={id => { setCitationRequest({ id, key: Date.now() }); onOpenCitation?.(id) }} expandedNodeContent={!focusDocument && selectedMapNodeId?.startsWith(sectionNodePrefix) ? { [selectedMapNodeId]: documentNodeContent } : {}} />
           </div>
-        </main>
+        </div>
+        {!embedded ? <>
+          <div className="ep-document-workbench__resize" role="separator" tabIndex={0} aria-label="调整 Agent 对话栏宽度" aria-orientation="vertical" aria-valuemin={MIN_AGENT_PANEL_WIDTH} aria-valuemax={agentPanelMaxWidth} aria-valuenow={agentPanelWidth} onKeyDown={handleResizeKey} onMouseDown={startMouseResize} onPointerDown={startPointerResize} onPointerMove={movePointerResize} onPointerUp={finishPointerResize} onPointerCancel={finishPointerResize} />
+          <ResearchAgentConversationPage embedded userId={userId} conversationId={navigation?.conversation_id ?? null} knowledgeReleaseId={navigation?.knowledge_release_id ?? document?.knowledge_release_id ?? null} workspace="research" taskId={taskId ?? null} documentId={document?.document_id ?? null} sectionId={activeSection?.section_id ?? null} documentVersion={document?.version ?? null} theoryPlanId={navigation?.current_theory_plan_id ?? null} onConversationChange={setAgentConversation} discussion={discussion} onClearDiscussion={() => setDiscussion(null)} citationRequest={citationRequest} enableResearchGuidance={Boolean(navigation?.phenomenon_summary)} onTurnCompleted={() => { void refreshDocumentState() }} />
+        </> : null}
+      </div>
+    </section>
   )
 
   if (embedded) return workbench

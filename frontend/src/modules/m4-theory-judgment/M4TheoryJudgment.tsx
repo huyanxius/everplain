@@ -1,3 +1,4 @@
+import { Select } from '../../ui/Select'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import './m4-theory-judgment.css'
@@ -328,7 +329,7 @@ function CandidateCard({ candidate, decision, disabled, onChange }: CandidateCar
         <div className="m4-decision-editor__actions" role="group" aria-label={`${candidate.title}的决定`}>
           {(Object.keys(actionLabels) as M4DecisionAction[]).map((action) => {
             const blocked = !candidate.formalAdoptionEligible && activeActions.has(action)
-            return <button key={action} type="button" aria-pressed={decision.action === action} disabled={blocked || disabled} title={blocked ? candidate.adoptionBlockers.join('；') : undefined} onClick={() => choose(action)}>{actionLabels[action]}</button>
+            return <button className="qx-btn qx-btn--ghost" key={action} type="button" aria-pressed={decision.action === action} disabled={blocked || disabled} title={blocked ? candidate.adoptionBlockers.join('；') : undefined} onClick={() => choose(action)}>{actionLabels[action]}</button>
           })}
         </div>
         <label>
@@ -338,12 +339,7 @@ function CandidateCard({ candidate, decision, disabled, onChange }: CandidateCar
         {usesTheory ? <div className="m4-decision-editor__role">
           <label>
             <span>在方案中的角色</span>
-            <select value={decision.roleCode} onChange={(event) => onChange({ ...decision, roleCode: event.target.value })}>
-              <option value="primary">主要解释视角</option>
-              <option value="secondary">补充解释视角</option>
-              <option value="contrast">对照解释</option>
-              <option value="scope">限定适用范围</option>
-            </select>
+            <Select disabled={disabled} value={decision.roleCode} onChange={(nextValue) => onChange({ ...decision, roleCode: nextValue })} options={[{ value: "primary", label: "主要解释视角" }, { value: "secondary", label: "补充解释视角" }, { value: "contrast", label: "对照解释" }, { value: "scope", label: "限定适用范围" }]} />
           </label>
           <label>
             <span>{candidate.title}在方案中的作用</span>
@@ -633,7 +629,7 @@ export function M4TheoryJudgment({ task, gateway, onConfirmed }: M4TheoryJudgmen
 
   if (failure && !workspace) {
     const copy = startFailureCopy(failure)
-    return <section className="m4-theory-judgment" aria-label="M4 理论判断"><div className="m4-state m4-state--error" role="alert"><strong>{failure.message}</strong><p>{copy.detail}</p><button type="button" onClick={() => void load()}>{copy.action}</button></div></section>
+    return <section className="m4-theory-judgment" aria-label="M4 理论判断"><div className="m4-state m4-state--error" role="alert"><strong>{failure.message}</strong><p>{copy.detail}</p><button className="qx-btn qx-btn--ghost" type="button" onClick={() => void load()}>{copy.action}</button></div></section>
   }
 
   if (!workspace || !draftState) {
@@ -651,19 +647,19 @@ export function M4TheoryJudgment({ task, gateway, onConfirmed }: M4TheoryJudgmen
         <div className="m4-release-stamp" aria-label="匹配发布"><span>固定发布</span><code>{matchRun.knowledgeReleaseId}</code></div>
       </header>
 
-      {failure ? <div className="m4-inline-alert" role="alert"><strong>{failure.message}</strong>{saveState === 'error' ? <button type="button" onClick={() => { setSaveState('dirty'); setFailure(null) }}>重试保存</button> : null}</div> : null}
+      {failure ? <div className="m4-inline-alert" role="alert"><strong>{failure.message}</strong>{saveState === 'error' ? <button className="qx-btn qx-btn--ghost" type="button" onClick={() => { setSaveState('dirty'); setFailure(null) }}>重试保存</button> : null}</div> : null}
       {notice ? <p className="m4-inline-notice" aria-live="polite">{notice}</p> : null}
 
-      {matchRun.status === 'generating' ? <div className="m4-state" role="status"><span className="m4-state__spinner" aria-hidden="true" /><strong>候选仍在生成</strong><p>页面会自动恢复，中途离开不会丢失进度。</p><button type="button" onClick={() => void load()}>立即刷新</button></div> : null}
+      {matchRun.status === 'generating' ? <div className="m4-state" role="status"><span className="m4-state__spinner" aria-hidden="true" /><strong>候选仍在生成</strong><p>页面会自动恢复，中途离开不会丢失进度。</p><button className="qx-btn qx-btn--ghost" type="button" onClick={() => void load()}>立即刷新</button></div> : null}
 
-      {matchRun.status === 'no_reliable_candidate' ? <div className="m4-state m4-state--empty" role="status"><strong>暂时没有足够可靠的候选理论</strong><p>你可以返回补充现象材料，或使用当前知识版本重新匹配。</p><button type="button" onClick={() => void restartMatching()}>重新检查候选</button></div> : null}
+      {matchRun.status === 'no_reliable_candidate' ? <div className="m4-state m4-state--empty" role="status"><strong>暂时没有足够可靠的候选理论</strong><p>你可以返回补充现象材料，或使用当前知识版本重新匹配。</p><button className="qx-btn qx-btn--ghost" type="button" onClick={() => void restartMatching()}>重新检查候选</button></div> : null}
 
-      {matchRun.status === 'failed' ? <div className="m4-state m4-state--error" role="alert"><strong>理论判断服务本次未完成</strong><p>没有将未完成的模型结果当作候选。</p><button type="button" onClick={() => void load()}>重试匹配</button></div> : null}
+      {matchRun.status === 'failed' ? <div className="m4-state m4-state--error" role="alert"><strong>理论判断服务本次未完成</strong><p>没有将未完成的模型结果当作候选。</p><button className="qx-btn qx-btn--ghost" type="button" onClick={() => void load()}>重试匹配</button></div> : null}
 
       {matchRun.failedCandidates.length ? <section className="m4-partial-failure" role="alert" aria-label="候选判断部分失败">
         <header><div><strong>{matchRun.failedCandidates.length} 个候选未完成</strong><p>未完成候选不会被隐藏，也不会自动当作已排除。</p></div><span>{matchRun.completionBasis === 'partial_with_user_ack' ? '已确认风险' : '需处理'}</span></header>
-        <ul>{matchRun.failedCandidates.map((item) => <li key={item.candidateId}><div><strong>{item.title}</strong><code>{item.failureCode}</code></div><button type="button" disabled={!item.retryable || operation === 'retrying'} onClick={() => void retryCandidate(item)}>{item.retryable ? `重试${item.title}` : '当前不可重试'}</button></li>)}</ul>
-        {partialNeedsAcknowledgement ? <div className="m4-partial-failure__ack"><label><span>继续使用部分候选的理由</span><textarea rows={2} value={draftState.partialAcknowledgementReason} onChange={(event) => updateDraft((current) => ({ ...current, partialAcknowledgementReason: event.target.value }))} aria-label="继续使用部分候选的理由" /></label><button type="button" disabled={!draftState.partialAcknowledgementReason.trim() || operation === 'acknowledging' || saveState === 'saving'} onClick={() => void acknowledgePartial()}>确认以当前候选继续</button></div> : null}
+        <ul>{matchRun.failedCandidates.map((item) => <li key={item.candidateId}><div><strong>{item.title}</strong><code>{item.failureCode}</code></div><button className="qx-btn qx-btn--ghost" type="button" disabled={!item.retryable || operation === 'retrying'} onClick={() => void retryCandidate(item)}>{item.retryable ? `重试${item.title}` : '当前不可重试'}</button></li>)}</ul>
+        {partialNeedsAcknowledgement ? <div className="m4-partial-failure__ack"><label><span>继续使用部分候选的理由</span><textarea rows={2} value={draftState.partialAcknowledgementReason} onChange={(event) => updateDraft((current) => ({ ...current, partialAcknowledgementReason: event.target.value }))} aria-label="继续使用部分候选的理由" /></label><button className="qx-btn qx-btn--ghost" type="button" disabled={!draftState.partialAcknowledgementReason.trim() || operation === 'acknowledging' || saveState === 'saving'} onClick={() => void acknowledgePartial()}>确认以当前候选继续</button></div> : null}
       </section> : notice === '所有候选已完成判断' ? null : matchRun.candidates.length ? <p className="m4-all-complete">所有候选已完成判断</p> : null}
 
       {matchRun.candidates.length ? <div className="m4-theory-list">{matchRun.candidates.map((candidate) => {
@@ -687,8 +683,8 @@ export function M4TheoryJudgment({ task, gateway, onConfirmed }: M4TheoryJudgmen
           {saveState === 'saved' ? '已保存到云端' : saveState === 'saving' ? '正在保存…' : saveState === 'error' ? '保存失败，内容仍在当前页面' : '尚未保存'}
         </div>
         <div className="m4-decision-footer__actions">
-          <button type="button" disabled={!decisionReady || operation === 'deciding'} onClick={() => void createDecisionSet()}>{operation === 'deciding' ? '正在形成决定…' : '保存完整理论决定'}</button>
-          {decisionSet && !decisionStale ? <button className="m4-confirm-button" type="button" disabled={!decisionSet.canConfirm || operation === 'confirming'} onClick={() => void confirmTheoryPlan()}>{operation === 'confirming' ? '正在确认…' : '确认理论方案'}</button> : null}
+          <button className="qx-btn qx-btn--ghost" type="button" disabled={!decisionReady || operation === 'deciding'} onClick={() => void createDecisionSet()}>{operation === 'deciding' ? '正在形成决定…' : '保存完整理论决定'}</button>
+          {decisionSet && !decisionStale ? <button className="qx-btn qx-btn--ghost m4-confirm-button" type="button" disabled={!decisionSet.canConfirm || operation === 'confirming'} onClick={() => void confirmTheoryPlan()}>{operation === 'confirming' ? '正在确认…' : '确认理论方案'}</button> : null}
         </div>
         {!decisionReady ? <small>请先为每个候选选择动作并写下理由；正式采用的理论还需明确分工。</small> : null}
       </footer> : null}

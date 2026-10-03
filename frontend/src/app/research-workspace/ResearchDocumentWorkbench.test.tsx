@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { Fragment, type ReactNode } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -158,9 +158,12 @@ describe('ResearchDocumentWorkbench', () => {
     expect(screen.getByRole('complementary', { name: '结构化引用' })).toHaveTextContent('literature-entry-1')
     expect(screen.getByRole('complementary', { name: '结构化引用' })).toHaveTextContent('待核实')
     expect(screen.getByRole('note', { name: '分析依据' })).toHaveTextContent('analysis-confirmed-1')
-    fireEvent.change(screen.getByRole('combobox', { name: '论文模板' }), { target: { value: 'asa' } })
-    fireEvent.change(screen.getByRole('combobox', { name: '引用样式' }), { target: { value: 'american-sociological-association' } })
-    fireEvent.change(screen.getByRole('combobox', { name: '引用语言' }), { target: { value: 'en-US' } })
+    fireEvent.click(screen.getByRole('combobox', { name: '论文模板' }))
+    fireEvent.click(screen.getByRole('option', { name: 'ASA' }))
+    fireEvent.click(screen.getByRole('combobox', { name: '引用样式' }))
+    fireEvent.click(screen.getByRole('option', { name: 'ASA' }))
+    fireEvent.click(screen.getByRole('combobox', { name: '引用语言' }))
+    fireEvent.click(screen.getByRole('option', { name: 'English (US)' }))
     fireEvent.click(screen.getByRole('button', { name: '应用格式并形成新版本' }))
 
     await waitFor(() => expect(update).toHaveBeenCalledWith(expect.objectContaining({
@@ -190,13 +193,13 @@ describe('ResearchDocumentWorkbench', () => {
     expect(screen.getByRole('region', { name: '研究论证地图' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '研究章节：核心现象' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '研究章节：候选理论' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: '研究文档节点' })).toBeInTheDocument()
+    expect(screen.getByRole('article', { name: '研究文档节点' })).toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: '文档结构' })).not.toBeInTheDocument()
     const agent = screen.getByRole('complementary', { name: '研究 Agent 对话栏' })
     expect(agent).toHaveAttribute('data-task-id', 'task-1')
     expect(agent).toHaveAttribute('data-workspace', 'research')
     expect(screen.getByText(/这一部分会随着研究推进形成可编辑内容/)).toBeInTheDocument()
-    expect(document.querySelector('.research-document-editor .ProseMirror')).not.toBeInTheDocument()
+    expect(document.querySelector('.ep-document__editor .ProseMirror')).not.toBeInTheDocument()
   })
 
   it('restores confirmed case comparisons into the M4 argument map', async () => {
@@ -269,7 +272,7 @@ describe('ResearchDocumentWorkbench', () => {
       </MemoryRouter>,
     )
 
-    const workspace = page.container.querySelector<HTMLElement>('.research-document-workbench__workspace')!
+    const workspace = page.container.querySelector<HTMLElement>('.ep-document-workbench__body')!
     Object.defineProperty(workspace, 'getBoundingClientRect', {
       configurable: true,
       value: () => ({ width: 1000, height: 800, top: 0, right: 1000, bottom: 800, left: 0, x: 0, y: 0, toJSON: () => ({}) }),
@@ -295,7 +298,7 @@ describe('ResearchDocumentWorkbench', () => {
       </MemoryRouter>,
     )
 
-    const workspace = page.container.querySelector<HTMLElement>('.research-document-workbench__workspace')!
+    const workspace = page.container.querySelector<HTMLElement>('.ep-document-workbench__body')!
     Object.defineProperty(workspace, 'getBoundingClientRect', {
       configurable: true,
       value: () => ({ width: 1000, height: 800, top: 0, right: 1000, bottom: 800, left: 0, x: 0, y: 0, toJSON: () => ({}) }),
@@ -784,12 +787,13 @@ describe('ResearchDocumentWorkbench', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByRole('region', { name: '研究文档节点' })).toBeVisible()
+    expect(await screen.findByRole('article', { name: '研究文档节点' })).toBeVisible()
     expect(screen.getByRole('heading', { name: '研究文档正文' })).toHaveTextContent('研究方法')
-    expect(screen.getByRole('button', { name: '研究节点：照护责任向家庭回流' })).toBeVisible()
+    expect(screen.getByRole('complementary', { name: '文稿大纲' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '查看研究地图' })).toHaveAttribute('href', '/research/task-1/workspace/map')
     expect(screen.queryByRole('complementary', { name: '研究 Agent 对话栏' })).not.toBeInTheDocument()
     expect(screen.queryByRole('separator', { name: '调整 Agent 对话栏宽度' })).not.toBeInTheDocument()
-    expect(container.querySelector('.page-shell')).not.toBeInTheDocument()
+    expect(container.querySelector('.application-frame')).not.toBeInTheDocument()
     await waitFor(() => expect(onWorkspaceContextChange).toHaveBeenLastCalledWith({
       mode: 'framework',
       documentId: 'document-1',
@@ -878,6 +882,77 @@ describe('ResearchDocumentWorkbench', () => {
       sectionId: 'theory_fit',
       documentVersion: 2,
     })))
-    expect(screen.getAllByRole('region', { name: '研究文档节点' })).toHaveLength(1)
+    expect(screen.getAllByRole('article', { name: '研究文档节点' })).toHaveLength(1)
   })
+})
+
+
+it('keeps the map instance mounted when switching between map and document layouts', async () => {
+  vi.spyOn(researchApi, 'getResearchTaskNavigation').mockResolvedValue({ data: {
+    task_id: 'task-1', conversation_id: 'conversation-1', allowed_actions: [],
+    current_match_run_id: null, current_theory_plan_id: null, current_framework_id: null,
+    knowledge_release_id: 'release-1', phenomenon_summary: { phenomenon: '社区照护' },
+  } } as never)
+  vi.spyOn(researchApi, 'listResearchDocuments').mockResolvedValue({ data: { items: [] } } as never)
+  vi.spyOn(researchApi, 'listResearchTaskDocumentProposals').mockResolvedValue({ data: { items: [] } } as never)
+  vi.spyOn(researchAnalysisApi, 'getAnalysisSnapshot').mockResolvedValue(null)
+  const layout = (focusDocument: boolean) => <MemoryRouter initialEntries={['/research/task-1/workspace/theory']}>
+    <Routes><Route path="/research/:task_id/workspace/:tool" element={
+      <ResearchDocumentWorkbench embedded workspaceMode="match" focusDocument={focusDocument} />
+    } /></Routes>
+  </MemoryRouter>
+  const view = render(layout(false))
+  const map = await screen.findByRole('region', { name: '研究论证地图' })
+  expect(map).toBeVisible()
+  view.rerender(layout(true))
+  expect(view.container.querySelector('[aria-label="研究论证地图"]')).toBe(map)
+  expect(map.closest('[hidden]')).not.toBeNull()
+  expect(screen.getByRole('complementary', { name: '文稿大纲' })).toBeVisible()
+  view.rerender(layout(false))
+  expect(screen.getByRole('region', { name: '研究论证地图' })).toBe(map)
+  expect(map).toBeVisible()
+})
+
+it.each(['saved', 'failed', 'refreshed'] as const)('protects a live editor draft before leaving when saving is %s', async outcome => {
+  const current = {
+    document_id: 'document-draft', theory_plan_id: 'theory-plan-1', knowledge_release_id: 'release-1',
+    revision_id: 'revision-1', title: '研究框架', version: 1, actor: 'user', status: 'draft',
+    sections: [{ section_id: 'research_question', key: 'research_question', title: '研究问题', content: '原来的研究问题', status: 'reviewed', evidence_refs: [], citation_refs: [] }],
+  }
+  vi.spyOn(researchApi, 'getResearchTaskNavigation').mockResolvedValue({ data: { task_id: 'task-1', allowed_actions: [], current_framework_id: 'document-draft', current_theory_plan_id: null, knowledge_release_id: 'release-1', conversation_id: null } } as never)
+  vi.spyOn(researchApi, 'listResearchDocuments').mockResolvedValue({ data: { items: [current] } } as never)
+  vi.spyOn(researchApi, 'listResearchTaskDocumentProposals').mockResolvedValue({ data: { items: [] } } as never)
+  vi.spyOn(researchApi, 'listResearchDocumentVersions').mockResolvedValue({ data: { items: [current] } } as never)
+  const update = vi.spyOn(researchApi, 'updateResearchDocument').mockImplementation(async ({ body }) => {
+    if (outcome === 'failed') throw new Error('临时保存失败')
+    return { data: { ...current, sections: body.sections, version: 2, revision_id: 'revision-2' } } as never
+  })
+  const registerGuard = vi.fn()
+  const page = (refreshKey: number) => <MemoryRouter initialEntries={['/research/task-1/workspace/writing']}><Routes><Route path="/research/:task_id/workspace/:tool" element={<ResearchDocumentWorkbench embedded workspaceMode="framework" focusDocument refreshKey={refreshKey} onNavigationGuardChange={registerGuard} />} /></Routes></MemoryRouter>
+  const { container, rerender } = render(page(0))
+  await screen.findByText('原来的研究问题')
+  const editor = container.querySelector<HTMLElement>('.ep-document__editor .tiptap')!
+  editor.innerHTML = '<p>重新写下的研究问题</p>'
+  fireEvent.input(editor)
+  await screen.findByText('有未保存更改')
+  if (outcome === 'refreshed') {
+    vi.mocked(researchApi.listResearchDocuments).mockResolvedValue({ data: { items: [{ ...current, revision_id: 'revision-server', version: 3, sections: [{ ...current.sections[0], content: 'Agent 更新后的原文' }] }] } } as never)
+    rerender(page(1))
+    await waitFor(() => expect(researchApi.listResearchDocuments).toHaveBeenCalledTimes(2))
+    expect(editor).toHaveTextContent('重新写下的研究问题')
+    expect(editor).not.toHaveTextContent('Agent 更新后的原文')
+    expect(screen.getByText('有未保存更改')).toBeVisible()
+    return
+  }
+  const guard = registerGuard.mock.calls.at(-1)?.[0] as () => Promise<boolean>
+  let allowed = false
+  await act(async () => { allowed = await guard() })
+  expect(allowed).toBe(outcome === 'saved')
+  expect(update).toHaveBeenCalledWith(expect.objectContaining({ body: expect.objectContaining({ expected_version: 1, sections: [expect.objectContaining({ content: '重新写下的研究问题' })] }) }))
+  if (outcome === 'saved') expect(await screen.findByText('已保存 · v2')).toBeVisible()
+  else {
+    expect(screen.getByText('更改尚未保存，请重试后再离开。')).toBeVisible()
+    expect(editor).toHaveTextContent('重新写下的研究问题')
+    expect(screen.getByText('有未保存更改')).toBeVisible()
+  }
 })

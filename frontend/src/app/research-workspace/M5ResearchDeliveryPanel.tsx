@@ -80,52 +80,13 @@ export function M5ResearchDeliveryPanel({
     restoredFromVersion: version.restoredFromVersion,
   }))
 
-  return (
-    <aside className="m5-delivery-stack" aria-label="M5 研究交付审阅">
-      {!state.document && !pendingProposal && (
-        <M5GenerationState
-          theoryPlanLabel={theoryPlanLabel}
-          createIdempotencyKey={createIdempotencyKey}
-          onGenerate={onGenerate}
-        />
-      )}
-
-      {state.proposals.map((proposal) => (
-        <M5ProposalReview
-          key={proposal.proposalId}
-          proposal={proposalPresentation(proposal, state)}
-          onAccept={onAcceptProposal}
-          onReject={onRejectProposal}
-        />
-      ))}
-
-      {state.document && (
-        <>
-          <M5ResearchAnalysisBasis basis={state.document.analysisBasis} />
-          <M5VersionHistory
-            currentVersion={state.document.version}
-            versions={versions}
-            onRestore={onRestoreVersion}
-          />
-          <M5CompletionGate
-            gate={{
-              ready: state.completion.ready,
-              checks: state.completion.checks,
-              blockers: state.completion.blockers,
-            }}
-            version={state.completion.version}
-            completed={state.completion.completed}
-            saveState={saveState}
-            onConfirm={onConfirm}
-          />
-          <M5ExportPanel
-            confirmed={state.completion.completed}
-            gateReady={state.completion.ready}
-            saveState={saveState}
-            onExport={onExport}
-          />
-        </>
-      )}
-    </aside>
-  )
+  return <aside className="ep-delivery" aria-label="M5 研究交付审阅">
+    <header className="ep-delivery__heading"><div><p className="qx-group-label">研究文稿</p><h2 className="qx-card__title">审阅与交付</h2></div><span className="qx-tag">{state.document ? `第 ${state.document.version} 版` : '准备草稿'}</span></header>
+    {!state.document && !pendingProposal ? <M5GenerationState theoryPlanLabel={theoryPlanLabel} createIdempotencyKey={createIdempotencyKey} onGenerate={onGenerate} /> : null}
+    {state.proposals.length ? <section className="ep-delivery__proposals" aria-label="Agent 建议审阅">{state.proposals.map(proposal => <M5ProposalReview key={proposal.proposalId} proposal={proposalPresentation(proposal, state)} onAccept={onAcceptProposal} onReject={onRejectProposal} />)}</section> : null}
+    {state.document ? <>
+      <div className="ep-delivery__finish"><M5CompletionGate gate={{ ready: state.completion.ready, checks: state.completion.checks, blockers: state.completion.blockers }} version={state.completion.version} completed={state.completion.completed} saveState={saveState} onConfirm={onConfirm} /><M5ExportPanel confirmed={state.completion.completed} gateReady={state.completion.ready} saveState={saveState} onExport={onExport} /></div>
+      <div className="ep-delivery__record"><M5ResearchAnalysisBasis basis={state.document.analysisBasis} /><M5VersionHistory currentVersion={state.document.version} versions={versions} onRestore={onRestoreVersion} /></div>
+    </> : null}
+  </aside>
 }

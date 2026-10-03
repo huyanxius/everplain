@@ -85,8 +85,8 @@ describe('ResearchMaterialsPage', () => {
     )
 
     const library = await screen.findByRole('region', { name: '全部研究材料' })
-    await screen.findAllByRole('option', { name: research.phenomenon_summary.phenomenon })
     fireEvent.click(screen.getByRole('button', { name: '添加材料' }))
+    expect(await screen.findByRole('combobox', { name: '材料所属研究' })).toHaveTextContent(research.phenomenon_summary.phenomenon)
     const input = screen.getByRole('dialog', { name: '添加材料' })
       .querySelector<HTMLInputElement>('input[type="file"]')
     expect(input).not.toBeNull()
@@ -117,7 +117,7 @@ describe('ResearchMaterialsPage', () => {
     expect(screen.getByRole('navigation', { name: '桌面主导航' })).toBeVisible()
     expect(screen.queryByRole('complementary', { name: '材料分类' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: '材料分类与研究' })).not.toBeInTheDocument()
-    expect(within(screen.getByRole('navigation', { name: '桌面主导航' })).getByRole('link', { name: '我的研究' })).toBeVisible()
+    expect(within(screen.getByRole('navigation', { name: '桌面主导航' })).getByRole('link', { name: '研究' })).toBeVisible()
     expect(screen.getByRole('combobox', { name: '按研究筛选材料' })).toBeVisible()
     expect(await within(library).findByRole('link', { name: /家庭照护访谈\.md/ })).toHaveAttribute('href', '/research/task-1/workspace/materials?material_id=material-1')
     expect(await within(library).findByRole('link', { name: /社区观察记录\.pdf/ })).toHaveAttribute('href', '/research/task-2/workspace/materials?material_id=material-2')
@@ -217,6 +217,81 @@ describe('ResearchMaterialsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '重试' }))
     expect(await screen.findByRole('region', { name: '材料列表为空' })).toBeVisible()
     expect(screen.getByText('0 份文件')).toBeVisible()
+  })
+
+  it('renders four-stage mock cards with real questions and a creation card', async () => {
+    const projects = ['现象待确认', '理论判断', '研究方案', '已完成', '服务端自定义阶段'].map((stage, index) => ({
+      ...research, task_id: `stage-${index}`, project_title: `研究 ${index + 1}`, stage_label: stage,
+      phenomenon_summary: { ...research.phenomenon_summary, phenomenon: `具体研究问题 ${index + 1}` },
+    }))
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(input instanceof Request ? input.url : String(input), 'http://localhost').pathname
+      if (path === '/api/research-tasks') return json({ items: projects, next_cursor: null })
+      if (path.endsWith('/materials')) return json({ items: [] })
+      return json({}, 404)
+    }))
+    render(<MemoryRouter initialEntries={['/research/materials']}><ResearchMaterialsPage /></MemoryRouter>)
+    const first = await screen.findByRole('link', { name: '打开研究 研究 1' })
+    expect(first).toHaveClass('ep-research__card')
+    expect(within(first).getByText('具体研究问题 1')).toBeVisible()
+    for (let index = 0; index < projects.length; index += 1) {
+      const card = screen.getByRole('link', { name: `打开研究 研究 ${index + 1}` })
+      const progress = within(card).getByRole('img', { name: /研究进度/ })
+      expect(progress.querySelectorAll('span')).toHaveLength(4)
+      expect(progress.querySelectorAll('[data-done="true"]')).toHaveLength(index === 4 ? 0 : index + 1)
+    }
+    expect(screen.getByRole('heading', { name: '研究', level: 1 })).toBeVisible()
+    expect(screen.getByRole('link', { name: '从一个问题开始' })).toHaveAttribute('href', '/research/new')
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索研究项目' }), { target: { value: '研究 2' } })
+    expect(screen.queryByRole('link', { name: '打开研究 研究 1' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '打开研究 研究 2' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '从一个问题开始' })).toBeVisible()
+  })
+
+  it('creates the first research from a file and rejects unsupported imports before creation', async () => {
+    let created = false
+    const createBodies: unknown[] = []
+    const uploaded: string[] = []
+    const material = { material_id: 'first-material', task_id: 'task-1', filename: '第一份笔记.md', media_type: 'text/markdown', size_bytes: 1024, status: 'uploaded', version: 1, parse_version: null, segment_count: 0, error_code: null, material_kind: 'other', updated_at: research.updated_at }
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(String(input), init)
+      const path = new URL(request.url).pathname
+      if (path === '/api/research-tasks' && request.method === 'POST') {
+        createBodies.push(await request.json()); created = true
+        return json({ ...research, status: 'draft', project_title: material.filename, entry_mode: 'from_scratch', entry_type: 'material_input' }, 201)
+      }
+      if (path === '/api/research-tasks') return json({ items: created ? [{ ...research, project_title: material.filename }] : [], next_cursor: null })
+      if (path === '/api/research-tasks/task-1/materials' && request.method === 'POST') { uploaded.push(path); return json(material, 201) }
+      if (path === '/api/research-tasks/task-1/materials') return json({ task_id: 'task-1', items: [material] })
+      return json({}, 404)
+    }))
+    const { container } = render(<MemoryRouter initialEntries={['/research/materials?tab=files']}><LocationProbe /><ResearchMaterialsPage /></MemoryRouter>)
+    await screen.findByRole('region', { name: '还没有研究' })
+    const input = container.querySelector<HTMLInputElement>('input[type="file"][multiple]')!
+    fireEvent.change(input, { target: { files: [new File(['data'], 'archive.zip', { type: 'application/zip' })] } })
+    expect(await screen.findByRole('alert')).toHaveTextContent('archive.zip 不是可导入的研究材料')
+    expect(createBodies).toHaveLength(0)
+    fireEvent.change(input, { target: { files: [new File(['笔记'], material.filename, { type: 'text/markdown' })] } })
+    expect(await screen.findByRole('link', { name: '打开材料 第一份笔记.md' })).toBeVisible()
+    expect(createBodies).toEqual([{ entry_type: 'material_input', entry_mode: 'from_scratch', project_title: material.filename, seed_theory_id: null }])
+    expect(uploaded).toEqual(['/api/research-tasks/task-1/materials'])
+    expect(await screen.findByText('/research/materials?task_id=task-1')).toBeVisible()
+  })
+
+  it('retries a failed research list without showing a false first-research empty state', async () => {
+    let attempts = 0
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(input instanceof Request ? input.url : String(input), 'http://localhost').pathname
+      if (path === '/api/research-tasks') return ++attempts === 1 ? json({}, 503) : json({ items: [research], next_cursor: null })
+      if (path.endsWith('/materials')) return json({ items: [] })
+      return json({}, 404)
+    }))
+    render(<MemoryRouter initialEntries={['/research/materials']}><ResearchMaterialsPage /></MemoryRouter>)
+    expect(await screen.findByRole('alert')).toHaveTextContent('研究列表暂时无法加载')
+    expect(screen.queryByRole('heading', { name: '开始你的第一项研究' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '重新读取研究' }))
+    expect(await screen.findByRole('link', { name: `打开研究 ${research.phenomenon_summary.phenomenon}` })).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('opens a selected material directly without another research workspace layer', async () => {

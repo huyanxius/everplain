@@ -1,5 +1,5 @@
 import { ArrowLeftIcon, CaretRightIcon, CheckCircleIcon, CircleNotchIcon, FileTextIcon, MagnifyingGlassIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 
 import type { AgentCitation, AgentToolStep } from '../../modules/research-agent'
@@ -134,7 +134,7 @@ function ActivityPanel({ activities, onSelect }: { activities: readonly Research
     <div className="research-context-rail__activity-list">
       {activities.map((activity) => (
         <article className={`research-context-rail__activity research-context-rail__activity--${activity.interrupted ? 'interrupted' : activity.status}`} key={activity.id}>
-          <button type="button" className="research-context-rail__activity-button" onClick={() => onSelect?.(activity)} aria-label={activity.label}>
+          <button type="button" className="qx-btn qx-btn--ghost research-context-rail__activity-button" onClick={() => onSelect?.(activity)} aria-label={activity.label}>
             <ActivityStatus status={activity.status} interrupted={activity.interrupted} />
             <span className="research-context-rail__activity-copy"><strong>{activity.label}</strong><small>{activity.detail ? summarizeToolDetail(activity.detail).preview : toolLabel(activity.tool)}</small></span>
             <span className="research-context-rail__activity-state">{activity.interrupted ? text('已中断', 'Interrupted') : activity.status === 'running' ? text('进行中', 'In progress') : activity.status === 'failed' ? text('失败', 'Failed') : text('完成', 'Completed')}</span>
@@ -143,7 +143,7 @@ function ActivityPanel({ activities, onSelect }: { activities: readonly Research
           {activity.input ? <p className="research-context-rail__activity-input">{payloadLabel(activity.input)}</p> : null}
           {activity.resultItems?.length ? (
             <div className="research-context-rail__result-list">
-              {activity.resultItems.map((item) => <button type="button" key={item.id} onClick={() => onSelect?.(activity)}><FileTextIcon size={14} /><span><strong>{item.title}</strong>{item.excerpt ? <small>{item.excerpt}</small> : null}</span></button>)}
+              {activity.resultItems.map((item) => <button className="qx-btn qx-btn--ghost" type="button" key={item.id} onClick={() => onSelect?.(activity)}><FileTextIcon size={14} /><span><strong>{item.title}</strong>{item.excerpt ? <small>{item.excerpt}</small> : null}</span></button>)}
             </div>
           ) : null}
         </article>
@@ -155,7 +155,7 @@ function ActivityPanel({ activities, onSelect }: { activities: readonly Research
 function SourcesPanel({ citations, selectedCitationId, onSelect, numberOf }: { citations: readonly ResearchCitation[]; selectedCitationId?: string | null; onSelect?: (citation: ResearchCitation) => void; numberOf?: (citation: ResearchCitation) => number }) {
   const { text } = useAppLocale()
   if (!citations.length) return <div className="research-context-rail__empty"><FileTextIcon size={20} /><strong>{text('回答完成后，来源会出现在这里', 'Sources will appear here when the answer is complete')}</strong><p>{text('当本次回答绑定知识库来源时，来源会和回答保持对应。', 'Knowledge sources stay linked to the answer that used them.')}</p></div>
-  return <div className="research-context-rail__source-list">{citations.map((citation) => <button type="button" className="research-context-rail__source" data-citation-id={citation.id} data-dimension={citation.dimension ?? undefined} aria-current={citation.id === selectedCitationId ? 'true' : undefined} key={citation.id} onClick={() => onSelect?.(citation)}><span className="research-context-rail__source-index">{numberOf ? numberOf(citation) : citations.indexOf(citation) + 1}</span><span><strong>{citation.title}</strong>{citation.subtitle ? <small>{citation.subtitle}</small> : null}{citation.excerpt ? <em>{citation.excerpt}</em> : null}</span></button>)}</div>
+  return <div className="research-context-rail__source-list">{citations.map((citation) => <button type="button" className="qx-btn qx-btn--ghost research-context-rail__source" data-citation-id={citation.id} data-dimension={citation.dimension ?? undefined} aria-current={citation.id === selectedCitationId ? 'true' : undefined} key={citation.id} onClick={() => onSelect?.(citation)}><span className="research-context-rail__source-index">{numberOf ? numberOf(citation) : citations.indexOf(citation) + 1}</span><span><strong>{citation.title}</strong>{citation.subtitle ? <small>{citation.subtitle}</small> : null}{citation.excerpt ? <em>{citation.excerpt}</em> : null}</span></button>)}</div>
 }
 
 type RailSectionProps = {
@@ -177,7 +177,7 @@ function RailSection({ title, count, index, meta, emptyHint, children }: RailSec
     <>
       <button
         type="button"
-        className="research-context-rail__section-head"
+        className="qx-btn qx-btn--ghost research-context-rail__section-head"
         aria-controls={bodyId}
         aria-expanded={open}
         style={{ '--rail-sticky-top': `${index * RAIL_STICKY_HEIGHT}px`, '--rail-sticky-layer': String(9 - index) } as CSSProperties}
@@ -210,6 +210,7 @@ function SectionsRail({
   selectedCitationId,
   elapsedSeconds,
   onBack,
+  onClose,
   onActivitySelect,
   onCitationSelect,
 }: {
@@ -220,6 +221,7 @@ function SectionsRail({
   selectedCitationId?: string | null
   elapsedSeconds?: number | null
   onBack?: () => void
+  onClose?: () => void
   onActivitySelect?: (activity: ResearchActivity) => void
   onCitationSelect?: (citation: ResearchCitation) => void
 }) {
@@ -233,16 +235,38 @@ function SectionsRail({
     ? elapsedLabel(elapsedSeconds, locale)
     : running ? text('进行中', 'Running') : null
   const showBasis = tab === 'basis'
+  const selectedSource = citations.find((citation) => citation.id === selectedCitationId)
+  const sourceDetail = showBasis && Boolean(selectedSource)
+  const railRef = useRef<HTMLElement>(null)
+  const lastSourceId = useRef<string | null>(null)
+  const previousBasis = useRef(showBasis)
+
+  useEffect(() => {
+    if (showBasis && selectedCitationId) {
+      lastSourceId.current = selectedCitationId
+      railRef.current?.querySelector<HTMLElement>('[role="region"]')?.focus({ preventScroll: true })
+    }
+    if (!showBasis && previousBasis.current && lastSourceId.current) {
+      const source = Array.from(railRef.current?.querySelectorAll<HTMLButtonElement>('[data-citation-id]') ?? [])
+        .find((element) => element.dataset.citationId === lastSourceId.current)
+      source?.scrollIntoView?.({ block: 'nearest' })
+      source?.focus({ preventScroll: true })
+    }
+    previousBasis.current = showBasis
+  }, [showBasis, selectedCitationId])
   return (
-    <aside className="research-context-rail research-context-rail--sections" aria-label={text('研究面板', 'Research panel')}>
-      {/* 总览不需要标题栏：栏是什么、怎么收起，右上角那个开关已经说清楚了。 */}
-      {showBasis ? (
-        <header className="research-context-rail__header">
-          <button className="research-context-rail__back" type="button" onClick={onBack}>
-            <ArrowLeftIcon size={15} aria-hidden="true" /><strong>{text('依据', 'Basis')}</strong>
-          </button>
-        </header>
-      ) : null}
+    <aside
+      ref={railRef}
+      className={`qx-panel research-context-rail research-context-rail--sections${showBasis ? ' research-context-rail--basis' : ''}${sourceDetail ? ' research-context-rail--source-detail' : ''}`}
+      aria-label={sourceDetail ? text('引用来源', 'Citation source') : text('研究面板', 'Research panel')}
+      onKeyDown={(event) => { if (event.key === 'Escape' && onClose) { event.stopPropagation(); onClose() } }}
+    >
+      <header className="research-context-rail__header">
+        {showBasis ? <button className="qx-btn qx-btn--ghost research-context-rail__back" type="button" aria-label={text('依据', 'Basis')} onClick={onBack}>
+          <ArrowLeftIcon size={15} aria-hidden="true" /><span>{text('返回研究面板', 'Back to research panel')}</span>
+        </button> : <h2 className="qx-card__title">{text('研究面板', 'Research panel')}</h2>}
+        <button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={text('关闭研究面板', 'Close research panel')} onClick={onClose}><XIcon aria-hidden="true" /></button>
+      </header>
       <div className="research-context-rail__body">
         {showBasis ? (
           <section className="research-context-rail__panel" role="region" aria-label={text('依据', 'Basis')} tabIndex={0}>
@@ -314,14 +338,15 @@ export function ResearchContextRail({
         selectedCitationId={selectedCitationId}
         elapsedSeconds={elapsedSeconds}
         onBack={onBack}
+        onClose={onClose}
         onActivitySelect={onActivitySelect}
         onCitationSelect={onCitationSelect}
       />
     )
   }
   return (
-    <aside className="research-context-rail" aria-label={text('研究上下文栏', 'Research context panel')}>
-      <header className="research-context-rail__header"><div><strong>{tabLabels[tab]}</strong></div><button type="button" aria-label={text('关闭上下文栏', 'Close context panel')} onClick={onClose}><XIcon size={17} /></button></header>
+    <aside className="qx-panel research-context-rail" aria-label={text('研究上下文栏', 'Research context panel')}>
+      <header className="research-context-rail__header"><div><strong>{tabLabels[tab]}</strong></div><button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={text('关闭上下文栏', 'Close context panel')} onClick={onClose}><XIcon size={17} /></button></header>
       <div className="research-context-rail__body">
         <section className="research-context-rail__panel" role="region" aria-label={tabLabels[tab]} tabIndex={0}>
           {tab === 'agent' ? <div className="research-context-rail__agent-note"><span className="research-context-rail__agent-mark">Q</span><strong>{text('Everplain', 'Everplain')}</strong><p>{text('自然语言是入口。需要证据时，我会把本次会话的检索过程和来源放在这里。', 'Natural language is the starting point. When evidence is needed, retrieval activity and sources for this conversation appear here.')}</p></div> : null}

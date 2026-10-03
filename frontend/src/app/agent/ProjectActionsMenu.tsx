@@ -51,20 +51,20 @@ export function ProjectActionsMenu({ taskId, title, onDelete }: {
     finally { setBusy(false) }
   }
   return <>
-    <button ref={anchor} type="button" className="project-conversation-list__actions"
+    <button ref={anchor} type="button" className="qx-btn qx-btn--ghost project-conversation-list__actions"
       aria-label={text(`${title}的项目操作`, `Project actions for ${title}`)} aria-haspopup="menu" aria-expanded={Boolean(mode)}
       onClick={() => { if (!busy) { setError(null); setMode(mode ? null : 'menu') } }}>
       <DotsThreeIcon size={18} weight="bold" aria-hidden="true" />
     </button>
     {mode ? createPortal(<div ref={panel} className={`agent-conversation-history__popover is-${mode}`} style={position}>
       {mode === 'menu' ? <div role="menu" aria-label={text('项目操作', 'Project actions')}>
-        <button type="button" role="menuitem" className="is-danger" onClick={() => setMode('delete')}><TrashIcon size={14} />{text('删除项目', 'Delete project')}</button>
+        <button type="button" role="menuitem" className="qx-btn qx-btn--danger is-danger" onClick={() => setMode('delete')}><TrashIcon size={14} />{text('删除项目', 'Delete project')}</button>
       </div> : <div role="dialog" aria-label={text('删除项目', 'Delete project')}>
         <strong className="project-conversation-list__delete-title" title={title}>{text(`删除“${title}”？`, `Delete “${title}”?`)}</strong>
         <p className="project-conversation-list__delete-description">{text('项目材料和研究内容将被删除，所属对话会保留为独立对话。', 'Project materials and research will be deleted. Conversations will remain as independent conversations.')}</p>
         <div>
-          <button type="button" disabled={busy} onClick={() => { setMode(null); anchor.current?.focus() }}>{text('取消', 'Cancel')}</button>
-          <button type="button" className="is-danger" aria-label={text('确认删除项目', 'Confirm delete project')} disabled={busy} onClick={() => { void remove() }}>{busy ? text('删除中…', 'Deleting…') : text('删除', 'Delete')}</button>
+          <button className="qx-btn qx-btn--ghost" type="button" disabled={busy} onClick={() => { setMode(null); anchor.current?.focus() }}>{text('取消', 'Cancel')}</button>
+          <button type="button" className="qx-btn qx-btn--danger is-danger" aria-label={text('确认删除项目', 'Confirm delete project')} disabled={busy} onClick={() => { void remove() }}>{busy ? text('删除中…', 'Deleting…') : text('删除', 'Delete')}</button>
         </div>
       </div>}
       {error ? <p role="alert">{error}</p> : null}

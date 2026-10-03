@@ -49,10 +49,10 @@ describe('ResearchArchivePanel', () => {
     expect(await screen.findByText('project.exported')).toBeVisible()
     expect(screen.getByRole('heading', { name: '研究归档' })).toBeVisible()
     const exportButton = screen.getByRole('button', { name: '导出研究归档' })
-    expect(exportButton).toHaveClass('qx-button', 'qx-button--primary')
+    expect(exportButton).toHaveClass('qx-btn', 'qx-btn--primary')
     fireEvent.click(exportButton)
     expect(await screen.findByText(/4 项交换损失/)).toBeVisible()
-    expect(screen.getByText(/4 项交换损失/).closest('.research-exchange__notice')).toHaveClass('qx-notice-surface')
+    expect(screen.getByRole('status')).toHaveTextContent('4 项交换损失')
     expect(api.exportArchive).toHaveBeenCalledWith('task-1')
     expect(screen.queryByLabelText('选择 QDPX 文件')).not.toBeInTheDocument()
 

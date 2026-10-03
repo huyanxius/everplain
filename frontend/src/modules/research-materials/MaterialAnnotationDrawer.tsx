@@ -2,6 +2,7 @@ import { XIcon } from '@phosphor-icons/react'
 
 import { formatMaterialLocator } from './researchMaterialsModel'
 import type { ResearchMaterialSelectionDraft } from './researchMaterialSelection'
+import './material-views.css'
 
 type AnnotationKind = 'descriptive' | 'researcher_reflection'
 
@@ -54,87 +55,25 @@ export function MaterialAnnotationDrawer({
   const reflectionRequired = kind === 'researcher_reflection'
   const canSave = Boolean(note.trim()) && (!reflectionRequired || Boolean(reflection.trim())) && !saving
 
-  return (
-    <aside className="qx-annotation" role="region" aria-label="片段标记">
-      <header className="qx-annotation__head">
-        <div>
-          <span className="qx-eyebrow">已选原文</span>
-          <p className="qx-annotation__quote">{draft.quote}</p>
-          <small className="qx-annotation__locator">{formatMaterialLocator(draft.locator)}</small>
-        </div>
-        <button type="button" className="qx-icon-button" aria-label="取消片段标记" onClick={onCancel}>
-          <XIcon size={15} aria-hidden="true" />
-        </button>
-      </header>
-
-      <div className="qx-annotation__body">
-        <div className="qx-field">
-          <span className="qx-field__label" id="annotation-kind-label">标记类型</span>
-          <div className="qx-segmented" role="radiogroup" aria-labelledby="annotation-kind-label">
-            {KIND_OPTIONS.map((option) => (
-              <button
-                type="button"
-                key={option.value}
-                role="radio"
-                aria-checked={kind === option.value}
-                className={kind === option.value ? 'is-active' : undefined}
-                onClick={() => onKindChange(option.value)}
-              >
-                <strong>{option.label}</strong>
-                <small>{option.hint}</small>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <label className="qx-field">
-          <span className="qx-field__label">材料描述</span>
-          <textarea
-            aria-label="材料描述"
-            value={note}
-            rows={3}
-            placeholder="这段原文在说什么"
-            onChange={(event) => onNoteChange(event.target.value)}
-          />
-        </label>
-
-        <label className="qx-field">
-          <span className="qx-field__label">
-            研究者反思
-            <small>{reflectionRequired ? '必填' : '可选'}</small>
-          </span>
-          <textarea
-            aria-label="研究者反思"
-            value={reflection}
-            rows={2}
-            placeholder="我从这里读出了什么，又该警惕什么"
-            onChange={(event) => onReflectionChange(event.target.value)}
-          />
-        </label>
-
-        <div className="qx-field">
-          <span className="qx-field__label">补充背景<small>可选</small></span>
-          <div className="qx-annotation__context">
-            <label>
-              <span>案例</span>
-              <input aria-label="案例" value={caseLabel} placeholder="如：家庭 A" onChange={(event) => onCaseLabelChange(event.target.value)} />
-            </label>
-            <label>
-              <span>时间</span>
-              <input aria-label="时间" value={observedAt} placeholder="如：迁移后" onChange={(event) => onObservedAtChange(event.target.value)} />
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <footer className="qx-annotation__foot">
-        <button type="button" className="qx-button" onClick={onCancel}>取消</button>
-        <button type="button" className="qx-button qx-button--primary" disabled={!canSave} onClick={onSave}>
-          {saving ? '正在保存' : '保存片段标记'}
-        </button>
-      </footer>
-    </aside>
-  )
+  return <aside className="ep-annotation" role="region" aria-label="片段标记">
+    <header className="ep-annotation__header"><h2 className="qx-card__title">片段标记</h2><button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="取消片段标记" onClick={onCancel}><XIcon size={18} aria-hidden="true" /></button></header>
+    <figure className="ep-annotation__source"><blockquote>{draft.quote}</blockquote><figcaption className="qx-meta">{formatMaterialLocator(draft.locator)}</figcaption></figure>
+    <form className="ep-annotation__form" onSubmit={event => { event.preventDefault(); if (canSave) onSave() }}>
+      <fieldset className="ep-annotation__kinds"><legend className="qx-group-label">标记类型</legend><div className="qx-segmented" role="radiogroup" aria-label="标记类型" onKeyDown={event => {
+        if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return
+        event.preventDefault()
+        const next = event.key === 'Home' ? 'descriptive' : event.key === 'End' ? 'researcher_reflection' : kind === 'descriptive' ? 'researcher_reflection' : 'descriptive'
+        onKindChange(next)
+        event.currentTarget.querySelector<HTMLButtonElement>(`[data-kind="${next}"]`)?.focus()
+      }}>
+        {KIND_OPTIONS.map(option => <button type="button" key={option.value} role="radio" aria-checked={kind === option.value} tabIndex={kind === option.value ? 0 : -1} data-kind={option.value} title={option.hint} onClick={() => onKindChange(option.value)}>{option.label}</button>)}
+      </div></fieldset>
+      <label className="ep-material-field"><span>材料描述</span><textarea className="qx-textarea" aria-label="材料描述" value={note} rows={3} placeholder="这段原文在说什么" onChange={event => onNoteChange(event.target.value)} /></label>
+      <label className="ep-material-field"><span>研究者反思 <small className="qx-meta">{reflectionRequired ? '必填' : '可选'}</small></span><textarea className="qx-textarea" aria-label="研究者反思" value={reflection} rows={3} placeholder="我从这里读出了什么，又该警惕什么" onChange={event => onReflectionChange(event.target.value)} /></label>
+      <fieldset className="ep-annotation__context"><legend className="qx-group-label">补充背景 · 可选</legend><label className="ep-material-field"><span>案例</span><input className="qx-input" aria-label="案例" value={caseLabel} placeholder="如：家庭 A" onChange={event => onCaseLabelChange(event.target.value)} /></label><label className="ep-material-field"><span>时间</span><input className="qx-input" aria-label="时间" value={observedAt} placeholder="如：迁移后" onChange={event => onObservedAtChange(event.target.value)} /></label></fieldset>
+      <footer className="ep-annotation__footer"><button type="button" className="qx-btn qx-btn--secondary" onClick={onCancel}>取消</button><button type="submit" className="qx-btn qx-btn--primary" disabled={!canSave}>{saving ? '正在保存' : '保存片段标记'}</button></footer>
+    </form>
+  </aside>
 }
 
 export type { AnnotationKind }
