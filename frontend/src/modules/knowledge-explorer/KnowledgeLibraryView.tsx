@@ -9,7 +9,6 @@ import {
 
 import { KnowledgeCatalog } from './KnowledgeCatalog'
 import { KnowledgeEntryList } from './KnowledgeEntryList'
-import { KnowledgeLibraryShader } from './KnowledgeLibraryShader'
 import type { KnowledgeDirectoryDimension } from './directoryTree'
 import type { KnowledgeEntrySummary } from './types'
 import type { KnowledgeUrlState } from './urlState'
@@ -71,7 +70,7 @@ function DimensionOverview({
             const presentation = describeTaxonomyNode(category.title)
             return (
             <li key={category.nodeId} data-node-kind={presentation.kind}>
-              <button
+              <button className="qx-btn qx-btn--ghost"
                 type="button"
                 aria-label={`浏览 ${category.title}`}
                 onClick={() => onSelectCategory(category.nodeId)}
@@ -139,16 +138,15 @@ export function KnowledgeLibraryView({
       data-release-state={releaseState}
       data-dimension-tone={activeDimension ? dimensionTone(activeDimension.nodeId) : undefined}
     >
-      <KnowledgeLibraryShader />
       <aside className="knowledge-library__sidebar" data-mobile-open={mobileCatalogOpen}>
         <header className="knowledge-library__identity">
           <BooksIcon size={18} weight="regular" aria-hidden="true" />
           <h1>知识库</h1>
-          <button className="mobile-only" type="button" aria-expanded={mobileCatalogOpen} onClick={() => setMobileCatalogOpen((open) => !open)}>{mobileCatalogOpen ? '收起目录' : '浏览目录'}</button>
+          <button className="qx-btn qx-btn--ghost mobile-only" type="button" aria-expanded={mobileCatalogOpen} onClick={() => setMobileCatalogOpen((open) => !open)}>{mobileCatalogOpen ? '收起目录' : '浏览目录'}</button>
           {releaseState === 'ready' ? <small>{catalogTotal}</small> : null}
         </header>
 
-        {onOpenCourseLibrary ? <button type="button" className="knowledge-library__course-link" onClick={onOpenCourseLibrary}>课程知识库</button> : null}
+        {onOpenCourseLibrary ? <button type="button" className="qx-btn qx-btn--ghost knowledge-library__course-link" onClick={onOpenCourseLibrary}>课程知识库</button> : null}
 
         <form className="knowledge-library__search" aria-label="搜索知识库" onSubmit={submitSearch}>
           <MagnifyingGlassIcon size={15} weight="regular" aria-hidden="true" />
@@ -162,7 +160,7 @@ export function KnowledgeLibraryView({
             onChange={(event) => onQueryInputChange(event.target.value)}
             placeholder="搜索知识库"
           />
-          <button type="submit" aria-label="提交搜索" disabled={releaseState === 'loading'}>
+          <button className="qx-btn qx-btn--primary" type="submit" aria-label="提交搜索" disabled={releaseState === 'loading'}>
             <ArrowRightIcon size={14} weight="bold" aria-hidden="true" />
           </button>
         </form>
@@ -188,7 +186,7 @@ export function KnowledgeLibraryView({
           <div className="knowledge-library__toolbar">
             <span>{catalogTotal} 条知识</span>
             {onOpenGraph ? (
-              <button type="button" aria-label="打开知识图谱" onClick={onOpenGraph}>
+              <button className="qx-btn qx-btn--ghost" type="button" aria-label="打开知识图谱" onClick={onOpenGraph}>
                 <TreeStructureIcon size={15} weight="regular" aria-hidden="true" />
                 <span>打开知识图谱</span>
               </button>
@@ -200,21 +198,21 @@ export function KnowledgeLibraryView({
           {hasFilters ? (
             <div className="knowledge-library__filters" aria-label="当前筛选条件">
               {state.query ? (
-                <button type="button" data-filter-role="query" aria-label={`移除关键词 ${state.query}`} onClick={() => updateState({ ...state, query: undefined })}>
+                <button className="qx-btn qx-btn--ghost" type="button" data-filter-role="query" aria-label={`移除关键词 ${state.query}`} onClick={() => updateState({ ...state, query: undefined })}>
                   关键词 · {state.query}<b aria-hidden="true">×</b>
                 </button>
               ) : null}
               {state.dimensionId ? (
-                <button type="button" data-filter-role="dimension" aria-label={`移除维度 ${selectedDimension?.title ?? state.dimensionId}`} onClick={() => updateState({ ...state, dimensionId: undefined, categoryId: undefined })}>
+                <button className="qx-btn qx-btn--ghost" type="button" data-filter-role="dimension" aria-label={`移除维度 ${selectedDimension?.title ?? state.dimensionId}`} onClick={() => updateState({ ...state, dimensionId: undefined, categoryId: undefined })}>
                   维度 · {selectedDimension?.title ?? state.dimensionId}<b aria-hidden="true">×</b>
                 </button>
               ) : null}
               {state.categoryId ? (
-                <button type="button" data-filter-role="category" aria-label={`移除分类 ${selectedCategoryTitle ?? state.categoryId}`} onClick={() => updateState({ ...state, categoryId: undefined })}>
+                <button className="qx-btn qx-btn--ghost" type="button" data-filter-role="category" aria-label={`移除分类 ${selectedCategoryTitle ?? state.categoryId}`} onClick={() => updateState({ ...state, categoryId: undefined })}>
                   分类 · {selectedCategoryTitle ?? state.categoryId}<b aria-hidden="true">×</b>
                 </button>
               ) : null}
-              <button className="knowledge-library__clear" type="button" aria-label="清除全部条件" onClick={() => updateState({ releaseId: state.releaseId, returnTo: state.returnTo })}>
+              <button className="qx-btn qx-btn--ghost knowledge-library__clear" type="button" aria-label="清除全部条件" onClick={() => updateState({ releaseId: state.releaseId, returnTo: state.returnTo })}>
                 清除全部
               </button>
             </div>
@@ -226,7 +224,7 @@ export function KnowledgeLibraryView({
           {releaseState === 'unavailable' ? (
             <div className="knowledge-ui__state" role="alert">
               <strong>知识目录暂时无法读取</strong><p>{releaseError}</p>
-              <button type="button" onClick={onRetry}>重新读取</button>
+              <button className="qx-btn qx-btn--ghost" type="button" onClick={onRetry}>重新读取</button>
             </div>
           ) : null}
 
@@ -245,7 +243,7 @@ export function KnowledgeLibraryView({
             <section className="knowledge-library__results-view" aria-label="知识条目结果">
               {state.categoryId && selectedDimension ? (
                 <button
-                  className="knowledge-library__results-back"
+                  className="qx-btn qx-btn--ghost knowledge-library__results-back"
                   type="button"
                   aria-label={`返回 ${selectedDimension.title} 目录`}
                   onClick={() => updateState({ ...state, query: undefined, categoryId: undefined })}

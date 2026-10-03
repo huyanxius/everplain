@@ -192,7 +192,7 @@ export function KnowledgePreview({
         <h3>暂时无法读取知识内容</h3>
         <p>介绍页仍可使用，你也可以直接进入知识库后再试。</p>
         <div>
-          <button
+          <button className="qx-btn qx-btn--ghost"
             type="button"
             disabled={preview.isFetching}
             onClick={() => preview.refetch()}
@@ -222,7 +222,7 @@ export function KnowledgePreview({
         <h3>暂时无法读取知识解释</h3>
         <p>知识目录仍然可用，你可以直接进入知识库查看完整条目。</p>
         <div>
-          <button type="button" onClick={() => showcase.refetch()}>重新加载解释</button>
+          <button className="qx-btn qx-btn--ghost" type="button" onClick={() => showcase.refetch()}>重新加载解释</button>
           <LinkComponent href="/knowledge">直接进入知识库</LinkComponent>
         </div>
       </div>

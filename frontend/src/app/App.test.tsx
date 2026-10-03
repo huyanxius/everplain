@@ -1164,6 +1164,7 @@ it('opens private knowledge in the library and links each topic to its original 
     return json({ items: [] })
   })
   renderRoute('/library/knowledge?kb_id=kb-course', { status: 'authenticated' })
+  fireEvent.change(await screen.findByRole('searchbox', { name: '搜索知识' }), { target: { value: '追问' } })
   fireEvent.click(await screen.findByRole('button', { name: '查看知识点 追问' }))
   expect(await screen.findByText('追问具体经历。')).toBeInTheDocument()
   expect(screen.getByRole('link', { name: /阅读原文.*访谈.pptx/ })).toHaveAttribute('href', '/library?kb_id=kb-course&document_id=doc-course&segment_id=segment-course')
