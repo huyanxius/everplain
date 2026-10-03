@@ -380,6 +380,64 @@ class TransactionTests(unittest.TestCase):
 
 
 class HealthContractTests(unittest.TestCase):
+    def test_expected_runtime_requires_explicit_private_fallback_and_no_key(self):
+        cases = (
+            ("", "base"),
+            ("EVERPLAIN_ALLOW_MODEL_FALLBACK=true\n", "mock"),
+            ("EVERPLAIN_ALLOW_MODEL_FALLBACK=false\n", "base"),
+            ("EVERPLAIN_ALLOW_MODEL_FALLBACK=true\nEVERPLAIN_MODEL_API_KEY=fixture\n", "base"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            release = Path(directory)
+            path = release / "runtime.env"
+            for contents, expected in cases:
+                with self.subTest(expected=expected, configured=bool(contents)):
+                    path.write_text(contents)
+                    path.chmod(0o600)
+                    self.assertEqual(deploy.expected_runtime_mode(release), expected)
+            path.write_text("EVERPLAIN_RUNTIME_MODE=mock\nEVERPLAIN_ALLOW_MODEL_FALLBACK=true\n")
+            with self.assertRaisesRegex(ValueError, "real business backend"):
+                deploy.expected_runtime_mode(release)
+            path.write_text("EVERPLAIN_ALLOW_MODEL_FALLBACK=true\n")
+            path.chmod(0o644)
+            with self.assertRaisesRegex(ValueError, "private and controller-owned"):
+                deploy.expected_runtime_mode(release)
+            path.unlink()
+            with self.assertRaises(FileNotFoundError):
+                deploy.expected_runtime_mode(release)
+
+    def test_health_matches_configured_mode_and_never_adopts_http_mode(self):
+        for fallback, actual, accepted in (
+            (False, "base", True),
+            (False, "mock", False),
+            (True, "mock", True),
+            (True, "base", False),
+        ):
+            with self.subTest(fallback=fallback, actual=actual), tempfile.TemporaryDirectory() as d:
+                root = Path(d)
+                release = root / "releases" / NEW
+                release.mkdir(parents=True)
+                (release / "manifest.json").write_text('{"web_checks": {}}')
+                (release / "runtime.env").write_text(
+                    f"EVERPLAIN_RUNTIME_MODE=base\nEVERPLAIN_ALLOW_MODEL_FALLBACK={fallback}\n"
+                )
+                (release / "runtime.env").chmod(0o600)
+                body = json.dumps(
+                    {"release_revision": NEW, "status": "ok", "runtime_mode": actual}
+                ).encode()
+                opener = type(
+                    "Opener", (), {"open": lambda *_args, _body=body, **_kw: io.BytesIO(_body)}
+                )()
+                with (
+                    patch.object(deploy.urllib.request, "build_opener", return_value=opener),
+                    patch.object(deploy.time, "sleep"),
+                ):
+                    if accepted:
+                        deploy.Controller(root).health(NEW, web=False)
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "frontend checks failed"):
+                            deploy.Controller(root).health(NEW, web=False)
+
     def test_health_checks_frontend_bytes_cache_busting_and_public_rollback(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -393,6 +451,8 @@ class HealthContractTests(unittest.TestCase):
                 }
             }
             (release / "manifest.json").write_text(json.dumps(manifest))
+            (release / "runtime.env").write_text("EVERPLAIN_RUNTIME_MODE=base\n")
+            (release / "runtime.env").chmod(0o600)
             controller = deploy.Controller(root)
             requests = []
 
@@ -470,6 +530,7 @@ class ActiveConfigurationTests(unittest.TestCase):
             images = {"api": "sha256:" + "1" * 64, "web": "sha256:" + "2" * 64}
             (release / "manifest.json").write_text(json.dumps({"images": images}))
             (release / "runtime.env").write_text("EVERPLAIN_TEST=fixture-only\n")
+            (release / "runtime.env").chmod(0o600)
             state = {"database": str(source)}
             containers = {}
             for role, host_port, inside in (

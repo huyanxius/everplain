@@ -46,6 +46,13 @@ scripts do not provision credentials or claim a real model/browser acceptance te
    the release symlink, start API, verify its revision, then start web and verify both
    local and public API/web revisions plus exact index/entrypoint JS/CSS hashes from the
    built image. Checks reject redirects and use revision cache-busting. Persist the previous release and result.
+   The expected model mode comes only from the protected, host-generated `runtime.env`:
+   default `base`; `mock` only when the real business backend is configured with
+   `EVERPLAIN_ALLOW_MODEL_FALLBACK=true` and no model API key. Missing, insecure, or
+   full-mock backend configuration is rejected. An unexpected base-to-mock change still
+   fails. Deployment/recovery results explicitly include `runtime_mode` and
+   `providers: not_exercised`; model fallback does not become a real-model success.
+   This check never changes the production environment to make a release pass.
 
 Main protection/review rules are optional repository policy; the workflow does not alter
 or require native GitHub branch protection. Follow the repository's PR/merge process.

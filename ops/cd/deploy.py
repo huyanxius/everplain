@@ -93,6 +93,35 @@ def check_compatible(old, new, policy):
         )
 
 
+def runtime_environment(release):
+    """Read only the protected, host-generated Docker env file, never HTTP claims."""
+    path = release / "runtime.env"
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o027:
+        raise ValueError("release runtime environment must be private and controller-owned")
+    values = {}
+    for line in path.read_text().splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        name, separator, value = line.partition("=")
+        if not separator or not re.fullmatch(r"[A-Z0-9_]+", name):
+            raise ValueError("runtime environment must use literal Docker NAME=value lines")
+        values[name] = value
+    return values
+
+
+def expected_runtime_mode(release):
+    values = runtime_environment(release)
+    if values.get("EVERPLAIN_RUNTIME_MODE", "base") != "base":
+        raise ValueError("release requires the real business backend runtime")
+    fallback = values.get("EVERPLAIN_ALLOW_MODEL_FALLBACK", "").lower() in {
+        "true", "1", "yes", "on",
+    }
+    if fallback and not values.get("EVERPLAIN_MODEL_API_KEY", "").strip():
+        return "mock"
+    return "base"
+
+
 def copy_index(source, target):
     """Consistent snapshot of the separate derived retrieval SQLite, never raw-copy WAL."""
     if target.exists() or source.is_symlink() or not source.is_file():
@@ -343,6 +372,9 @@ class Controller:
                 raise ValueError("loaded image identity/runtime mismatch")
 
     def health(self, revision, public=False, web=True):
+        # Explicit model fallback can coexist with the real business backend.
+        # Derive the expected model mode from private configuration before HTTP.
+        expected_mode = expected_runtime_mode(self.root / "releases" / revision)
         endpoints = [("http://127.0.0.1:8297/api/health", "release_revision")]
         frontends = []
         if web:
@@ -375,9 +407,9 @@ class Controller:
                     if body.get(field) != revision:
                         raise ValueError("revision mismatch")
                     if field == "release_revision" and (
-                        body.get("status") != "ok" or body.get("runtime_mode") != "base"
+                        body.get("status") != "ok" or body.get("runtime_mode") != expected_mode
                     ):
-                        raise ValueError("API not ready in real configuration")
+                        raise ValueError("API does not match the configured model runtime")
                 for base in frontends:
                     for path, checksum in checks.items():
                         if hashlib.sha256(fetch(base + path)).hexdigest() != checksum:
@@ -442,14 +474,7 @@ class Controller:
         """Verify the real containers still match recorded revision, bindings and data."""
         release = self.current()
         manifest = self.manifest(release)
-        expected_env = {}
-        for line in (release / "runtime.env").read_text().splitlines():
-            if not line.strip() or line.lstrip().startswith("#"):
-                continue
-            name, separator, value = line.partition("=")
-            if not separator or not re.fullmatch(r"[A-Z0-9_]+", name):
-                raise ValueError("runtime environment must use literal Docker NAME=value lines")
-            expected_env[name] = value
+        expected_env = runtime_environment(release)
         for role, port, inside in (("api", "8297", "8297/tcp"), ("web", "5196", "8080/tcp")):
             container = json.loads(
                 self.command(
@@ -655,7 +680,12 @@ class Controller:
         self.validate_active(state)
         if state["current"] == revision:
             self.health(revision, public=True)
-            return {"status": "already_active", "revision": revision}
+            return {
+                "status": "already_active",
+                "revision": revision,
+                "runtime_mode": expected_runtime_mode(self.current()),
+                "providers": "not_exercised",
+            }
         release = self.root / "releases" / revision
         archive = self.root / "incoming" / f"{run_id}-{revision}.tar.gz"
         if archive.is_symlink() or not archive.is_file():
@@ -723,6 +753,7 @@ class Controller:
             "artifact_sha256": checksum,
             "backup": backup_name,
             "checks": "local_and_public_health_revision",
+            "runtime_mode": expected_runtime_mode(release),
             "providers": "not_exercised",
         }
 
@@ -732,7 +763,12 @@ class Controller:
             tx["run_id"] = max(run_id, tx["run_id"])
             with recovery_signals():
                 self.restore(tx)
-            return {"status": "interrupted_transaction_recovered", "revision": tx["old"]["current"]}
+            return {
+                "status": "interrupted_transaction_recovered",
+                "revision": tx["old"]["current"],
+                "runtime_mode": expected_runtime_mode(self.current()),
+                "providers": "not_exercised",
+            }
         state = self.state()
         if run_id < state["last_run_id"]:
             raise ValueError("stale workflow run rejected")
@@ -757,6 +793,8 @@ class Controller:
             "status": "rolled_back",
             "revision": revision,
             "database": "retained_without_downgrade",
+            "runtime_mode": expected_runtime_mode(release),
+            "providers": "not_exercised",
         }
 
 
