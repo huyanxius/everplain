@@ -46,7 +46,7 @@ export function ApplicationFrame(props: ApplicationFrameProps) {
         <aside ref={props.sidebarRef} id="application-sidebar" className="application-sidebar" aria-label={props.sidebarLabel} role={narrow ? 'dialog' : undefined} aria-modal={narrow && drawerOpen || undefined} aria-hidden={narrow && !drawerOpen || undefined} inert={narrow && !drawerOpen} onClick={event => { if (narrow && (event.target as HTMLElement).closest('a[href], [data-close-navigation]')) props.onDismiss() }}>
           {props.splitRail && !narrow ? <>
             <div className="application-icon-rail">
-              <div className="application-sidebar__top">{props.brand}{props.toggle}</div>
+              <div className="application-sidebar__top">{props.brand}</div>
               <div className="application-sidebar__scroll">
                 <div className="application-sidebar__new">{props.newConversation}</div>
                 <div className="application-sidebar__navigation">{props.navigation}{props.secondaryNavigation}</div>
@@ -69,6 +69,7 @@ export function ApplicationFrame(props: ApplicationFrameProps) {
         </aside>
       </>}
       <div className="application-frame__body" inert={!immersive && narrow && drawerOpen}>
+        {!immersive && props.splitRail && !narrow && <div className="application-frame__rail-toggle">{props.toggle}</div>}
         {!immersive && <header className="application-frame__mobile">{props.mobileHeader}<div ref={setMobileHeaderTarget} className="application-frame__mobile-context" /></header>}
         <main id="main-content" tabIndex={-1} className="application-frame__main" data-workspace={workspace} data-wide={wide || immersive} inert={!immersive && narrow && drawerOpen}>
           {props.children}
