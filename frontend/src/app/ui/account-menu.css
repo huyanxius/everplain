@@ -1,5 +1,5 @@
 .application-account-menu { flex: 1; min-width: 0; width: 100%; }
-.account-menu { position: absolute; z-index: 70; bottom: calc(100% + var(--qx-space-2)); left: 0; display: grid; gap: var(--qx-space-1); width: min(320px, calc(100vw - var(--qx-space-8))); max-height: calc(var(--app-viewport-height, 100dvh) - var(--qx-action-height) * 2 - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; padding: var(--qx-space-2); }
+.account-menu { position: absolute; z-index: 70; bottom: calc(100% + var(--qx-space-2)); left: 0; display: grid; gap: var(--qx-space-1); width: min(260px, calc(100vw - var(--qx-space-8))); max-height: calc(var(--app-viewport-height, 100dvh) - var(--qx-action-height) * 2 - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; padding: var(--qx-space-2); text-align: left; }
 .account-menu__identity { display: flex; align-items: center; gap: var(--qx-space-3); padding: var(--qx-space-3) var(--qx-space-2); margin-bottom: var(--qx-space-1); }
 .account-menu__identity > .agent-avatar { flex: none; }
 .account-menu__identity > div { display: grid; gap: var(--qx-space-1); min-width: 0; }
