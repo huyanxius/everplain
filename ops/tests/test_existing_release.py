@@ -1,11 +1,14 @@
 """Synthetic existing-container update; no network, Docker, secrets, or production."""
 
+import hashlib
 import importlib.util
+import io
 import json
 import shutil
 import sqlite3
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -150,6 +153,8 @@ class ExistingReleaseTests(unittest.TestCase):
             patch.object(release.shutil, "disk_usage", side_effect=self.disk_usage),
             patch.object(release, "metadata", side_effect=self.metadata),
             patch.object(release, "unpack", side_effect=self.unpack),
+            patch.object(release, "reusable_stage", return_value=None),
+            patch.object(release, "inspect_image_archive"),
             patch.object(release, "run", side_effect=self.command),
             patch.object(release.Controller, "health", side_effect=self.health),
             patch.object(release, "public_health", side_effect=self.public),
@@ -264,6 +269,64 @@ class ExistingReleaseTests(unittest.TestCase):
         ):
             release.run(["fixture", "synthetic-private-value"])
         self.assertNotIn("synthetic-private-value", str(error.exception))
+
+    def test_reusable_stage_rechecks_payload_and_rejects_transaction_or_modified_files(self):
+        base = self.root / "stages"
+        stage = base / (release.REVISION[:8] + "-fixture")
+        target = stage / "releases" / release.REVISION
+        target.mkdir(parents=True)
+        stage.chmod(0o700)
+        (target / "backend").mkdir()
+        (target / "payload").write_bytes(b"immutable")
+        (stage / "release.tar.gz").write_bytes(b"archive")
+        manifest = {
+            "files": {"payload": release.digest(target / "payload")},
+            "migration_tree": release.tree_hash(target / "backend"),
+        }
+        (target / "manifest.json").write_text(json.dumps(manifest))
+        with (
+            patch.object(release, "ARCHIVE_SHA256", release.digest(stage / "release.tar.gz")),
+            patch.object(release, "validate_manifest", return_value=manifest),
+        ):
+            self.assertEqual(release.reusable_stage(base)[0], stage)
+            for item in ("data", "backups", "transaction.json"):
+                marker = stage / item
+                marker.touch()
+                self.assertIsNone(release.reusable_stage(base))
+                marker.unlink()
+            (target / "payload").write_bytes(b"changed")
+            with self.assertRaises(RuntimeError):
+                release.reusable_stage(base)
+
+    def test_archive_format_and_image_identity_are_only_boolean_diagnostics(self):
+        path = self.root / "image.tar"
+        config = b'{"architecture":"amd64","os":"linux"}'
+        image_id = "sha256:" + hashlib.sha256(config).hexdigest()
+        with tarfile.open(path, "w") as archive:
+            for name, content in (("oci-layout", b"{}"), ("blobs/sha256/" + image_id[7:], config)):
+                info = tarfile.TarInfo(name)
+                info.size = len(content)
+                archive.addfile(info, io.BytesIO(content))
+        report = {}
+        release.inspect_image_archive(path, image_id, report, "api")
+        self.assertTrue(report["api_archive_config_matches_image"])
+        self.assertTrue(report["api_archive_linux_amd64"])
+        self.assertTrue(report["api_archive_oci_layout"])
+        self.assertFalse(report["api_archive_docker_manifest"])
+        self.assertTrue(all(type(value) is bool for value in report.values()))
+
+    def test_failed_preflight_reports_only_known_field_flags(self):
+        value = {"invalid_fields": ["EVERPLAIN_SESSION_COOKIE_SECURE", "private-field-value"]}
+        result = subprocess.CompletedProcess([], 1, json.dumps(value), "private-value")
+        report = {}
+        with (
+            patch.object(release.subprocess, "run", return_value=result),
+            self.assertRaises(RuntimeError),
+        ):
+            release.run(["fixture"], report=report, prefix="configuration_")
+        self.assertTrue(report["invalid_session_cookie_secure"])
+        self.assertTrue(report["invalid_other_configuration"])
+        self.assertNotIn("private", json.dumps(report))
 
     def test_workflow_reuses_fixed_artifact_without_application_build(self):
         text = (ROOT / ".github/workflows/publish-checked-candidate.yml").read_text()

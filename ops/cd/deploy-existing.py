@@ -15,12 +15,13 @@ import signal
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import urllib.request
 from pathlib import Path
 
-from artifact import MAX_BYTES, unpack
+from artifact import MAX_BYTES, digest, tree_hash, unpack, validate_manifest
 from deploy import Controller, atomic_bytes, copy_index, expected_runtime_mode
 
 REVISION = "0dae10baff6a78cb0e12f67cc6f5ad153336a8a4"
@@ -37,12 +38,117 @@ def require(condition):
         raise RuntimeError("checked release precondition failed")
 
 
-def run(args, timeout=180):
+def run(args, timeout=180, report=None, prefix=""):
     result = subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)
+    if report is not None:
+        error = result.stderr.lower()
+        report.update(
+            {
+                prefix + "command_succeeded": result.returncode == 0,
+                prefix + "exit_1": result.returncode == 1,
+                prefix + "no_space": "no space left" in error,
+                prefix + "missing_file": "no such file" in error,
+                prefix + "permission_denied": "permission denied" in error,
+                prefix + "unsupported_format": any(
+                    word in error
+                    for word in ("unsupported", "invalid tar", "invalid argument", "unrecognized")
+                ),
+            }
+        )
+        if prefix == "configuration_":
+            allowed = set(
+                [
+                    "MODEL_BASE_URL",
+                    "MODEL_NAME",
+                    "MODEL_API_KEY",
+                    "EMBEDDING_BASE_URL",
+                    "EMBEDDING_MODEL",
+                    "EMBEDDING_API_KEY",
+                    "RERANKER_BASE_URL",
+                    "RERANKER_MODEL",
+                    "RERANKER_API_KEY",
+                    "WEB_SEARCH_API_KEY",
+                    "WEB_SEARCH_PROFILE",
+                    "WEB_SEARCH_BASE_URL",
+                    "ACCOUNT_INITIAL_ADMIN_EMAIL",
+                    "ACCOUNT_INITIAL_ADMIN_PASSWORD",
+                    "RESEND_API_KEY",
+                    "EMAIL_FROM",
+                    "TRANSCRIPTION_API_KEY",
+                    "TRANSCRIPTION_BASE_URL",
+                    "TRANSCRIPTION_MODEL",
+                    "RUNTIME_MODE",
+                    "SESSION_COOKIE_SECURE",
+                    "SESSION_COOKIE_NAME",
+                    "DATABASE_URL",
+                    "CORS_ALLOWED_ORIGINS",
+                    "MODEL_FALLBACKS",
+                    "SETTINGS_FORMAT",
+                ]
+            )
+            try:
+                fields = set(json.loads(result.stdout)["invalid_fields"])
+                for name in allowed:
+                    report["invalid_" + name.lower()] = "EVERPLAIN_" + name in fields
+                report["invalid_other_configuration"] = bool(
+                    fields - {"EVERPLAIN_" + name for name in allowed}
+                )
+            except (ValueError, TypeError, KeyError):
+                report["configuration_report_unrecognized"] = True
     if result.returncode:
         # Never print argv/output: inspect and preflight can contain private configuration.
         raise RuntimeError("checked release command failed")
     return result.stdout
+
+
+def reusable_stage(base):
+    for stage in sorted(
+        base.glob(REVISION[:8] + "-*"), key=lambda p: p.stat().st_mtime_ns, reverse=True
+    ):
+        if (
+            not stage.is_dir()
+            or stage.is_symlink()
+            or stage.stat().st_uid != os.geteuid()
+            or stage.stat().st_mode & 0o077
+            or any(
+                (stage / name).exists() or (stage / name).is_symlink()
+                for name in ("transaction.json", "data", "backups")
+            )
+        ):
+            continue
+        frozen, release = stage / "release.tar.gz", stage / "releases" / REVISION
+        require(release.resolve() == release and release.is_dir())
+        if not frozen.is_file() or frozen.is_symlink() or digest(frozen) != ARCHIVE_SHA256:
+            continue
+        manifest = validate_manifest(json.loads((release / "manifest.json").read_text()), REVISION)
+        require(not any(p.is_symlink() for p in release.rglob("*")))
+        require(
+            all(digest(release / name) == checksum for name, checksum in manifest["files"].items())
+        )
+        require(tree_hash(release / "backend") == manifest["migration_tree"])
+        return stage, manifest
+    return None
+
+
+def inspect_image_archive(path, expected, report, role):
+    with tarfile.open(path, "r") as archive:
+        names = set(archive.getnames())
+        report[f"{role}_archive_docker_manifest"] = "manifest.json" in names
+        report[f"{role}_archive_oci_layout"] = "oci-layout" in names
+        image_hash = expected.removeprefix("sha256:")
+        options = [image_hash + ".json", "blobs/sha256/" + image_hash]
+        config_name = next((name for name in options if name in names), None)
+        report[f"{role}_archive_config_matches_image"] = False
+        report[f"{role}_archive_linux_amd64"] = False
+        if config_name:
+            data = archive.extractfile(config_name).read(2 * 1024**2)
+            report[f"{role}_archive_config_matches_image"] = (
+                hashlib.sha256(data).hexdigest() == image_hash
+            )
+            config = json.loads(data)
+            report[f"{role}_archive_linux_amd64"] = (
+                config.get("architecture") == "amd64" and config.get("os") == "linux"
+            )
 
 
 def metadata(name):
@@ -148,6 +254,18 @@ class ExistingRelease:
             name: False
             for name in (
                 "artifact_verified",
+                "staged_artifact_reused",
+                "copy_budget_verified",
+                "stage_load_budget_verified",
+                "docker_load_budget_verified",
+                "api_load_started",
+                "api_image_verified",
+                "web_load_started",
+                "web_image_verified",
+                "runtime_mode_verified",
+                "configuration_verified",
+                "backup_budget_verified",
+                "service_stop_started",
                 "live_layout_verified",
                 "backup_complete",
                 "migration_complete",
@@ -216,17 +334,26 @@ class ExistingRelease:
         archive_bytes = self.archive.stat().st_size
         require(archive_bytes <= MAX_BYTES)
         reserve = 512 * 1024**2
-        # Reserve the entire bounded unpack allowance before copying or extracting.
-        require(
-            shutil.disk_usage(self.base).free > archive_bytes + MAX_BYTES + data_bytes * 3 + reserve
-        )
-        self.stage = Path(tempfile.mkdtemp(prefix=REVISION[:8] + "-", dir=self.base))
+        cached = reusable_stage(self.base)
+        if cached:
+            self.stage, manifest = cached
+            self.report["staged_artifact_reused"] = True
+            frozen = self.stage / "release.tar.gz"
+            release = self.stage / "releases" / REVISION
+        else:
+            # Reserve the entire bounded unpack allowance before copying or extracting.
+            require(
+                shutil.disk_usage(self.base).free
+                > archive_bytes + MAX_BYTES + data_bytes * 3 + reserve
+            )
+            self.report["copy_budget_verified"] = True
+            self.stage = Path(tempfile.mkdtemp(prefix=REVISION[:8] + "-", dir=self.base))
+            frozen = self.stage / "release.tar.gz"
+            shutil.copyfile(self.archive, frozen)
+            release = self.stage / "releases" / REVISION
+            release.parent.mkdir()
+            manifest = unpack(frozen, release, REVISION, ARCHIVE_SHA256)
         self.old_names = {role: NAMES[role] + "-before-" + self.stage.name for role in NAMES}
-        frozen = self.stage / "release.tar.gz"
-        shutil.copyfile(self.archive, frozen)
-        release = self.stage / "releases" / REVISION
-        release.parent.mkdir()
-        manifest = unpack(frozen, release, REVISION, ARCHIVE_SHA256)
         require(manifest["images"] == {"api": API_IMAGE, "web": WEB_IMAGE})
         self.report["artifact_verified"] = True
         image_bytes = sum(
@@ -237,18 +364,29 @@ class ExistingRelease:
         require(docker_root.is_absolute() and docker_root.is_dir())
         # Check both destinations with a combined budget, including on shared filesystems.
         require(shutil.disk_usage(self.base).free > remaining_budget)
+        self.report["stage_load_budget_verified"] = True
         require(shutil.disk_usage(docker_root).free > remaining_budget)
+        self.report["docker_load_budget_verified"] = True
         for role, image in (("api", API_IMAGE), ("web", WEB_IMAGE)):
-            run(["docker", "load", "--input", str(release / "images" / (role + ".tar"))])
+            archive_path = release / "images" / (role + ".tar")
+            inspect_image_archive(archive_path, image, self.report, role)
+            self.report[role + "_load_started"] = True
+            run(
+                ["docker", "load", "--input", str(archive_path)],
+                report=self.report,
+                prefix=role + "_load_",
+            )
             info = json.loads(run(["docker", "image", "inspect", image]))[0]
             require(info["Architecture"] == "amd64" and info["Os"] == "linux")
             require(info["Config"]["Labels"].get("org.opencontainers.image.revision") == REVISION)
+            self.report[role + "_image_verified"] = True
         env = environment(api)
         env.update(EVERPLAIN_RELEASE_REVISION=REVISION, EVERPLAIN_MIGRATIONS_MANAGED="1")
         atomic_bytes(
             release / "runtime.env", "".join(k + "=" + v + "\n" for k, v in env.items()).encode()
         )
         mode = expected_runtime_mode(release)
+        self.report["runtime_mode_verified"] = True
         run(
             [
                 "docker",
@@ -262,12 +400,16 @@ class ExistingRelease:
                 "python",
                 API_IMAGE,
                 "/app/ops/preflight.py",
-            ]
+            ],
+            report=self.report,
+            prefix="configuration_",
         )
+        self.report["configuration_verified"] = True
         require(
             shutil.disk_usage(self.base).free
             > frozen.stat().st_size * 3 + sum(p.stat().st_size for p in source.iterdir()) * 3
         )
+        self.report["backup_budget_verified"] = True
         self.record()
         if (
             self.old_revision == REVISION
@@ -289,6 +431,7 @@ class ExistingRelease:
         try:
             # Only these exact Everplain containers are stopped; old containers/config stay intact.
             self.stopped = True
+            self.report["service_stop_started"] = True
             run(["docker", "stop", "--time", "45", NAMES["web"], NAMES["api"]])
             self.record()
             backups, data = self.stage / "backups", self.stage / "data"
