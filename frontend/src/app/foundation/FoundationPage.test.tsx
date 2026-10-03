@@ -45,6 +45,21 @@ describe('Everplain product website', () => {
     expect(destination.searchParams.get('prompt')).toBe('我的收藏 & 城市记忆？')
   })
 
+  it('provides the official repository and Gmail contact in the footer', () => {
+    render(<MemoryRouter><FoundationPage /></MemoryRouter>)
+    const footer = screen.getByRole('contentinfo')
+    const repository = within(footer).getByRole('navigation', { name: '代码仓库' })
+    const github = within(repository).getByRole('link', { name: 'Everplain · GitHub（在新窗口打开）' })
+    expect(github).toHaveAttribute('href', 'https://github.com/huyanxius/everplain')
+    expect(github).toHaveAttribute('target', '_blank')
+    expect(github).toHaveAttribute('rel', 'noopener noreferrer')
+    const contact = within(footer).getByRole('region', { name: '联系我们' })
+    expect(within(contact).getByRole('link', { name: 'huyanxius@gmail.com' })).toHaveAttribute('href', 'mailto:huyanxius@gmail.com')
+    expect(within(footer).getByRole('link', { name: 'Everplain' })).toHaveAttribute('href', '/welcome')
+    expect(within(footer).getByText('© 2026 Everplain')).toBeVisible()
+    expect(within(footer).getAllByRole('link')).toHaveLength(3)
+  })
+
   it('opens the conversation directly for a signed-in visitor, from the closing composer too', () => {
     render(<MemoryRouter><FoundationPage authenticated /><Location /></MemoryRouter>)
     expect(screen.getByRole('link', { name: '工作台' })).toHaveAttribute('href', '/app')

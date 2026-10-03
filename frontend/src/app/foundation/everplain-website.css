@@ -174,10 +174,17 @@
 .ep-text-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 20px; font-size: var(--qx-text-control); color: var(--ep-ink-2); }
 .ep-text-link:hover { color: var(--ep-ink); }
 
-.ep-footer { padding: 32px clamp(20px,5vw,72px); display: flex; align-items: center; gap: 24px; border-top: 1px solid var(--ep-line); color: var(--ep-muted); font-size: var(--qx-text-control); }
+.ep-footer { padding: 48px clamp(20px,5vw,72px); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 32px; border-top: 1px solid var(--ep-line); color: var(--ep-muted); font-size: var(--qx-text-control); }
+.ep-footer__brand { display: grid; justify-items: start; gap: 12px; }
 .ep-footer .ep-brand { color: var(--ep-ink); font-size: var(--qx-text-title); }
 .ep-footer .ep-brand-mark { width: 24px; height: 24px; }
-.ep-footer small { margin-left: auto; font-size: var(--qx-text-meta); }
+.ep-footer small { font-size: var(--qx-text-meta); }
+.ep-footer__column { min-width: 0; }
+.ep-footer__column h2 { margin-bottom: 12px; color: var(--ep-ink); font-family: var(--ep-sans); font-size: var(--qx-text-control); font-weight: 600; letter-spacing: normal; }
+.ep-footer__column a { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; max-width: 100%; overflow-wrap: anywhere; }
+.ep-footer__column a:hover { color: var(--ep-ink); text-decoration: underline; text-underline-offset: 4px; }
+.ep-footer__column a svg { flex: none; }
+.ep-footer address { margin: 0; font-style: normal; }
 
 @media (max-width: 960px) {
   .ep-act-head { grid-template-columns: 1fr; gap: 16px; }
@@ -200,8 +207,8 @@
   .ep-orbit-tile img { width: 22px; height: 22px; }
   .ep-orbit-tile strong { font-size: var(--qx-text-meta); }
   .ep-models h2 br { display: none; }
-  .ep-footer { flex-wrap: wrap; gap: 12px 20px; }
-  .ep-footer small { margin-left: 0; width: 100%; }
+  .ep-footer { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-block: 32px; }
+  .ep-footer__column h2 { margin-bottom: 4px; }
 }
 @media (prefers-reduced-motion: reduce) { .ep-crew__bot, .ep-char { animation: none !important; } .ep-char--out { display: none; } }
 @media (prefers-reduced-motion: reduce) {
