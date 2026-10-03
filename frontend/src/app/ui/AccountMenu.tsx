@@ -82,8 +82,8 @@ export function AccountMenu({ userId, accountName, onOpen }: { userId: string; a
         <AgentAvatar avatar={avatar.id} color={chosen?.color} size={32} state="idle" />
         <div><strong>{accountName}</strong><span className="qx-meta" aria-live="polite">{planName}{planState ? ` · ${planState}` : ''}</span></div>
       </div>
-      <button className="qx-item" role="menuitem" type="button" onClick={() => { trigger.current?.focus(); setOpen(false); setIdentityTab('identity'); setIdentityOpen(true) }}><NavIcon name="user" /><span>{text('编辑角色', 'Edit identity')}</span></button>
-      <button className="qx-item" role="menuitem" type="button" onClick={() => { trigger.current?.focus(); setOpen(false); setIdentityTab('memory'); setIdentityOpen(true) }}><NavIcon name="library" /><span>{text('记忆', 'Memory')}</span></button>
+      <button className="qx-item" role="menuitem" type="button" onClick={() => { trigger.current?.focus(); setOpen(false); setIdentityTab('identity'); setIdentityOpen(true) }}><NavIcon name="user" /><span>{text('Soul · 人格', 'Soul')}</span></button>
+      <button className="qx-item" role="menuitem" type="button" onClick={() => { trigger.current?.focus(); setOpen(false); setIdentityTab('memory'); setIdentityOpen(true) }}><NavIcon name="library" /><span>{text('Memory · 记忆', 'Memory')}</span></button>
       <Link className="qx-item account-menu__usage" role="menuitem" to="/subscription" onClick={() => setOpen(false)}>
         <NavIcon name="graph" /><span>{text('剩余使用额度', 'Remaining allowance')}</span>
         {buckets.length ? <span className="account-menu__buckets">{buckets.map(bucket => <small key={bucket.id}>

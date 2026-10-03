@@ -1130,6 +1130,11 @@
             "title": "Setup Step",
             "type": "integer"
           },
+          "soul_text": {
+            "default": "",
+            "title": "Soul Text",
+            "type": "string"
+          },
           "speaking_style": {
             "title": "Speaking Style",
             "type": "string"
@@ -1239,6 +1244,18 @@
               }
             ],
             "title": "Setup Step"
+          },
+          "soul_text": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Soul Text"
           },
           "speaking_style": {
             "anyOf": [

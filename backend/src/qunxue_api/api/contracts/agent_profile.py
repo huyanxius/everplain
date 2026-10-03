@@ -26,6 +26,7 @@ class AgentProfileUpdate(BaseModel):
     avatar_id: Literal["cheng", "nian", "qi", "shi", "heng", "ruo", "you"] | None = None
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     speaking_style: Literal["clear", "warm", "rigorous", "curious"] | None = None
+    soul_text: str | None = Field(default=None, max_length=8000)
     setup_step: int | None = Field(default=None, ge=0, le=4)
     setup_completed: bool | None = None
     questionnaire: Questionnaire | None = None
@@ -43,6 +44,7 @@ class AgentProfileResponse(BaseModel):
     avatar_id: str
     color: str
     speaking_style: str
+    soul_text: str = ""
     setup_step: int
     setup_completed: bool
     questionnaire: Questionnaire

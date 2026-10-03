@@ -93,7 +93,7 @@ describe('AccountMenu', () => {
   })
 })
 
-it.each([['编辑角色', 'identity'], ['记忆', 'memory']])('opens %s directly from the lower-left avatar without navigating', async (label, tab) => {
+it.each([['Soul · 人格', 'identity'], ['Memory · 记忆', 'memory']])('opens %s directly from the lower-left avatar without navigating', async (label, tab) => {
   const { trigger } = setup()
   fireEvent.click(trigger)
   fireEvent.click(screen.getByRole('menuitem', { name: label }))

@@ -1,4 +1,5 @@
 import { ArrowsClockwiseIcon } from '@phosphor-icons/react'
+import { AgentSoulEditor } from './AgentSoulEditor'
 import { AgentAvatar, agentAvatarPresets } from '../agent-avatar'
 import { settingsAgentColors, settingsSpeakingStyles, useAgentSettingsController } from './useAgentSettingsController'
 
@@ -57,11 +58,12 @@ export function AgentSettingsPanel({ userId, active, text, onResetAgent }: {
           {settingsSpeakingStyles.map(style => <button type="button" key={style.id} aria-pressed={draft.style === style.id} disabled={flow.pending} onClick={() => flow.patch({ style: style.id })}>{text(style.zh, style.en)}</button>)}
         </div>
       </div>
+      <AgentSoulEditor flow={flow} text={text} />
       {flow.error ? <p className="qx-notice qx-notice--danger" role="alert">{flow.error}</p> : null}
       <div className="ep-settings-agent__actions">
         {onResetAgent ? <button className="qx-btn qx-btn--ghost" type="button" disabled={flow.pending} aria-label={text('重新设置我的 AI 伙伴', 'Set up my AI companion again')} onClick={onResetAgent}><ArrowsClockwiseIcon aria-hidden="true" />{text('重新走一遍', 'Repeat setup')}</button> : null}
         {flow.saved ? <span className="qx-meta" role="status">{text('已保存', 'Saved')}</span> : null}
-        <button className="qx-btn qx-btn--primary" type="submit" disabled={flow.pending}>{flow.pending ? text('正在保存…', 'Saving…') : text('保存 Agent', 'Save Agent')}</button>
+        <button className="qx-btn qx-btn--primary" type="submit" disabled={flow.pending || !!flow.conflict}>{flow.pending ? text('正在保存…', 'Saving…') : text('保存 Agent', 'Save Agent')}</button>
       </div>
     </form>
   </div>
