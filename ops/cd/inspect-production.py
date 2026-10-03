@@ -21,6 +21,67 @@ CHECKED_IMAGES = {
     "web": "sha256:d7fa4418995958435e783f23d627be4542bf4aa6ba0c9b0d805f56c3338ff8d3",
 }
 
+DATA_PRESENCE_SCRIPT = r"""
+import contextlib,json,os,re,sqlite3
+result = {key: False for key in (
+    "data_presence_verified", "account_records_present", "auth_state_present",
+    "business_records_present", "initialization_records_present",
+    "registration_email_configured", "initial_admin_configured")}
+try:
+    connection = sqlite3.connect("file:/data/everplain.db?mode=ro", uri=True, timeout=5)
+    with contextlib.closing(connection) as db:
+        db.execute("PRAGMA query_only=ON")
+        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        assert {"users", "alembic_version"} <= tables
+        initialization = {"alembic_version", "account_system_state", "sqlite_sequence"}
+        # FTS shadow tables contain internal rows even when the searchable table is empty.
+        initialization.update(row[1] for row in db.execute("PRAGMA table_list")
+                              if row[2] == "shadow")
+        auth = {"user_sessions", "registration_verifications", "account_password_resets",
+                "account_mutation_requests", "account_audit_events", "user_preferences"}
+        present = set()
+        for table in tables:
+            assert re.fullmatch(r"[a-z][a-z0-9_]*", table)
+            if not table.startswith("sqlite_") and db.execute(
+                    'SELECT 1 FROM "' + table + '" LIMIT 1').fetchone() is not None:
+                present.add(table)
+        result["account_records_present"] = "users" in present
+        result["auth_state_present"] = bool(present & auth)
+        result["initialization_records_present"] = bool(present & initialization)
+        result["business_records_present"] = bool(present - initialization - auth - {"users"})
+    result["registration_email_configured"] = bool(
+        os.environ.get("EVERPLAIN_RESEND_API_KEY", "").strip()
+        and "@" in os.environ.get("EVERPLAIN_EMAIL_FROM", ""))
+    result["initial_admin_configured"] = bool(
+        "@" in os.environ.get("EVERPLAIN_ACCOUNT_INITIAL_ADMIN_EMAIL", "")
+        and len(os.environ.get("EVERPLAIN_ACCOUNT_INITIAL_ADMIN_PASSWORD", "")) >= 12)
+    result["data_presence_verified"] = True
+except Exception:
+    pass
+print(json.dumps(result))
+"""
+
+
+def inspect_data_presence():
+    try:
+        value = json.loads(
+            read_command(["docker", "exec", "everplain-api", "python", "-c", DATA_PRESENCE_SCRIPT])
+        )
+        allowed = {
+            "data_presence_verified",
+            "account_records_present",
+            "auth_state_present",
+            "business_records_present",
+            "initialization_records_present",
+            "registration_email_configured",
+            "initial_admin_configured",
+        }
+        if set(value) == allowed and all(type(item) is bool for item in value.values()):
+            return value
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        pass
+    return {"data_presence_verified": False}
+
 
 def read_command(args):
     result = subprocess.run(args, capture_output=True, text=True, timeout=20, check=False)
@@ -287,6 +348,7 @@ def inspect():
         **inspect_upload(),
         **inspect_release(),
         **inspect_upstream(),
+        **inspect_data_presence(),
     }
 
 
