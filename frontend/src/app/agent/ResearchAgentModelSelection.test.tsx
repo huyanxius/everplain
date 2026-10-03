@@ -20,10 +20,9 @@ function mount(userId = 'owner', entry = '/agent') {
 }
 
 async function openSettings() {
-  fireEvent.click(await screen.findByRole('button', { name: '添加研究材料' }))
-  fireEvent.click(await screen.findByRole('button', { name: '模型设置' }))
+  fireEvent.click(await screen.findByRole('button', { name: /模型与思考强度/ }))
 }
-function closeTools() { fireEvent.click(screen.getByRole('button', { name: '添加研究材料' })) }
+function closeTools() { fireEvent.click(screen.getByRole('button', { name: /模型与思考强度/ })) }
 function submit(question: string) {
   const input = screen.getByRole('textbox', { name: '问 Everplain' })
   fireEvent.change(input, { target: { value: question } })
@@ -44,18 +43,29 @@ function setup(options: { catalog?: unknown; catalogStatus?: number; conversatio
 }
 
 describe('conversation model selection integration', () => {
-  it('keeps Research scope controls inside the composer and preserves Chat tools', async () => {
+  it('keeps Chat a single input row and places Research tools on a separate base', async () => {
     setup()
     mount()
+    const input = screen.getByRole('textbox', { name: '问 Everplain' })
+    const form = input.closest('form')!
+    const summary = await screen.findByRole('button', { name: /GPT 6 Luna · 中/ })
+    expect(summary.closest('.conversation-composer__row')).toContainElement(screen.getByRole('button', { name: '发送给 Everplain' }))
+    expect(summary.closest('.conversation-composer__model')?.nextElementSibling).toBe(screen.getByRole('button', { name: '发送给 Everplain' }))
+    expect(form.querySelector('.conversation-composer__toolbar')).toBeNull()
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: '研究工具栏' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '查看材料库' })).not.toBeInTheDocument()
+    expect(screen.queryByText('问题示例')).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Chat' })).toHaveTextContent('对话')
     fireEvent.click(screen.getByRole('tab', { name: 'Research' }))
     const toolbar = await screen.findByRole('group', { name: '研究工具栏' })
-    const form = screen.getByRole('textbox', { name: '问 Everplain' }).closest('form')
-    expect(form).toContainElement(toolbar)
-    expect(toolbar.closest('.conversation-composer__toolbar')).toBeInTheDocument()
+    expect(form).not.toContainElement(toolbar)
+    expect(toolbar).toHaveClass('cv-research-base')
+    expect(screen.getByRole('button', { name: '查看材料库' })).toBeVisible()
     expect(screen.getAllByRole('group', { name: '研究工具栏' })).toHaveLength(1)
     fireEvent.click(screen.getByRole('tab', { name: 'Chat' }))
     expect(screen.queryByRole('group', { name: '研究工具栏' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '添加研究材料' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '添加附件' })).toBeVisible()
   })
 
   it.each(['Chat', 'Research'])('makes the server subset reachable in %s and keeps the draft while changing it', async mode => {
@@ -68,6 +78,7 @@ describe('conversation model selection integration', () => {
     expect(slider).toHaveAttribute('max', '2')
     expect(screen.queryByText('最高')).not.toBeInTheDocument()
     fireEvent.change(slider, { target: { value: '2' } })
+    expect(screen.getByRole('button', { name: /模型与思考强度/ })).toHaveTextContent('GPT 6 Luna · 高')
     expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('保留这份草稿')
     closeTools()
     submit('保留这份草稿')

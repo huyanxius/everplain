@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useAppLocale } from '../../i18n/AppLocaleProvider'
 
 export function AgentModeSwitch({ mode, disabled, avatar, onChange, children }: {
   mode: 'standard' | 'deep-research'
@@ -7,16 +8,17 @@ export function AgentModeSwitch({ mode, disabled, avatar, onChange, children }: 
   onChange: (mode: 'standard' | 'deep-research') => void
   children?: ReactNode
 }) {
+  const { text } = useAppLocale()
   return <div className="cv-mode-switch">
     <div className="qx-segmented cv-mode-switch__tabs" role="tablist" aria-label="Chat / Research">
       <button type="button" role="tab" aria-label="Chat" aria-selected={mode === 'standard'} disabled={disabled}
         onClick={() => onChange('standard')} onKeyDown={event => {
           if (!disabled && event.key === 'ArrowRight') { event.preventDefault(); onChange('deep-research'); (event.currentTarget.nextElementSibling as HTMLButtonElement)?.focus() }
-        }}>{avatar}</button>
+        }}>{avatar}<span>{text('对话', 'Chat')}</span></button>
       <button type="button" role="tab" aria-label="Research" aria-selected={mode === 'deep-research'} disabled={disabled}
         onClick={() => onChange('deep-research')} onKeyDown={event => {
           if (!disabled && event.key === 'ArrowLeft') { event.preventDefault(); onChange('standard'); (event.currentTarget.previousElementSibling as HTMLButtonElement)?.focus() }
-        }}>Research</button>
+        }}>{text('研究', 'Research')}</button>
     </div>
     {children}
   </div>

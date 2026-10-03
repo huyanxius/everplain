@@ -24,6 +24,8 @@ export type ConversationComposerProps = {
   attachmentPicker?: ReactNode
   context?: ReactNode
   toolbar?: ReactNode
+  modelSelector?: ReactNode
+  researchLayout?: boolean
   onChange: (value: string) => void
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
@@ -64,7 +66,7 @@ function ComposerTools({ anchor, children }: { anchor: RefObject<HTMLButtonEleme
     window.addEventListener('scroll', place, true)
     return () => { window.visualViewport?.removeEventListener('resize', place); window.visualViewport?.removeEventListener('scroll', place); resize?.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); menu.hidePopover?.() }
   }, [anchor])
-  return <div ref={panel} popover="manual" id="conversation-tools" className="qx-menu conversation-composer__menu" role="menu" aria-label="添加研究材料">{children}</div>
+  return <div ref={panel} popover="manual" id="conversation-tools" className="qx-menu conversation-composer__menu" role="menu" aria-label="添加附件">{children}</div>
 }
 
 export function ConversationComposer(props: ConversationComposerProps) {
@@ -72,10 +74,14 @@ export function ConversationComposer(props: ConversationComposerProps) {
     const input = props.inputRef.current
     if (!input) return
     const resize = () => {
+      const form = input.closest('form')
+      if (form) {
+        const narrow = form.clientWidth > 0 && form.clientWidth < 480
+        // Use stable content/container inputs: changing textarea width must not toggle this back and forth.
+        form.dataset.multiline = String(props.value.includes('\n') || props.value.length > 60 || (narrow && props.value.length > 0))
+      }
       input.style.height = 'auto'
       input.style.height = `${Math.min(input.scrollHeight, 240)}px`
-      const form = input.closest('form')
-      if (form) form.dataset.multiline = String(input.scrollHeight > 48)
     }
     resize()
     let width = input.clientWidth
@@ -89,7 +95,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
     props.onUpload(Array.from(event.currentTarget.files ?? []))
     event.currentTarget.value = ''
   }
-  return <form className="conversation-composer" data-mode={props.mode} onSubmit={props.onSubmit}>
+  return <form className="conversation-composer" data-mode={props.mode} data-layout={props.researchLayout || props.mode === 'deep-research' ? 'research' : 'chat'} onSubmit={props.onSubmit}>
     <input hidden ref={props.fileRef} type="file" multiple accept={props.accept} tabIndex={-1} onChange={fileChange} />
     {(props.context || props.attachmentPicker || props.attachments.length > 0 || props.uploading) && <div className="conversation-composer__extras">
     {props.context && <div className="conversation-composer__context">{props.context}</div>}
@@ -104,10 +110,11 @@ export function ConversationComposer(props: ConversationComposerProps) {
     </div>}
     <div className="conversation-composer__row">
       <div className="conversation-composer__tools" ref={props.toolsRef}>
-        <button type="button" ref={props.toolsButtonRef} className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="添加研究材料" aria-expanded={props.toolsOpen} aria-controls="conversation-tools" disabled={props.uploading} onClick={props.onToggleTools}><PlusIcon /></button>
+        <button type="button" ref={props.toolsButtonRef} className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="添加附件" aria-expanded={props.toolsOpen} aria-controls="conversation-tools" disabled={props.uploading} onClick={props.onToggleTools}><PlusIcon /></button>
         {props.toolsOpen && <ComposerTools anchor={props.toolsButtonRef}>{props.tools}</ComposerTools>}
       </div>
       <textarea ref={props.inputRef} aria-label={props.label} placeholder={props.placeholder} maxLength={props.maxLength} rows={1} disabled={props.busy} value={props.value} onChange={event => props.onChange(event.target.value)} onKeyDown={props.onKeyDown} />
+      {props.modelSelector && <div className="conversation-composer__model">{props.modelSelector}</div>}
       <button type={props.canStop ? 'button' : 'submit'} className="qx-btn qx-btn--primary qx-btn--icon conversation-composer__send" aria-label={props.canStop ? '停止生成' : props.busy ? 'Agent 正在加载' : '发送给 Everplain'} disabled={props.busy ? !props.canStop : !props.canSend} onClick={props.canStop ? props.onStop : undefined}>{props.canStop ? <StopIcon weight="fill" /> : <ArrowUpIcon />}</button>
     </div>
     {props.toolbar && <div className="conversation-composer__toolbar">{props.toolbar}</div>}
