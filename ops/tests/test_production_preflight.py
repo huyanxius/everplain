@@ -87,6 +87,9 @@ class InspectionTests(unittest.TestCase):
         probe = patch.object(inspection, "inspect_upload", return_value={})
         probe.start()
         self.addCleanup(probe.stop)
+        release = patch.object(inspection, "inspect_release", return_value={})
+        release.start()
+        self.addCleanup(release.stop)
 
     def test_output_contains_only_booleans_and_no_private_metadata(self):
         result = subprocess.CompletedProcess([], 0, "everplain-api\nprivate-fixture\n", "")
@@ -132,6 +135,48 @@ class InspectionTests(unittest.TestCase):
 
 
 class UploadInspectionTests(unittest.TestCase):
+    def test_release_diagnostic_checks_budget_images_and_file_without_reading_env(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            release = (
+                base / (inspection.REVISION[:8] + "-fixture") / "releases" / inspection.REVISION
+            )
+            release.mkdir(parents=True)
+            release.parents[1].chmod(0o700)
+            (release / "images").mkdir()
+            for role in ("api", "web"):
+                (release / "images" / (role + ".tar")).write_bytes(b"fixture")
+            (release / "runtime.env").write_text("private-env-must-not-be-read")
+            source = base / "private-data"
+            source.mkdir()
+            (source / "everplain.db").write_bytes(b"private-data")
+
+            def command(args):
+                if args[1] == "image":
+                    return "amd64 linux " + inspection.REVISION
+                if args[1] == "inspect":
+                    return json.dumps([{"Source": str(source), "Destination": "/data"}])
+                return str(base)
+
+            with patch.object(inspection, "read_command", side_effect=command):
+                result = inspection.inspect_release(base)
+            self.assertTrue(result["release_api_image_verified"])
+            self.assertTrue(result["release_web_image_verified"])
+            self.assertTrue(result["release_private_env_present"])
+            self.assertNotIn("private-", json.dumps(result))
+
+    def test_release_diagnostic_never_writes_or_outputs_metadata(self):
+        text = (ROOT / "ops/cd/inspect-production.py").read_text()
+        function = text.split("def inspect_release(", 1)[1].split("def upload_snapshot(", 1)[0]
+        self.assertNotIn('"run"', function)
+        self.assertNotIn("write_text", function)
+        self.assertNotIn("unlink", function)
+        self.assertNotIn("Config.Env", function)
+        with tempfile.TemporaryDirectory() as d:
+            result = inspection.inspect_release(Path(d))
+        self.assertEqual(len(result), 4)
+        self.assertTrue(all(type(value) is bool and not value for value in result.values()))
+
     def test_parallel_progress_counts_separate_shards_once(self):
         prefix = Path("/tmp/everplain-candidate.fixture/release.tar.gz")
         shard = prefix.parent / "parts/part-0"
