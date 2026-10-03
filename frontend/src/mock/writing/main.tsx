@@ -6,11 +6,12 @@ import '../../styles/tokens.css'
 import '../../styles/components.css'
 import '../../styles/base.css'
 import './writing.css'
-import { WritingMock } from './WritingMock'
+import { WritingApp } from './WritingHome'
+import './writing-home.css'
 
-/* 写作工作台单页 Mock：只在 vite dev 下以 /writing.html 访问，不接后端。 */
+/* 写作 Mock：/writing.html 是写作首页（文档列表），#/doc/<标题> 是编辑页。不接后端。 */
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <WritingMock />
+    <WritingApp />
   </StrictMode>,
 )

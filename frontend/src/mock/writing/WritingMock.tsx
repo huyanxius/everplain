@@ -71,9 +71,9 @@ const kindLabel: Record<string, string> = { rewrite: '改写', mine: '更像我'
 
 const continuation = '我开始留意城市里别的这种地方：小区门口的修鞋摊，地铁站外卖烤红薯的推车，深夜还亮着灯的打印店。它们都不起眼，却在每天经过的路上，给人一个可以停一下的理由。'
 
-export function WritingMock() {
+export function WritingMock({ title = docs.writing[0], onBack }: { title?: string; onBack?: () => void } = {}) {
   const [paras, setParas] = useState<Para[]>(initialParas)
-  const [doc, setDoc] = useState(docs.writing[0])
+  const [doc, setDoc] = useState(title)
   const [status, setStatus] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('collab')
   const [revisions, setRevisions] = useState<Revision[]>([])
@@ -224,7 +224,7 @@ export function WritingMock() {
 
       <div className="wr-workbench">
         <header className="wr-top">
-          <DocSwitcher value={doc} onChange={(d) => { setDoc(d); reset() }} />
+          <DocSwitcher value={doc} onChange={(d) => { setDoc(d); reset() }} onBack={onBack} />
           <div className="wr-format" role="toolbar" aria-label="排版">
             <button type="button" aria-label="标题"><TextHOneIcon /></button>
             <button type="button" aria-label="加粗"><TextBIcon /></button>
@@ -316,7 +316,7 @@ function Paragraph({ p, onSettle }: { p: Para; onSettle: (accept: boolean) => vo
   )
 }
 
-function DocSwitcher({ value, onChange }: { value: string; onChange: (d: string) => void }) {
+function DocSwitcher({ value, onChange, onBack }: { value: string; onChange: (d: string) => void; onBack?: () => void }) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -332,9 +332,13 @@ function DocSwitcher({ value, onChange }: { value: string; onChange: (d: string)
   )
   return (
     <div className="wr-anchor" ref={root}>
-      <button type="button" className="wr-doc-btn" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="wr-doc-btn__crumb">写作</span><span className="wr-doc-btn__slash">/</span><span>{value}</span><CaretDownIcon />
-      </button>
+      <div className="wr-crumbs">
+        <button type="button" className="wr-crumbs__back" onClick={onBack}>写作</button>
+        <span className="wr-doc-btn__slash">/</span>
+        <button type="button" className="wr-doc-btn" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <span>{value}</span><CaretDownIcon />
+        </button>
+      </div>
       {open ? (
         <div className="wr-menu">
           <p className="wr-menu__label">正在写</p>

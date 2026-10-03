@@ -231,3 +231,9 @@ button { font: inherit; }
   .wr-format { display: none; }
   .wr-top { grid-template-columns: minmax(0, 1fr) auto; }
 }
+
+/* 面包屑：「写作」回到列表，文档名是切换下拉 */
+.wr-crumbs { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.wr-crumbs__back { height: 34px; padding: 0 10px; border: 0; border-radius: var(--qx-radius-pill); color: var(--qx-color-muted); background: none; font-size: var(--qx-text-control); cursor: pointer; }
+.wr-crumbs__back:hover { color: var(--qx-color-ink); background: var(--qx-color-surface-strong); }
+.wr-doc-btn { border-radius: var(--qx-radius-pill); }
