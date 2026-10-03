@@ -7,12 +7,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppRoutes } from './App'
 import { AccountProvider } from '../modules/account'
 
-const cytoscapeMock = vi.hoisted(() => vi.fn(() => ({
-  destroy: vi.fn(),
-  elements: vi.fn(() => ({})),
-  fit: vi.fn(),
-  on: vi.fn(),
-})))
+const cytoscapeMock = vi.hoisted(() => vi.fn(() => {
+  const collection = {
+    removeClass: vi.fn().mockReturnThis(), addClass: vi.fn().mockReturnThis(),
+    filter: vi.fn().mockReturnThis(), map: vi.fn(() => []), forEach: vi.fn(),
+    boundingBox: vi.fn(() => ({ x1: 0, y1: 0, x2: 0, y2: 0, w: 0, h: 0 })),
+    empty: vi.fn(() => true), length: 0,
+  }
+  return { destroy: vi.fn(), elements: vi.fn(() => collection), nodes: vi.fn(() => collection),
+    edges: vi.fn(() => collection), getElementById: vi.fn(() => collection),
+    fit: vi.fn(), on: vi.fn(), one: vi.fn(), resize: vi.fn(), container: vi.fn(() => null),
+    batch: vi.fn((callback: () => void) => callback()), layout: vi.fn(() => ({ run: vi.fn() })),
+  }
+}))
 
 vi.mock('cytoscape', () => ({ default: cytoscapeMock }))
 vi.mock('@paper-design/shaders-react', () => ({
@@ -39,11 +46,20 @@ function renderRoute(
     defaultOptions: { queries: { retry: false } },
   })
 
+  // Route overrides and account-scoped queries must see the same authenticated owner.
+  // Seed only the session; real page API reads still run through each test's fixtures.
+  if (sessionState.status === 'authenticated') {
+    queryClient.setQueryDefaults(['account', 'session'], { staleTime: Infinity })
+    queryClient.setQueryData(['account', 'session'], {
+      sessionId: 'route-test-session', expiresAt: '2099-01-01T00:00:00Z',
+      user: { userId: 'route-test-user', email: 'reader@example.com', displayName: null },
+    })
+  }
+  const route = <><AppRoutes sessionState={sessionState} /><RouteLocation /></>
   return render(
     <MemoryRouter initialEntries={[path]}>
       <QueryClientProvider client={queryClient}>
-        <AppRoutes sessionState={sessionState} />
-        <RouteLocation />
+        {sessionState.status === 'authenticated' ? <AccountProvider>{route}</AccountProvider> : route}
       </QueryClientProvider>
     </MemoryRouter>,
   )
@@ -280,7 +296,7 @@ describe('App routes', () => {
   it('retires the sociology research tools route and navigation', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
     renderRoute('/research/tools', { status: 'authenticated' })
-    expect(await screen.findByRole('heading', { level: 1, name: '思绪有处安放，灵感自会生长。' })).toBeVisible()
+    expect(await screen.findByRole('heading', { level: 1, name: /今天想弄清楚什么？/ })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/app')
     expect(screen.queryByRole('link', { name: '研究工具' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: '研究工具列表' })).not.toBeInTheDocument()
@@ -300,7 +316,7 @@ describe('App routes', () => {
 
   it('renders the personal home with source cards and private-library actions', async () => {
     renderRoute('/app', { status: 'authenticated' })
-    expect(await screen.findByRole('heading', { level: 1, name: '思绪有处安放，灵感自会生长。' })).toBeVisible()
+    expect(await screen.findByRole('heading', { level: 1, name: /今天想弄清楚什么？/ })).toBeVisible()
     expect(screen.getByRole('navigation', { name: '知识空间视图' })).toBeVisible()
     expect(await screen.findByRole('heading', { name: '把第一份资料，放进来。' })).toBeVisible()
     expect(within(screen.getByRole('navigation', { name: '知识空间视图' })).getByRole('link', { name: '新建研究' })).toHaveAttribute('href', '/research/new')
@@ -317,7 +333,7 @@ describe('App routes', () => {
 
   it('links the personal home to its four-level knowledge graph', async () => {
     renderRoute('/app', { status: 'authenticated' })
-    await screen.findByRole('heading', { level: 1, name: '思绪有处安放，灵感自会生长。' })
+    await screen.findByRole('heading', { level: 1, name: /今天想弄清楚什么？/ })
     expect(screen.getByRole('link', { name: '知识图谱' })).toHaveAttribute('href', '/my/graph')
     expect(screen.getByRole('link', { name: /管理知识库/ })).toHaveAttribute('href', '/library')
   })
@@ -410,12 +426,12 @@ describe('App routes', () => {
 
   it('preserves the legacy my redirect into the personal home', async () => {
     renderRoute('/my', { status: 'authenticated' })
-    expect(await screen.findByRole('heading', { level: 1, name: '思绪有处安放，灵感自会生长。' })).toBeVisible()
+    expect(await screen.findByRole('heading', { level: 1, name: /今天想弄清楚什么？/ })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/app?research=all')
   })
 
   it.each([
-    ['/app', '思绪有处安放，灵感自会生长。'],
+    ['/app', /今天想弄清楚什么？/],
     ['/agent', '你想研究什么？'],
     ['/research/new', '从一个问题开始'],
     ['/research/task-1/phenomenon', '理论判断文档'],
@@ -892,7 +908,7 @@ describe('App routes', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
     renderRoute('/', { status: 'authenticated' })
 
-    expect(await screen.findByRole('heading', { name: '思绪有处安放，灵感自会生长。' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: /今天想弄清楚什么？/ })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/app')
   })
 
@@ -912,11 +928,25 @@ describe('App routes', () => {
   })
 
   it('lets the user retry a failed personal-library read', async () => {
+    // The research row has its own query and error boundary; don't let an unstubbed
+    // request race the library failure or use a page-wide alert selector.
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const path = requestUrl(input).pathname
+      if (path === '/api/research-tasks' || path === '/api/agent/conversations') {
+        return json({ items: [], next_cursor: null })
+      }
+      return json({}, 404)
+    }))
+    const readsBefore = vi.mocked(readPersonalGraph).mock.calls.length
     vi.mocked(readPersonalGraph).mockRejectedValueOnce(new Error('资料读取暂时失败'))
     renderRoute('/app', { status: 'authenticated' })
-    expect(await screen.findByRole('alert')).toHaveTextContent('资料读取暂时失败')
-    fireEvent.click(screen.getByRole('button', { name: '重试' }))
-    expect(await screen.findByRole('heading', { name: '把第一份资料，放进来。' })).toBeVisible()
+    const materials = await screen.findByRole('region', { name: '我的资料' })
+    expect(await within(materials).findByRole('alert')).toHaveTextContent('资料读取暂时失败')
+    expect(readPersonalGraph).toHaveBeenCalledTimes(readsBefore + 1)
+    fireEvent.click(within(materials).getByRole('button', { name: '重试' }))
+    expect(await within(materials).findByRole('heading', { name: '把第一份资料，放进来。' })).toBeVisible()
+    expect(readPersonalGraph).toHaveBeenCalledTimes(readsBefore + 2)
+    expect(within(materials).queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it.each([
@@ -935,7 +965,7 @@ describe('App routes', () => {
   })
 
   it.each([
-    ['/login', '登录'],
+    ['/login', '登录 Everplain'],
     ['/register', '注册'],
     ['/password-reset/reset-token-value', '重设密码'],
   ])('renders the public account route %s for an anonymous visitor', async (path, title) => {
@@ -957,7 +987,7 @@ describe('App routes', () => {
   ])('sends anonymous visitors to login while preserving %s', async (path) => {
     renderRoute(path)
 
-    expect(await screen.findByRole('heading', { name: '登录' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '登录 Everplain' })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent(
       `/login?redirect=${encodeURIComponent(path)}`,
     )
@@ -972,7 +1002,7 @@ describe('App routes', () => {
     expect(
       await screen.findByRole('heading', { name: '理论判断文档' }),
     ).toBeVisible()
-    expect(screen.queryByRole('heading', { name: '登录' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '登录 Everplain' })).not.toBeInTheDocument()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/research/task-1/workspace/map')
   })
 
@@ -980,13 +1010,13 @@ describe('App routes', () => {
     renderRoute('/my', { status: 'loading' })
 
     expect(await screen.findByRole('status')).toHaveTextContent('正在确认登录状态')
-    expect(screen.queryByRole('heading', { name: '登录' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '登录 Everplain' })).not.toBeInTheDocument()
   })
 
   it('uses a same-origin redirect after login', async () => {
     renderRoute('/login?redirect=%2Fresearch%2Ftask-1%2Fframework')
 
-    expect(await screen.findByRole('button', { name: '登录并继续' })).toBeVisible()
+    expect(await screen.findByRole('button', { name: '继续' })).toBeVisible()
     expect(screen.getByRole('link', { name: '创建账号' })).toHaveAttribute(
       'href',
       `/register?redirect=${encodeURIComponent('/research/task-1/framework')}`,
@@ -1005,7 +1035,7 @@ describe('App routes', () => {
   it('rejects a malformed login redirect without crashing the page', async () => {
     renderRoute('/login?redirect=%2F%2F%5B')
 
-    expect(await screen.findByRole('heading', { name: '登录' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '登录 Everplain' })).toBeVisible()
     expect(screen.getByRole('link', { name: '创建账号' })).toHaveAttribute(
       'href',
       `/register?redirect=${encodeURIComponent('/app')}`,
@@ -1016,7 +1046,7 @@ describe('App routes', () => {
     const destination = '/research/task-1/phenomenon?source=home#evidence'
     renderRoute(destination)
 
-    expect(await screen.findByRole('heading', { name: '登录' })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: '登录 Everplain' })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent(
       `/login?redirect=${encodeURIComponent(destination)}`,
     )
@@ -1062,6 +1092,7 @@ describe('App routes', () => {
     )
 
     fireEvent.change(await screen.findByLabelText('邮箱'), { target: { value: 'researcher@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'research-passphrase' } })
     fireEvent.click(screen.getByRole('button', { name: '登录并继续' }))
 
