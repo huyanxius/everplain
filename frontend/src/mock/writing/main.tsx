@@ -7,6 +7,8 @@ import '../../styles/components.css'
 import '../../styles/base.css'
 import './writing.css'
 import { WritingApp } from './WritingHome'
+import '../../app/research/research-materials-page.css'
+import '../shared/composer.css'
 import './writing-home.css'
 
 /* 写作 Mock：/writing.html 是写作首页（文档列表），#/doc/<标题> 是编辑页。不接后端。 */

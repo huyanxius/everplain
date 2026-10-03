@@ -23,15 +23,25 @@ import {
  * 请求照旧带上这个字段，后端不用改。
  */
 /* Agent 页：一横条。内容超过一行时整条长高，圆角从胶囊变成面板。 */
-export function AgentComposer() {
+/*
+ * onSend：宿主接管发送（不传则只演示按钮状态）。
+ * prefill：宿主往输入框里填一句（例如点了能力卡片）；带上 key，同一句话点两次也能再填一次。
+ */
+export function AgentComposer({ onSend, placeholder = '问一个问题', prefill }: { onSend?: (text: string) => void; placeholder?: string; prefill?: { text: string; key: number } } = {}) {
   const [text, setText] = useState('')
+  useEffect(() => { if (prefill) setText(prefill.text) }, [prefill])
   const multiline = text.includes('\n') || text.length > 40
+  const submit = () => {
+    if (!text.trim()) return
+    onSend?.(text.trim())
+    setText('')
+  }
   return (
-    <form className="ch-bar-composer" data-multiline={multiline} onSubmit={(e) => e.preventDefault()}>
+    <form className="ch-bar-composer" data-multiline={multiline} onSubmit={(e) => { e.preventDefault(); submit() }} onKeyDown={(e) => { if (onSend && e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && (e.target as HTMLElement).tagName === 'TEXTAREA') { e.preventDefault(); submit() } }}>
       <PlusMenu />
-      <AutoTextarea value={text} onChange={setText} placeholder="问一个问题" label="问 Everplain" />
+      <AutoTextarea value={text} onChange={setText} placeholder={placeholder} label="问 Everplain" />
       <ModelPicker />
-      <SendButton enabled={!!text.trim()} />
+      {onSend ? <button type="submit" className="ch-send" aria-label="发送给 Everplain" disabled={!text.trim()}><ArrowUpIcon weight="bold" /></button> : <SendButton enabled={!!text.trim()} />}
     </form>
   )
 }
