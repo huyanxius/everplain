@@ -206,6 +206,58 @@ def healthy(url):
         return False
 
 
+def inspect_upstream():
+    report = {
+        "proxied_api_health_ok": False,
+        "web_api_upstream_found": False,
+        "web_api_upstream_matches": False,
+    }
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        with opener.open("http://127.0.0.1:5196/api/health", timeout=5) as response:
+            report["proxied_api_health_ok"] = (
+                response.status == 200 and json.loads(response.read(65536)).get("status") == "ok"
+            )
+    except (OSError, ValueError):
+        pass
+    try:
+        networks = json.loads(
+            read_command(
+                [
+                    "docker",
+                    "inspect",
+                    "--format",
+                    "{{json .NetworkSettings.Networks}}",
+                    "everplain-api",
+                ]
+            )
+        )
+        mounts = json.loads(
+            read_command(["docker", "inspect", "--format", "{{json .Mounts}}", "everplain-web"])
+        )
+        paths = [
+            Path(item["Source"])
+            for item in mounts
+            if item["Destination"] == "/etc/nginx/conf.d/default.conf"
+        ]
+        if len(networks) == 1 and len(paths) == 1:
+            path = paths[0]
+            if (
+                path.is_file()
+                and not path.is_symlink()
+                and path.stat().st_size < 1024**2
+                and any("everplain" in part for part in path.parts)
+            ):
+                targets = re.findall(r"proxy_pass\s+http://([0-9.]+):8297\s*;", path.read_text())
+                report["web_api_upstream_found"] = len(targets) == 1
+                report["web_api_upstream_matches"] = len(targets) == 1 and (
+                    targets[0] == next(iter(networks.values())).get("IPAddress")
+                )
+    except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError):
+        pass
+    return report
+
+
 def inspect():
     docker_readable, container_present = False, False
     try:
@@ -234,6 +286,7 @@ def inspect():
         "host_changes": False,
         **inspect_upload(),
         **inspect_release(),
+        **inspect_upstream(),
     }
 
 

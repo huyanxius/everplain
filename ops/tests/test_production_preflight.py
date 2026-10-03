@@ -90,6 +90,9 @@ class InspectionTests(unittest.TestCase):
         release = patch.object(inspection, "inspect_release", return_value={})
         release.start()
         self.addCleanup(release.stop)
+        upstream = patch.object(inspection, "inspect_upstream", return_value={})
+        upstream.start()
+        self.addCleanup(upstream.stop)
 
     def test_output_contains_only_booleans_and_no_private_metadata(self):
         result = subprocess.CompletedProcess([], 0, "everplain-api\nprivate-fixture\n", "")
@@ -135,6 +138,30 @@ class InspectionTests(unittest.TestCase):
 
 
 class UploadInspectionTests(unittest.TestCase):
+    def test_upstream_comparison_is_read_only_and_discloses_only_booleans(self):
+        with tempfile.TemporaryDirectory() as d:
+            config = Path(d) / "everplain-nginx.conf"
+            config.write_text("location /api/ { proxy_pass http://192.0.2.2:8297; }")
+            for address in ("192.0.2.2", "192.0.2.3"):
+                values = [
+                    json.dumps({"bridge": {"IPAddress": address}}),
+                    json.dumps(
+                        [{"Destination": "/etc/nginx/conf.d/default.conf", "Source": str(config)}]
+                    ),
+                ]
+                with (
+                    patch.object(inspection, "read_command", side_effect=values),
+                    patch.object(inspection.urllib.request, "build_opener") as opener,
+                ):
+                    response = opener.return_value.open.return_value.__enter__.return_value
+                    response.status = 200
+                    response.read.return_value = b'{"status":"ok"}'
+                    result = inspection.inspect_upstream()
+                self.assertEqual(result["web_api_upstream_matches"], address == "192.0.2.2")
+                self.assertTrue(result["proxied_api_health_ok"])
+                self.assertTrue(all(type(value) is bool for value in result.values()))
+                self.assertNotIn("192.0.2", json.dumps(result))
+
     def test_release_diagnostic_checks_budget_images_and_file_without_reading_env(self):
         with tempfile.TemporaryDirectory() as d:
             base = Path(d)
