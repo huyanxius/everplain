@@ -8,7 +8,12 @@ from urllib.parse import urlsplit
 from dotenv import load_dotenv
 from pydantic import ValidationError
 from pydantic_settings import SettingsError
-from qunxue_api.settings import Settings, is_sqlite_memory_url
+from qunxue_api.settings import (
+    SILICONFLOW_EMBEDDING_MODELS,
+    SILICONFLOW_RERANKER_MODELS,
+    Settings,
+    is_sqlite_memory_url,
+)
 
 
 def credential(value):
@@ -123,9 +128,13 @@ def check_configuration():
             not https_url(origin) for origin in settings.cors_allowed_origins
         ):
             invalid.add("EVERPLAIN_CORS_ALLOWED_ORIGINS")
-        if not fallback and settings.embedding_model != "Pro/BAAI/bge-m3":
+        if (not fallback or settings.embedding_model) and (
+            (settings.embedding_model or "").strip() not in SILICONFLOW_EMBEDDING_MODELS
+        ):
             invalid.add("EVERPLAIN_EMBEDDING_MODEL")
-        if not fallback and settings.reranker_model != "Pro/BAAI/bge-reranker-v2-m3":
+        if (not fallback or settings.reranker_model) and (
+            (settings.reranker_model or "").strip() not in SILICONFLOW_RERANKER_MODELS
+        ):
             invalid.add("EVERPLAIN_RERANKER_MODEL")
         if settings.web_search_profile != "generic":
             invalid.add("EVERPLAIN_WEB_SEARCH_PROFILE")
