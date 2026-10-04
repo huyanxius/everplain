@@ -100,7 +100,13 @@ with Path("/run/lock/everplain-release.lock").open("a") as lock:
     policy = json.loads((release / 'ops/cd/policy.json').read_text())
     expected = helper.configure_billing_policy(old, policy, {})
     expected.update(EVERPLAIN_RELEASE_REVISION=REVISION, EVERPLAIN_MIGRATIONS_MANAGED='1')
-    assert expected == env
+    assert all(env.get(key) == value for key, value in expected.items())
+    image = json.loads(run(['docker', 'image', 'inspect', api['Image']]))[0]
+    image_env = dict(item.split('=', 1) for item in image['Config']['Env'])
+    added = set(env) - set(expected)
+    assert all(env[key] == image_env.get(key) for key in added)
+    print(json.dumps({'previous_configuration_preserved': True,
+                      'image_environment_defaults_added': len(added)}))
     def checked_http(url):
         code, body = probe(url)
         assert code == 200
