@@ -88,6 +88,7 @@ fun EverplainTheme(appearance: String = "system", content: @Composable () -> Uni
             Typography(
                 headlineLarge =
                     TextStyle(
+                        color = ink,
                         fontFamily = FontFamily.Serif,
                         fontSize = EverplainTokens.textDisplay.sp,
                         lineHeight =
@@ -97,6 +98,7 @@ fun EverplainTheme(appearance: String = "system", content: @Composable () -> Uni
                     ),
                 headlineSmall =
                     TextStyle(
+                        color = ink,
                         fontFamily = FontFamily.Serif,
                         fontSize = EverplainTokens.textSection.sp,
                         lineHeight =
@@ -104,6 +106,8 @@ fun EverplainTheme(appearance: String = "system", content: @Composable () -> Uni
                     ),
                 titleLarge =
                     TextStyle(
+                        color = ink,
+                        fontFamily = FontFamily.Serif,
                         fontSize = EverplainTokens.textTitle.sp,
                         lineHeight =
                             (EverplainTokens.textTitle * EverplainTokens.textTitleLineHeight).sp,
@@ -111,6 +115,7 @@ fun EverplainTheme(appearance: String = "system", content: @Composable () -> Uni
                     ),
                 titleMedium =
                     TextStyle(
+                        color = ink,
                         fontSize = EverplainTokens.textHeading.sp,
                         lineHeight =
                             (EverplainTokens.textHeading * EverplainTokens.textHeadingLineHeight)

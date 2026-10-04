@@ -57,7 +57,7 @@ At first launch, enter the HTTPS origin of the existing Everplain server (domain
 and optional port only, without `/api`, query, credentials or fragment), then
 log in with an existing account. No deployment hostname is guessed. Redirects
 are rejected; the app does not disable TLS validation or forge browser Origin.
-No registration/account-creation flow is included.
+Registration uses the live email-code/password flow. No production registration was performed during fixture verification.
 
 One origin-scoped OkHttp cookie client serves all API and SSE requests. Password
 input is held only for the login call and cleared immediately on submit; it is

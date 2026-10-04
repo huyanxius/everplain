@@ -13,6 +13,7 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation(project(":core"))
     implementation("io.noties.markwon:core:4.6.2")
+    implementation("com.mohamedrejeb.richeditor:richeditor-compose:1.0.0-rc11")
     implementation("org.commonmark:commonmark:0.24.0")
     implementation("org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0")
     implementation("org.commonmark:commonmark-ext-gfm-tables:0.24.0")

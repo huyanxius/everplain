@@ -541,6 +541,7 @@ internal fun LibraryCard(content: @Composable ColumnScope.() -> Unit) {
     Surface(
         shape = RoundedCornerShape(EverplainTokens.radiusCard.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = EverplainTokens.colorInkSoft(dark).compose(),
         modifier =
             Modifier.fillMaxWidth()
                 .webShadow(EverplainTokens.shadowCard(dark), EverplainTokens.radiusCard.dp),

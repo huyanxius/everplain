@@ -17,7 +17,12 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -281,9 +286,23 @@ internal fun HomeContents(s: AppState, vm: AppViewModel) {
                     vm.library().source(source.libraryId, source.documentId)
                 },
                 cover = {
+                    val countInk = MaterialTheme.colorScheme.onSurface
                     Text(
-                        "${graph.graph!!.documentCount} 份资料 · ${graph.graph!!.topicCount} 个主题",
-                        fontSize = 17.sp,
+                        buildAnnotatedString {
+                            withStyle(
+                                SpanStyle(
+                                    fontFamily = FontFamily.Serif,
+                                    fontSize = EverplainTokens.textTitle.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = countInk,
+                                )
+                            ) {
+                                append(graph.graph!!.documentCount.toString())
+                            }
+                            append(" 份资料 · ${graph.graph!!.topicCount} 个主题")
+                        },
+                        fontSize = EverplainTokens.textMeta.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     documents.take(2).forEach {
                         Text(
@@ -291,7 +310,11 @@ internal fun HomeContents(s: AppState, vm: AppViewModel) {
                             fontSize = 14.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color =
+                                EverplainTokens.colorInkSoft(
+                                        MaterialTheme.colorScheme.background.luminance() < .5f
+                                    )
+                                    .compose(),
                         )
                     }
                     if (graph.graph!!.pendingCount > 0)
@@ -304,17 +327,46 @@ internal fun HomeContents(s: AppState, vm: AppViewModel) {
             ) { i, _ ->
                 val node = documents[i]
                 val source = graph.graph!!.sources.getValue(node.id)
-                Text(
-                    if (source.sourceUrl != null) "网页收藏" else "我的笔记",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        if (source.sourceUrl != null) EpIcons.Globe else EpIcons.FileText,
+                        null,
+                        Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        if (source.sourceUrl != null) "网页收藏" else "我的笔记",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Text(
                     node.label,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 2,
+                    style =
+                        MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = FontFamily.Serif,
+                            fontSize = EverplainTokens.textControl.sp,
+                            fontWeight = FontWeight(550),
+                        ),
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                source.sourceUrl?.let { url ->
+                    Text(
+                        runCatching { java.net.URI(url).host ?: url }.getOrDefault(url),
+                        fontSize = EverplainTokens.textMeta.sp,
+                        color =
+                            EverplainTokens.colorFaint(
+                                    MaterialTheme.colorScheme.background.luminance() < .5f
+                                )
+                                .compose(),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
     }
 }
@@ -446,6 +498,7 @@ internal fun HomePile(
                 enabled = open,
                 shape = RoundedCornerShape(EverplainTokens.radiusCard.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurface,
                 modifier =
                     Modifier.zIndex((10 - depth).toFloat())
                         .offset(
@@ -500,6 +553,7 @@ internal fun HomePile(
             Surface(
                 shape = RoundedCornerShape(EverplainTokens.radiusCard.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurface,
                 modifier =
                     Modifier.zIndex(if (open) 0f else 10f)
                         .width((width.value - 44f * (1 - size)).coerceAtLeast(0f).dp)

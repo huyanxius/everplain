@@ -265,6 +265,28 @@ open class EverplainApi(val endpoint: Endpoint, private val store: PrivateStore)
             response.streamToBounded(output, maxBytes)
         }
 
+    /** Explicit archive export, with a durable caller-owned key and bounded streaming to SAF. */
+    open suspend fun downloadResearchArchive(
+        taskId: String,
+        key: String,
+        output: java.io.OutputStream,
+        maxBytes: Long = 1024L * 1024 * 1024,
+    ): ResearchArchiveDownload =
+        exchange(
+            request(
+                    "/api/research-tasks/${UUID.fromString(taskId)}/exchange/archive",
+                    "POST",
+                    null,
+                    key,
+                )
+                .newBuilder()
+                .header("Accept", "application/zip")
+                .build()
+        ) { response ->
+            if (!response.isSuccessful) throw failure(response)
+            response.saveResearchArchive(output, maxBytes)
+        }
+
     open suspend fun imageAsset(
         documentId: String,
         maxBytes: Long = 32L * 1024 * 1024,
