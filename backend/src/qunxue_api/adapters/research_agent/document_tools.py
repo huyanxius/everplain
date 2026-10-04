@@ -194,6 +194,7 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
         materials: ResearchMaterialReader | None = None,
         material_search: ResearchMaterialSearchReader | None = None,
         material_vector_cache_factory=None,
+        require_material_vectors: bool = False,
         analysis: ResearchAnalysisAgentFacade | None = None,
         writing=None,
     ) -> None:
@@ -206,6 +207,7 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
         # Public-catalog lexical fallback must not replace the private FTS index.
         self._material_retriever = retriever
         self._material_vector_cache_factory = material_vector_cache_factory
+        self._require_material_vectors = require_material_vectors
         self._analysis = analysis
         self._writing = WritingAgentTools(writing) if writing is not None else None
         self._user_id: UUID | None = None
@@ -711,6 +713,18 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
                     if "error" not in item:
                         direct.append({**item, "retrieval_mode": "direct"})
                 return direct
+        if self._require_material_vectors:
+            from inspect import signature
+
+            search_chunks = getattr(self._material_retriever, "search_chunks", None)
+            if (
+                not callable(search_chunks)
+                or not callable(self._material_vector_cache_factory)
+                or not {"vector_cache", "embed_missing_documents"}.issubset(
+                    signature(search_chunks).parameters
+                )
+            ):
+                return self._material_indexing_unavailable()
         if self._material_search is not None and not callable(
             getattr(self._material_retriever, "search_chunks", None)
         ):
@@ -832,12 +846,20 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
 
         if not chunks:
             return []
-        result = self._search_material_chunks(
-            query=normalized_query,
-            chunks=chunks,
-            limit=safe_limit,
-            task_id=task_id,
-        )
+        from qunxue_api.adapters.retrieval import RetrievalPipelineUnavailable
+
+        try:
+            result = self._search_material_chunks(
+                query=normalized_query,
+                chunks=chunks,
+                limit=safe_limit,
+                task_id=task_id,
+                parse_ids={
+                    material.material_id: block.parse_id for material, block in metadata.values()
+                },
+            )
+        except RetrievalPipelineUnavailable:
+            return self._material_indexing_unavailable()
         values: list[dict[str, object]] = []
         for hit in result.hits:
             item = metadata.get(hit.chunk.chunk_id)
@@ -1066,6 +1088,13 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
             return True
         return bool(policy(material_id, user_id=user_id, task_id=task_id))
 
+    @staticmethod
+    def _material_indexing_unavailable() -> dict[str, object]:
+        return {
+            "error": "material_indexing_unavailable",
+            "message": "研究资料语义检索未完成，请检查资料索引状态后重试；本次未返回检索依据。",
+        }
+
     def _search_material_chunks(
         self,
         *,
@@ -1073,6 +1102,7 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
         chunks: Sequence[object],
         limit: int,
         task_id: UUID,
+        parse_ids: Mapping[UUID, UUID] | None = None,
     ):
         search_chunks = getattr(self._material_retriever, "search_chunks", None)
         if callable(search_chunks):
@@ -1082,19 +1112,20 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
 
             cache_factory = self._material_vector_cache_factory
             options = {}
+            if "embed_missing_documents" in signature(search_chunks).parameters:
+                options["embed_missing_documents"] = False
             if (
-                self._material_scope
+                (parse_ids or self._material_scope)
                 and callable(cache_factory)
                 and "vector_cache" in signature(search_chunks).parameters
             ):
                 options["vector_cache"] = cache_factory(
-                    user_id=self._user_id, parse_ids=self._material_scope
+                    user_id=self._user_id, parse_ids=parse_ids or self._material_scope
                 )
-            try:
-                return search_chunks(query=query, chunks=tuple(chunks), limit=limit, **options)
-            except RetrievalPipelineUnavailable:
-                # Keep a source-grounded lexical path when optional model retrieval is unavailable.
-                pass
+            result = search_chunks(query=query, chunks=tuple(chunks), limit=limit, **options)
+            if getattr(result, "degraded_reason", None):
+                raise RetrievalPipelineUnavailable("research material index is unavailable")
+            return result
         # Test/local retrievers that predate the shared transient-chunk method
         # still receive deterministic lexical ranking; production configured
         # HybridRetriever always takes the branch above.

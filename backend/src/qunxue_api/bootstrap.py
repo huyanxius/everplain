@@ -66,6 +66,7 @@ from qunxue_api.adapters.research_agent.shared_knowledge import SharedKnowledgeR
 from qunxue_api.adapters.research_exchange import map_published_qunxue_project
 from qunxue_api.adapters.research_materials import parse_material
 from qunxue_api.adapters.research_materials.doi import CrossrefDoiMetadataResolver
+from qunxue_api.adapters.research_materials.indexing import ResearchMaterialIndexer
 from qunxue_api.adapters.retrieval import (
     RETRIEVAL_CORPUS_SCHEMA_VERSION,
     HybridRetriever,
@@ -631,6 +632,10 @@ def create_app(
                 parser=parse_material,
                 search=SqliteResearchMaterialSearchRepository(session),
                 transcription_available=resolved_settings.has_transcription_provider,
+                index_material=app.state.research_material_indexer,
+                schedule_ingestion=(
+                    lambda job_id: app.state.schedule_research_material_ingestion(job_id)
+                ),
                 commit=session.commit,
                 rollback=session.rollback,
             )
@@ -1276,6 +1281,7 @@ def create_app(
                         material_vector_cache_factory=lambda **scope: SqliteMaterialVectorCache(
                             session, **scope
                         ),
+                        require_material_vectors=resolved_settings.runtime_mode != "mock",
                         analysis=analysis_application,
                         writing=WritingApplication(SqliteWritingRepository(session)),
                     ),
@@ -1412,6 +1418,13 @@ def create_app(
             model=resolved_settings.embedding_model,
             timeout_seconds=resolved_settings.embedding_timeout_seconds,
         )
+    app.state.research_material_indexer = (
+        ResearchMaterialIndexer(
+            resolved_database, embedder=course_embedder,
+            embedding_model=resolved_settings.embedding_model,
+        )
+        if resolved_settings.runtime_mode != "mock" else None
+    )
     app.state.course_organization_worker = CourseOrganizationWorker(
         resolved_database,
         generate=CourseKnowledgeGenerator(

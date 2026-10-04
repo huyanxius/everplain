@@ -260,16 +260,11 @@ def test_small_selected_file_uses_original_text_without_embedding_call(client):
         assert "37" in rows[0]["excerpt"]
 
 
-def test_multifile_hybrid_search_persists_vectors_and_excludes_unselected_files(client, tmp_path):
+def test_multifile_search_reuses_import_vectors_and_excludes_unselected_files(client, tmp_path):
     from qunxue_api.adapters.research_agent.reranker import RerankScore
     from qunxue_api.adapters.retrieval import SqliteRetrievalIndex
     from qunxue_api.adapters.retrieval.hybrid import HybridRetriever
 
-    user_id = register(client)
-    primary = upload(client, "城北研究：29位受访者因托育时间冲突无法参加互助活动。", "城北.txt")
-    counter = upload(client, "城南研究：17位受访者主要受限于通勤，托育不是主要障碍。", "城南.txt")
-    distractors = [upload(client, f"无关天气资料{i}。" + "晴转多云。" * 350) for i in range(4)]
-    upload(client, "城北城南托育通勤：这份未选择的文件绝不可进入模型。")
     document_calls, query_calls, rerank_calls = [], [], []
 
     # Controlled providers isolate retrieval scope and billing-relevant request counts.
@@ -286,6 +281,7 @@ def test_multifile_hybrid_search_persists_vectors_and_excludes_unselected_files(
     class Reranker:
         def rerank(self, *, query, documents, top_n):
             rerank_calls.append(len(documents))
+            assert all("绝不可进入模型" not in text for text in documents)
             return tuple(
                 RerankScore(index=i, score=0.95 if "受访者" in text else 0.001)
                 for i, text in enumerate(documents)
@@ -300,6 +296,18 @@ def test_multifile_hybrid_search_persists_vectors_and_excludes_unselected_files(
         reranker_model="controlled-reranker",
         min_rerank_score=0.01,
     )
+    from qunxue_api.adapters.research_materials.indexing import ResearchMaterialIndexer
+
+    client.app.state.research_material_indexer = ResearchMaterialIndexer(
+        client.app.state.database, embedder=Embedder(), embedding_model="controlled-embedding"
+    )
+    user_id = register(client)
+    primary = upload(client, "城北研究：29位受访者因托育时间冲突无法参加互助活动。", "城北.txt")
+    counter = upload(client, "城南研究：17位受访者主要受限于通勤，托育不是主要障碍。", "城南.txt")
+    distractors = [upload(client, f"无关天气资料{i}。" + "晴转多云。" * 350) for i in range(4)]
+    upload(client, "城北城南托育通勤：这份未选择的文件绝不可进入模型。")
+    assert len(document_calls) == 7  # Every newly imported file is indexed once.
+    document_calls.clear()
     selected = tuple(UUID(row["material_id"]) for row in [primary, counter, *distractors])
     for query in ("照顾孩子和出行分别造成什么困难？", "比较两个地区参与社区活动的阻碍"):
         # Reopen the application scope to ensure reuse is durable, not just an in-run cache.
@@ -322,10 +330,9 @@ def test_multifile_hybrid_search_persists_vectors_and_excludes_unselected_files(
             }
             assert all(row["parse_id"] and row["segment_id"] for row in rows)
             assert sum(len(row["excerpt"]) for row in rows) < 100
-    assert len(document_calls) == 6
+    assert document_calls == []
     assert len(query_calls) == len(rerank_calls) == 2
     assert max(rerank_calls) <= 30
-    assert all("绝不可进入模型" not in text for text in document_calls)
 
 
 def test_runner_keeps_citations_when_reading_multiple_files_in_sequence(client):
