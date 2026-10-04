@@ -2405,6 +2405,54 @@ it('isolates unsent writing chat drafts by document', async () => {
   expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('甲文稿的未发送要求')
 })
 
+it('shows readiness only after a real tool decision, preserves scope and submits an explicit ready-only continuation', async () => {
+  const status = { state: 'missing_index', embedding_model: 'embedding', total_count: 2, ready_count: 1, missing_count: 1, processing_count: 0, failed_count: 1,
+    ready_document_ids: ['ready'], ready_documents: [{ knowledge_base_id: 'kb', document_id: 'ready', parse_id: 'ready-parse', filename: 'ready.pdf', index_status: 'ready' }],
+    missing_documents: [{ knowledge_base_id: 'kb', document_id: 'failed', parse_id: 'failed-parse', filename: 'failed.pdf', index_status: 'failed', index_error: '索引服务不可用' }] }
+  let turnRequests = 0
+  const completed = conversationFixture({ id: 'choice-conversation', prompt: '检索我的资料', answer: '仅根据已就绪的资料回答。' })
+  const fetch = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+    const url = urlFor(input)
+    if (url.pathname === '/api/agent/turns') {
+      turnRequests += 1
+      return turnRequests === 1 ? new Response(eventStream([
+        ['turn_started', { conversation_id: 'choice-conversation', run_id: 'choice-run', replayed: false }],
+        ['knowledge_index_choice_required', { status }],
+      ]), { headers: { 'Content-Type': 'text/event-stream' } }) : streamResponse(completed)
+    }
+    if (url.pathname === '/api/agent/conversations/choice-conversation') return json({ ...completed, turns: [], turn_count: 0 })
+    if (url.pathname === '/api/agent/models') return json({ runtime_mode: 'base', items: [{ model_id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoning_efforts: ['medium'], default_reasoning_effort: 'medium' }] })
+    return json({ items: [] })
+  })
+  vi.stubGlobal('fetch', fetch)
+  renderPage()
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  expect(screen.queryByRole('region', { name: '知识库还未整理完全，确定现在开始吗？' })).not.toBeInTheDocument()
+  expect(fetch.mock.calls.some(([input]) => urlFor(input).pathname.includes('knowledge-index'))).toBe(false)
+  fireEvent.change(input, { target: { value: '检索我的资料' } })
+  fireEvent.submit(input.closest('form')!)
+  const choice = await screen.findByRole('region', { name: '知识库还未整理完全，确定现在开始吗？' })
+  expect(choice).toHaveTextContent('索引服务不可用')
+  await waitFor(() => expect(within(choice).getByRole('button', { name: '直接开始，忽略未就绪资料' })).toBeEnabled())
+  fireEvent.click(within(choice).getByRole('button', { name: '直接开始，忽略未就绪资料' }))
+  await waitFor(() => expect(turnRequests).toBe(2))
+  const requests = fetch.mock.calls.filter(([input]) => urlFor(input).pathname === '/api/agent/turns')
+  expect(JSON.parse(String(requests[1][1]?.body))).toMatchObject({ message: '检索我的资料', conversation_id: 'choice-conversation', knowledge_index_action: 'skip_missing' })
+  expect(new Headers(requests[1][1]?.headers).get('Idempotency-Key')).not.toBe(new Headers(requests[0][1]?.headers).get('Idempotency-Key'))
+  expect(fetch.mock.calls.some(([input]) => urlFor(input).pathname.includes('repairs'))).toBe(false)
+})
+
+it('keeps ready-only coverage visible when a saved answer is reopened', async () => {
+  const conversation = conversationFixture()
+  conversation.turns[0].tool_traces = [{ tool: 'knowledge_index_scope', phase: 'finished', call_id: 'coverage', output: { knowledge_index_coverage: {
+    state: 'missing_index', embedding_model: 'embedding', total_count: 12, ready_count: 9, missing_count: 3, processing_count: 0, failed_count: 3,
+    ready_document_ids: [], ready_documents: [], missing_documents: [],
+  } } }]
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => urlFor(input).pathname === `/api/agent/conversations/${conversation.conversation_id}` ? json(conversation) : json({ items: [] })))
+  renderPage('user-agent', `/agent?conversation_id=${conversation.conversation_id}`)
+  expect(await screen.findByText('本轮仅覆盖已就绪的 9 / 12 份资料，其余 3 份未参与检索。')).toBeVisible()
+})
+
 it.each([true, false])('executes a writing shortcut without a second send and preserves chat draft (existing=%s)', async existing => {
   const completed = conversationFixture({ id: 'writing-existing', prompt: '直接优化', answer: '已提出待定修订。' })
   const requests: Record<string, unknown>[] = []

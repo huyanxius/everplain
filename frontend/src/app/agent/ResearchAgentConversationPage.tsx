@@ -1,3 +1,5 @@
+import { KnowledgeReadinessChoice } from '../ui/KnowledgeReadinessChoice'
+import { knowledgeReadinessDocuments, useKnowledgeIndexChoice } from './useKnowledgeIndexChoice'
 import { ConversationHistoryView, ConversationHistoryView as AgentConversationHistoryRail } from '../conversation-view/ConversationHistoryView'
 import { ConversationResearchFlow } from '../conversation-view/ConversationResearchFlow'
 import { usePresence } from '../../ui/usePresence'
@@ -49,6 +51,7 @@ import {
 } from '../research-workspace/ResearchContextRail'
 import { PageContent, PageShell } from '../ui/PageShell'
 import {
+  isKnowledgeIndexStatus,
   deleteAgentConversation,
   getAgentConversation,
   getResearchStartJourney,
@@ -118,6 +121,7 @@ function attachmentStatusLabel(material: ResearchMaterial, locale: 'zh-CN' | 'en
   if (material.unavailableReason === 'transcription_unavailable') return locale === 'en-US' ? 'Transcription unavailable' : '未配置转写'
   if (material.unavailableReason === 'transcription_required') return locale === 'en-US' ? 'Transcription required' : '等待转写'
   if (material.ingestionStatus === 'queued') return locale === 'en-US' ? 'Queued' : '等待解析'
+  if (material.unavailableReason?.startsWith('material_indexing_')) return locale === 'en-US' ? 'Indexing incomplete' : '索引未完成'
   if (material.ingestionStatus === 'failed' || material.status === 'failed') return locale === 'en-US' ? 'Failed' : '解析失败'
   return locale === 'en-US' ? 'Processing' : '处理中'
 }
@@ -965,10 +969,17 @@ function AssistantTurn({
     id: researchHandoff.proposalId, label: text('研究建议', 'Research suggestion'), title: researchHandoff.phenomenon, description: researchHandoff.researchIntent ?? undefined,
     actions: [{ id: 'start-research', label: text('去新建研究', 'Open new research'), onClick: onContinueResearch, disabled: researchEntryBusy }],
   })
-  const provenance = !streaming && answer && !citations.length
+  const partialIndex = toolSteps.map(step => objectRecord(step.output))
+    .filter(output => output?.error !== 'knowledge_index_choice_required')
+    .map(output => output?.knowledge_index_coverage)
+    .find(value => isKnowledgeIndexStatus(value) && value.missing_count > 0)
+  const coverageNotice = !interrupted && !failure && isKnowledgeIndexStatus(partialIndex)
+    ? text(`本轮仅覆盖已就绪的 ${partialIndex.ready_count} / ${partialIndex.total_count} 份资料，其余 ${partialIndex.missing_count} 份未参与检索。`, `This answer searched only ${partialIndex.ready_count} of ${partialIndex.total_count} ready documents; ${partialIndex.missing_count} documents were excluded.`)
+    : undefined
+  const provenance = coverageNotice ?? (!streaming && answer && !citations.length
     ? hasKnowledgeActivity(toolSteps) ? text('已检索知识库，但没有可展示的来源，请谨慎引用。', 'The knowledge base was searched, but no displayable source was returned. Cite with care.')
     : hasResearchMaterialActivity(toolSteps) ? text('已检索个人材料，但没有可展示的原文位置，请谨慎引用。', 'Personal materials were searched, but no displayable source position was returned. Cite with care.')
-    : undefined : undefined
+    : undefined : undefined)
   const runningTool = [...toolSteps].reverse().find(step => step.status === 'running')?.tool
   const statusText = runningTool && ['read_knowledge_entry', 'read_sources', 'read_research_document', 'read_research_material_context'].includes(runningTool)
     ? text('正在阅读研究材料', 'Reading research materials')
@@ -1367,6 +1378,11 @@ export function ResearchAgentConversationPage({
 
   const canStopGeneration = status === 'thinking' || status === 'retrieving' || status === 'answering'
   const isBusy = preparingWriting || status === 'loading' || status === 'pausing' || status === 'pause-failed' || canStopGeneration
+  const knowledgeIndex = useKnowledgeIndexChoice(requestedScope, (request, idempotencyKey) => {
+    if (isBusy || writingPreparation.current || streamAbortController.current || researchEntryAbortController.current) return false
+    void submitQuestion(request.message, idempotencyKey, undefined, false, undefined, false, request)
+    return true
+  }, !isBusy)
   useEffect(() => { writingCallbacks.current.onBusyChange?.(isBusy) }, [isBusy])
   const canSubmit = draft.trim().length > 0
     && !isBusy
@@ -1899,15 +1915,15 @@ export function ResearchAgentConversationPage({
     }
   }
 
-  async function submitQuestion(rawQuestion: string, retryIdempotencyKey?: string, deepAction?: { action: 'clarify' | 'confirm' | 'skip'; selection?: string }, researchEntry = false, entrySelection?: ModelSelection, writingShortcut = false): Promise<AgentConversation | null> {
-    const question = retryIdempotencyKey || deepAction || researchEntry ? rawQuestion.trim() : composeResearchDiscussion(rawQuestion.trim(), discussion)
+  async function submitQuestion(rawQuestion: string, retryIdempotencyKey?: string, deepAction?: { action: 'clarify' | 'confirm' | 'skip'; selection?: string }, researchEntry = false, entrySelection?: ModelSelection, writingShortcut = false, resumeRequest?: AgentTurnRequest): Promise<AgentConversation | null> {
+    const question = resumeRequest || retryIdempotencyKey || deepAction || researchEntry ? rawQuestion.trim() : composeResearchDiscussion(rawQuestion.trim(), discussion)
     if (!rawQuestion.trim()) return null
     if (question.length > MAX_AGENT_MESSAGE_LENGTH) {
       setError('讨论内容过长，请缩短问题或重新选择较短的段落。')
       return null
     }
     if (!question || writingPreparation.current || isBusy || streamAbortController.current || (!researchEntry && researchEntryAbortController.current)) return null
-    const turnMode = (researchEntry || writingShortcut) ? 'standard' : (failedTurnAttempt.current?.idempotencyKey === retryIdempotencyKey && failedTurnAttempt.current?.request ? failedTurnAttempt.current.request.mode === 'deep_research' ? 'deep-research' : 'standard' : composerMode)
+    const turnMode = resumeRequest ? (resumeRequest.mode === 'deep_research' ? 'deep-research' : 'standard') : (researchEntry || writingShortcut) ? 'standard' : (failedTurnAttempt.current?.idempotencyKey === retryIdempotencyKey && failedTurnAttempt.current?.request ? failedTurnAttempt.current.request.mode === 'deep_research' ? 'deep-research' : 'standard' : composerMode)
     let resultConversation: AgentConversation | null = null
     const idempotencyKey = retryIdempotencyKey
       ?? globalThis.crypto?.randomUUID?.()
@@ -1918,18 +1934,18 @@ export function ResearchAgentConversationPage({
       : activeTurnAttempt.current?.idempotencyKey === idempotencyKey
         ? activeTurnAttempt.current
         : null
-    const newModelFields = resumableAttempt?.request ? {} : entrySelection
+    const newModelFields = resumeRequest || resumableAttempt?.request ? {} : entrySelection
       ? toModelSelectionRequest(entrySelection, modelSelection.catalog) : modelSelection.requestFields()
     const attempt: PendingTurnAttempt = {
       question,
       idempotencyKey,
-      conversationId: activeConversation?.conversation_id ?? pendingConversationId.current,
+      conversationId: resumeRequest?.conversation_id ?? activeConversation?.conversation_id ?? pendingConversationId.current,
       runId: resumableAttempt?.runId ?? null,
-      materialIds: resumableAttempt?.materialIds ?? attachedMaterials.map((item) => item.materialId),
+      materialIds: resumeRequest?.material_ids ?? resumableAttempt?.materialIds ?? attachedMaterials.map((item) => item.materialId),
       request: resumableAttempt?.request,
     }
     let writingContext: AgentTurnRequest['writing_context']
-    if (!attempt.request && prepareWritingContext) {
+    if (!resumeRequest && !attempt.request && prepareWritingContext) {
       const preparationGeneration = streamGeneration.current
       writingPreparation.current = true
       setPreparingWriting(true)
@@ -1937,7 +1953,7 @@ export function ResearchAgentConversationPage({
       catch (cause) { setError(cause instanceof Error ? cause.message : '无法保存当前文稿，请重试。'); return null }
       finally { writingPreparation.current = false; setPreparingWriting(false) }
     }
-    const request: AgentTurnRequest = attempt.request ? { ...attempt.request, conversation_id: attempt.conversationId } : {
+    const request: AgentTurnRequest = resumeRequest ? { ...resumeRequest } : attempt.request ? { ...attempt.request, conversation_id: attempt.conversationId } : {
           ...newModelFields,
           conversation_id: activeConversation?.conversation_id ?? pendingConversationId.current,
           message: question,
@@ -1956,6 +1972,7 @@ export function ResearchAgentConversationPage({
           deep_research_action: deepAction?.action ?? null,
           deep_research_selection: deepAction?.selection ?? null,
     }
+    if (!resumeRequest) knowledgeIndex.cancel()
     if (deepAction) {
       request.deep_research_run_id = attempt.runId ?? null
       request.deep_research_action = deepAction.action
@@ -2166,6 +2183,23 @@ export function ResearchAgentConversationPage({
             pausePending.current = false
             activeRunId.current = null
             settleInterruptedTurn()
+          } else if (event.type === 'knowledge_index_choice_required') {
+            activeRunId.current = null
+            pausePending.current = false
+            const pending = { ...(activeTurnAttempt.current ?? attempt) }
+            failedTurnAttempt.current = pending
+            activeTurnAttempt.current = null
+            persistPendingTurnAttempt(storageScope.current, pending)
+            updateDraft(question)
+            setStreamingTurn((current) => {
+              if (!current) return current
+              const saved = { ...current, interrupted: true }
+              persistInterruptedTurn(storageScope.current, saved)
+              return saved
+            })
+            setStatus('idle')
+            setError(null)
+            knowledgeIndex.present(event.status, { ...request, conversation_id: pending.conversationId }, storageScope.current, idempotencyKey)
           } else if (event.type === 'turn_failed') {
             pausePending.current = false
             activeRunId.current = null
@@ -2762,7 +2796,12 @@ export function ResearchAgentConversationPage({
                 {conversationTail}
                 <div ref={transcriptEndRef} />
               </div>}
-    composer={<>            {error ? (
+    composer={<>{knowledgeIndex.choice && <KnowledgeReadinessChoice
+              locale={locale} totalCount={knowledgeIndex.choice.status.total_count} readyCount={knowledgeIndex.choice.status.ready_count}
+              documents={knowledgeReadinessDocuments(knowledgeIndex.choice.status)} busy={knowledgeIndex.busy || isBusy}
+              waiting={knowledgeIndex.choice.waiting} error={knowledgeIndex.error}
+              onSkip={knowledgeIndex.skip} onRepair={() => void knowledgeIndex.repair()} onRefresh={() => void knowledgeIndex.refresh()} onCancel={knowledgeIndex.cancel}
+            />}{error ? (
               <div className="cv-error" role="alert">
                 <WarningCircleIcon size={16} /><span>{error}</span>
                 <button className="qx-btn qx-btn--ghost" type="button" aria-label={text('关闭错误提示', 'Close error message')} onClick={() => setError(null)}><XIcon size={14} /></button>

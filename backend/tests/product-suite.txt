@@ -3,6 +3,9 @@
 tests/test_everplain_runtime.py
 tests/test_everplain_account_data.py
 tests/test_everplain_agent.py
+tests/test_agent_global_knowledge.py
+tests/test_knowledge_index_readiness.py
+tests/test_shared_knowledge_agent.py
 tests/test_everplain_documents.py
 tests/test_personal_knowledge_api.py
 tests/test_shared_knowledge_api.py
@@ -51,6 +54,7 @@ tests/test_web_research_bootstrap.py
 tests/test_web_responses_pipeline.py
 tests/billing/test_search_billing.py
 tests/test_knowledge_tool_chain.py
+tests/test_hybrid_retriever.py
 tests/test_transcription_provider.py
 tests/test_transcription_policy.py
 tests/test_everplain_research_surface.py

@@ -33,6 +33,8 @@ from qunxue_api.api.contracts.agent import (
     AgentTurnResponse,
     ConfirmResearchStartRequest,
     ConfirmResearchStartResponse,
+    KnowledgeIndexRepairRequest,
+    KnowledgeIndexStatusResponse,
     RecentConversationContextsResponse,
     ResearchStartProposalResponse,
 )
@@ -61,6 +63,10 @@ from qunxue_api.modules.agent_conversation import (
 from qunxue_api.modules.billing import BillingFailure, CreditRunInProgress, CreditsDepleted
 from qunxue_api.modules.knowledge_catalog import RetrievalPipelineUnavailable
 from qunxue_api.modules.research_intake import ResearchStartProposalStatus
+from qunxue_api.modules.shared_knowledge import (
+    KnowledgeIndexChoiceRequired,
+    find_knowledge_index_choice,
+)
 
 router = APIRouter(
     prefix="/api/agent",
@@ -399,6 +405,41 @@ def list_agent_models(
     )
 
 
+@router.get(
+    "/knowledge-index-status", response_model=KnowledgeIndexStatusResponse,
+    operation_id="get_agent_knowledge_index_status",
+)
+def get_agent_knowledge_index_status(
+    request: Request, current: CurrentSessionDependency,
+    reference_knowledge_base_id: UUID | None = None,
+    purpose: Literal["search", "graph"] = "search",
+):
+    with request.app.state.disciplinary_agent_scope() as app:
+        return app.knowledge_index_status(
+            user_id=current.user.user_id, kb_id=reference_knowledge_base_id, purpose=purpose
+        )
+
+
+@router.post(
+    "/knowledge-index-repairs", response_model=KnowledgeIndexStatusResponse,
+    operation_id="repair_agent_knowledge_index", status_code=202,
+)
+def repair_agent_knowledge_index(
+    payload: KnowledgeIndexRepairRequest, request: Request,
+    current: CurrentSessionDependency, _idempotency_key: IdempotencyKey,
+):
+    with request.app.state.disciplinary_agent_scope() as app:
+        try:
+            return app.repair_knowledge_indexes(
+                user_id=current.user.user_id,
+                documents=[item.model_dump() for item in payload.documents],
+                idempotency_key=_idempotency_key,
+                kb_id=payload.reference_knowledge_base_id, purpose=payload.purpose,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+
 @router.post(
     "/turns",
     status_code=status.HTTP_200_OK,
@@ -503,6 +544,7 @@ def stream_agent_turn(
                                 theory_plan_id=payload.theory_plan_id,
                                 material_ids=payload.material_ids,
                                 reference_knowledge_base_id=payload.reference_knowledge_base_id,
+                                knowledge_index_action=payload.knowledge_index_action,
                                 mode=payload.mode,
                                 deep_research_run_id=payload.deep_research_run_id,
                                 deep_research_action=payload.deep_research_action,
@@ -699,6 +741,11 @@ def stream_agent_turn(
                 "turn_interrupted",
                 {"code": "interrupted", "message": "已暂停，已生成的内容已保存，可以继续。"},
             )
+        except KnowledgeIndexChoiceRequired as error:
+            yield _event("knowledge_index_choice_required", {
+                "status": error.status,
+                "run_id": str(registered_run_id) if registered_run_id else None,
+            })
         except RetrievalPipelineUnavailable:
             logger.exception("Agent retrieval failed")
             yield _event(
@@ -708,7 +755,14 @@ def stream_agent_turn(
                     "message": "发布绑定的知识检索暂时不可用，本轮未生成研究回答。",
                 },
             )
-        except Exception:
+        except Exception as error:
+            choice = find_knowledge_index_choice(error)
+            if choice is not None:
+                yield _event("knowledge_index_choice_required", {
+                    "status": choice.status,
+                    "run_id": str(registered_run_id) if registered_run_id else None,
+                })
+                return
             logger.exception("Agent turn failed")
             yield _event(
                 "turn_failed",

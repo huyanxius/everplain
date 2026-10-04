@@ -121,6 +121,51 @@ class AgentConversationUpdateRequest(BaseModel):
     ]
 
 
+class KnowledgeIndexDocumentResponse(BaseModel):
+    knowledge_base_id: UUID
+    document_id: UUID
+    parse_id: UUID
+    filename: str
+    index_status: str
+    index_error: str | None = None
+    reason: str | None = None
+    stage: Literal["ready", "index", "knowledge"] = "index"
+    knowledge_status: str | None = None
+    knowledge_error: str | None = None
+
+
+class KnowledgeIndexStatusResponse(BaseModel):
+    purpose: Literal["search", "graph"] = "search"
+    state: Literal["ready", "missing_index", "unavailable"]
+    embedding_model: str | None
+    total_count: int
+    ready_count: int
+    missing_count: int
+    processing_count: int
+    failed_count: int
+    ready_document_ids: list[UUID]
+    ready_documents: list[KnowledgeIndexDocumentResponse]
+    missing_documents: list[KnowledgeIndexDocumentResponse]
+
+
+class KnowledgeIndexRepairDocument(BaseModel):
+    knowledge_base_id: UUID
+    document_id: UUID
+    parse_id: UUID
+
+
+class KnowledgeIndexRepairRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    purpose: Literal["search", "graph"] = "search"
+    documents: list[KnowledgeIndexRepairDocument] = Field(min_length=1, max_length=1000)
+    reference_knowledge_base_id: UUID | None = None
+
+
+class KnowledgeIndexChoiceResponse(BaseModel):
+    code: Literal["knowledge_index_choice_required"] = "knowledge_index_choice_required"
+    status: KnowledgeIndexStatusResponse
+
+
 class AgentWritingContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -150,6 +195,7 @@ class AgentTurnRequest(BaseModel):
         return self
 
     reference_knowledge_base_id: UUID | None = None
+    knowledge_index_action: Literal["skip_missing"] | None = None
     conversation_id: UUID | None = None
     message: str = Field(min_length=1, max_length=12000)
     workspace: Literal["agent", "research"] = "agent"
@@ -212,8 +258,12 @@ class AgentRunLookupResponse(BaseModel):
     conversation_id: UUID
     idempotency_key: str
     status: Literal[
-        "running", "completed", "failed", "interrupted",
-        "awaiting_clarification", "awaiting_plan_confirmation",
+        "running",
+        "completed",
+        "failed",
+        "interrupted",
+        "awaiting_clarification",
+        "awaiting_plan_confirmation",
     ]
     cancel_requested: bool
     partial_answer: str

@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from qunxue_api.api.contracts.agent import KnowledgeIndexStatusResponse
+
 
 class PersonalGraphNode(BaseModel):
     id: str
@@ -28,7 +30,19 @@ class PersonalGraphSource(BaseModel):
     segment_id: str | None = None
 
 
+class PersonalGraphRefreshRequest(BaseModel):
+    knowledge_index_action: Literal["skip_missing"] | None = None
+
+
+class PersonalGraphCoverage(BaseModel):
+    included_count: int
+    total_count: int
+    excluded_count: int
+
+
 class PersonalGraphResponse(BaseModel):
+    coverage: PersonalGraphCoverage | None = None
+    knowledge_index_status: KnowledgeIndexStatusResponse | None = None
     releaseId: str
     nodes: list[PersonalGraphNode]
     edges: list[PersonalGraphEdge]

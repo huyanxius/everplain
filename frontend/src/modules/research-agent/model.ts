@@ -101,6 +101,7 @@ export type AgentModelCatalog = {
 }
 
 export type AgentTurnRequest = {
+  knowledge_index_action?: 'skip_missing' | null
   model_id?: string | null
   reasoning_effort?: AgentReasoningEffort | null
   reference_knowledge_base_id?: string | null
@@ -196,6 +197,7 @@ export type AgentEvent =
   | { type: 'canvas_patch'; patch: AgentResearchMapPatch }
   | { type: 'turn_completed'; conversation: AgentConversation; knowledge_release_id: string }
   | { type: 'turn_interrupted'; code: string; message: string }
+  | { type: 'knowledge_index_choice_required'; status: KnowledgeIndexStatus }
   | { type: 'turn_failed'; code: string; message: string }
 
 export type RecentConversationContext = {
@@ -206,4 +208,35 @@ export type RecentConversationContext = {
   excerpt: string
   source_message_id: string | null
   recent_excerpts: { message_id: string; sequence: number; excerpt: string }[]
+}
+
+export type KnowledgeIndexDocument = {
+  stage?: 'ready' | 'index' | 'knowledge'
+  knowledge_status?: string | null
+  knowledge_error?: string | null
+  knowledge_base_id: string
+  document_id: string
+  parse_id: string
+  filename: string
+  index_status: string
+  index_error?: string | null
+  reason?: string | null
+}
+export type KnowledgeIndexStatus = {
+  purpose?: 'search' | 'graph'
+  state: 'ready' | 'missing_index' | 'unavailable'
+  embedding_model: string | null
+  total_count: number
+  ready_count: number
+  missing_count: number
+  processing_count: number
+  failed_count: number
+  ready_document_ids: string[]
+  ready_documents: KnowledgeIndexDocument[]
+  missing_documents: KnowledgeIndexDocument[]
+}
+export type KnowledgeIndexRepair = {
+  purpose?: 'search' | 'graph'
+  documents: Pick<KnowledgeIndexDocument, 'knowledge_base_id' | 'document_id' | 'parse_id'>[]
+  reference_knowledge_base_id?: string | null
 }

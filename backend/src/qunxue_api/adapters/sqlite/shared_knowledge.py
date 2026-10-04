@@ -1,5 +1,7 @@
 """Thin standalone document storage on the existing SQLite database."""
 
+import hashlib
+import math
 from dataclasses import asdict
 from datetime import UTC, datetime
 from uuid import UUID
@@ -190,6 +192,70 @@ class SqliteSharedKnowledgeRepository:
                 setattr(row, f"{stage}_error", None)
         self.commit()
         return _document(row)
+
+    def index_repair_seen(self, user_id, request_key, fingerprint):
+        key = hashlib.sha256(request_key.encode()).hexdigest()
+        for checkpoint in self.session.scalars(
+            select(SharedDocumentRow.knowledge_checkpoints).where(
+                SharedDocumentRow.owner_user_id == str(user_id)
+            )
+        ):
+            receipt = ((checkpoint or {}).get("_index_repair_requests") or {}).get(key)
+            if receipt is not None:
+                if receipt != fingerprint:
+                    raise ValueError("同一补齐请求不能更换资料或整理范围，请重新确认。")
+                return True
+        return False
+
+    def record_index_repair(self, document_id, parse_id, request_key, fingerprint):
+        row = self.session.get(SharedDocumentRow, str(document_id), populate_existing=True)
+        if row is None or row.status != "ready" or row.parse_id != str(parse_id):
+            raise ValueError("资料已变化，请刷新整理状态。")
+        checkpoint = dict(row.knowledge_checkpoints or {})
+        receipts = dict(checkpoint.get("_index_repair_requests") or {})
+        receipts[hashlib.sha256(request_key.encode()).hexdigest()] = fingerprint
+        row.knowledge_checkpoints = {**checkpoint, "_index_repair_requests": receipts}
+        self.session.flush()
+
+    def index_queue_transaction(self):
+        return self.session.begin_nested()
+
+    def queue_document_knowledge(self, document_id, parse_id):
+        row = self.session.get(SharedDocumentRow, str(document_id), populate_existing=True)
+        if row is None or row.status != "ready" or row.parse_id != str(parse_id):
+            raise ValueError("资料已变化，请刷新整理状态。")
+        if row.knowledge_status not in {"queued", "running"}:
+            row.knowledge_status = "queued"
+            row.knowledge_error = None
+        self.session.flush()
+
+    def queue_document_index(self, document_id, parse_id, *, embedding_model=None):
+        row = self.session.get(SharedDocumentRow, str(document_id), populate_existing=True)
+        if row is None or row.status != "ready" or row.parse_id != str(parse_id):
+            raise ValueError("资料已变化，请刷新索引状态。")
+        if row.index_status not in {"queued", "running"}:
+            if embedding_model:
+                cached = row.vectors.get(embedding_model, {})
+                valid = {
+                    key: value
+                    for key, value in cached.items()
+                    if isinstance(value, (list, tuple))
+                    and value
+                    and any(value)
+                    and all(
+                        isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+                        for v in value
+                    )
+                }
+                # A malformed/inconsistent model cache is not a ready index.
+                # Only the explicitly selected document/model is repaired.
+                if len({len(value) for value in valid.values()}) > 1:
+                    valid = {}
+                if valid != cached:
+                    row.vectors = {**row.vectors, embedding_model: valid}
+            row.index_status = "queued"
+            row.index_error = None
+        self.session.flush()
 
     def commit(self):
         self.session.commit()

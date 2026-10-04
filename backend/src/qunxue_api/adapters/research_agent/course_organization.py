@@ -1,12 +1,13 @@
 """Recoverable course processing; model calls never hold a SQLite write transaction."""
 
+import json
 import logging
 import math
 from contextlib import ExitStack, nullcontext
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 
 from qunxue_api.adapters.sqlite.shared_knowledge import (
     SharedDocumentRow,
@@ -111,7 +112,13 @@ class CourseOrganizationWorker:
                                         SharedDocumentRow.job_token == token,
                                     )
                                     .values(
-                                        knowledge_checkpoints=value,
+                                        knowledge_checkpoints=func.json_set(
+                                            json.dumps(value), "$._index_repair_requests",
+                                            func.json_extract(
+                                                SharedDocumentRow.knowledge_checkpoints,
+                                                "$._index_repair_requests",
+                                            ),
+                                        ),
                                         job_started_at=datetime.now(UTC),
                                     )
                                 )

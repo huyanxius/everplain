@@ -26,7 +26,12 @@ class KnowledgeImportApplication:
             self.libraries.require_manage(user_id, library_id)
         else:
             existing = next(
-                (x for x in self.libraries.libraries(user_id) if x.name == "我的资料"), None
+                (
+                    x
+                    for x in self.libraries.libraries(user_id)
+                    if x.name == "我的资料" and x.owner_user_id == user_id
+                ),
+                None,
             )
             library_id = (
                 existing.id

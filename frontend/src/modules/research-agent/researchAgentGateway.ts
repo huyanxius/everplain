@@ -1,4 +1,6 @@
 import {
+  readKnowledgeIndexStatus as readIndexStatus,
+  repairKnowledgeIndex as repairIndex,
   getAgentModelCatalog as getModelCatalog,
   saveCanvasNode as saveNode,
   confirmResearchStartProposal as confirmStartProposal,
@@ -77,3 +79,6 @@ export function getAgentModelCatalog(signal?: AbortSignal) {
 export function listRecentConversationContext(signal?: AbortSignal): Promise<RecentConversationContext[]> {
   return listRecentContext(signal)
 }
+
+export function readKnowledgeIndexStatus(...args: Parameters<typeof readIndexStatus>) { return readIndexStatus(...args) }
+export function repairKnowledgeIndex(...args: Parameters<typeof repairIndex>) { return repairIndex(...args) }

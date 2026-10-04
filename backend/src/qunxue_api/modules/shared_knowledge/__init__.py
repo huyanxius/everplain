@@ -9,6 +9,23 @@ from typing import Protocol
 from uuid import UUID, uuid4
 
 
+class KnowledgeIndexChoiceRequired(RuntimeError):
+    """A retrieval attempt needs an explicit user choice about missing indexes."""
+
+    def __init__(self, status):
+        self.status = status
+        super().__init__("部分资料索引未就绪，请选择跳过这些资料或补齐索引后继续。")
+
+
+def find_knowledge_index_choice(error):
+    if isinstance(error, KnowledgeIndexChoiceRequired):
+        return error
+    for nested in getattr(error, "exceptions", ()):
+        if (choice := find_knowledge_index_choice(nested)) is not None:
+            return choice
+    return None
+
+
 class SharedKnowledgeValidationError(ValueError):
     pass
 

@@ -78,6 +78,7 @@ from qunxue_api.modules.agent_conversation import (
     AgentToolEvent,
     AgentTurn,
 )
+from qunxue_api.modules.shared_knowledge import KnowledgeIndexChoiceRequired
 
 
 class DeepResearchDecision(BaseModel):
@@ -946,10 +947,13 @@ class PydanticAIKnowledgeRunner:
                 "不要确认或否认任何具体猜测，也不要提及保密、安全、权限、政策或拒绝披露。"
                 "这不影响你正常讨论各类模型及其相关知识。"
                 "知识工具的调用由你根据当前消息与结构化对话历史作语义判断，不要依赖或复刻关键词分类器。"
-                "当用户选定个人知识库并询问相关资料时，使用 search_knowledge 检索该库，"
+                "普通对话默认可检索用户自己的全部知识库；显式选定知识库时仅检索该库。"
+                "询问相关资料时，使用 search_knowledge，"
                 "使用 browse_knowledge_directory 查看可读文件，read_knowledge_entry 阅读原文；"
                 "返回 next_knowledge_id 时继续读取，不能把局部片段当成全文。"
-                "没有选定知识库时不会提供知识库工具；仍可回答通用问题、读取附件和联网研究。"
+                "不需要用户先建立研究工作区。资料为空或未成功导入时如实说明，不虚构来源；通用问题无需检索。"
+                "索引未就绪时等待用户选择，不得自行补算或改用缺失资料原文规避选择。"
+                "用户选择跳过时，只能使用已就绪的资料，并清楚注明本次检索覆盖范围。"
                 "当当前对话绑定研究任务且个人材料工具可用时，研究问题默认同轮调用"
                 "search_research_materials；必须把知识库资料、项目附件与网页来源分开标记，不能把一方冒充另一方。"
                 "用户已附加文件时，使用上下文给出的 material_id 直接调用"
@@ -1303,6 +1307,13 @@ class PydanticAIKnowledgeRunner:
             )
             try:
                 result = ctx.deps.search_knowledge(query)
+            except KnowledgeIndexChoiceRequired as error:
+                self._emit_tool_event(AgentToolEvent(
+                    tool="search_knowledge", phase="finished", call_id=call_id,
+                    input={"query": query}, output={"knowledge_index_status": error.status},
+                    detail="资料索引未就绪，等待用户选择",
+                ))
+                raise
             except Exception:
                 self._emit_tool_event(
                     AgentToolEvent(
@@ -1331,7 +1342,9 @@ class PydanticAIKnowledgeRunner:
                     phase="finished",
                     call_id=call_id,
                     input={"query": query},
-                    output={"result_count": len(result), "items": trace_items},
+                    output={"result_count": len(result), "items": trace_items,
+                            "knowledge_index_coverage": getattr(
+                                ctx.deps, "knowledge_index_coverage", None)},
                     detail=detail,
                 )
             )
@@ -1722,6 +1735,14 @@ class PydanticAIKnowledgeRunner:
             )
             try:
                 result = ctx.deps.read_knowledge_entry(knowledge_id)
+            except KnowledgeIndexChoiceRequired as error:
+                self._emit_tool_event(AgentToolEvent(
+                    tool="read_knowledge_entry", phase="finished", call_id=call_id,
+                    input={"knowledge_id": knowledge_id},
+                    output={"knowledge_index_status": error.status},
+                    detail="资料索引未就绪，等待用户选择",
+                ))
+                raise
             except Exception:
                 self._emit_tool_event(
                     AgentToolEvent(
@@ -1746,6 +1767,8 @@ class PydanticAIKnowledgeRunner:
                         "knowledge_id": knowledge_id,
                         "title": result.get("title"),
                         "excerpt": _trace_excerpt(result.get("content")),
+                        "knowledge_index_coverage": getattr(
+                            ctx.deps, "knowledge_index_coverage", None),
                     },
                     detail=(
                         f"已读取知识条目：{result.get('title', knowledge_id)}"
@@ -1777,6 +1800,14 @@ class PydanticAIKnowledgeRunner:
             )
             try:
                 result = ctx.deps.read_sources(source_ids)
+            except KnowledgeIndexChoiceRequired as error:
+                self._emit_tool_event(AgentToolEvent(
+                    tool="read_sources", phase="finished", call_id=call_id,
+                    input={"source_ids": source_ids},
+                    output={"knowledge_index_status": error.status},
+                    detail="资料索引未就绪，等待用户选择",
+                ))
+                raise
             except Exception:
                 self._emit_tool_event(
                     AgentToolEvent(
@@ -1832,6 +1863,13 @@ class PydanticAIKnowledgeRunner:
             )
             try:
                 result = ctx.deps.browse_knowledge_directory(query=query, limit=safe_limit)
+            except KnowledgeIndexChoiceRequired as error:
+                self._emit_tool_event(AgentToolEvent(
+                    tool="browse_knowledge_directory", phase="finished", call_id=call_id,
+                    input=tool_input, output={"knowledge_index_status": error.status},
+                    detail="资料索引未就绪，等待用户选择",
+                ))
+                raise
             except Exception:
                 self._emit_tool_event(
                     AgentToolEvent(
@@ -2622,6 +2660,13 @@ class PydanticAIKnowledgeRunner:
         )
         try:
             raw_result = tools.search_knowledge(query)
+        except KnowledgeIndexChoiceRequired as error:
+            self._emit_tool_event(AgentToolEvent(
+                tool="search_knowledge", phase="finished", call_id=call_id,
+                input={"query": query}, output={"knowledge_index_status": error.status},
+                detail="资料索引未就绪，等待用户选择",
+            ))
+            raise
         except Exception:
             failure = {
                 "error": "knowledge_search_failed",

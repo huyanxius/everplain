@@ -2,7 +2,7 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from inspect import Parameter, signature
 from typing import Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -31,6 +31,7 @@ from qunxue_api.modules.agent_conversation import (
     resolve_agent_model_selection,
 )
 from qunxue_api.modules.billing import BillingOperations, CreditService
+from qunxue_api.modules.shared_knowledge import find_knowledge_index_choice
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +80,17 @@ class DisciplinaryAgentApplication:
         self._memory_tools_factory = memory_tools_factory
         self._shared_references = shared_references
         self._persona_factory = persona_factory
+
+    def knowledge_index_status(self, *, user_id, kb_id=None, purpose="search"):
+        return self._shared_references.index_status(user_id=user_id, kb_id=kb_id, purpose=purpose)
+
+    def repair_knowledge_indexes(
+        self, *, user_id, documents, idempotency_key, kb_id=None, purpose="search"
+    ):
+        return self._shared_references.repair_indexes(
+            user_id=user_id, documents=documents, idempotency_key=idempotency_key,
+            kb_id=kb_id, purpose=purpose
+        )
 
     def list_conversations(self, *, user_id: UUID):
         return self._conversations.list_conversations(user_id=user_id)
@@ -231,6 +243,7 @@ class DisciplinaryAgentApplication:
         theory_plan_id: UUID | None = None,
         material_ids: tuple[UUID, ...] = (),
         reference_knowledge_base_id: UUID | None = None,
+        knowledge_index_action: Literal["skip_missing"] | None = None,
         mode: Literal["standard", "deep_research"] = "standard",
         deep_research_run_id: UUID | None = None,
         deep_research_action: Literal["clarify", "confirm", "skip"] | None = None,
@@ -498,6 +511,7 @@ class DisciplinaryAgentApplication:
             else None,
             "model_id": model_selection.model_id if model_selection else None,
             "reasoning_effort": model_selection.reasoning_effort if model_selection else None,
+            "knowledge_index_action": knowledge_index_action,
             "workspace": workspace,
             "web_search": web_search,
             "mode": mode,
@@ -692,10 +706,18 @@ class DisciplinaryAgentApplication:
             conversation_history = current.turns[-8:]
             if reference_knowledge_base_id is not None:
                 self._shared_references.prepare(
-                    user_id=user_id, kb_id=reference_knowledge_base_id, query=prompt, tools=tools
+                    user_id=user_id, kb_id=reference_knowledge_base_id, query=prompt, tools=tools,
+                    index_action=knowledge_index_action,
                 )
                 conversation_history = self._shared_references.filter_history(
                     user_id=user_id, kb_id=reference_knowledge_base_id, turns=current.turns
+                )[-8:]
+            elif workspace == "agent" and self._shared_references is not None:
+                self._shared_references.bind_owned(
+                    user_id=user_id, tools=tools, index_action=knowledge_index_action
+                )
+                conversation_history = self._shared_references.filter_history(
+                    user_id=user_id, kb_id=None, turns=current.turns
                 )[-8:]
             # Preferences remain available in a library chat. Source-derived text
             # cannot enter persistent memory, so deleting a file also removes recall.
@@ -707,7 +729,7 @@ class DisciplinaryAgentApplication:
                     prompt=prompt,
                     run_id=run.run_id,
                 )
-                if reference_knowledge_base_id is not None:
+                if getattr(tools, "private_knowledge", None) is not None:
                     tools.memory.user_text_only = True
             deep_research_started = mode == "deep_research" and deep_research_action == "confirm"
 
@@ -877,6 +899,23 @@ class DisciplinaryAgentApplication:
                     conversation=conversation_history,
                     tools=tools,
                 )
+            coverage = getattr(tools, "knowledge_index_coverage", None)
+            if coverage is not None:
+                record_tool_event(AgentToolEvent(
+                    tool="knowledge_index_scope", phase="finished",
+                    call_id=f"knowledge-index-scope:{run.run_id}",
+                    output={"knowledge_index_coverage": coverage},
+                    detail="本轮知识库检索覆盖范围",
+                ))
+            if (
+                coverage and coverage.get("missing_count")
+                and knowledge_index_action == "skip_missing"
+            ):
+                result = replace(result, answer=(
+                    f"本次仅使用已就绪的 {coverage['ready_count']}/"
+                    f"{coverage['total_count']} 份资料，"
+                    f"未检索 {coverage['missing_count']} 份索引未完成的资料。\n\n" + result.answer
+                ))
             if deep_research_started and on_research_event is not None:
                 on_research_event(
                     AgentResearchEvent(
@@ -948,6 +987,18 @@ class DisciplinaryAgentApplication:
         except Exception as error:
             if self._rollback is not None:
                 self._rollback()
+            choice = find_knowledge_index_choice(error)
+            if choice is not None:
+                event = AgentToolEvent(
+                    tool="knowledge_index_status", phase="finished",
+                    call_id=f"knowledge-index-choice:{run.run_id}",
+                    output={"knowledge_index_status": choice.status},
+                    detail="资料索引未就绪，等待用户选择",
+                )
+                with tool_events_lock:
+                    tool_events.append(event)
+                if on_tool_event is not None:
+                    on_tool_event(event)
             try:
                 if owns_run():
                     checkpoint(force=True)
