@@ -78,6 +78,7 @@ export function SharedEditor({
   onOpenLink,
   onReady,
   onChange,
+  onSelectionChange,
   saveState = 'saved',
   readOnly = false,
 }: {
@@ -89,6 +90,7 @@ export function SharedEditor({
   onOpenLink?: (target: string) => void
   onReady?: (editor: Editor) => void
   onChange?: (markdown: string) => void
+  onSelectionChange?: (selection: { start: number; end: number; text: string } | null) => void
   saveState?: 'saved' | 'dirty' | 'saving' | 'error'
   readOnly?: boolean
 }) {
@@ -97,6 +99,7 @@ export function SharedEditor({
   const frontmatter = useRef(initial.current.frontmatter)
   const [propertySourceOnly, setPropertySourceOnly] = useState(!canEditProperties(initial.current.frontmatter))
   const callback = useRef(onChange); callback.current = onChange
+  const selectionCallback = useRef(onSelectionChange); selectionCallback.current = onSelectionChange
   const suppressChange = useRef(false)
   const userEditing = useRef(false)
   const [props, setProps] = useState<Property[]>(initialProps.length ? initialProps : initial.current.properties)
@@ -208,6 +211,20 @@ export function SharedEditor({
 
   useEffect(() => { editorRef.current = editor; if (editor) onReady?.(editor); return () => { editorRef.current = null } }, [editor, onReady])
   useEffect(() => { editor?.setEditable(!readOnly) }, [editor, readOnly])
+  useEffect(() => {
+    if (!editor) return
+    const changed = () => {
+      const { from, to, empty } = editor.state.selection
+      if (empty) { selectionCallback.current?.(null); return }
+      const text = editor.state.doc.textBetween(from, to, '\n')
+      const start = raw.current.indexOf(text)
+      // Never invent offsets for formatted or ambiguous repeated text.
+      selectionCallback.current?.(text && start >= 0 && start === raw.current.lastIndexOf(text) ? { start, end: start + text.length, text } : null)
+    }
+    editor.on('selectionUpdate', changed)
+    editor.on('update', changed)
+    return () => { editor.off('selectionUpdate', changed); editor.off('update', changed) }
+  }, [editor])
   useEffect(() => {
     if (!editor || markdown === raw.current) return
     raw.current = markdown
@@ -444,7 +461,7 @@ export function SharedEditor({
         <div className="se-page">
           {source === null && (propertySourceOnly ? <button type="button" className="qx-btn qx-btn--ghost" onClick={toSource}>在源码中编辑属性（保留完整 YAML）</button> : <Properties props={props} onChange={updateProperties} />)}
           {source !== null ? (
-            <textarea className="se-source" value={source} spellCheck={false} readOnly={readOnly} onChange={(e) => { setSource(e.target.value); raw.current = e.target.value; callback.current?.(e.target.value) }} aria-label="Markdown 源码" />
+            <textarea className="se-source" onSelect={event => { const el = event.currentTarget; selectionCallback.current?.(el.selectionStart < el.selectionEnd ? { start: el.selectionStart, end: el.selectionEnd, text: el.value.slice(el.selectionStart, el.selectionEnd) } : null) }} value={source} spellCheck={false} readOnly={readOnly} onChange={(e) => { setSource(e.target.value); raw.current = e.target.value; callback.current?.(e.target.value) }} aria-label="Markdown 源码" />
           ) : (
             <EditorContent editor={editor} />
           )}

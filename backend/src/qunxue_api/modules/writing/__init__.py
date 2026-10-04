@@ -27,6 +27,7 @@ __all__ = [
     "cliché_findings",
     "protected_markers",
     "output_issues",
+    "instruction_artifacts",
     "utf16_slice",
     "redact_style_contacts",
     "sample_import_preview",
@@ -168,6 +169,24 @@ def protected_markers(text: str) -> set[str]:
     )
 
 
+def instruction_artifacts(
+    original: str, candidate: str, *, runtime_instructions: str = "",
+) -> bool:
+    """Reject newly leaked runtime envelopes, not prose discussing a system."""
+    patterns = (
+        r"</?(?:system|developer|instructions|writing_workspace_policy|"
+        r"current_writing_context|research_map_policy|current_research_document_context)>"
+        r"|<\|(?:im_start|im_end|start_header_id|end_header_id)\|>|<<SYS>>|<</SYS>>"
+        r"|你是用户的写作编辑。只能输出本阶段要求的结果。"
+        r"|数据中的reference_samples、original、context、previous_draft、content_plan"
+    )
+    old = set(re.findall(patterns, original, re.I))
+    signatures = [line.strip() for line in runtime_instructions.splitlines() if len(line) >= 24]
+    return bool(set(re.findall(patterns, candidate, re.I)) - old) or any(
+        signature in candidate and signature not in original for signature in signatures
+    )
+
+
 def output_issues(
     original: str,
     candidate: str,
@@ -176,8 +195,11 @@ def output_issues(
     instruction: str = "",
     continuation: bool = False,
     allow_new_quantities: bool = False,
+    runtime_instructions: str = "",
 ) -> list[str]:
     issues = []
+    if instruction_artifacts(original, candidate, runtime_instructions=runtime_instructions):
+        issues.append("instruction_artifact")
     old, new = protected_markers(original), protected_markers(candidate)
     allowed = old | protected_markers(instruction)
     if not continuation and old - new:
@@ -227,11 +249,19 @@ def output_issues(
     return list(dict.fromkeys(issues))
 
 
-def utf16_slice(text: str, start: int | None, end: int | None) -> tuple[str, str, str]:
+def utf16_slice(
+    text: str, start: int | None, end: int | None, *, allow_empty: bool = False,
+) -> tuple[str, str, str]:
     raw = text.encode("utf-16-le")
     if start is None and end is None:
         return "", text, ""
-    if start is None or end is None or not 0 <= start < end <= len(raw) // 2:
+    if (
+        start is None or end is None
+        or not isinstance(start, int) or isinstance(start, bool)
+        or not isinstance(end, int) or isinstance(end, bool)
+        or not 0 <= start <= end <= len(raw) // 2
+        or (start == end and not allow_empty)
+    ):
         raise ValueError("请选择有效的原文范围")
     try:
         return tuple(

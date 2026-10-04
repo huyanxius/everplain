@@ -486,6 +486,10 @@ def stream_agent_turn(
                                 document_id=payload.document_id,
                                 section_id=payload.section_id,
                                 document_version=payload.document_version,
+                                writing_context=(
+                                    payload.writing_context.model_dump(mode="json")
+                                    if payload.writing_context else None
+                                ),
                                 theory_plan_id=payload.theory_plan_id,
                                 material_ids=payload.material_ids,
                                 reference_knowledge_base_id=payload.reference_knowledge_base_id,

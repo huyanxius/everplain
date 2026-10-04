@@ -49,12 +49,10 @@ function WritingHome({ userId }: { userId: string | null }) {
     try {
       const document = await writingApi.create(body, keyFor('create', body))
       if (!alive.current) return
-      if (instruction.trim()) {
-        const request = { action: 'continue' as const, instruction: instruction.trim(), expected_version: document.version }
-        try { await writingApi.propose(document.document_id, request, keyFor(`propose:${document.document_id}`, request)) }
-        catch (failure) { if (alive.current) { navigate(`/writing/${document.document_id}`, { state: { writingError: message(failure), writingInstruction: instruction } }); return } }
+      if (alive.current) {
+        void cache.invalidateQueries({ queryKey: ['writing', userId] })
+        navigate(`/writing/${document.document_id}`, { state: instruction.trim() ? { writingInstruction: instruction.trim(), writingSubmissionKey: keyFor(`agent:${document.document_id}`, instruction.trim()) } : null })
       }
-      if (alive.current) { void cache.invalidateQueries({ queryKey: ['writing', userId] }); navigate(`/writing/${document.document_id}`) }
     } catch (failure) { if (alive.current) setError(message(failure)) }
     finally { mutex.current = false; if (alive.current) setBusy(false) }
   }

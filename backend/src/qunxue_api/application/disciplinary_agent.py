@@ -227,6 +227,7 @@ class DisciplinaryAgentApplication:
         document_id: UUID | None = None,
         section_id: str | None = None,
         document_version: int | None = None,
+        writing_context: dict[str, object] | None = None,
         theory_plan_id: UUID | None = None,
         material_ids: tuple[UUID, ...] = (),
         reference_knowledge_base_id: UUID | None = None,
@@ -298,6 +299,7 @@ class DisciplinaryAgentApplication:
                 document_id = _snapshot_uuid(snapshot, "document_id")
                 section_id = snapshot.get("section_id")
                 document_version = snapshot.get("document_version")
+                writing_context = snapshot.get("writing_context")
                 theory_plan_id = _snapshot_uuid(snapshot, "theory_plan_id")
                 material_ids = persisted_material_ids
                 if existing_run.status not in {
@@ -416,6 +418,11 @@ class DisciplinaryAgentApplication:
         # The first library read can import a snapshot in its own SQLite transaction.
         # Finish that before creating the conversation, which acquires the write lock.
         tools = self._tools_factory()
+        if writing_context is not None:
+            prepare_writing_context = getattr(tools, "prepare_writing_context", None)
+            if not callable(prepare_writing_context):
+                raise ValueError("writing workspace tools are unavailable")
+            prepare_writing_context(user_id=user_id, context=writing_context)
         with self._atomic():
             conversation_was_created = conversation is None
             if conversation is None:
@@ -498,6 +505,7 @@ class DisciplinaryAgentApplication:
             "document_id": str(document_id) if document_id else None,
             "section_id": section_id,
             "document_version": document_version,
+            "writing_context": writing_context,
             "theory_plan_id": str(theory_plan_id) if theory_plan_id else None,
             "material_ids": [str(item) for item in material_ids],
             "deep_research_run_id": str(deep_research_run_id) if deep_research_run_id else None,
@@ -633,6 +641,10 @@ class DisciplinaryAgentApplication:
                     theory_plan_id=theory_plan_id,
                 )
             bind_research_material_scope = getattr(tools, "bind_research_material_scope", None)
+            if writing_context is not None:
+                tools.bind_writing_context(
+                    user_id=user_id, agent_run_id=run.run_id, context=writing_context,
+                )
             if callable(bind_research_material_scope):
                 bind_research_material_scope(run.material_attachments)
             if workspace == "research":
