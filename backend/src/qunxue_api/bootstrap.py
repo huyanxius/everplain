@@ -1277,6 +1277,7 @@ def create_app(
                             session, **scope
                         ),
                         analysis=analysis_application,
+                        writing=WritingApplication(SqliteWritingRepository(session)),
                     ),
                 )
             except Exception:

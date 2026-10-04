@@ -2361,3 +2361,46 @@ it('allocates distinct presentation keys when a paused run returns beside a comp
     expect(JSON.parse(String(requests[2].body))).toMatchObject({ conversation_id: id, message: questionA })
   } finally { errors.mockRestore() }
 })
+
+it('uses the existing stream with versioned writing context and deduplicates clicks during save', async () => {
+  let saved!: (value: { document_id: string; document_version: number; selection_start: number; selection_end: number }) => void
+  const prepare = vi.fn(() => new Promise<{ document_id: string; document_version: number; selection_start: number; selection_end: number }>(resolve => { saved = resolve }))
+  const requests: Record<string, unknown>[] = []
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (urlFor(input).pathname === '/api/agent/turns') { requests.push(JSON.parse(String(init?.body))); return streamResponse(conversationFixture({ prompt: '改进选区', answer: '已提出待定修订。' })) }
+    return json({ items: [], tasks: [] })
+  }))
+  render(<MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" writingDocumentId="writing-doc" prepareWritingContext={prepare} composerAriaLabel="写作旁的 Agent 对话" /></MemoryRouter>)
+  const input = await screen.findByRole('textbox', { name: '写作旁的 Agent 对话' })
+  fireEvent.change(input, { target: { value: '改进选区' } })
+  fireEvent.submit(input.closest('form')!)
+  fireEvent.submit(input.closest('form')!)
+  expect(prepare).toHaveBeenCalledTimes(1)
+  expect(requests).toHaveLength(0)
+  await act(async () => saved({ document_id: 'writing-doc', document_version: 7, selection_start: 2, selection_end: 5 }))
+  await waitFor(() => expect(requests).toHaveLength(1))
+  expect(requests[0]).toMatchObject({ workspace: 'agent', message: '改进选区', writing_context: { document_id: 'writing-doc', document_version: 7, selection_start: 2, selection_end: 5 } })
+})
+
+it('keeps the user prompt and sends no turn when writing preparation fails', async () => {
+  const turns = vi.fn()
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => { if (urlFor(input).pathname === '/api/agent/turns') turns(); return json({ items: [], tasks: [] }) }))
+  render(<MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" writingDocumentId="writing-doc" prepareWritingContext={async () => { throw new Error('文稿版本冲突') }} /></MemoryRouter>)
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  fireEvent.change(input, { target: { value: '保留我的修改要求' } })
+  fireEvent.submit(input.closest('form')!)
+  await screen.findByText('文稿版本冲突')
+  expect(input).toHaveValue('保留我的修改要求')
+  expect(turns).not.toHaveBeenCalled()
+})
+
+it('isolates unsent writing chat drafts by document', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], tasks: [] })))
+  const page = (id: string) => <MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" writingDocumentId={id} /></MemoryRouter>
+  const view = render(page('writing-a'))
+  fireEvent.change(await screen.findByRole('textbox', { name: '问 Everplain' }), { target: { value: '甲文稿的未发送要求' } })
+  view.rerender(page('writing-b'))
+  expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('')
+  view.rerender(page('writing-a'))
+  expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('甲文稿的未发送要求')
+})

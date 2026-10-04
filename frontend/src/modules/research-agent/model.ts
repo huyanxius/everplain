@@ -113,6 +113,7 @@ export type AgentTurnRequest = {
   document_id?: string | null
   section_id?: string | null
   document_version?: number | null
+  writing_context?: { document_id: string; document_version: number; selection_start?: number | null; selection_end?: number | null } | null
   theory_plan_id?: string | null
   material_ids?: string[]
   deep_research_run_id?: string | null
