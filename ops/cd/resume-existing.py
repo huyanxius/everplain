@@ -99,7 +99,7 @@ with Path("/run/lock/everplain-release.lock").open("a") as lock:
     old = helper.environment(helper.metadata(transaction['old_names']['api']))
     policy = json.loads((release / 'ops/cd/policy.json').read_text())
     expected = helper.configure_billing_policy(old, policy, {})
-    expected['EVERPLAIN_RELEASE_REVISION'] = REVISION
+    expected.update(EVERPLAIN_RELEASE_REVISION=REVISION, EVERPLAIN_MIGRATIONS_MANAGED='1')
     assert expected == env
     def checked_http(url):
         code, body = probe(url)
