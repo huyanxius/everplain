@@ -685,6 +685,11 @@ class DisciplinaryAgentApplication:
                 conversation_history = self._shared_references.filter_history(
                     user_id=user_id, kb_id=reference_knowledge_base_id, turns=current.turns
                 )[-8:]
+            elif workspace == "agent" and self._shared_references is not None:
+                self._shared_references.bind_owned(user_id=user_id, tools=tools)
+                conversation_history = self._shared_references.filter_history(
+                    user_id=user_id, kb_id=None, turns=current.turns
+                )[-8:]
             # Preferences remain available in a library chat. Source-derived text
             # cannot enter persistent memory, so deleting a file also removes recall.
             if self._memory_tools_factory is not None:
@@ -695,7 +700,7 @@ class DisciplinaryAgentApplication:
                     prompt=prompt,
                     run_id=run.run_id,
                 )
-                if reference_knowledge_base_id is not None:
+                if getattr(tools, "private_knowledge", None) is not None:
                     tools.memory.user_text_only = True
             deep_research_started = mode == "deep_research" and deep_research_action == "confirm"
 

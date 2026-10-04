@@ -3,6 +3,8 @@
 tests/test_everplain_runtime.py
 tests/test_everplain_account_data.py
 tests/test_everplain_agent.py
+tests/test_agent_global_knowledge.py
+tests/test_shared_knowledge_agent.py
 tests/test_everplain_documents.py
 tests/test_personal_knowledge_api.py
 tests/test_shared_knowledge_api.py

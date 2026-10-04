@@ -387,9 +387,14 @@ class SqliteConversationRepository:
                 continue
             if (
                 not citation.knowledge_base_id
-                or str(conversation.reference_knowledge_base_id) != citation.knowledge_base_id
+                or (conversation.reference_knowledge_base_id is not None
+                    and str(conversation.reference_knowledge_base_id) != citation.knowledge_base_id)
             ):
-                raise ResearchMaterialCitationUnavailable("课程引用不属于当前会话。")
+                raise ResearchMaterialCitationUnavailable("知识库引用不属于当前会话。")
+            if conversation.reference_knowledge_base_id is None:
+                kb = shared.require_read(conversation.user_id, UUID(citation.knowledge_base_id))
+                if kb.owner_user_id != conversation.user_id:
+                    raise ResearchMaterialCitationUnavailable("全局知识库只能引用本人资料。")
             doc = shared.source(conversation.user_id, UUID(citation.knowledge_base_id),
                                 UUID(citation.material_id), citation.segment_id)
             if str(doc.parse_id) != citation.parse_id:
