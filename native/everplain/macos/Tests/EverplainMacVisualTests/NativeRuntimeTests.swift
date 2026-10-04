@@ -172,7 +172,9 @@ final class NativeRuntimeTests: XCTestCase {
         """
         let source = document(markdown: markdown, includeWarning: true)
         let bibliography = try ResearchWorkspaceExportCSL.bibliography(for: source)
-        let pdf = try XCTUnwrap(PDFDocument(data: ResearchWorkspaceExportPDF.data(document: source, bibliography: bibliography)))
+        let bytes = try ResearchWorkspaceExportPDF.data(document: source, bibliography: bibliography)
+        try saveCIArtifact(bytes,name:"native-letter-runtime.pdf")
+        let pdf = try XCTUnwrap(PDFDocument(data: bytes))
         XCTAssertGreaterThan(pdf.pageCount, 3, "The long native body did not paginate")
         XCTAssertEqual(pdf.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String, source.title)
         let first = try XCTUnwrap(pdf.page(at: 0)?.string)
@@ -209,6 +211,7 @@ final class NativeRuntimeTests: XCTestCase {
         let bibliography = try ResearchWorkspaceExportCSL.bibliography(for: source)
         // Rendering receives an explicit missing-image warning; it must not fetch the URL.
         let bytes = try ResearchWorkspaceExportPDF.data(document: source, bibliography: bibliography, imageWarnings: ["IMAGE_WARNING_SENTINEL"])
+        try saveCIArtifact(bytes,name:"native-a4-runtime.pdf")
         let pdf = try XCTUnwrap(PDFDocument(data: bytes))
         XCTAssertEqual(pdf.pageCount, 3)
         let body = compact(try XCTUnwrap(pdf.page(at: 1)?.string))
@@ -220,6 +223,14 @@ final class NativeRuntimeTests: XCTestCase {
             XCTAssertEqual(bounds.width, 595.2756, accuracy: 0.1)
             XCTAssertEqual(bounds.height, 841.8898, accuracy: 0.1)
         }
+    }
+
+    private func saveCIArtifact(_ data: Data, name: String) throws {
+        guard ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" else { return }
+        let package = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let directory = package.appendingPathComponent("verification/ci-results/native-runtime",isDirectory:true)
+        try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
+        try data.write(to:directory.appendingPathComponent(name))
     }
 
     private func node(_ id: String, label: String? = nil, kind: String = "entry", level: Int = 2) -> NativeKnowledgeNode {

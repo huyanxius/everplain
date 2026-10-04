@@ -286,6 +286,9 @@ private struct ModelEffortSlider: View {
                             .buttonStyle(.plain).font(TypeStyle.ui(T.textMeta, weight: item.offset == previewIndex ? .semibold : .regular))
                             .foregroundStyle(item.offset == previewIndex ? p.ink : p.faint)
                             .padding(.vertical,2).fixedSize()
+                            .background(NativeInteractionAnchor { view in
+                                view.identifier = NSUserInterfaceItemIdentifier("effort-label-" + item.element)
+                            })
                             .disabled(disabled)
                     }
                 }.frame(width:trackWidth,height:22)
