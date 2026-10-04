@@ -277,13 +277,15 @@ it('searches a real entry and builds a bounded structural and reviewed neighborh
   expect(screen.getByRole('button', { name: '加载更多正式关系' })).toBeVisible()
   expect(readIncidentCandidatePage).not.toHaveBeenCalled()
 
-  const latestElements = cytoscapeMock.mock.calls.at(-1)?.[0].elements
-  expect(latestElements.map((element: { data: { id: string } }) => element.data.id)).toEqual(
-    expect.arrayContaining([
-      'D1', 'D1:C001', entries.center.knowledgeId, entries.second.knowledgeId,
-      entries.child.knowledgeId, entries.reviewed.knowledgeId, 'relation:reviewed',
-    ]),
-  )
+  await waitFor(() => {
+    const latestElements = cytoscapeMock.mock.calls.at(-1)?.[0].elements
+    expect(latestElements.map((element: { data: { id: string } }) => element.data.id)).toEqual(
+      expect.arrayContaining([
+        'D1', 'D1:C001', entries.center.knowledgeId, entries.second.knowledgeId,
+        entries.child.knowledgeId, entries.reviewed.knowledgeId, 'relation:reviewed',
+      ]),
+    )
+  })
   const focusedOptions = cytoscapeMock.mock.calls.at(-1)?.[0]
   expect(focusedOptions.layout).toEqual(expect.objectContaining({ name: 'cose' }))
   expect(focusedOptions.style).toEqual(expect.arrayContaining([
