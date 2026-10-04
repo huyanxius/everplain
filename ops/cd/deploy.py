@@ -85,8 +85,13 @@ def runtime_bytes(source, revision, database):
 
 
 def check_compatible(old, new, policy):
-    if old["migration_tree"] != new["migration_tree"] and old["migration_tree"] not in policy.get(
-        "rollback_compatible_migration_trees", []
+    transition = {"from": old["migration_tree"], "to": new["migration_tree"]}
+    reviewed = policy.get("reviewed_migration_transitions", [])
+    exact_transition = isinstance(reviewed, list) and transition in reviewed
+    if (
+        old["migration_tree"] != new["migration_tree"]
+        and not exact_transition
+        and old["migration_tree"] not in policy.get("rollback_compatible_migration_trees", [])
     ):
         raise ValueError(
             "migration change lacks reviewed rollback compatibility; use maintenance plan"

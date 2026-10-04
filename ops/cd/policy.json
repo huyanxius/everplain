@@ -7,5 +7,11 @@
   "reviewed_live_file_overlays": {
     "/app/backend/.venv/lib/python3.12/site-packages/qunxue_api/settings.py": "a5d984c7d9b4d2159298e55af199154d20a6b632ae4c35b57660fccbe70da18a",
     "/app/ops/preflight.py": "a39fc2a2335df4cfc82d2c8eefe2f73baf3491732269c3a696fbe49971891bdf"
-  }
+  },
+  "reviewed_migration_transitions": [
+    {
+      "from": "77b8a58a6c74b1981f9c04a19b6881d58a775548a3a06c217c2afa793a0eeda5",
+      "to": "aa1c0493ac54be37884ba2ac2162595f32c0f704d9a78acc70976b45788922c1"
+    }
+  ]
 }

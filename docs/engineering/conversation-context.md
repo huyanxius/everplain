@@ -30,3 +30,21 @@
 - [Claude Code memory](https://code.claude.com/docs/en/memory)：短索引与按需读取具体内容，可借鉴检索分层。
 
 后续仅在摘录明显不能满足近期复杂项目连续性时，评估复用现有异步worker做有预算的增量语义摘要；不为实现“总结”标签新增每轮付费调用。
+
+## 0550 上线兼容性审查（Issue #134）
+
+首轮 f85afe3 产物完整性/上传通过，既有兼容性门在停服务之前拒绝新迁移；公开健康仍为7150096，未开始迁移或替换服务。修复不关闭任何校验、不删除流水线状态、不修改生产库；仅增加下面这一条精确的迁移树转换许可。原 source-only 清单仍为空，其他来源、其他目标或逆向组合均拒绝。
+
+- from（已验证线上源码7150096的0540树）：77b8a58a6c74b1981f9c04a19b6881d58a775548a3a06c217c2afa793a0eeda5
+- to（f85afe3的0550树）：aa1c0493ac54be37884ba2ac2162595f32c0f704d9a78acc70976b45788922c1
+- 计算范围与发布脚本一致：所有migration Python文件及schema/sqlite_index.py，按相对路径排序形成内容hash映射，再hash JSON。不是仅比较Alembic版本号。
+
+实证（只用新建合成SQLite，不读取生产DB）：
+
+1. 真正0540库先保留用户、对话原文、账本和余额、billing_operations以及生产reset脚本的schema-only审计表/精确旧operationID fence，SQLite backup到独立candidate路径。
+2. candidate升级0550：旧数据逐表逐行保持；cache从原消息回填；原快照仍0540且未改写。
+3. 从已上线7150096 Git对象提取完整旧backend/src，在独立Python进程、相同0550合成库上实际调用旧SqliteConversationRepository，读取、改名、追加轮次、新建会话全部通过；原消息保留。旧代码新建行的派生cache为{}，不会声称旧代码也会更新新摘要。
+4. candidate降回0540：只删除新派生列，原消息/账户/账本/审计记录保持；新增加的旧式会话写入仍在。billing_precision_adjustments表和billing_reset_terminal_fence触发器SQL保持，旧operation终态更改仍被RAISE(ROLLBACK)阻止。
+5. 再升级0550成功，原文及reset安全对象仍保留。自动部署依旧使用停写快照和独立新目标；不允许候选已接收写入后以旧快照覆盖新数据。
+
+自动回归：test_conversation_context_migration.py与ops/tests/test_cd.py。该许可仅绑定以上已检查转换；未来env.py、检索SQLite schema或迁移文件变化都会改变目标指纹，不能沿用本许可。
