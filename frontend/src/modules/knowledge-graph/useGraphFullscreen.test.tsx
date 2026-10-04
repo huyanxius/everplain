@@ -43,7 +43,7 @@ afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
   delete (HTMLElement.prototype as Partial<HTMLElement>).requestFullscreen
-  delete (document as Partial<Document>).fullscreenElement
+  Reflect.deleteProperty(document, 'fullscreenElement')
   delete (document as Partial<Document>).exitFullscreen
   document.body.style.overflow = ''
 })

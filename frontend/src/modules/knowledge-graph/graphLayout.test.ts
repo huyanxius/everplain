@@ -1,4 +1,4 @@
-import cytoscape, { type Core } from 'cytoscape'
+import cytoscape, { type Core, type CoseLayoutOptions } from 'cytoscape'
 import { expect, it, vi } from 'vitest'
 import { fitView, layoutOptions } from './graphLayout'
 import { positionedElements } from './graphLayoutCache'
@@ -7,8 +7,8 @@ it('uses natural relation layout for personal graphs instead of oversized concen
  const elements=Array.from({length:154},(_,i)=>({data:{id:`node-${i}`}}))
  const edges=elements.slice(1).map((n,i)=>({data:{id:`edge-${i}`,source:i<28?'node-0':`node-${1+(i%26)}`,target:n.data.id}}))
  const cy=cytoscape({headless:true,elements:positionedElements([...elements,...edges]),layout:{name:'preset'}})
- cy.layout({...layoutOptions(false,true,false,560,true),fit:false}).run()
- expect(cy.nodes().every(n=>Number.isFinite(n.position('x')) && Number.isFinite(n.position('y')))).toBe(true)
+ cy.layout({...layoutOptions(false,true,false,560,true),fit:false} as CoseLayoutOptions).run()
+ expect(cy.nodes().map(n=>n.position()).every(n=>Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true)
  expect(cy.nodes().boundingBox().w).toBeLessThan(10000)
  cy.destroy()
 })
