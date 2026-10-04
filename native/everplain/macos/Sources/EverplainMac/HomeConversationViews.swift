@@ -15,7 +15,10 @@ struct HomeConversationSurface: View {
     private var empty: Bool { store.conversation == nil && store.unfinishedTurns.isEmpty && !store.loadingConversation }
     var body: some View {
         GeometryReader { geometry in
-            Group {
+            // Group distributes overlays to its conditional children, giving
+            // Home and Chat different representable identities. A real stable
+            // container owns this overlay while only its route content changes.
+            ZStack {
                 if isHome { homeContent(geometry) }
                 else {
                     VStack(spacing: 0) {
@@ -41,7 +44,7 @@ struct HomeConversationSurface: View {
                         }.frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
-            }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlayPreferenceValue(ComposerDestination.self) { anchor in
                 GeometryReader { proxy in
                     let rect = anchor.map { proxy[$0] } ?? CGRect(x: 24, y: max(0, proxy.size.height - 72), width: max(0, proxy.size.width - 48), height: composerHeight)

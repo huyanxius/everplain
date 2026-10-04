@@ -98,6 +98,7 @@ final class NativeHomeVisualTests: XCTestCase {
         let chatEditor = try XCTUnwrap(composerEditor(in:host))
         XCTAssertEqual(ObjectIdentifier(chatEditor),editorIdentity,"Home→Chat recreated the native editor")
         XCTAssertEqual(chatEditor.string,"Offline visual test draft")
+        XCTAssertTrue(window.firstResponder === chatEditor,"The persistent editor lost its input session after navigation")
         _ = try capture(host,name:"chat-native-synthetic-unsent")
         await store.navigate(.home); try await settle(1.4)
         XCTAssertEqual(store.route,.home)
