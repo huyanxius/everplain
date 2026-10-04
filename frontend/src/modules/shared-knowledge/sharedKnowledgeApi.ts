@@ -41,12 +41,28 @@ function data<T>(result: { data?: T; error?: unknown }): T {
 function checked(result: { error?: unknown }) {
   if (result.error) data(result)
 }
-export async function listCourses() {
-  const items = data(await listSharedKnowledgeBases({ client: apiClient })).items
+// Bound read waits and cancel obsolete navigation without caching private source data.
+async function readWithDeadline<T>(read: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  signal?.addEventListener('abort', abort, { once: true })
+  if (signal?.aborted) controller.abort()
+  const timer = setTimeout(abort, 15000)
+  try {
+    const result = await read(controller.signal)
+    if (controller.signal.aborted) throw new Error('知识库读取超时或已取消，请重试。')
+    return result
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', abort)
+  }
+}
+export async function listCourses(signal?: AbortSignal) {
+  const items = data(await readWithDeadline(signal => listSharedKnowledgeBases({ client: apiClient, signal }), signal)).items
   if (!Array.isArray(items)) throw new Error('知识库列表暂时无法读取。')
   return items.map(course)
 }
-export async function getCourse(id: string) { return course(data(await getSharedKnowledgeBase({ client: apiClient, path: { kb_id: id } }))) }
+export async function getCourse(id: string, signal?: AbortSignal) { return course(data(await readWithDeadline(signal => getSharedKnowledgeBase({ client: apiClient, path: { kb_id: id }, signal }), signal))) }
 export async function createCourse(body: CreateSharedKnowledgeRequest) { return course(data(await createSharedKnowledgeBase({ client: apiClient, body, headers: headers() }))) }
 export async function updateCourse(id: string, body: UpdateSharedKnowledgeRequest) { return course(data(await updateSharedKnowledgeBase({ client: apiClient, path: { kb_id: id }, body, headers: headers() }))) }
 export async function deleteCourse(id: string) { checked(await deleteSharedKnowledgeBase({ client: apiClient, path: { kb_id: id }, headers: headers() })) }
@@ -56,8 +72,8 @@ export async function uploadCourseDocument(id: string, file: File) {
     headers: { ...headers(), 'Content-Type': multipart.contentType }, bodySerializer: () => multipart.body })))
 }
 export async function detachCourseDocument(id: string, documentId: string) { checked(await detachSharedDocument({ client: apiClient, path: { kb_id: id, document_id: documentId }, headers: headers() })) }
-export async function readCourseDocument(id: string, documentId: string, segmentId?: string): Promise<SharedSource> {
-  const value = data(await getSharedDocumentSource({ client: apiClient, path: { kb_id: id, document_id: documentId }, query: { segment_id: segmentId } }))
+export async function readCourseDocument(id: string, documentId: string, segmentId?: string, signal?: AbortSignal): Promise<SharedSource> {
+  const value = data(await readWithDeadline(signal => getSharedDocumentSource({ client: apiClient, path: { kb_id: id, document_id: documentId }, query: { segment_id: segmentId }, signal }), signal))
   return { document: document(value.document), knowledgeBaseId: value.knowledge_base_id,
     knowledgeBaseName: value.knowledge_base_name, segments: value.segments.map((item) => ({
       id: item.segment_id, parseId: item.parse_id, ordinal: item.ordinal, kind: item.kind, text: item.text,

@@ -992,6 +992,10 @@ export type AgentTurnRequest = {
      */
     document_version?: number | null;
     /**
+     * Knowledge Index Action
+     */
+    knowledge_index_action?: 'skip_missing' | null;
+    /**
      * Material Ids
      */
     material_ids?: Array<string>;
@@ -1035,6 +1039,7 @@ export type AgentTurnRequest = {
      * Workspace
      */
     workspace?: 'agent' | 'research';
+    writing_context?: AgentWritingContext | null;
 };
 
 /**
@@ -1059,6 +1064,28 @@ export type AgentTurnResponse = {
      */
     turn_id: string;
     user: AgentMessageResponse;
+};
+
+/**
+ * AgentWritingContext
+ */
+export type AgentWritingContext = {
+    /**
+     * Document Id
+     */
+    document_id: string;
+    /**
+     * Document Version
+     */
+    document_version: number;
+    /**
+     * Selection End
+     */
+    selection_end?: number | null;
+    /**
+     * Selection Start
+     */
+    selection_start?: number | null;
 };
 
 /**
@@ -2195,6 +2222,24 @@ export type ConfirmedTheoryPlanResponse = {
  * ConsentScope
  */
 export type ConsentScope = 'public_use' | 'project_only' | 'team_only' | 'manual_review_only' | 'withdrawn';
+
+/**
+ * ConversationExcerptResponse
+ */
+export type ConversationExcerptResponse = {
+    /**
+     * Excerpt
+     */
+    excerpt: string;
+    /**
+     * Message Id
+     */
+    message_id: string;
+    /**
+     * Sequence
+     */
+    sequence: number;
+};
 
 /**
  * CourseKnowledgeResponse
@@ -4196,6 +4241,149 @@ export type KnowledgeEntrySummaryResponse = {
 };
 
 /**
+ * KnowledgeIndexChoiceResponse
+ */
+export type KnowledgeIndexChoiceResponse = {
+    /**
+     * Code
+     */
+    code?: 'knowledge_index_choice_required';
+    status: KnowledgeIndexStatusResponse;
+};
+
+/**
+ * KnowledgeIndexDocumentResponse
+ */
+export type KnowledgeIndexDocumentResponse = {
+    /**
+     * Document Id
+     */
+    document_id: string;
+    /**
+     * Filename
+     */
+    filename: string;
+    /**
+     * Index Error
+     */
+    index_error?: string | null;
+    /**
+     * Index Status
+     */
+    index_status: string;
+    /**
+     * Knowledge Base Id
+     */
+    knowledge_base_id: string;
+    /**
+     * Knowledge Error
+     */
+    knowledge_error?: string | null;
+    /**
+     * Knowledge Status
+     */
+    knowledge_status?: string | null;
+    /**
+     * Parse Id
+     */
+    parse_id: string;
+    /**
+     * Reason
+     */
+    reason?: string | null;
+    /**
+     * Stage
+     */
+    stage?: 'ready' | 'index' | 'knowledge';
+};
+
+/**
+ * KnowledgeIndexRepairDocument
+ */
+export type KnowledgeIndexRepairDocument = {
+    /**
+     * Document Id
+     */
+    document_id: string;
+    /**
+     * Knowledge Base Id
+     */
+    knowledge_base_id: string;
+    /**
+     * Parse Id
+     */
+    parse_id: string;
+};
+
+/**
+ * KnowledgeIndexRepairRequest
+ */
+export type KnowledgeIndexRepairRequest = {
+    /**
+     * Documents
+     */
+    documents: Array<KnowledgeIndexRepairDocument>;
+    /**
+     * Purpose
+     */
+    purpose?: 'search' | 'graph';
+    /**
+     * Reference Knowledge Base Id
+     */
+    reference_knowledge_base_id?: string | null;
+};
+
+/**
+ * KnowledgeIndexStatusResponse
+ */
+export type KnowledgeIndexStatusResponse = {
+    /**
+     * Embedding Model
+     */
+    embedding_model: string | null;
+    /**
+     * Failed Count
+     */
+    failed_count: number;
+    /**
+     * Missing Count
+     */
+    missing_count: number;
+    /**
+     * Missing Documents
+     */
+    missing_documents: Array<KnowledgeIndexDocumentResponse>;
+    /**
+     * Processing Count
+     */
+    processing_count: number;
+    /**
+     * Purpose
+     */
+    purpose?: 'search' | 'graph';
+    /**
+     * Ready Count
+     */
+    ready_count: number;
+    /**
+     * Ready Document Ids
+     */
+    ready_document_ids: Array<string>;
+    /**
+     * Ready Documents
+     */
+    ready_documents: Array<KnowledgeIndexDocumentResponse>;
+    /**
+     * State
+     */
+    state: 'ready' | 'missing_index' | 'unavailable';
+    /**
+     * Total Count
+     */
+    total_count: number;
+};
+
+/**
  * KnowledgeRelationPageResponse
  */
 export type KnowledgeRelationPageResponse = {
@@ -5454,6 +5642,24 @@ export type PasswordResetLinkResponse = {
 };
 
 /**
+ * PersonalGraphCoverage
+ */
+export type PersonalGraphCoverage = {
+    /**
+     * Excluded Count
+     */
+    excluded_count: number;
+    /**
+     * Included Count
+     */
+    included_count: number;
+    /**
+     * Total Count
+     */
+    total_count: number;
+};
+
+/**
  * PersonalGraphEdge
  */
 export type PersonalGraphEdge = {
@@ -5506,6 +5712,16 @@ export type PersonalGraphNode = {
 };
 
 /**
+ * PersonalGraphRefreshRequest
+ */
+export type PersonalGraphRefreshRequest = {
+    /**
+     * Knowledge Index Action
+     */
+    knowledge_index_action?: 'skip_missing' | null;
+};
+
+/**
  * PersonalGraphResponse
  */
 export type PersonalGraphResponse = {
@@ -5517,6 +5733,7 @@ export type PersonalGraphResponse = {
      * Color
      */
     color: string;
+    coverage?: PersonalGraphCoverage | null;
     /**
      * Document Count
      */
@@ -5525,6 +5742,7 @@ export type PersonalGraphResponse = {
      * Edges
      */
     edges: Array<PersonalGraphEdge>;
+    knowledge_index_status?: KnowledgeIndexStatusResponse | null;
     /**
      * Mode
      */
@@ -6028,6 +6246,50 @@ export type Questionnaire = {
      * Occupation
      */
     occupation?: string;
+};
+
+/**
+ * RecentConversationContextResponse
+ */
+export type RecentConversationContextResponse = {
+    /**
+     * Conversation Id
+     */
+    conversation_id: string;
+    /**
+     * Excerpt
+     */
+    excerpt: string;
+    /**
+     * Kind
+     */
+    kind: 'user_excerpt';
+    /**
+     * Recent Excerpts
+     */
+    recent_excerpts: Array<ConversationExcerptResponse>;
+    /**
+     * Source Message Id
+     */
+    source_message_id: string | null;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
+ * RecentConversationContextsResponse
+ */
+export type RecentConversationContextsResponse = {
+    /**
+     * Items
+     */
+    items: Array<RecentConversationContextResponse>;
 };
 
 /**
@@ -10733,6 +10995,87 @@ export type GetAgentResearchStartProposalResponses = {
 
 export type GetAgentResearchStartProposalResponse = GetAgentResearchStartProposalResponses[keyof GetAgentResearchStartProposalResponses];
 
+export type RepairAgentKnowledgeIndexData = {
+    body: KnowledgeIndexRepairRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/agent/knowledge-index-repairs';
+};
+
+export type RepairAgentKnowledgeIndexErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type RepairAgentKnowledgeIndexError = RepairAgentKnowledgeIndexErrors[keyof RepairAgentKnowledgeIndexErrors];
+
+export type RepairAgentKnowledgeIndexResponses = {
+    /**
+     * Successful Response
+     */
+    202: KnowledgeIndexStatusResponse;
+};
+
+export type RepairAgentKnowledgeIndexResponse = RepairAgentKnowledgeIndexResponses[keyof RepairAgentKnowledgeIndexResponses];
+
+export type GetAgentKnowledgeIndexStatusData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Reference Knowledge Base Id
+         */
+        reference_knowledge_base_id?: string | null;
+        /**
+         * Purpose
+         */
+        purpose?: 'search' | 'graph';
+    };
+    url: '/api/agent/knowledge-index-status';
+};
+
+export type GetAgentKnowledgeIndexStatusErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetAgentKnowledgeIndexStatusError = GetAgentKnowledgeIndexStatusErrors[keyof GetAgentKnowledgeIndexStatusErrors];
+
+export type GetAgentKnowledgeIndexStatusResponses = {
+    /**
+     * Successful Response
+     */
+    200: KnowledgeIndexStatusResponse;
+};
+
+export type GetAgentKnowledgeIndexStatusResponse = GetAgentKnowledgeIndexStatusResponses[keyof GetAgentKnowledgeIndexStatusResponses];
+
 export type PrepareAgentMaterialContextData = {
     body: AgentMaterialContextRequest;
     headers: {
@@ -10846,6 +11189,39 @@ export type ListAgentModelsResponses = {
 };
 
 export type ListAgentModelsResponse = ListAgentModelsResponses[keyof ListAgentModelsResponses];
+
+export type ListRecentConversationContextData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/agent/recent-context';
+};
+
+export type ListRecentConversationContextErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ListRecentConversationContextError = ListRecentConversationContextErrors[keyof ListRecentConversationContextErrors];
+
+export type ListRecentConversationContextResponses = {
+    /**
+     * Successful Response
+     */
+    200: RecentConversationContextsResponse;
+};
+
+export type ListRecentConversationContextResponse = ListRecentConversationContextResponses[keyof ListRecentConversationContextResponses];
 
 export type ConfirmAgentResearchStartData = {
     body: ConfirmResearchStartRequest;
@@ -13299,7 +13675,10 @@ export type GetPersonalGraphResponses = {
 export type GetPersonalGraphResponse = GetPersonalGraphResponses[keyof GetPersonalGraphResponses];
 
 export type RefreshPersonalGraphData = {
-    body?: never;
+    /**
+     * Payload
+     */
+    body?: PersonalGraphRefreshRequest | null;
     headers: {
         /**
          * Idempotency-Key
@@ -13312,6 +13691,10 @@ export type RefreshPersonalGraphData = {
 };
 
 export type RefreshPersonalGraphErrors = {
+    /**
+     * Conflict
+     */
+    409: KnowledgeIndexChoiceResponse;
     /**
      * Validation Error
      */

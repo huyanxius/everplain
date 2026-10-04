@@ -18,3 +18,17 @@ describe('shared reference editor production persistence', () => {
   it('reports exact user source edits, including trailing newlines', async () => { const onChange = vi.fn(); render(<SharedEditor markdown="原文" onChange={onChange} />); fireEvent.click(await screen.findByRole('tab', { name: '源码' })); fireEvent.change(screen.getByRole('textbox', { name: 'Markdown 源码' }), { target: { value: source } }); expect(onChange).toHaveBeenLastCalledWith(source) })
   it('takes a server-accepted update without manufacturing an edit event', async () => { const onChange = vi.fn(); const view = render(<SharedEditor markdown="原文" onChange={onChange} />); fireEvent.click(await screen.findByRole('tab', { name: '源码' })); view.rerender(<SharedEditor markdown={'已接受的新正文\n'} onChange={onChange} />); await waitFor(() => expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('已接受的新正文\n')); expect(onChange).not.toHaveBeenCalled() })
 })
+
+it('reports exact UTF-16 source selection even for repeated text and emoji', async () => {
+  const selected = vi.fn()
+  render(<SharedEditor markdown="😀重复 重复" onSelectionChange={selected} />)
+  fireEvent.click(await screen.findByRole('tab', { name: '源码' }))
+  const input = screen.getByRole('textbox', { name: 'Markdown 源码' }) as HTMLTextAreaElement
+  input.focus()
+  input.setSelectionRange(5, 7)
+  fireEvent.select(input)
+  expect(selected).toHaveBeenLastCalledWith({ start: 5, end: 7, text: '重复' })
+  input.setSelectionRange(7, 7)
+  fireEvent.select(input)
+  expect(selected).toHaveBeenLastCalledWith(null)
+})

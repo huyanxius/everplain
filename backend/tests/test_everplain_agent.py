@@ -1,7 +1,8 @@
 from uuid import UUID, uuid4
 
 from test_research_material_api import _authenticate
-from test_shared_knowledge_api import create_library, mutation, upload
+from test_shared_knowledge_agent import upload
+from test_shared_knowledge_api import create_library, mutation
 
 from qunxue_api.adapters.research_agent.catalog_tools import KnowledgeToolRegistry
 from qunxue_api.modules.agent_conversation import AgentRunResult
@@ -116,6 +117,8 @@ def test_deleted_library_source_removes_derived_answer_history(plain_client):
 
         def run(self, *, prompt, conversation, tools):
             self.inputs.append(conversation)
+            if len(self.inputs) == 1:
+                tools.search_knowledge("EP-42 findings")
             return AgentRunResult(
                 answer="The EP-42 findings imply offline search demand.",
                 citations=tuple(tools.evidence.values()) if len(self.inputs) == 1 else (),

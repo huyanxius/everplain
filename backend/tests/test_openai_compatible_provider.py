@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from billing_test_support import synthetic_billing_runtime
+from streaming_test_support import chat_sse
 
 import qunxue_api.adapters.model as model
 from qunxue_api.adapters.model.metering import OperationScope
@@ -213,13 +214,25 @@ class _FakeOpenAIHandler(BaseHTTPRequestHandler):
             self.connection.shutdown(socket.SHUT_RDWR)
             self.connection.close()
             return
+        wire_body = reply.body
+        if reply.status == 200 and json.loads(body).get("stream"):
+            try:
+                completion = json.loads(wire_body)
+                if isinstance(completion, dict) and all(
+                    isinstance(c, dict) for c in completion.get("choices", [None])
+                ):
+                    completion.setdefault("usage", {"prompt_tokens": 10, "completion_tokens": 2,
+                                                    "total_tokens": 12})
+                    wire_body = chat_sse(completion)
+            except (ValueError, TypeError):
+                pass
         self.send_response(reply.status)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", "text/event-stream")
         if reply.declared_content_length is not None:
             self.send_header("Content-Length", str(reply.declared_content_length))
         self.end_headers()
         with suppress(BrokenPipeError):
-            self.wfile.write(reply.body)
+            self.wfile.write(wire_body)
 
     def log_message(self, _format: str, *args: object) -> None:
         return

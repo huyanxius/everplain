@@ -435,3 +435,25 @@ it('sends the selected course through the actual streaming request', async () =>
   await streamAgentTurn({ message: '按课件回答', reference_knowledge_base_id: 'course-1', idempotencyKey: 'course-turn' }, () => undefined)
   expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ reference_knowledge_base_id: 'course-1' })
 })
+
+describe('knowledge readiness SSE decisions', () => {
+  const status = { state: 'missing_index', embedding_model: 'embedding', total_count: 2, ready_count: 1, missing_count: 1, processing_count: 0, failed_count: 1,
+    ready_document_ids: ['ready'], ready_documents: [], missing_documents: [{ knowledge_base_id: 'kb', document_id: 'doc', parse_id: 'parse', filename: 'failed.pdf', index_status: 'failed', index_error: 'provider unavailable' }] }
+  it('parses a structured readiness decision and treats it as terminal without reconnecting', async () => {
+    const fetch = vi.fn(async () => new Response(`event: knowledge_index_choice_required\ndata: ${JSON.stringify({ status })}\n\n`, { headers: { 'Content-Type': 'text/event-stream' } }))
+    vi.stubGlobal('fetch', fetch)
+    const events = vi.fn()
+    await streamAgentTurn({ message: '检索资料', idempotencyKey: 'first' }, events)
+    expect(events).toHaveBeenCalledWith({ type: 'knowledge_index_choice_required', status })
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+  it('sends only an explicit ready-only choice, never a repair command in a model turn', async () => {
+    const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('event: turn_interrupted\ndata: {"code":"stop","message":"stop"}\n\n'))
+    vi.stubGlobal('fetch', fetch)
+    await streamAgentTurn({ message: '检索资料', idempotencyKey: 'skip', knowledge_index_action: 'skip_missing' }, vi.fn())
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ knowledge_index_action: 'skip_missing' })
+  })
+  it('rejects malformed status payloads rather than inventing counts', () => {
+    expect(parseAgentEventStream('event: knowledge_index_choice_required\ndata: {"status":{"state":"missing_index"}}\n\n')).toEqual([])
+  })
+})

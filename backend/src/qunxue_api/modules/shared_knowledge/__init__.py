@@ -9,6 +9,23 @@ from typing import Protocol
 from uuid import UUID, uuid4
 
 
+class KnowledgeIndexChoiceRequired(RuntimeError):
+    """A retrieval attempt needs an explicit user choice about missing indexes."""
+
+    def __init__(self, status):
+        self.status = status
+        super().__init__("部分资料索引未就绪，请选择跳过这些资料或补齐索引后继续。")
+
+
+def find_knowledge_index_choice(error):
+    if isinstance(error, KnowledgeIndexChoiceRequired):
+        return error
+    for nested in getattr(error, "exceptions", ()):
+        if (choice := find_knowledge_index_choice(nested)) is not None:
+            return choice
+    return None
+
+
 class SharedKnowledgeValidationError(ValueError):
     pass
 
@@ -79,7 +96,9 @@ class SharedKnowledgeRepository(Protocol):
     def subscribed(self, user_id: UUID, kb_id: UUID) -> bool: ...
     def subscribe(self, user_id: UUID, kb_id: UUID) -> bool: ...
     def unsubscribe(self, user_id: UUID, kb_id: UUID) -> None: ...
-    def documents(self, kb_id: UUID) -> tuple[SharedDocument, ...]: ...
+    def documents(
+        self, kb_id: UUID, *, include_segments: bool = True, document_id: UUID | None = None
+    ) -> tuple[SharedDocument, ...]: ...
     def detach(self, kb_id: UUID, document_id: UUID | None = None) -> None: ...
     def quota_guard(self, user_id: UUID) -> None: ...
     def commit(self) -> None: ...
@@ -287,11 +306,21 @@ class SharedKnowledgeService:
         self.repository.unsubscribe(user_id, kb_id)
         self.repository.commit()
 
-    def documents(self, user_id: UUID, kb_id: UUID, *, ready_only=False):
+    def documents(
+        self,
+        user_id: UUID,
+        kb_id: UUID,
+        *,
+        ready_only=False,
+        include_segments=True,
+        document_id=None,
+    ):
         kb = self.require_read(user_id, kb_id)
         return tuple(
             doc
-            for doc in self.repository.documents(kb_id)
+            for doc in self.repository.documents(
+                kb_id, include_segments=include_segments, document_id=document_id
+            )
             if doc.owner_user_id == kb.owner_user_id
             and (not ready_only and user_id == kb.owner_user_id or doc.status == "ready")
         )
@@ -300,7 +329,7 @@ class SharedKnowledgeService:
         doc = next(
             (
                 doc
-                for doc in self.documents(user_id, kb_id)
+                for doc in self.documents(user_id, kb_id, document_id=document_id)
                 if doc.id == document_id and doc.status == "ready"
             ),
             None,

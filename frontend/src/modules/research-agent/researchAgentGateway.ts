@@ -1,4 +1,6 @@
 import {
+  readKnowledgeIndexStatus as readIndexStatus,
+  repairKnowledgeIndex as repairIndex,
   getAgentModelCatalog as getModelCatalog,
   saveCanvasNode as saveNode,
   confirmResearchStartProposal as confirmStartProposal,
@@ -6,11 +8,13 @@ import {
   getAgentConversation as getConversation,
   getResearchStartJourney as getStartJourney,
   listAgentConversations as listConversations,
+  listRecentConversationContext as listRecentContext,
   renameAgentConversation as renameConversation,
   stopAgentRun as stopRun,
   streamAgentTurn as streamTurn,
 } from './researchAgentApi'
 import type {
+  RecentConversationContext,
   AgentConversation,
   AgentConversationSummary,
   AgentEvent,
@@ -71,3 +75,10 @@ export function saveCanvasNode(...args: Parameters<typeof saveNode>) {
 export function getAgentModelCatalog(signal?: AbortSignal) {
   return getModelCatalog(signal)
 }
+
+export function listRecentConversationContext(signal?: AbortSignal): Promise<RecentConversationContext[]> {
+  return listRecentContext(signal)
+}
+
+export function readKnowledgeIndexStatus(...args: Parameters<typeof readIndexStatus>) { return readIndexStatus(...args) }
+export function repairKnowledgeIndex(...args: Parameters<typeof repairIndex>) { return repairIndex(...args) }

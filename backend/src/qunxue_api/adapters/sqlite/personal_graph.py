@@ -1,3 +1,4 @@
+import math
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -94,15 +95,24 @@ class SqlitePersonalGraphRepository:
             )
             title = first_heading or title
             cached = doc.vectors or {}
-            selected = (
-                cached.get(self.embedding_model, {})
-                if self.embedding_model
-                else next(iter(cached.values()), {})
+            selected = cached.get(self.embedding_model, {}) if self.embedding_model else {}
+            vectors = [
+                selected.get(f"material:{doc.id}:{segment['segment_id']}")
+                for segment in doc.segments
+            ]
+            valid_vectors = bool(vectors) and all(
+                isinstance(v, (list, tuple))
+                and bool(v)
+                and any(v)
+                and all(
+                    isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+                    for x in v
+                )
+                for v in vectors
             )
-            vectors = [v for v in selected.values() if v]
             vector = (
                 [sum(v[i] for v in vectors) / len(vectors) for i in range(len(vectors[0]))]
-                if vectors and all(len(v) == len(vectors[0]) for v in vectors)
+                if valid_vectors and all(len(v) == len(vectors[0]) for v in vectors)
                 else []
             )
             if not vector and self.mock:
@@ -115,6 +125,12 @@ class SqlitePersonalGraphRepository:
                     + ":"
                     + ("mock" if self.mock else self.embedding_model or "unknown"),
                     "vector": vector,
+                    "knowledge_ready": self.mock
+                    or (
+                        doc.knowledge_status == "ready"
+                        and isinstance(doc.knowledge, dict)
+                        and isinstance(doc.knowledge.get("topics"), list)
+                    ),
                     "library_id": library_id,
                     "knowledge": doc.knowledge
                     or (

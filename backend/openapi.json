@@ -1856,6 +1856,18 @@
             ],
             "title": "Document Version"
           },
+          "knowledge_index_action": {
+            "anyOf": [
+              {
+                "const": "skip_missing",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Index Action"
+          },
           "material_ids": {
             "default": [],
             "items": {
@@ -1973,6 +1985,16 @@
             ],
             "title": "Workspace",
             "type": "string"
+          },
+          "writing_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentWritingContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -2026,6 +2048,51 @@
           "assistant"
         ],
         "title": "AgentTurnResponse",
+        "type": "object"
+      },
+      "AgentWritingContext": {
+        "additionalProperties": false,
+        "properties": {
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "document_version": {
+            "minimum": 1.0,
+            "title": "Document Version",
+            "type": "integer"
+          },
+          "selection_end": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection End"
+          },
+          "selection_start": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Start"
+          }
+        },
+        "required": [
+          "document_id",
+          "document_version"
+        ],
+        "title": "AgentWritingContext",
         "type": "object"
       },
       "AnalysisAnnotationKind": {
@@ -4027,6 +4094,30 @@
         ],
         "title": "ConsentScope",
         "type": "string"
+      },
+      "ConversationExcerptResponse": {
+        "properties": {
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message_id",
+          "sequence",
+          "excerpt"
+        ],
+        "title": "ConversationExcerptResponse",
+        "type": "object"
       },
       "CourseKnowledgeResponse": {
         "properties": {
@@ -7568,6 +7659,269 @@
         "title": "KnowledgeEntrySummaryResponse",
         "type": "object"
       },
+      "KnowledgeIndexChoiceResponse": {
+        "properties": {
+          "code": {
+            "const": "knowledge_index_choice_required",
+            "default": "knowledge_index_choice_required",
+            "title": "Code",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/KnowledgeIndexStatusResponse"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "KnowledgeIndexChoiceResponse",
+        "type": "object"
+      },
+      "KnowledgeIndexDocumentResponse": {
+        "properties": {
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "index_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Error"
+          },
+          "index_status": {
+            "title": "Index Status",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "format": "uuid",
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "knowledge_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Error"
+          },
+          "knowledge_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Status"
+          },
+          "parse_id": {
+            "format": "uuid",
+            "title": "Parse Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "stage": {
+            "default": "index",
+            "enum": [
+              "ready",
+              "index",
+              "knowledge"
+            ],
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "document_id",
+          "parse_id",
+          "filename",
+          "index_status"
+        ],
+        "title": "KnowledgeIndexDocumentResponse",
+        "type": "object"
+      },
+      "KnowledgeIndexRepairDocument": {
+        "properties": {
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "format": "uuid",
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "parse_id": {
+            "format": "uuid",
+            "title": "Parse Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "document_id",
+          "parse_id"
+        ],
+        "title": "KnowledgeIndexRepairDocument",
+        "type": "object"
+      },
+      "KnowledgeIndexRepairRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeIndexRepairDocument"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Documents",
+            "type": "array"
+          },
+          "purpose": {
+            "default": "search",
+            "enum": [
+              "search",
+              "graph"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "reference_knowledge_base_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Knowledge Base Id"
+          }
+        },
+        "required": [
+          "documents"
+        ],
+        "title": "KnowledgeIndexRepairRequest",
+        "type": "object"
+      },
+      "KnowledgeIndexStatusResponse": {
+        "properties": {
+          "embedding_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model"
+          },
+          "failed_count": {
+            "title": "Failed Count",
+            "type": "integer"
+          },
+          "missing_count": {
+            "title": "Missing Count",
+            "type": "integer"
+          },
+          "missing_documents": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeIndexDocumentResponse"
+            },
+            "title": "Missing Documents",
+            "type": "array"
+          },
+          "processing_count": {
+            "title": "Processing Count",
+            "type": "integer"
+          },
+          "purpose": {
+            "default": "search",
+            "enum": [
+              "search",
+              "graph"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "ready_count": {
+            "title": "Ready Count",
+            "type": "integer"
+          },
+          "ready_document_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Ready Document Ids",
+            "type": "array"
+          },
+          "ready_documents": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeIndexDocumentResponse"
+            },
+            "title": "Ready Documents",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "ready",
+              "missing_index",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "state",
+          "embedding_model",
+          "total_count",
+          "ready_count",
+          "missing_count",
+          "processing_count",
+          "failed_count",
+          "ready_document_ids",
+          "ready_documents",
+          "missing_documents"
+        ],
+        "title": "KnowledgeIndexStatusResponse",
+        "type": "object"
+      },
       "KnowledgeRelationPageResponse": {
         "properties": {
           "knowledge_release_id": {
@@ -9736,6 +10090,29 @@
         "title": "PasswordResetLinkResponse",
         "type": "object"
       },
+      "PersonalGraphCoverage": {
+        "properties": {
+          "excluded_count": {
+            "title": "Excluded Count",
+            "type": "integer"
+          },
+          "included_count": {
+            "title": "Included Count",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "included_count",
+          "total_count",
+          "excluded_count"
+        ],
+        "title": "PersonalGraphCoverage",
+        "type": "object"
+      },
       "PersonalGraphEdge": {
         "properties": {
           "direction": {
@@ -9808,6 +10185,24 @@
         "title": "PersonalGraphNode",
         "type": "object"
       },
+      "PersonalGraphRefreshRequest": {
+        "properties": {
+          "knowledge_index_action": {
+            "anyOf": [
+              {
+                "const": "skip_missing",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Index Action"
+          }
+        },
+        "title": "PersonalGraphRefreshRequest",
+        "type": "object"
+      },
       "PersonalGraphResponse": {
         "properties": {
           "avatar_id": {
@@ -9817,6 +10212,16 @@
           "color": {
             "title": "Color",
             "type": "string"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PersonalGraphCoverage"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "document_count": {
             "title": "Document Count",
@@ -9828,6 +10233,16 @@
             },
             "title": "Edges",
             "type": "array"
+          },
+          "knowledge_index_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeIndexStatusResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "mode": {
             "enum": [
@@ -10776,6 +11191,79 @@
           }
         },
         "title": "Questionnaire",
+        "type": "object"
+      },
+      "RecentConversationContextResponse": {
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "kind": {
+            "const": "user_excerpt",
+            "title": "Kind",
+            "type": "string"
+          },
+          "recent_excerpts": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationExcerptResponse"
+            },
+            "title": "Recent Excerpts",
+            "type": "array"
+          },
+          "source_message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Message Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "title",
+          "updated_at",
+          "kind",
+          "excerpt",
+          "source_message_id",
+          "recent_excerpts"
+        ],
+        "title": "RecentConversationContextResponse",
+        "type": "object"
+      },
+      "RecentConversationContextsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecentConversationContextResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RecentConversationContextsResponse",
         "type": "object"
       },
       "RegisterSessionRequest": {
@@ -19275,6 +19763,164 @@
         ]
       }
     },
+    "/api/agent/knowledge-index-repairs": {
+      "post": {
+        "operationId": "repair_agent_knowledge_index",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeIndexRepairRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Repair Agent Knowledge Index",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/knowledge-index-status": {
+      "get": {
+        "operationId": "get_agent_knowledge_index_status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "reference_knowledge_base_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reference Knowledge Base Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "purpose",
+            "required": false,
+            "schema": {
+              "default": "search",
+              "enum": [
+                "search",
+                "graph"
+              ],
+              "title": "Purpose",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Agent Knowledge Index Status",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
     "/api/agent/material-context": {
       "post": {
         "operationId": "prepare_agent_material_context",
@@ -19471,6 +20117,57 @@
           }
         },
         "summary": "List Agent Models",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/recent-context": {
+      "get": {
+        "operationId": "list_recent_conversation_context",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentConversationContextsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Recent Conversation Context",
         "tags": [
           "agent"
         ]
@@ -23810,6 +24507,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PersonalGraphRefreshRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -23820,6 +24534,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexChoiceResponse"
+                }
+              }
+            },
+            "description": "Conflict"
           },
           "422": {
             "content": {

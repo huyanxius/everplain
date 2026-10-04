@@ -121,6 +121,68 @@ class AgentConversationUpdateRequest(BaseModel):
     ]
 
 
+class KnowledgeIndexDocumentResponse(BaseModel):
+    knowledge_base_id: UUID
+    document_id: UUID
+    parse_id: UUID
+    filename: str
+    index_status: str
+    index_error: str | None = None
+    reason: str | None = None
+    stage: Literal["ready", "index", "knowledge"] = "index"
+    knowledge_status: str | None = None
+    knowledge_error: str | None = None
+
+
+class KnowledgeIndexStatusResponse(BaseModel):
+    purpose: Literal["search", "graph"] = "search"
+    state: Literal["ready", "missing_index", "unavailable"]
+    embedding_model: str | None
+    total_count: int
+    ready_count: int
+    missing_count: int
+    processing_count: int
+    failed_count: int
+    ready_document_ids: list[UUID]
+    ready_documents: list[KnowledgeIndexDocumentResponse]
+    missing_documents: list[KnowledgeIndexDocumentResponse]
+
+
+class KnowledgeIndexRepairDocument(BaseModel):
+    knowledge_base_id: UUID
+    document_id: UUID
+    parse_id: UUID
+
+
+class KnowledgeIndexRepairRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    purpose: Literal["search", "graph"] = "search"
+    documents: list[KnowledgeIndexRepairDocument] = Field(min_length=1, max_length=1000)
+    reference_knowledge_base_id: UUID | None = None
+
+
+class KnowledgeIndexChoiceResponse(BaseModel):
+    code: Literal["knowledge_index_choice_required"] = "knowledge_index_choice_required"
+    status: KnowledgeIndexStatusResponse
+
+
+class AgentWritingContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: UUID
+    document_version: int = Field(ge=1, strict=True)
+    selection_start: int | None = Field(default=None, ge=0, strict=True)
+    selection_end: int | None = Field(default=None, ge=0, strict=True)
+
+    @model_validator(mode="after")
+    def validate_selection(self):
+        if (self.selection_start is None) != (self.selection_end is None):
+            raise ValueError("selection_start and selection_end must be supplied together")
+        if self.selection_start is not None and self.selection_end < self.selection_start:
+            raise ValueError("selection_end must not precede selection_start")
+        return self
+
+
 class AgentTurnRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model_id: str | None = Field(default=None, min_length=1, max_length=80)
@@ -133,6 +195,7 @@ class AgentTurnRequest(BaseModel):
         return self
 
     reference_knowledge_base_id: UUID | None = None
+    knowledge_index_action: Literal["skip_missing"] | None = None
     conversation_id: UUID | None = None
     message: str = Field(min_length=1, max_length=12000)
     workspace: Literal["agent", "research"] = "agent"
@@ -141,6 +204,7 @@ class AgentTurnRequest(BaseModel):
     document_id: UUID | None = None
     section_id: str | None = None
     document_version: int | None = None
+    writing_context: AgentWritingContext | None = None
     theory_plan_id: UUID | None = None
     material_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
     mode: Literal["standard", "deep_research"] = "standard"
@@ -194,8 +258,12 @@ class AgentRunLookupResponse(BaseModel):
     conversation_id: UUID
     idempotency_key: str
     status: Literal[
-        "running", "completed", "failed", "interrupted",
-        "awaiting_clarification", "awaiting_plan_confirmation",
+        "running",
+        "completed",
+        "failed",
+        "interrupted",
+        "awaiting_clarification",
+        "awaiting_plan_confirmation",
     ]
     cancel_requested: bool
     partial_answer: str
@@ -270,3 +338,23 @@ class AgentCanvasNodeEditRequest(BaseModel):
     expected_title: str = Field(max_length=240)
     expected_summary: str | None = Field(default=None, max_length=1200)
     expected_version: int = Field(ge=0)
+
+
+class ConversationExcerptResponse(BaseModel):
+    message_id: UUID
+    sequence: int
+    excerpt: str
+
+
+class RecentConversationContextResponse(BaseModel):
+    conversation_id: UUID
+    title: str
+    updated_at: datetime
+    kind: Literal["user_excerpt"]
+    excerpt: str
+    source_message_id: UUID | None
+    recent_excerpts: list[ConversationExcerptResponse]
+
+
+class RecentConversationContextsResponse(BaseModel):
+    items: list[RecentConversationContextResponse]

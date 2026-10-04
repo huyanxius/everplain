@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
+from streaming_test_support import chat_http_response
 
 from qunxue_api.adapters.media_import import (
     BilibiliFavoritesAdapter,
@@ -193,9 +194,9 @@ class MediaImportTests(unittest.TestCase):
 
         def handle(request):
             requests.append(json.loads(request.content))
-            return httpx.Response(
-                200,
-                json={
+            return chat_http_response(
+                {
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
                     "choices": [
                         {
                             "message": {

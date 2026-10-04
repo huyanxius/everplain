@@ -132,7 +132,19 @@ class UsageSafeOpenAIStreamedResponse(OpenAIStreamedResponse):
         return RequestUsage()
 
 
-class UsageSafeOpenAIChatModel(OpenAIChatModel):
+class _BufferedStreamRequest:
+    async def request(self, messages, model_settings, model_request_parameters):
+        # Planning and background jobs need a complete value, not a second wire
+        # protocol. Drain the same stream so terminal usage and tools stay intact.
+        async with self.request_stream(
+            messages, model_settings, model_request_parameters,
+        ) as response:
+            async for _event in response:
+                pass
+            return response.get()
+
+
+class UsageSafeOpenAIChatModel(_BufferedStreamRequest, OpenAIChatModel):
     _streamed_response_cls = UsageSafeOpenAIStreamedResponse
 
     def _map_usage(self, response):
@@ -225,7 +237,7 @@ class UsageSafeOpenAIResponsesStreamedResponse(OpenAIResponsesStreamedResponse):
         return RequestUsage()
 
 
-class UsageSafeOpenAIResponsesModel(OpenAIResponsesModel):
+class UsageSafeOpenAIResponsesModel(_BufferedStreamRequest, OpenAIResponsesModel):
     def _process_response(self, response, model_settings, model_request_parameters):
         usage = normalized_usage(response.usage)
         if responses_finish_reason(response) != "completed":

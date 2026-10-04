@@ -174,3 +174,55 @@ def test_concurrent_create_retry_has_one_library(client):
         )
     assert all(response.status_code == 201 for response in responses)
     assert responses[0].json()["id"] == responses[1].json()["id"]
+
+
+def test_catalog_omits_large_columns_and_source_reads_only_requested_document(client):
+    from sqlalchemy import event
+
+    _authenticate(client)
+    kb = create_library(client)
+    first = upload(client, kb["id"], "first document")
+    upload(client, kb["id"], "unrelated document", filename="other.txt")
+    statements = []
+    engine = client.app.state.database.engine
+
+    def capture(connection, cursor, statement, parameters, context, executemany):
+        if statement.lstrip().upper().startswith("SELECT") and "shared_documents" in statement:
+            statements.append((statement, parameters))
+
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        for path in ("/api/shared-knowledge-bases", f"/api/shared-knowledge-bases/{kb['id']}"):
+            statements.clear()
+            assert client.get(path).status_code == 200
+            assert len(statements) == 1
+            projection = statements[0][0].split("FROM")[0]
+            assert "shared_documents.segments" not in projection
+            assert "shared_documents.vectors" not in projection
+            assert "shared_documents.knowledge_checkpoints" not in projection
+
+        statements.clear()
+        response = client.get(
+            f"/api/shared-knowledge-bases/{kb['id']}/documents/{first['id']}/source"
+        )
+        assert response.status_code == 200
+        assert response.json()["segments"][0]["text"] == "first document"
+        assert len(statements) == 1
+        assert "shared_documents.id = ?" in statements[0][0]
+        assert first["id"] in statements[0][1]
+        assert "shared_documents.vectors" not in statements[0][0].split("FROM")[0]
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+
+
+def test_metadata_projection_remains_owner_scoped(client):
+    _authenticate(client)
+    kb = create_library(client)
+    doc = upload(client, kb["id"])
+    client.post("/api/session/logout")
+    _authenticate(client)
+    assert client.get("/api/shared-knowledge-bases").json()["items"] == []
+    assert client.get(f"/api/shared-knowledge-bases/{kb['id']}").status_code == 404
+    assert client.get(
+        f"/api/shared-knowledge-bases/{kb['id']}/documents/{doc['id']}/source"
+    ).status_code == 404

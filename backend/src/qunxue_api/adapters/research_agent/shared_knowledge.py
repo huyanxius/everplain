@@ -1,26 +1,187 @@
 """Feed an authorized document set to the existing transient-chunk retriever."""
 
+import hashlib
+import json
+import math
 from dataclasses import replace
 from inspect import signature
+from uuid import UUID
 
 from qunxue_api.adapters.research_agent.retrieval import lexical_relevance_score
 from qunxue_api.adapters.retrieval import RetrievalChunk, RetrievalPipelineUnavailable
 from qunxue_api.modules.agent_conversation import AgentEvidence
+from qunxue_api.modules.shared_knowledge import KnowledgeIndexChoiceRequired
 
 
 class SharedKnowledgeReferences:
     def __init__(self, application, retriever):
         self.application = application
         self.retriever = retriever
+        self.embedding_model = getattr(retriever, "_embedding_model", None)
         self.removed_citation_ids: set[str] = set()
 
-    def prepare(self, *, user_id, kb_id, query, tools):
-        tools.private_knowledge = _PrivateKnowledgeTools(self, user_id, kb_id, tools)
-        return self.search(user_id=user_id, kb_id=kb_id, query=query, tools=tools)
+    def prepare(self, *, user_id, kb_id, query, tools, index_action=None):
+        # Binding is not retrieval: greetings and other non-source turns stay free
+        # of index work. The first actual tool call checks the current scope.
+        tools.private_knowledge = _PrivateKnowledgeTools(
+            self, user_id, kb_id, tools, index_action=index_action
+        )
+        return []
 
-    def bind_owned(self, *, user_id, tools):
+    def bind_owned(self, *, user_id, tools, index_action=None):
         """Ordinary chat searches existing owner documents only, on tool demand."""
-        tools.private_knowledge = _PrivateKnowledgeTools(self, user_id, None, tools)
+        tools.private_knowledge = _PrivateKnowledgeTools(
+            self, user_id, None, tools, index_action=index_action
+        )
+
+    def index_status(self, *, user_id, kb_id=None, scope=None, purpose="search"):
+        scope = self.document_scope(user_id, kb_id) if scope is None else scope
+        ready, missing = [], []
+        documents = tuple(doc for _, doc in scope.values())
+        cache = self.application.repository.vector_cache(documents)
+        for kb, doc in scope.values():
+            chunks = tuple(_document_chunks(doc))
+            vectors = cache.get_many(chunks, self.embedding_model) if self.embedding_model else []
+            valid = (
+                bool(chunks)
+                and len(vectors) == len(chunks)
+                and all(
+                    isinstance(vector, (list, tuple))
+                    and bool(vector)
+                    and all(
+                        isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+                        for v in vector
+                    )
+                    and any(vector)
+                    for vector in vectors
+                )
+            )
+            if valid:
+                valid = len({len(vector) for vector in vectors}) == 1
+            vector_ready = valid
+            knowledge_ready = (
+                doc.knowledge_status == "ready"
+                and isinstance(doc.knowledge, dict)
+                and isinstance(doc.knowledge.get("topics"), list)
+            )
+            valid = vector_ready and (purpose != "graph" or knowledge_ready)
+            stage = (
+                "knowledge"
+                if purpose == "graph" and not knowledge_ready
+                else "index"
+                if not vector_ready
+                else "ready"
+            )
+            item = {
+                "knowledge_base_id": str(kb.id),
+                "document_id": str(doc.id),
+                "parse_id": str(doc.parse_id),
+                "filename": doc.filename,
+                "stage": stage,
+                "knowledge_status": doc.knowledge_status,
+                "knowledge_error": doc.knowledge_error,
+                "index_status": "ready"
+                if vector_ready
+                else (
+                    doc.index_status
+                    if doc.index_status in {"queued", "running", "failed"}
+                    else "missing"
+                ),
+                "index_error": None if vector_ready else doc.index_error,
+                "reason": None
+                if valid
+                else (
+                    "knowledge_incomplete"
+                    if stage == "knowledge"
+                    else "embedding_not_configured"
+                    if not self.embedding_model
+                    else "missing_vectors"
+                ),
+            }
+            (ready if valid else missing).append(item)
+        return {
+            "purpose": purpose,
+            "state": (
+                "ready"
+                if not missing
+                else "missing_index"
+                if self.embedding_model
+                else "unavailable"
+            ),
+            "embedding_model": self.embedding_model,
+            "total_count": len(documents),
+            "ready_count": len(ready),
+            "missing_count": len(missing),
+            "processing_count": sum(
+                d["knowledge_status" if d["stage"] == "knowledge" else "index_status"]
+                in {"queued", "running"}
+                for d in missing
+            ),
+            "failed_count": sum(
+                d["knowledge_status" if d["stage"] == "knowledge" else "index_status"] == "failed"
+                for d in missing
+            ),
+            "ready_document_ids": [d["document_id"] for d in ready],
+            "ready_documents": ready,
+            "missing_documents": missing,
+        }
+
+    def indexed_scope(self, *, user_id, kb_id=None, index_action=None, tools=None):
+        scope = self.document_scope(user_id, kb_id)
+        state = self.index_status(user_id=user_id, kb_id=kb_id, scope=scope)
+        if state["missing_count"] and index_action != "skip_missing":
+            raise KnowledgeIndexChoiceRequired(state)
+        if tools is not None:
+            tools.knowledge_index_coverage = state
+        ready_ids = set(state["ready_document_ids"])
+        return {key: value for key, value in scope.items() if str(key) in ready_ids}
+
+    def repair_indexes(
+        self, *, user_id, documents, idempotency_key, kb_id=None, purpose="search"
+    ):
+        # Validate every target before mutating any queue. The browser supplies
+        # only identities from the displayed snapshot, never provider credentials.
+        selected = []
+        for item in documents:
+            library_id, document_id = (
+                UUID(str(item["knowledge_base_id"])),
+                UUID(str(item["document_id"])),
+            )
+            if kb_id is not None and library_id != kb_id:
+                raise ValueError("索引选择已变化，请刷新资料状态后重试。")
+            self.application.require_manage(user_id, library_id)
+            doc = self.application.source(user_id, library_id, document_id)
+            if str(doc.parse_id) != str(item["parse_id"]):
+                raise ValueError("资料内容已变化，请刷新索引状态后重新确认。")
+            selected.append(doc)
+        index_state = self.index_status(user_id=user_id, kb_id=kb_id)
+        vector_missing = {item["document_id"] for item in index_state["missing_documents"]}
+        fingerprint = hashlib.sha256(json.dumps({
+            "purpose": purpose, "model": self.embedding_model,
+            "library_id": str(kb_id) if kb_id else None,
+            "documents": sorted((str(item["knowledge_base_id"]), str(item["document_id"]),
+                                 str(item["parse_id"])) for item in documents),
+        }, sort_keys=True).encode()).hexdigest()
+        with self.application.repository.index_queue_transaction():
+            self.application.repository.quota_guard(user_id)
+            if self.application.repository.index_repair_seen(user_id, idempotency_key, fingerprint):
+                return self.index_status(user_id=user_id, kb_id=kb_id, purpose=purpose)
+            for doc in selected:
+                if purpose == "graph" and not (
+                    doc.knowledge_status == "ready"
+                    and isinstance(doc.knowledge, dict)
+                    and isinstance(doc.knowledge.get("topics"), list)
+                ):
+                    self.application.repository.queue_document_knowledge(doc.id, doc.parse_id)
+                if str(doc.id) in vector_missing:
+                    self.application.repository.queue_document_index(
+                        doc.id, doc.parse_id, embedding_model=self.embedding_model
+                    )
+                self.application.repository.record_index_repair(
+                    doc.id, doc.parse_id, idempotency_key, fingerprint
+                )
+        self.application.repository.commit()
+        return self.index_status(user_id=user_id, kb_id=kb_id, purpose=purpose)
 
     def document_scope(self, user_id, kb_id):
         libraries = (
@@ -39,8 +200,10 @@ class SharedKnowledgeReferences:
             if kb_id is not None or doc.owner_user_id == user_id
         }
 
-    def search(self, *, user_id, kb_id, query, tools, limit=8):
-        scope = self.document_scope(user_id, kb_id)
+    def search(self, *, user_id, kb_id, query, tools, limit=8, index_action=None):
+        scope = self.indexed_scope(
+            user_id=user_id, kb_id=kb_id, index_action=index_action, tools=tools
+        )
         documents = tuple(doc for _, doc in scope.values())
         chunks, coordinates = [], {}
         for doc in documents:
@@ -66,7 +229,7 @@ class SharedKnowledgeReferences:
                 options = {}
                 if "vector_cache" in signature(search).parameters:
                     options["vector_cache"] = self.application.repository.vector_cache(documents)
-                if kb_id is None and "embed_missing_documents" in signature(search).parameters:
+                if "embed_missing_documents" in signature(search).parameters:
                     options["embed_missing_documents"] = False
                 result = search(
                     query=query,
@@ -81,8 +244,8 @@ class SharedKnowledgeReferences:
                 mode = result.mode
                 degraded_reason = getattr(result, "degraded_reason", None)
             except RetrievalPipelineUnavailable:
-                selected = []
-                failure = "知识库检索暂时失败，本轮未取得资料依据。"
+                # A provider/index failure is not an empty successful search.
+                raise
         else:
             ranked = sorted(
                 (
@@ -130,6 +293,7 @@ class SharedKnowledgeReferences:
                     "source_kind": "shared_material",
                     "retrieval_mode": mode,
                     "degraded_reason": degraded_reason,
+                    "knowledge_index_coverage": getattr(tools, "knowledge_index_coverage", None),
                 }
             )
         tools.select_evidence((*tools.selected_evidence_ids, *selected))
@@ -189,9 +353,16 @@ class SharedKnowledgeReferences:
 class _PrivateKnowledgeTools:
     """Every read rechecks membership and document state, including within one run."""
 
-    def __init__(self, references, user_id, kb_id, tools):
+    def __init__(self, references, user_id, kb_id, tools, index_action=None):
         self.references = references
         self.user_id, self.kb_id, self.tools = user_id, kb_id, tools
+        self.index_action = index_action
+
+    def _scope(self):
+        return self.references.indexed_scope(
+            user_id=self.user_id, kb_id=self.kb_id,
+            index_action=self.index_action, tools=self.tools
+        )
 
     def prompt_map(self, current):
         removed = self.references.removed_citation_ids
@@ -205,18 +376,21 @@ class _PrivateKnowledgeTools:
 
     def search(self, query, *, limit=8):
         return self.references.search(
-            user_id=self.user_id, kb_id=self.kb_id, query=query, tools=self.tools, limit=limit
+            user_id=self.user_id,
+            kb_id=self.kb_id,
+            query=query,
+            tools=self.tools,
+            limit=limit,
+            index_action=self.index_action,
         )
 
     def _documents(self):
-        return tuple(
-            doc for _, doc in self.references.document_scope(self.user_id, self.kb_id).values()
-        )
+        return tuple(doc for _, doc in self._scope().values())
 
     def read(self, knowledge_id):
         # A document id starts at its first segment. The returned continuation id
         # makes long-file reading explicit, with a bounded amount per tool call.
-        for kb, doc in self.references.document_scope(self.user_id, self.kb_id).values():
+        for kb, doc in self._scope().values():
             segments = list(doc.segments)
             start = (
                 0
@@ -271,13 +445,13 @@ class _PrivateKnowledgeTools:
                 ),
                 "evidence_status": "read",
                 "source_kind": "shared_material",
+                "knowledge_index_coverage": getattr(self.tools, "knowledge_index_coverage", None),
             }
         return {"error": "knowledge_entry_not_found", "knowledge_id": knowledge_id}
 
     def sources(self, source_ids):
         allowed_documents = {
-            (str(doc.id), str(doc.parse_id), str(kb.id))
-            for kb, doc in self.references.document_scope(self.user_id, self.kb_id).values()
+            (str(doc.id), str(doc.parse_id), str(kb.id)) for kb, doc in self._scope().values()
         }
         return [
             {
@@ -307,3 +481,19 @@ class _PrivateKnowledgeTools:
             }
             for doc in documents[: max(1, min(limit, 40))]
         ]
+
+
+def _document_chunks(doc):
+    for segment in doc.segments:
+        key = f"material:{doc.id}:{segment['segment_id']}"
+        yield RetrievalChunk(
+            chunk_id=key,
+            document_kind="research_material",
+            knowledge_id=None,
+            theory_id=None,
+            content_version=1,
+            content_hash=segment["content_hash"],
+            title=doc.filename,
+            text=segment["text"],
+            source_ids=(key,),
+        )

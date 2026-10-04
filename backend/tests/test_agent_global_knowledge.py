@@ -15,9 +15,32 @@ class SearchingRunner(InspectingRunner):
         return super().run(**kwargs)
 
 
+def seed_owned_vectors(client, identity):
+    from sqlalchemy import select
+
+    from qunxue_api.adapters.sqlite.shared_knowledge import SharedDocumentRow
+
+    with client.app.state.shared_knowledge_scope() as app:
+        for row in app.repository.session.scalars(
+            select(SharedDocumentRow).where(
+                SharedDocumentRow.owner_user_id == identity["user"]["user_id"],
+                SharedDocumentRow.status == "ready",
+            )
+        ):
+            row.vectors = {
+                "existing-model": {
+                    f"material:{row.id}:{segment['segment_id']}": [0.25, 0.75]
+                    for segment in row.segments
+                }
+            }
+        app.repository.commit()
+
+
 def run(client, identity, runner, **kwargs):
+    seed_owned_vectors(client, identity)
     with client.app.state.disciplinary_agent_scope() as app:
         app._runner = runner
+        app._shared_references.embedding_model = "existing-model"
         return app.run_turn(
             user_id=UUID(identity["user"]["user_id"]),
             conversation_id=kwargs.pop("conversation_id", None),
@@ -234,6 +257,7 @@ def test_global_search_reuses_existing_document_vectors(plain_client):
     with client.app.state.disciplinary_agent_scope() as app:
         app._runner = runner
         app._shared_references.retriever = CachedRetriever()
+        app._shared_references.embedding_model = "existing-model"
         result = app.run_turn(
             user_id=UUID(identity["user"]["user_id"]),
             conversation_id=None,
@@ -267,9 +291,10 @@ def test_global_citation_persistence_rejects_subscribed_foreign_source(plain_cli
     from qunxue_api.modules.agent_conversation import ResearchMaterialCitationUnavailable
 
     client = plain_client
-    _authenticate(client)
+    owner = _authenticate(client)
     kb = create_library(client)
     upload(client, kb["id"])
+    seed_owned_vectors(client, owner)
     kb = mutation(
         client, "patch", f"/api/shared-knowledge-bases/{kb['id']}", json={"sharing_enabled": True}
     ).json()
@@ -283,6 +308,7 @@ def test_global_citation_persistence_rejects_subscribed_foreign_source(plain_cli
     )
     user_id = UUID(identity["user"]["user_id"])
     with client.app.state.disciplinary_agent_scope() as app:
+        app._shared_references.embedding_model = "existing-model"
 
         class InjectingRunner(InspectingRunner):
             def run(self, **kwargs):

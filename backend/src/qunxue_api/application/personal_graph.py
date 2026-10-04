@@ -8,11 +8,23 @@ class PersonalGraphApplication:
     def __init__(self, repository, *, name_topic=None):
         self.repository, self.name_topic = repository, name_topic
 
-    def refresh(self, user_id):
+    def refresh(self, user_id, *, eligible_document_ids=None):
         docs = self.repository.documents(user_id)
+        previous = self.repository.load(user_id)
+        if eligible_document_ids is None and "scope_document_ids" in previous:
+            eligible_document_ids = set(previous["scope_document_ids"])
+        if eligible_document_ids is not None:
+            docs = [doc for doc in docs if doc["id"] in eligible_document_ids]
+        if any(not doc.get("vector") or not doc.get("knowledge_ready", True) for doc in docs):
+            # Background work must not silently generate a partial graph or hot
+            # retry an index/knowledge stage it does not own. Explicit repair and
+            # refresh can resume later; keep the previous visible graph intact.
+            self.repository.save(user_id, self.repository.load(user_id), False)
+            return self.read(user_id)
         state, pending = update_clusters(
-            self.repository.load(user_id), docs, limit=300, name_topic=None
+            previous, docs, limit=300, name_topic=None
         )
+        state["scope_document_ids"] = [doc["id"] for doc in docs]
         if self.name_topic:
             old_state = self.repository.load(user_id)
             old_topics = old_state.get("topics", {}) if old_state.get("named_by_model") else {}
@@ -39,7 +51,11 @@ class PersonalGraphApplication:
     def read(self, user_id):
         profile = self.repository.profile(user_id)
         docs = self.repository.documents(user_id)
+        total_count = len(docs)
         state = self.repository.load(user_id)
+        if "scope_document_ids" in state:
+            selected = set(state["scope_document_ids"])
+            docs = [doc for doc in docs if doc["id"] in selected]
         live = {d["id"]: d for d in docs}
         assignments = {
             key: value
@@ -113,6 +129,8 @@ class PersonalGraphApplication:
                 if candidate and candidate["id"] != d["id"]:
                     edge("document:" + d["id"], "document:" + candidate["id"], "双链")
         return {
+            "coverage": {"included_count": len(docs), "total_count": total_count,
+                         "excluded_count": total_count - len(docs)},
             "releaseId": "personal",
             "nodes": nodes,
             "edges": edges,

@@ -519,7 +519,7 @@ describe('AccountSettingsPage', () => {
     await waitFor(() => expect(screen.getByRole('progressbar', { name: '额外购买额度' })).toHaveAttribute('aria-valuenow', '50'))
     expect(screen.getByRole('status')).toHaveTextContent('兑换成功')
     await waitFor(() => expect(getCreditSummary).toHaveBeenCalledTimes(3))
-    expect(screen.queryByText(/3,000|6,000|积分/)).not.toBeInTheDocument()
+    expect(screen.getByText(/3,000.*6,000.*3,000/)).toBeInTheDocument()
   })
 
   it('shows an unlimited balance for the provisioned administrator', async () => {

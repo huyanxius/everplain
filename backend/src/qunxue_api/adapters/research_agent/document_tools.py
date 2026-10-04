@@ -29,6 +29,7 @@ from qunxue_api.modules.research_materials import (
 from qunxue_api.modules.theory_matching import ConfirmedTheoryPlanSnapshot
 
 from .catalog_tools import KnowledgeToolRegistry
+from .writing_tools import WritingAgentTools
 
 
 class ResearchDocumentReader(Protocol):
@@ -194,6 +195,7 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
         material_search: ResearchMaterialSearchReader | None = None,
         material_vector_cache_factory=None,
         analysis: ResearchAnalysisAgentFacade | None = None,
+        writing=None,
     ) -> None:
         super().__init__(catalog, retriever=retriever, web_research=web_research)
         self._documents = documents
@@ -205,6 +207,7 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
         self._material_retriever = retriever
         self._material_vector_cache_factory = material_vector_cache_factory
         self._analysis = analysis
+        self._writing = WritingAgentTools(writing) if writing is not None else None
         self._user_id: UUID | None = None
         self._conversation_id: UUID | None = None
         self._agent_run_id: UUID | None = None
@@ -223,6 +226,31 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
         self.research_document_tools_enabled = False
         self.research_material_tools_enabled = False
         self.research_analysis_tools_enabled = False
+        self.writing_tools_enabled = False
+
+    def prepare_writing_context(self, *, user_id, context):
+        if self._writing is None:
+            raise ValueError("writing workspace tools are unavailable")
+        self._writing.validate_context(user_id=user_id, context=context)
+
+    def bind_writing_context(self, *, user_id, agent_run_id, context):
+        self.prepare_writing_context(user_id=user_id, context=context)
+        self._writing.bind(user_id=user_id, agent_run_id=agent_run_id, context=context)
+        self.writing_tools_enabled = True
+
+    @property
+    def writing_prompt_context(self):
+        return dict(self._writing.context) if self.writing_tools_enabled else None
+
+    def read_writing_document(self):
+        if not self.writing_tools_enabled:
+            raise ValueError("writing workspace tools are unavailable")
+        return self._writing.read_document()
+
+    def propose_writing_edit(self, **payload):
+        if not self.writing_tools_enabled:
+            raise ValueError("writing workspace tools are unavailable")
+        return self._writing.propose_edit(**payload)
 
     def enable_research_handoff_tools(self) -> None:
         self.research_handoff_tools_enabled = True

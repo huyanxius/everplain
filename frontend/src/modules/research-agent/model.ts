@@ -101,6 +101,7 @@ export type AgentModelCatalog = {
 }
 
 export type AgentTurnRequest = {
+  knowledge_index_action?: 'skip_missing' | null
   model_id?: string | null
   reasoning_effort?: AgentReasoningEffort | null
   reference_knowledge_base_id?: string | null
@@ -113,6 +114,7 @@ export type AgentTurnRequest = {
   document_id?: string | null
   section_id?: string | null
   document_version?: number | null
+  writing_context?: { document_id: string; document_version: number; selection_start?: number | null; selection_end?: number | null } | null
   theory_plan_id?: string | null
   material_ids?: string[]
   deep_research_run_id?: string | null
@@ -195,4 +197,41 @@ export type AgentEvent =
   | { type: 'canvas_patch'; patch: AgentResearchMapPatch }
   | { type: 'turn_completed'; conversation: AgentConversation; knowledge_release_id: string }
   | { type: 'turn_interrupted'; code: string; message: string }
+  | { type: 'knowledge_index_choice_required'; status: KnowledgeIndexStatus }
   | { type: 'turn_failed'; code: string; message: string }
+
+export type RecentConversationContext = {
+  conversation_id: string
+  title: string
+  updated_at: string
+  kind: 'user_excerpt'
+  excerpt: string
+  source_message_id: string | null
+  recent_excerpts: { message_id: string; sequence: number; excerpt: string }[]
+}
+
+export type KnowledgeIndexDocument = {
+  knowledge_base_id: string
+  document_id: string
+  parse_id: string
+  filename: string
+  index_status: string
+  index_error?: string | null
+  reason?: string | null
+}
+export type KnowledgeIndexStatus = {
+  state: 'ready' | 'missing_index' | 'unavailable'
+  embedding_model: string | null
+  total_count: number
+  ready_count: number
+  missing_count: number
+  processing_count: number
+  failed_count: number
+  ready_document_ids: string[]
+  ready_documents: KnowledgeIndexDocument[]
+  missing_documents: KnowledgeIndexDocument[]
+}
+export type KnowledgeIndexRepair = {
+  documents: Pick<KnowledgeIndexDocument, 'knowledge_base_id' | 'document_id' | 'parse_id'>[]
+  reference_knowledge_base_id?: string | null
+}

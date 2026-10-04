@@ -11,6 +11,8 @@ import { ErrorState } from '../ui/States'
 import { AgentLoading } from '../ui/AgentLoading'
 import { KnowledgeGraphControls, KnowledgePage, KnowledgePageHead, KnowledgeViewSwitch } from '../courses/KnowledgeLayout'
 import './personal-graph.css'
+import { KnowledgeReadinessChoice } from '../ui/KnowledgeReadinessChoice'
+import { graphReadinessDocuments, useGraphReadinessChoice } from './useGraphReadinessChoice'
 
 export function PersonalGraphPage({ userId }: { userId: string | null }) {
   const cache = useQueryClient()
@@ -19,7 +21,6 @@ export function PersonalGraphPage({ userId }: { userId: string | null }) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string>()
   const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState('')
   const record = selected ? graph.data?.sources[selected] : undefined
   const source = useQuery({ queryKey: ['personal-source', userId, record?.library_id, record?.document_id, record?.segment_id],
     queryFn: () => readCourseDocument(record!.library_id, record!.document_id, record!.segment_id ?? undefined), enabled: Boolean(record) })
@@ -29,7 +30,11 @@ export function PersonalGraphPage({ userId }: { userId: string | null }) {
     const image = renderToStaticMarkup(<AgentAvatar avatar={g.avatar_id as AgentAvatarId} color={g.color} playing={false} />).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ').replace('</svg>', `<style>.aa-body{fill:${g.color}}.aa-eye,.aa-nose{fill:#252822}.aa-happy{display:none}</style></svg>`)
     return { releaseId: g.releaseId, nodes: g.nodes.map(node => ({ ...node, image: node.id === 'self' ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(image)}` : undefined })), edges: g.edges.map(edge => ({ ...edge, layer: 'structure' as const })) }
   }, [graph.data])
-  async function refresh() { setRefreshing(true); setError(''); try { const value = await rebuildPersonalGraph(); cache.setQueryData(['personal-graph', userId], value) } catch (e) { setError(String(e)) } finally { setRefreshing(false) } }
+  const readiness = useGraphReadinessChoice(userId, async skip => {
+    setRefreshing(true)
+    try { const value = await rebuildPersonalGraph(skip ? 'skip_missing' : undefined); cache.setQueryData(['personal-graph', userId], value) }
+    finally { setRefreshing(false) }
+  })
   if (graph.isPending) return <AgentLoading message="正在展开你的知识图谱" />
   if (graph.isError || !projection) return <ErrorState detail={graph.error?.message} onRetry={() => { void graph.refetch() }} />
   const g = graph.data!
@@ -43,10 +48,12 @@ export function PersonalGraphPage({ userId }: { userId: string | null }) {
     <KnowledgePageHead title="图谱" actions={<><KnowledgeViewSwitch view="graph" /><Link className="qx-btn qx-btn--primary" to="/imports"><PlusIcon size={18} />继续导入</Link></>}>
       <div className="ep-knowledge-filters"><label className="qx-search ep-personal-map__search"><MagnifyingGlassIcon size={18} /><input aria-label="搜索我的图谱" value={query} onChange={event => { setQuery(event.target.value); setSelected(undefined) }} placeholder="找一个节点" /></label>{g.nodes.filter(node => node.nodeType === 'topic').map(node => <button className="qx-tag" type="button" key={node.id} aria-pressed={selected === node.id} onClick={() => { setSelected(selected === node.id ? undefined : node.id); setQuery('') }}>{node.label}</button>)}</div>
     </KnowledgePageHead>
-    <div className="ep-personal-map__bar"><span className="qx-meta">{g.document_count} 份资料 · {g.topic_count} 个主题 · {g.nodes.length} 节点 · {g.edges.length} 关系</span><div className="ep-knowledge-actions"><button type="button" className="qx-btn qx-btn--ghost" disabled={refreshing} onClick={() => void refresh()}>{refreshing ? '正在更新…' : '更新图谱'}</button><Link className="qx-btn qx-btn--ghost" to={record ? `/agent?reference_knowledge_base_id=${encodeURIComponent(record.library_id)}` : '/agent'}>和 {g.name} 聊聊<ArrowRightIcon size={16} /></Link></div></div>
-    {error && <p role="alert" className="qx-notice qx-notice--danger">{error}</p>}
+    <div className="ep-personal-map__bar"><span className="qx-meta">{g.document_count} 份资料 · {g.topic_count} 个主题 · {g.nodes.length} 节点 · {g.edges.length} 关系</span><div className="ep-knowledge-actions"><button type="button" className="qx-btn qx-btn--ghost" disabled={refreshing || readiness.busy || readiness.waiting} onClick={() => void readiness.start()}>{refreshing ? '正在更新…' : '更新图谱'}</button><Link className="qx-btn qx-btn--ghost" to={record ? `/agent?reference_knowledge_base_id=${encodeURIComponent(record.library_id)}` : '/agent'}>和 {g.name} 聊聊<ArrowRightIcon size={16} /></Link></div></div>
+    {g.coverage && g.coverage.excluded_count > 0 && <p role="status" className="qx-notice">当前图谱包含 {g.coverage.included_count}/{g.coverage.total_count} 份资料，其余 {g.coverage.excluded_count} 份未纳入本次图谱。</p>}
+    {readiness.status && <KnowledgeReadinessChoice purpose="graph" totalCount={readiness.status.total_count} readyCount={readiness.status.ready_count} documents={graphReadinessDocuments(readiness.status)} busy={readiness.busy} waiting={readiness.waiting} error={readiness.error} onSkip={() => void readiness.skip()} onRepair={() => void readiness.repair()} onCancel={readiness.cancel} onRefresh={() => void readiness.check()} />}
+    {!readiness.status && readiness.error && <p role="alert" className="qx-notice qx-notice--danger">{readiness.error}</p>}
     <div className="ep-personal-map">
-      <ObsidianKnowledgeGraph renderControls={controls => <KnowledgeGraphControls controls={controls} />} projection={projection} personal focusNodeId={selected} onSelectKnowledge={setSelected} onExpandNode={setSelected} />
+      <ObsidianKnowledgeGraph layoutScope={userId ?? 'anonymous'} renderControls={controls => <KnowledgeGraphControls controls={controls} />} projection={projection} personal focusNodeId={selected} onSelectKnowledge={setSelected} onExpandNode={setSelected} />
       {g.document_count === 0 && <div className="ep-personal-map__empty"><h2 className="qx-card__title">每个想法，都可以从这里开始。</h2><p className="qx-meta">导入几份收藏或笔记，慢慢长出你的知识图谱。</p><Link className="qx-btn qx-btn--secondary" to="/imports">带来第一份资料<ArrowUpRightIcon size={15} /></Link></div>}
       {g.pending_count > 0 && <p className="qx-meta ep-personal-map__working" role="status">{g.pending_count} 份资料等待归类{g.mode === 'semantic' ? '，需要完成语义索引' : ''}</p>}
       <div className="ep-personal-map__legend" aria-label="节点类型"><span>我</span><span>主题</span><span>资料</span><span>知识点</span></div>

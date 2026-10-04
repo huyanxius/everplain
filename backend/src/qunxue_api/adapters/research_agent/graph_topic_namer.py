@@ -13,6 +13,8 @@ from qunxue_api.adapters.model.routing import (
     ModelRouteContext,
     current_model_route_scope,
 )
+from qunxue_api.adapters.model.streaming import collect_chat_completion
+from qunxue_api.modules.billing import BillingFailure
 
 
 class GraphTopicNamer:
@@ -45,6 +47,8 @@ class GraphTopicNamer:
                 "model": endpoint.model,
                 "max_tokens": 1200,
                 "response_format": {"type": "json_object"},
+                "stream": True,
+                "stream_options": {"include_usage": True},
                 "messages": [
                     {
                         "role": "system",
@@ -64,14 +68,14 @@ class GraphTopicNamer:
             )
             completion_called = False
             try:
-                response = httpx.post(
-                    endpoint.base_url.rstrip("/") + "/chat/completions",
+                with httpx.stream(
+                    "POST", endpoint.base_url.rstrip("/") + "/chat/completions",
                     headers=headers,
                     timeout=min(endpoint.timeout_seconds, 30),
                     json=wire_payload,
-                )
-                response.raise_for_status()
-                payload = response.json()
+                ) as response:
+                    response.raise_for_status()
+                    payload = collect_chat_completion(response.iter_bytes())
                 completion_called = True
                 scope.complete(attempt, payload, outcome="success")
                 labels = json.loads(payload["choices"][0]["message"]["content"])
@@ -86,7 +90,7 @@ class GraphTopicNamer:
                 return ModelAttemptResult(
                     result, usage.get("prompt_tokens"), usage.get("completion_tokens")
                 )
-            except (httpx.HTTPError, ValueError, KeyError, IndexError) as exc:
+            except (httpx.HTTPError, ValueError, KeyError, IndexError, BillingFailure) as exc:
                 if completion_called:
                     scope.runtime.mark_attempt_error(attempt, "topic_naming_failed")
                 else:

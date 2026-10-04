@@ -88,7 +88,8 @@ def test_personal_agent_can_propose_document_and_user_accepts_without_matching(p
 
 
 def test_private_document_citations_are_verified_and_deletion_blocks_export(plain_client):
-    from test_shared_knowledge_api import create_library, mutation, upload
+    from test_shared_knowledge_agent import upload
+    from test_shared_knowledge_api import create_library, mutation
 
     client = plain_client
     identity = _authenticate(client)
@@ -189,7 +190,8 @@ def test_private_document_citations_are_verified_and_deletion_blocks_export(plai
 
 
 def test_generic_document_rejects_foreign_private_source(plain_client):
-    from test_shared_knowledge_api import create_library, mutation, upload
+    from test_shared_knowledge_agent import upload
+    from test_shared_knowledge_api import create_library, mutation
 
     client = plain_client
     _authenticate(client)
@@ -231,7 +233,8 @@ def test_generic_document_rejects_foreign_private_source(plain_client):
 
 
 def test_agent_cannot_read_document_with_removed_private_sources(plain_client):
-    from test_shared_knowledge_api import create_library, mutation, upload
+    from test_shared_knowledge_agent import upload
+    from test_shared_knowledge_api import create_library, mutation
 
     client = plain_client
     identity = _authenticate(client)

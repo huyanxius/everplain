@@ -1,4 +1,5 @@
-import { editAgentCanvasNode, listAgentModels, type AgentCanvasNodeEditRequest } from '../../api/generated'
+import { isKnowledgeIndexStatus } from './knowledgeIndexReadiness'
+import { getAgentKnowledgeIndexStatus, repairAgentKnowledgeIndex, editAgentCanvasNode, listAgentModels, type AgentCanvasNodeEditRequest } from '../../api/generated'
 import { apiClient } from '../../api/client'
 import type {
   AgentResearchJourneyResponse,
@@ -6,6 +7,9 @@ import type {
   AgentTurnRequest as AgentTurnRequestDto,
 } from '../../api/generated'
 import type {
+  RecentConversationContext,
+  KnowledgeIndexStatus,
+  KnowledgeIndexRepair,
   AgentModelCatalog,
   AgentCitation,
   AgentConversation,
@@ -140,6 +144,8 @@ export function parseAgentEventStream(stream: string): AgentEvent[] {
         code: String(payload.code ?? 'interrupted'),
         message: String(payload.message ?? '已停止生成。'),
       })
+    } else if (eventName === 'knowledge_index_choice_required' && isKnowledgeIndexStatus(payload.status)) {
+      events.push({ type: eventName, status: payload.status })
     } else if (eventName === 'turn_failed') {
       events.push({
         type: eventName,
@@ -343,8 +349,10 @@ async function streamAgentTurnOnce(
       section_id: payload.section_id ?? null,
       document_version: payload.document_version ?? null,
       theory_plan_id: payload.theory_plan_id ?? null,
+      ...(payload.writing_context ? { writing_context: payload.writing_context } : {}),
       material_ids: payload.material_ids ?? [],
       reference_knowledge_base_id: payload.reference_knowledge_base_id ?? null,
+      knowledge_index_action: payload.knowledge_index_action ?? null,
       deep_research_run_id: payload.deep_research_run_id ?? null,
       deep_research_action: payload.deep_research_action ?? null,
       deep_research_selection: payload.deep_research_selection ?? null,
@@ -372,7 +380,7 @@ async function streamAgentTurnOnce(
     const blocks = buffer.split(/\n\n+/)
     buffer = blocks.pop() ?? ''
     for (const event of parseAgentEventStream(`${blocks.join('\n\n')}\n\n`)) {
-      if (event.type === 'turn_completed' || event.type === 'turn_interrupted' || event.type === 'turn_failed' || event.type === 'research_waiting') {
+      if (event.type === 'turn_completed' || event.type === 'turn_interrupted' || event.type === 'turn_failed' || event.type === 'research_waiting' || event.type === 'knowledge_index_choice_required') {
         terminalEventSeen = true
       }
       onEvent(event)
@@ -381,7 +389,7 @@ async function streamAgentTurnOnce(
   }
   if (buffer.trim()) {
     for (const event of parseAgentEventStream(buffer)) {
-      if (event.type === 'turn_completed' || event.type === 'turn_interrupted' || event.type === 'turn_failed' || event.type === 'research_waiting') {
+      if (event.type === 'turn_completed' || event.type === 'turn_interrupted' || event.type === 'turn_failed' || event.type === 'research_waiting' || event.type === 'knowledge_index_choice_required') {
         terminalEventSeen = true
       }
       onEvent(event)
@@ -448,4 +456,24 @@ export async function saveCanvasNode(conversationId: string, nodeId: string, bod
     throw new Error(result.response?.status === 409 ? '卡片已在另一处更新。你的草稿仍保留，请载入最新版本后核对。' : '卡片未保存，请检查连接后重试。')
   }
   return result.data as AgentConversation
+}
+
+
+export async function listRecentConversationContext(signal?: AbortSignal): Promise<RecentConversationContext[]> {
+  const response = await fetch(apiClient.buildUrl({ url: '/api/agent/recent-context' }), {
+    credentials: 'include', signal, cache: 'no-store',
+  })
+  if (!response.ok) throw new Error('无法加载最近对话')
+  return ((await response.json()) as { items: RecentConversationContext[] }).items
+}
+
+export async function readKnowledgeIndexStatus(referenceKnowledgeBaseId?: string | null, signal?: AbortSignal, purpose: 'search' | 'graph' = 'search'): Promise<KnowledgeIndexStatus> {
+  const result = await getAgentKnowledgeIndexStatus({ client: apiClient, query: { reference_knowledge_base_id: referenceKnowledgeBaseId, purpose }, signal })
+  if (!result.data) throw new Error('无法检查资料整理进度，请重试。')
+  return result.data
+}
+export async function repairKnowledgeIndex(body: KnowledgeIndexRepair, idempotencyKey: string, signal?: AbortSignal): Promise<KnowledgeIndexStatus> {
+  const result = await repairAgentKnowledgeIndex({ client: apiClient, body, headers: { 'Idempotency-Key': idempotencyKey }, signal })
+  if (!result.data) throw new Error(result.response?.status === 409 ? '资料已更新，请重新检查整理状态后再补齐。' : '补齐任务未能确认，请检查进度后再试。')
+  return result.data
 }

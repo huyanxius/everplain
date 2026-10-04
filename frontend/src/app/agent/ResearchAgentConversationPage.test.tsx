@@ -2361,3 +2361,94 @@ it('allocates distinct presentation keys when a paused run returns beside a comp
     expect(JSON.parse(String(requests[2].body))).toMatchObject({ conversation_id: id, message: questionA })
   } finally { errors.mockRestore() }
 })
+
+it('uses the existing stream with versioned writing context and deduplicates clicks during save', async () => {
+  let saved!: (value: { document_id: string; document_version: number; selection_start: number; selection_end: number }) => void
+  const prepare = vi.fn(() => new Promise<{ document_id: string; document_version: number; selection_start: number; selection_end: number }>(resolve => { saved = resolve }))
+  const requests: Record<string, unknown>[] = []
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (urlFor(input).pathname === '/api/agent/turns') { requests.push(JSON.parse(String(init?.body))); return streamResponse(conversationFixture({ prompt: '改进选区', answer: '已提出待定修订。' })) }
+    return json({ items: [], tasks: [] })
+  }))
+  render(<MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" writingDocumentId="writing-doc" prepareWritingContext={prepare} composerAriaLabel="写作旁的 Agent 对话" /></MemoryRouter>)
+  const input = await screen.findByRole('textbox', { name: '写作旁的 Agent 对话' })
+  fireEvent.change(input, { target: { value: '改进选区' } })
+  fireEvent.submit(input.closest('form')!)
+  fireEvent.submit(input.closest('form')!)
+  expect(prepare).toHaveBeenCalledTimes(1)
+  expect(requests).toHaveLength(0)
+  await act(async () => saved({ document_id: 'writing-doc', document_version: 7, selection_start: 2, selection_end: 5 }))
+  await waitFor(() => expect(requests).toHaveLength(1))
+  expect(requests[0]).toMatchObject({ workspace: 'agent', message: '改进选区', writing_context: { document_id: 'writing-doc', document_version: 7, selection_start: 2, selection_end: 5 } })
+})
+
+it('keeps the user prompt and sends no turn when writing preparation fails', async () => {
+  const turns = vi.fn()
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => { if (urlFor(input).pathname === '/api/agent/turns') turns(); return json({ items: [], tasks: [] }) }))
+  render(<MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" writingDocumentId="writing-doc" prepareWritingContext={async () => { throw new Error('文稿版本冲突') }} /></MemoryRouter>)
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  fireEvent.change(input, { target: { value: '保留我的修改要求' } })
+  fireEvent.submit(input.closest('form')!)
+  await screen.findByText('文稿版本冲突')
+  expect(input).toHaveValue('保留我的修改要求')
+  expect(turns).not.toHaveBeenCalled()
+})
+
+it('isolates unsent writing chat drafts by document', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], tasks: [] })))
+  const page = (id: string) => <MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" writingDocumentId={id} /></MemoryRouter>
+  const view = render(page('writing-a'))
+  fireEvent.change(await screen.findByRole('textbox', { name: '问 Everplain' }), { target: { value: '甲文稿的未发送要求' } })
+  view.rerender(page('writing-b'))
+  expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('')
+  view.rerender(page('writing-a'))
+  expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('甲文稿的未发送要求')
+})
+
+it('shows readiness only after a real tool decision, preserves scope and submits an explicit ready-only continuation', async () => {
+  const status = { state: 'missing_index', embedding_model: 'embedding', total_count: 2, ready_count: 1, missing_count: 1, processing_count: 0, failed_count: 1,
+    ready_document_ids: ['ready'], ready_documents: [{ knowledge_base_id: 'kb', document_id: 'ready', parse_id: 'ready-parse', filename: 'ready.pdf', index_status: 'ready' }],
+    missing_documents: [{ knowledge_base_id: 'kb', document_id: 'failed', parse_id: 'failed-parse', filename: 'failed.pdf', index_status: 'failed', index_error: '索引服务不可用' }] }
+  let turnRequests = 0
+  const completed = conversationFixture({ id: 'choice-conversation', prompt: '检索我的资料', answer: '仅根据已就绪的资料回答。' })
+  const fetch = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+    const url = urlFor(input)
+    if (url.pathname === '/api/agent/turns') {
+      turnRequests += 1
+      return turnRequests === 1 ? new Response(eventStream([
+        ['turn_started', { conversation_id: 'choice-conversation', run_id: 'choice-run', replayed: false }],
+        ['knowledge_index_choice_required', { status }],
+      ]), { headers: { 'Content-Type': 'text/event-stream' } }) : streamResponse(completed)
+    }
+    if (url.pathname === '/api/agent/conversations/choice-conversation') return json({ ...completed, turns: [], turn_count: 0 })
+    if (url.pathname === '/api/agent/models') return json({ runtime_mode: 'base', items: [{ model_id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoning_efforts: ['medium'], default_reasoning_effort: 'medium' }] })
+    return json({ items: [] })
+  })
+  vi.stubGlobal('fetch', fetch)
+  renderPage()
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  expect(screen.queryByRole('region', { name: '知识库还未整理完全，确定现在开始吗？' })).not.toBeInTheDocument()
+  expect(fetch.mock.calls.some(([input]) => urlFor(input).pathname.includes('knowledge-index'))).toBe(false)
+  fireEvent.change(input, { target: { value: '检索我的资料' } })
+  fireEvent.submit(input.closest('form')!)
+  const choice = await screen.findByRole('region', { name: '知识库还未整理完全，确定现在开始吗？' })
+  expect(choice).toHaveTextContent('索引服务不可用')
+  await waitFor(() => expect(within(choice).getByRole('button', { name: '直接开始，忽略未就绪资料' })).toBeEnabled())
+  fireEvent.click(within(choice).getByRole('button', { name: '直接开始，忽略未就绪资料' }))
+  await waitFor(() => expect(turnRequests).toBe(2))
+  const requests = fetch.mock.calls.filter(([input]) => urlFor(input).pathname === '/api/agent/turns')
+  expect(JSON.parse(String(requests[1][1]?.body))).toMatchObject({ message: '检索我的资料', conversation_id: 'choice-conversation', knowledge_index_action: 'skip_missing' })
+  expect(new Headers(requests[1][1]?.headers).get('Idempotency-Key')).not.toBe(new Headers(requests[0][1]?.headers).get('Idempotency-Key'))
+  expect(fetch.mock.calls.some(([input]) => urlFor(input).pathname.includes('repairs'))).toBe(false)
+})
+
+it('keeps ready-only coverage visible when a saved answer is reopened', async () => {
+  const conversation = conversationFixture()
+  conversation.turns[0].tool_traces = [{ tool: 'knowledge_index_scope', phase: 'finished', call_id: 'coverage', output: { knowledge_index_coverage: {
+    state: 'missing_index', embedding_model: 'embedding', total_count: 12, ready_count: 9, missing_count: 3, processing_count: 0, failed_count: 3,
+    ready_document_ids: [], ready_documents: [], missing_documents: [],
+  } } }]
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => urlFor(input).pathname === `/api/agent/conversations/${conversation.conversation_id}` ? json(conversation) : json({ items: [] })))
+  renderPage('user-agent', `/agent?conversation_id=${conversation.conversation_id}`)
+  expect(await screen.findByText('本轮仅覆盖已就绪的 9 / 12 份资料，其余 3 份未参与检索。')).toBeVisible()
+})
