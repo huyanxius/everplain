@@ -51,7 +51,7 @@ it('defaults to extension with all nine imports plus files in three groups, and 
   const trigger = screen.getByRole('button', { name: '安装教程' }); fireEvent.click(trigger)
   const guide = screen.getByRole('region', { name: '安装 Everplain 收藏助手' })
   fireEvent.click(within(guide).getByText('手动安装、权限与常见问题'))
-  expect(within(guide).getByText('chrome://extensions')).toBeVisible()
+  expect(within(guide).getAllByText('chrome://extensions')[0]).toBeVisible()
   expect(within(guide).getByRole('link', { name: 'e.qunxue.xyz' })).toHaveAttribute('href', 'https://e.qunxue.xyz')
   expect(within(guide).getByText(/只收藏网页无需开启书签权限/)).toBeVisible()
   expect(within(guide).getByText(/已提交.*不代表全部入库/)).toBeVisible()
