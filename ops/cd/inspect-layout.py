@@ -28,7 +28,13 @@ for x in m:
  r['database_present']=(p/'everplain.db').is_file()
  allowed={n+s for n in ['everplain.db','everplain-retrieval.db'] for s in ['','-wal','-shm','-journal']}
  r['data_entries_allowed']=all(t.is_file() and not t.is_symlink() and t.name in allowed for t in p.iterdir())
- r['unexpected_data_count']=sum(t.name not in allowed for t in p.iterdir())
+ extras=[t for t in p.iterdir() if t.name not in allowed]
+ r['unexpected_data_count']=len(extras)
+ r['extra_data_all_regular']=all(t.is_file() and not t.is_symlink() for t in extras)
+ r['extra_data_directory_count']=sum(t.is_dir() for t in extras)
+ r['extra_data_sqlite_count']=sum(t.is_file() and not t.is_symlink() and t.open('rb').read(16)==b'SQLite format 3\\x00' for t in extras)
+ for known in ['everplain.db.bak','everplain-retrieval.db.bak','everplain.db.backup','everplain-retrieval.db.backup','uploads','imports','backups','.DS_Store','everplain-tokenizer-cache','tokenizer-cache']:
+  r['data_known_'+known.replace('.','_')]=(p/known).exists()
 e=dict(t.split('=',1) for t in api['Config']['Env'])
 for k,v in [('EVERPLAIN_RUNTIME_MODE','base'),('EVERPLAIN_DATABASE_URL','sqlite:////data/everplain.db'),('EVERPLAIN_RETRIEVAL_INDEX_PATH','/data/everplain-retrieval.db')]: r[k.lower()+'_matches']=e.get(k)==v
 r['no_other_product_env']=not any(k.startswith('QUNXUE_') for k in e)
