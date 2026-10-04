@@ -7,7 +7,7 @@ const current: ActiveUsageBucket = { id: 'current-cycle', kind: 'subscription', 
 
 describe('account usage projection', () => {
   it('uses the available amount after holds and only the current pool limit', () => {
-    expect(accountUsageFromCredits({ ...credits, activeUsageBuckets: [current] })).toEqual({ isUnlimited: false, remainingPercent: 40, buckets: [{ id: 'current-cycle', kind: 'subscription', remainingPercent: 40, expiresAt: null }] })
+    expect(accountUsageFromCredits({ ...credits, activeUsageBuckets: [current] })).toEqual({ isUnlimited: false, remainingPercent: 40, buckets: [{ id: 'current-cycle', kind: 'subscription', remainingPoints: 3600, usedPoints: 5400, limitPoints: 9000, remainingPercent: 40, expiresAt: null }] })
   })
   it('keeps legacy credit limits and expired pools unknown', () => {
     expect(accountUsageFromCredits(credits).remainingPercent).toBeNull()
@@ -37,4 +37,9 @@ it('uses settled fractions, not authorization holds, with a fixed grant denomina
     expect(accountUsageFromCredits({ ...credits, balance: 134, activeUsageBuckets: [{ ...welcome, availablePoints, settledRemainingPoints: 133.978 }] }).remainingPercent).toBe(99.98)
   }
   expect(accountUsageFromCredits({ ...credits, balance: 134, activeUsageBuckets: [{ ...welcome, availablePoints: 120 }] }).remainingPercent).toBe(100)
+})
+
+it('shows reset allowance amounts from the exact server projection', () => {
+  const result = accountUsageFromCredits({ ...credits, balance: 30, activeUsageBuckets: [{ ...current, id: 'reset', kind: 'welcome', limitPoints: 30, availablePoints: 23, settledRemainingPoints: 29.75 }] })
+  expect(result.buckets[0]).toMatchObject({ remainingPoints: 29.75, usedPoints: 0.25, limitPoints: 30, remainingPercent: 99.17 })
 })
