@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -122,7 +123,11 @@ class UploadStateTests(unittest.TestCase):
             script.index("echo '{\"upload_completed\":true}'"),
         )
         workflow = (ROOT / ".github/workflows/deploy.yml").read_text()
-        self.assertIn("timeout-minutes: 15", workflow)
+        deploy = workflow.split("\n  deploy:\n", 1)[1]
+        job_minutes = int(re.search(r"timeout-minutes: (\d+)", deploy).group(1))
+        upload_seconds = int(re.search(r"duration=(\d+)", script).group(1))
+        # Upload must finish before the runner can cancel verification and cutover.
+        self.assertGreaterEqual(job_minutes * 60, upload_seconds + 5 * 60)
         self.assertIn("deploy-existing-ssh.sh all", workflow)
         self.assertIn("EXPECTED_SHA256: ${{ needs.build.outputs.digest }}", workflow)
 
