@@ -152,7 +152,10 @@ class NativeMotionPlaybackTest {
             assertEquals(124f * density, cardY[1].get().top - cardY[0].get().top, 2f)
             assertEquals(124f * density, cardY[2].get().top - cardY[1].get().top, 2f)
             assertEquals(1, coverMounts.get())
-            assertTrue(cardMounts.all { count -> count.get() == 1 })
+            assertTrue(
+                "Card mounts: ${cardMounts.map { count -> count.get() }}",
+                cardMounts.all { count -> count.get() == 1 },
+            )
             assertEquals(-1, navigated.get())
             capture("pile-deck-open").recycle()
             device.click(
@@ -168,7 +171,10 @@ class NativeMotionPlaybackTest {
             assertFalse(open.value)
             assertEquals(152f * density, bounds.get().height, 2f)
             assertEquals(1, coverMounts.get())
-            assertTrue(cardMounts.all { count -> count.get() == 1 })
+            assertTrue(
+                "Card mounts: ${cardMounts.map { count -> count.get() }}",
+                cardMounts.all { count -> count.get() == 1 },
+            )
             capture("pile-deck-restored").recycle()
         }
     }

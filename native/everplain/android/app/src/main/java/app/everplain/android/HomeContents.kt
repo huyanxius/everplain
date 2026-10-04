@@ -334,6 +334,26 @@ internal fun HomePile(
 ) {
     BackHandler(enabled = open) { toggle(false) }
     val motion = rememberMotionEnabled()
+    val latestBody = rememberUpdatedState(content)
+    // BoxWithConstraints subcomposes while its animated constraints change. Own card bodies
+    // above that boundary so their native state survives all intermediate measurements.
+    val bodies =
+        remember(kind, count) {
+            List(count) { index ->
+                movableContentOf<Boolean, Float> { expanded, opacity ->
+                    Column(
+                        Modifier.padding(
+                                horizontal = 20.dp,
+                                vertical = if (kind == "deck") 16.dp else 20.dp,
+                            )
+                            .graphicsLayer { alpha = opacity },
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        latestBody.value.invoke(this, index, expanded)
+                    }
+                }
+            }
+        }
     val density = LocalDensity.current.density
     val dark = MaterialTheme.colorScheme.background.luminance() < .5f
     val spring = CubicBezierEasing(.22f, 1.28f, .36f, 1f)
@@ -448,16 +468,7 @@ internal fun HomePile(
                         )
                         .then(if (!open) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
-                Column(
-                    Modifier.padding(
-                            horizontal = 20.dp,
-                            vertical = if (kind == "deck") 16.dp else 20.dp,
-                        )
-                        .graphicsLayer { alpha = contentAlpha },
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    content(i, open)
-                }
+                bodies[i](open, contentAlpha)
             }
         }
         // Keep the cover mounted throughout expansion and collapse, just like the Web DOM.
