@@ -6,7 +6,7 @@ struct ResearchWorkspaceCanvas: View {
     @EnvironmentObject private var app: AppStore
     @ObservedObject var workspace: ResearchWorkspaceStore
     @Environment(\.colorScheme) private var scheme
-    @State private var zoom = 1.0
+    @State private var zoom: CGFloat = 1.0
     @State private var editing = false
     @State private var existingOpen = false
     @State private var nodeTitle = ""

@@ -258,8 +258,8 @@ private struct AccountSettingsPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             EPText("登录密码").font(TypeStyle.ui(T.textHeading, weight: .semibold)).padding(.vertical, T.space2)
             SettingRow(label: "当前密码") { EPSecureField("", text: $currentPassword).textContentType(.password).textFieldStyle(EPFieldStyle()).accessibilityLabel(epLocalized("当前密码")) }
-            SettingRow(label: "新密码") { EPSecureField("", text: $newPassword).textContentType(.newPassword).textFieldStyle(EPFieldStyle()).accessibilityLabel(epLocalized("新密码")) }
-            SettingRow(label: "确认新密码") { EPSecureField("", text: $confirmPassword).textContentType(.newPassword).textFieldStyle(EPFieldStyle()).accessibilityLabel(epLocalized("确认新密码")) }
+            SettingRow(label: "新密码") { EPSecureField("", text: $newPassword).epNewPasswordContentType().textFieldStyle(EPFieldStyle()).accessibilityLabel(epLocalized("新密码")) }
+            SettingRow(label: "确认新密码") { EPSecureField("", text: $confirmPassword).epNewPasswordContentType().textFieldStyle(EPFieldStyle()).accessibilityLabel(epLocalized("确认新密码")) }
             Toggle(isOn: $revokeOtherSessions) { VStack(alignment: .leading, spacing: T.space1) { EPText("撤销其他设备的会话"); EPText("当前设备不会退出。").font(TypeStyle.ui(T.textMeta)).foregroundStyle(.secondary) } }.toggleStyle(.checkbox).padding(.top, T.space4)
             if let passwordError { InlineMessage(text: epLocalized(passwordError), isError: true).padding(.top, T.space3) }
             HStack { Spacer(); EPButton("更新密码", action: changePassword).buttonStyle(EPButtonStyle(primary: true)).disabled(currentPassword.isEmpty) }.padding(.top, T.space4)
@@ -312,7 +312,7 @@ private struct AccountSettingsPanel: View {
                 EPText("当前密码"); EPSecureField("", text: $actionPassword).textContentType(.password).textFieldStyle(EPFieldStyle()).accessibilityLabel(epLocalized("当前密码"))
                 EPText("停用原因"); TextEditor(text: $deactivationReason).font(TypeStyle.ui(T.textControl)).scrollContentBackground(.hidden).frame(height: 84).padding(T.space2).background(Palette(dark: scheme == .dark).strong, in: RoundedRectangle(cornerRadius: T.radiusField)).accessibilityLabel(epLocalized("停用原因"))
             case .delete:
-                EPText("账户邮箱"); EPTextField(store.account?.email ?? "", text: $deletionEmail).textContentType(.emailAddress).textFieldStyle(EPFieldStyle()).accessibilityLabel(epLocalized("账户邮箱"))
+                EPText("账户邮箱"); EPTextField(store.account?.email ?? "", text: $deletionEmail).epEmailContentType().textFieldStyle(EPFieldStyle()).accessibilityLabel(epLocalized("账户邮箱"))
                 EPText("当前密码"); EPSecureField("", text: $actionPassword).textContentType(.password).textFieldStyle(EPFieldStyle()).accessibilityLabel(epLocalized("当前密码"))
             default: EmptyView()
             }

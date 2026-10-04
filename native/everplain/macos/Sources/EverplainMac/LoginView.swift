@@ -44,7 +44,7 @@ struct LoginView: View {
                     }.padding(.leading, T.space5).padding(.trailing, T.space2)
                         .frame(height: T.actionHeight).background(p.strong, in: Capsule())
                 } else {
-                    TextField("邮箱地址", text: $email).textContentType(.emailAddress)
+                    TextField("邮箱地址", text: $email).epEmailContentType()
                         .textFieldStyle(EPFieldStyle()).focused($field, equals: .email).onSubmit(submit)
                         .onChange(of: email) { _ in password = ""; localError = nil; store.error = nil }
                 }

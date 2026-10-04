@@ -25,13 +25,13 @@ struct RegisterView: View {
             Text("第 \(step) 步，共 3 步").font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.muted).padding(.top, -T.space4)
             if step > 1 { VStack(spacing: T.space1) { Text(email).foregroundStyle(p.muted); Button(step == 2 ? "修改邮箱" : "返回验证码") { back() }.buttonStyle(EPGhostButtonStyle()).disabled(store.authenticating) } }
             VStack(spacing: T.space3) {
-                if step == 1 { TextField("邮箱地址", text: $email).textContentType(.emailAddress).textFieldStyle(EPFieldStyle()).focused($focused, equals: 1).onSubmit(submit) }
+                if step == 1 { TextField("邮箱地址", text: $email).epEmailContentType().textFieldStyle(EPFieldStyle()).focused($focused, equals: 1).onSubmit(submit) }
                 else if step == 2 {
                     TextField("6 位验证码", text: $code).textContentType(.oneTimeCode).textFieldStyle(EPFieldStyle()).multilineTextAlignment(.center).focused($focused, equals: 2).onSubmit(submit)
                         .onChange(of: code) { value in code = String(value.filter { $0 >= "0" && $0 <= "9" }.prefix(6)) }
                 } else {
-                    SecureField("密码", text: $password).textContentType(.newPassword).textFieldStyle(EPFieldStyle()).focused($focused, equals: 3)
-                    SecureField("再输入一次密码", text: $confirmation).textContentType(.newPassword).textFieldStyle(EPFieldStyle()).focused($focused, equals: 4).onSubmit(submit)
+                    SecureField("密码", text: $password).epNewPasswordContentType().textFieldStyle(EPFieldStyle()).focused($focused, equals: 3)
+                    SecureField("再输入一次密码", text: $confirmation).epNewPasswordContentType().textFieldStyle(EPFieldStyle()).focused($focused, equals: 4).onSubmit(submit)
                     Text("8-128 个字符。").font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.muted)
                 }
                 if let message = localError ?? store.error { InlineMessage(text: message, isError: true) }

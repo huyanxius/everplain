@@ -702,7 +702,15 @@ private struct KnowledgeGraphCanvas: View {
     @State private var dragBegan = false
     @State private var draggedNode: String?
     @State private var nodeDragStart = KnowledgePosition(x: 0, y: 0)
-    private var signature: String { graph.nodes.map { $0.id + ":" + $0.kind + ":" + String($0.level) }.joined(separator: "|") + graph.edges.map { $0.id + ":" + $0.source + ":" + $0.target + ":" + (edgeDirections[$0.id] ?? "directed") }.joined(separator: "|") }
+    private var signature: String {
+        let nodes: [String] = graph.nodes.map { node in
+            [node.id, node.kind, String(node.level)].joined(separator: ":")
+        }
+        let edges: [String] = graph.edges.map { edge in
+            [edge.id, edge.source, edge.target, edgeDirections[edge.id] ?? "directed"].joined(separator: ":")
+        }
+        return nodes.joined(separator: "|") + edges.joined(separator: "|")
+    }
     private var dark: Bool { scheme == .dark }
     var body: some View {
         GeometryReader { geometry in
@@ -865,7 +873,7 @@ private struct KnowledgeGraphCanvas: View {
     private func resetViewport() { zoom = 1; offset = .zero; dragStart = .zero; lastMagnification = 1 }
     private func changeZoom(_ multiplier: Double, base: Double) { zoom = max(0.16, min(3.2, base * zoom * multiplier)) / base }
     private func closestNode(_ location: CGPoint, size: CGSize, scale: Double) -> NativeKnowledgeNode? {
-        graph.nodes.compactMap { node -> (NativeKnowledgeNode, Double)? in guard let position = positions[node.id] else { return nil }; let p = point(position, size: size, scale: scale); let distance = hypot(p.x - location.x, p.y - location.y); return distance <= max(10, nodeRadius(node.id) * scale + 4) ? (node, distance) : nil }.min { $0.1 < $1.1 }?.0
+        graph.nodes.compactMap { node -> (NativeKnowledgeNode, Double)? in guard let position = positions[node.id] else { return nil }; let p = point(position, size: size, scale: scale); let distance = Double(hypot(p.x - location.x, p.y - location.y)); return distance <= max(10, nodeRadius(node.id) * scale + 4) ? (node, distance) : nil }.min { $0.1 < $1.1 }?.0
     }
     private func closestEdge(_ location: CGPoint, size: CGSize, scale: Double) -> NativeKnowledgeEdge? {
         graph.edges.first { edge in

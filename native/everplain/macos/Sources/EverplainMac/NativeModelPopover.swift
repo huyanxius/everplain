@@ -50,8 +50,7 @@ struct NativeAnchoredPopover: NSViewRepresentable {
             guard let anchor, let window = anchor.window else { return }
             if closing { close(animated: false) }
             let content = AnyView(PopoverMotionContent(content: parent.content, presence: presence, reduced: parent.reducedMotion)
-                .environment(\.colorScheme, parent.dark ? .dark : .light)
-                .environment(\.accessibilityReduceMotion, parent.reducedMotion))
+                .environment(\.colorScheme, parent.dark ? .dark : .light))
             if let host { host.rootView = content; position(); return }
             let panel = ModelPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             panel.isFloatingPanel = true; panel.hidesOnDeactivate = true
