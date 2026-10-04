@@ -4,12 +4,18 @@ import SwiftUI
 import EverplainCore
 
 /// The product illustration stays mounted above route content during its 450 ms exit.
-struct HomeCompanion: View {
+@MainActor struct HomeCompanion: View {
     let active: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduced
+    let reducedMotionOverride: Bool?
+    @Environment(\.accessibilityReduceMotion) private var systemReduced
     @Environment(\.colorScheme) private var scheme
-    @StateObject private var state = HomeCompanionState()
+    @StateObject private var state: HomeCompanionState
     private let artwork = CompanionArtwork.shared
+    private var reduced: Bool { reducedMotionOverride ?? systemReduced }
+    init(active: Bool, state: HomeCompanionState? = nil, reducedMotionOverride: Bool? = nil) {
+        self.active = active; self.reducedMotionOverride = reducedMotionOverride
+        _state = StateObject(wrappedValue: state ?? HomeCompanionState())
+    }
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             if state.frame.present, let artwork {
@@ -36,13 +42,13 @@ struct HomeCompanion: View {
     }
 }
 
-private struct CompanionFrame: Equatable {
+struct CompanionFrame: Equatable {
     var present = false, elapsed = 0.0, bobElapsed = 0.0
     var happyAge: Double?
     var turn = 0.2, nod = 0.0, blush = 0.85, slide = 0.7
 }
 
-@MainActor private final class HomeCompanionState: ObservableObject {
+@MainActor final class HomeCompanionState: ObservableObject {
     @Published private(set) var frame = CompanionFrame()
     @Published private(set) var viewportWidth: CGFloat = 1000
     private var clock: Task<Void, Never>?

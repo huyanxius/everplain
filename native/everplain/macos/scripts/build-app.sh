@@ -26,4 +26,7 @@ if [[ "$CONFIGURATION" == debug ]]; then
   /usr/libexec/PlistBuddy -c 'Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true' "$BUNDLE/Contents/Info.plist"
 fi
 /usr/bin/plutil -lint "$BUNDLE/Contents/Info.plist"
+if [[ "${GITHUB_ACTIONS:-false}" == true ]]; then
+  bash scripts/run-native-ui-checks.sh
+fi
 echo "Built unsigned local app at $PWD/$BUNDLE. Signing, notarization and distribution are not performed."
