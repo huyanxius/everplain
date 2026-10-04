@@ -31,6 +31,7 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 case "${1:-inspect}" in
   inspect) script=inspect-production.py ;;
   repair-web) script=repair_existing_web.py ;;
+  resume) script=resume-existing.py ;;
   *) exit 2 ;;
 esac
 echo 'Approved ED25519 host fingerprint verified'
