@@ -1,0 +1,48 @@
+{
+  "source": "exact live Web assets/brand; Apple Notes illustrative art excluded as source requires",
+  "conversion": "CairoSVG2.9.1 PDF vector conversion; flomo PNG unchanged",
+  "assets": [
+    {
+      "source": "chrome.svg",
+      "sourceSha256": "55f003d0ed39d97943dacecd192a898a2056c056d0c9e5a1efddbdbdcf18cfac",
+      "output": "chrome.pdf",
+      "outputSha256": "14ca5b7a09820e7775b37fed7075ed9cfb96cf589d270ad58ba33be141c84f46"
+    },
+    {
+      "source": "obsidian.svg",
+      "sourceSha256": "b9809ffadc77829798ffd3954614162b22fd5298d070b6515d209c242dbd33aa",
+      "output": "obsidian.pdf",
+      "outputSha256": "79158387abe9c874099d6ec8c2cf12c6d173d565f950fe69ef72ea57104e2a28"
+    },
+    {
+      "source": "notion.svg",
+      "sourceSha256": "4595fc9e0a049509cf9f442e548bbccbc83d560bcdec14972bedd1440152db89",
+      "output": "notion.pdf",
+      "outputSha256": "4541bc6d9bdbd1ac1ea93ff9e81fd84b3b22a3350d10cf665541247c22189767"
+    },
+    {
+      "source": "evernote.svg",
+      "sourceSha256": "38800787b176500785fcee5367d838800baeb099a4594c7bfc56b137da7ccb5e",
+      "output": "evernote.pdf",
+      "outputSha256": "1b7dc6ed6c00a92ed7b3c595b63b8e7d9dc8f67af16993743186d763f6a1eabe"
+    },
+    {
+      "source": "keep.svg",
+      "sourceSha256": "d6a0ab457e42332f13f1d71aca7bc1c54645810d9c690fe8fea85ee7033baab4",
+      "output": "keep.pdf",
+      "outputSha256": "250ecaa1840b473e966ba7781d13d353ad304944539453fbe63a117bcfc989c9"
+    },
+    {
+      "source": "bilibili.svg",
+      "sourceSha256": "e238c4c17afb0df3a5545d8485e855e3a9ae04b797da1c4502da72abf26f25c3",
+      "output": "bilibili.pdf",
+      "outputSha256": "267db5434958dc9390f24cc68ad81447c1e216be356edb6c3c8d10471fdefc75"
+    },
+    {
+      "source": "flomo.png",
+      "sourceSha256": "eb3200a67b087b25b1dbe99db80f447cd079fae000f4c8f391d1a83854f0caa2",
+      "output": "flomo.png",
+      "outputSha256": "eb3200a67b087b25b1dbe99db80f447cd079fae000f4c8f391d1a83854f0caa2"
+    }
+  ]
+}

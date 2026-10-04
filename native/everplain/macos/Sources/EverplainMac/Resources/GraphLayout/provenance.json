@@ -1,0 +1,20 @@
+{
+  "cytoscapeVersion": "3.34.0",
+  "tarball": "https://registry.npmjs.org/cytoscape/-/cytoscape-3.34.0.tgz",
+  "npmIntegrity": "sha512-62rNSrioXw93uliKFBwjukeQyeWwH2PqDrTac31r2P6464u3AUvTk0xS4LVvT251g7IgkFunrI48ZEZGjywSOg==",
+  "sourceFile": "frontend/src/modules/knowledge-graph/ObsidianKnowledgeGraph.tsx",
+  "sourceSHA256": "0fba532fb7bd16891d97435f4c860ad0c7ee662612cc3c6cdfc517873cfb3b13",
+  "extractedFunctions": [
+    "graphElements",
+    "layoutOptions",
+    "fitView",
+    "graphStyle",
+    "workspaceGraphStyle"
+  ],
+  "notes": "Headless only. No DOM, WebView, or network. Native Canvas rendering. CSS tokens are resolved from the shared generated light palette; dark rendering applies the source CSS graph filter.",
+  "bundledFilesSHA256": {
+    "cytoscape-3.34.0.min.js": "9c2a3bf2592e0b14a1f7bec07c03a54f16dedf32af9cd0af155c716aa6c87bc3",
+    "native-layout-bridge.js": "c2539958d23700de944cbbab3ed3591d98a992847e3125cfb35f3df5938322d2",
+    "web-graph-source.js": "40c851ff8b198fca594b7c80969ad87fc6ac2dc2f92d09436aaddf3c514c2212"
+  }
+}

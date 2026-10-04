@@ -1,0 +1,10 @@
+[
+  {
+    "source": "https://raw.githubusercontent.com/Juris-M/citeproc-js/master/CPAL",
+    "sha256": "a953615139d8c767eb5e95f14215bf5c356ea23397a15137f6e119babf3fe69b"
+  },
+  {
+    "source": "https://raw.githubusercontent.com/Juris-M/citeproc-js/master/AGPLv3",
+    "sha256": "57c8ff33c9c0cfc3ef00e650a1cc910d7ee479a8bc509f6c9209a7c2a11399d6"
+  }
+]
