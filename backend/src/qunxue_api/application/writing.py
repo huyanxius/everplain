@@ -12,9 +12,11 @@ from qunxue_api.modules.writing import (
     WritingUnavailable,
     WritingUnsafeOutput,
     cliché_findings,
+    features,
     output_issues,
     redact_style_contacts,
     retrieve_samples,
+    sample_import_preview,
     style_profile,
     utf16_slice,
 )
@@ -49,10 +51,18 @@ class WritingPipeline:
         if len(original) > 20000:
             raise ValueError("本次最多改写20000个字符，请先选择一个章节")
         profile = style_profile(samples, document["genre"])
-        selected = retrieve_samples(samples, document["genre"], original or context)
+        selected = retrieve_samples(
+            samples, document["genre"], request["instruction"] + "\n" + (original or context)
+        )
+        profile["reference_observations"] = [
+            {"sample_id": s.sample_id, "metrics": features(redact_style_contacts(s.text))}
+            for s in selected
+        ]
         warnings = []
         if request["action"] == "personalize" and profile["readiness"] != "ready":
             warnings.append("当前文体样文不足，仅参考已有表达，尚不能可靠模拟个人文风。")
+        if not selected and profile["sample_count"]:
+            warnings.append("没有找到长度范围内的完整样句，本次没有引用样文表达。")
         # References are bounded excerpts in the user data payload, not system prompts.
         base = {
             "request": request,
@@ -61,8 +71,7 @@ class WritingPipeline:
             "context": context,
             "style_evidence": profile,
             "reference_samples": [
-                {"sample_id": s.sample_id, "text": redact_style_contacts(s.text)[:600]}
-                for s in selected
+                {"sample_id": s.sample_id, "text": redact_style_contacts(s.text)} for s in selected
             ],
         }
         plan_payload = dict(
@@ -88,7 +97,7 @@ class WritingPipeline:
         issues = output_issues(
             original or context,
             candidate,
-            selected,
+            samples,
             instruction=request["instruction"],
             continuation=request["action"] == "continue",
             allow_new_quantities=request["action"] == "continue" and document["genre"] == "fiction",
@@ -112,7 +121,7 @@ class WritingPipeline:
             issues = output_issues(
                 original or context,
                 candidate,
-                selected,
+                samples,
                 instruction=request["instruction"],
                 continuation=request["action"] == "continue",
                 allow_new_quantities=request["action"] == "continue"
@@ -155,6 +164,23 @@ class WritingApplication:
         return self.sample_parser(
             filename=filename, media_type=media_type, content=content
         ).full_text
+
+    def preview_uploaded_samples(self, *, filename, media_type, content):
+        text = self.parse_uploaded_sample(filename=filename, media_type=media_type, content=content)
+        if len(text) > 100000:
+            raise ValueError("样文正文超过100000个字符，请拆分文件后导入")
+        items = sample_import_preview(text, filename)
+        if not items:
+            raise ValueError("没有可预览的样文正文")
+        if len(items) > 100:
+            raise ValueError("一次最多预览100篇样文，请拆分文件")
+        return {
+            "items": items,
+            "warnings": [
+                "分段仅为导入建议，请按独立文章确认边界和文体；章节不应当作多篇样文。",
+                "请排除引用、他人文字和弃稿。预览不会保存样文或调用模型。",
+            ],
+        }
 
     def summary(self, user_id):
         samples = self.repository.style_samples(user_id)

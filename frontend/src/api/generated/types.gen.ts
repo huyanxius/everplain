@@ -1487,6 +1487,16 @@ export type BodyImportLiteratureEntries = {
 };
 
 /**
+ * Body_preview_writing_samples
+ */
+export type BodyPreviewWritingSamples = {
+    /**
+     * File
+     */
+    file: Blob | File;
+};
+
+/**
  * Body_upload_research_material
  */
 export type BodyUploadResearchMaterial = {
@@ -9477,6 +9487,42 @@ export type WritingSampleList = {
 };
 
 /**
+ * WritingSamplePreview
+ */
+export type WritingSamplePreview = {
+    /**
+     * Items
+     */
+    items: Array<WritingSamplePreviewItem>;
+    /**
+     * Warnings
+     */
+    warnings: Array<string>;
+};
+
+/**
+ * WritingSamplePreviewItem
+ */
+export type WritingSamplePreviewItem = {
+    /**
+     * Character Count
+     */
+    character_count: number;
+    /**
+     * Excluded Reason
+     */
+    excluded_reason: string | null;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Title
+     */
+    title: string;
+};
+
+/**
  * WritingSampleResponse
  */
 export type WritingSampleResponse = {
@@ -17362,6 +17408,31 @@ export type CreateWritingSampleResponses = {
 };
 
 export type CreateWritingSampleResponse = CreateWritingSampleResponses[keyof CreateWritingSampleResponses];
+
+export type PreviewWritingSamplesData = {
+    body: BodyPreviewWritingSamples;
+    path?: never;
+    query?: never;
+    url: '/api/writing/samples/preview';
+};
+
+export type PreviewWritingSamplesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PreviewWritingSamplesError = PreviewWritingSamplesErrors[keyof PreviewWritingSamplesErrors];
+
+export type PreviewWritingSamplesResponses = {
+    /**
+     * Successful Response
+     */
+    200: WritingSamplePreview;
+};
+
+export type PreviewWritingSamplesResponse = PreviewWritingSamplesResponses[keyof PreviewWritingSamplesResponses];
 
 export type UploadWritingSampleData = {
     body: BodyUploadWritingSample;

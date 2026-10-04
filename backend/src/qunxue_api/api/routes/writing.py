@@ -19,6 +19,7 @@ from qunxue_api.api.contracts.writing import (
     WritingRevisionResponse,
     WritingSampleCreate,
     WritingSampleList,
+    WritingSamplePreview,
     WritingSampleResponse,
     WritingSummary,
 )
@@ -123,6 +124,32 @@ def create_sample(
     return save_sample(app, current.user.user_id, key, payload)
 
 
+def read_sample_file(file: UploadFile):
+    filename = Path(file.filename or "").name
+    if Path(filename).suffix.lower() not in {".md", ".txt", ".docx", ".pdf"}:
+        raise ValueError("样文支持 Markdown、TXT、DOCX 和带文字的 PDF")
+    content = file.file.read(5 * 1024 * 1024 + 1)
+    if len(content) > 5 * 1024 * 1024:
+        raise WritingApiError(413, ErrorCode.RESEARCH_MATERIAL_TOO_LARGE, "样文文件不能超过5MB")
+    return filename, content
+
+
+@router.post(
+    "/samples/preview",
+    response_model=WritingSamplePreview,
+    operation_id="preview_writing_samples",
+)
+def preview_samples(
+    current: CurrentSessionDependency,
+    app: Application,
+    file: Annotated[UploadFile, File()],
+):
+    filename, content = read_sample_file(file)
+    return app.preview_uploaded_samples(
+        filename=filename, media_type=file.content_type, content=content
+    )
+
+
 @router.post(
     "/samples/upload", response_model=WritingSampleResponse, operation_id="upload_writing_sample"
 )
@@ -133,12 +160,7 @@ def upload_sample(
     file: Annotated[UploadFile, File()],
     genre: Annotated[Genre, Form()],
 ):
-    filename = Path(file.filename or "").name
-    if Path(filename).suffix.lower() not in {".md", ".txt", ".docx", ".pdf"}:
-        raise ValueError("样文支持 Markdown、TXT、DOCX 和带文字的 PDF")
-    content = file.file.read(5 * 1024 * 1024 + 1)
-    if len(content) > 5 * 1024 * 1024:
-        raise WritingApiError(413, ErrorCode.RESEARCH_MATERIAL_TOO_LARGE, "样文文件不能超过5MB")
+    filename, content = read_sample_file(file)
     text = app.parse_uploaded_sample(
         filename=filename, media_type=file.content_type, content=content
     )

@@ -29,6 +29,18 @@ class WritingSampleList(BaseModel):
     items: list[WritingSampleResponse]
 
 
+class WritingSamplePreviewItem(BaseModel):
+    title: str
+    text: str
+    character_count: int
+    excluded_reason: str | None
+
+
+class WritingSamplePreview(BaseModel):
+    items: list[WritingSamplePreviewItem]
+    warnings: list[str]
+
+
 class WritingGenreSummary(BaseModel):
     genre: Genre
     sample_count: int

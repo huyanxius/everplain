@@ -6,6 +6,11 @@
 .writing-upload-controls, .writing-actions, .writing-sample { display: flex; flex-wrap: wrap; align-items: center; gap: var(--qx-space-2); }
 .writing-upload-controls label { display: flex; align-items: center; gap: var(--qx-space-2); }
 .writing-samples { display: grid; gap: var(--qx-space-2); }
+.writing-import-piece { display: grid; min-width: 0; gap: var(--qx-space-3); }
+.writing-import-piece > label { display: grid; gap: var(--qx-space-1); }
+.writing-import-piece > label:first-of-type { display: flex; align-items: center; gap: var(--qx-space-2); }
+.writing-import-piece input:not([type="checkbox"]), .writing-import-piece textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.writing-import-piece textarea { resize: vertical; font: inherit; line-height: 1.7; }
 .writing-sample > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .writing-home .wh-card { text-decoration: none; }
 .writing-document .wr-top { grid-template-columns: minmax(0, 1fr) auto auto; border-bottom: 1px solid var(--qx-color-rule); }

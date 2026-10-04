@@ -9,6 +9,8 @@ export const writingApi = {
   propose: (...args: Parameters<typeof api.writingApi.propose>) => api.writingApi.propose(...args),
   resolve: (...args: Parameters<typeof api.writingApi.resolve>) => api.writingApi.resolve(...args),
   upload: (...args: Parameters<typeof api.writingApi.upload>) => api.writingApi.upload(...args),
+  previewSamples: (...args: Parameters<typeof api.writingApi.previewSamples>) => api.writingApi.previewSamples(...args),
+  createSample: (...args: Parameters<typeof api.writingApi.createSample>) => api.writingApi.createSample(...args),
   deleteSample: (...args: Parameters<typeof api.writingApi.deleteSample>) => api.writingApi.deleteSample(...args),
 }
 export type WritingApi = typeof writingApi
@@ -16,6 +18,7 @@ export type WritingDocument = Awaited<ReturnType<WritingApi['document']>>
 export type WritingRevision = Awaited<ReturnType<WritingApi['propose']>>
 export type WritingSummary = Awaited<ReturnType<WritingApi['summary']>>
 export type WritingSample = Awaited<ReturnType<WritingApi['upload']>>
+export type WritingSamplePreview = Awaited<ReturnType<WritingApi['previewSamples']>>
 export type Genre = WritingDocument['genre']
 export const genres: { id: Genre; label: string }[] = [{ id: 'official', label: '公文' }, { id: 'report', label: '报告' }, { id: 'academic', label: '正式文体' }, { id: 'fiction', label: '小说' }, { id: 'essay', label: '随笔' }]
 export function genreLabel(genre: Genre) { return genres.find(item => item.id === genre)?.label ?? genre }
