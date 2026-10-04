@@ -2,7 +2,6 @@ import { useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { ArrowRightIcon, FileTextIcon, GlobeIcon, PlusIcon, UploadSimpleIcon } from '@phosphor-icons/react'
 import { AgentAvatar, type AgentAvatarId } from '../../modules/agent-avatar'
-import type { MyResearchItem } from '../../modules/account'
 import { PageContent, PageShell } from '../ui/PageShell'
 import { ConversationComposer } from '../conversation-view/ConversationComposer'
 import { ModelSelectionSettings } from '../model-selection'
@@ -17,39 +16,35 @@ export function AppHomePage() {
   const [open, setOpen] = useState<'hand' | 'deck' | null>(null)
   const agent = home.profile.data
   const pending = home.graph.data?.pending_count ?? 0
-  const top = home.projects[0]
+  const top = home.recentConversations[0]
   return <PageShell wide><PageContent>
     <main className="hm-desk">
       <section className="hm-me" aria-label="问候">
         {agent && <AgentAvatar avatar={agent.avatar_id as AgentAvatarId} color={agent.color} size={72} state="greet" label={agent.name} />}
         <h1 className="qx-display hm-hello">{home.greeting}</h1>
         <p className="hm-sub">
-          {home.profile.isError || home.graph.isError || home.research.isError
+          {home.profile.isError || home.graph.isError || home.history.isError
             ? <button className="qx-btn qx-btn--ghost hm-inline" type="button" disabled={home.profile.isFetching} onClick={() => void home.profile.refetch()}>重新读取伙伴设置</button>
-            : home.research.isPending || home.graph.isPending ? '正在读取你的近况…'
-            : top || pending ? <>{top && <>上次停在<Link className="hm-inline" to={projectDestination(top)}>《{projectTitle(top)}》</Link></>}{top && pending > 0 ? '，还有 ' : ''}{pending > 0 && <><Link className="hm-inline" to="/imports">{pending} 份资料</Link>没整理。</>}</>
+            : home.history.isPending || home.graph.isPending ? '正在读取你的近况…'
+            : top || pending ? <>{top && <>最近聊到<Link className="hm-inline" to={`/agent?conversation_id=${encodeURIComponent(top.conversation_id)}`}>《{top.title}》</Link></>}{top && pending > 0 ? '，还有 ' : ''}{pending > 0 && <><Link className="hm-inline" to="/imports">{pending} 份资料</Link>没整理。</>}</>
             : '这里还空着。丢一份资料，或者问一个你想弄清楚的问题。'}
         </p>
         <HomeComposer home={home} />
-        <div className="hm-asks">
-          <button className="qx-tag qx-tag--outline" type="button" onClick={() => home.choosePrompt('帮我找回以前收藏过的资料')}>找回以前收藏过的资料</button>
-          <button className="qx-tag qx-tag--outline" type="button" onClick={() => home.choosePrompt('帮我把资料之间的联系整理一下')}>把资料串起来</button>
-        </div>
       </section>
       <div className="hm-table">
         <section aria-labelledby="home-research-title" className="hm-section">
           <header className="hm-table__label">
-            <h2 id="home-research-title" className="qx-heading">接着研究</h2>
-            <span className="hm-table__acts">{open === 'hand' && <button className="qx-btn qx-btn--ghost" type="button" onClick={() => setOpen(null)}>收起</button>}<Link className="qx-btn qx-btn--ghost" to="/research/materials" aria-label="全部研究">全部 <ArrowRightIcon /></Link></span>
+            <h2 id="home-research-title" className="qx-heading">接着聊</h2>
+            <span className="hm-table__acts">{open === 'hand' && <button className="qx-btn qx-btn--ghost" type="button" onClick={() => setOpen(null)}>收起</button>}<Link className="qx-btn qx-btn--ghost" to="/agent" aria-label="全部对话">全部 <ArrowRightIcon /></Link></span>
           </header>
-          {home.research.isPending ? <HomeLoading label="正在读取最近研究" /> : home.research.isError ? <HomeFailure message={home.research.error.message} retry={() => void home.research.refetch()} busy={home.research.isFetching} label="重新加载研究" /> : home.projects.length ?
-            <Pile kind="hand" open={open === 'hand'} onToggle={next => setOpen(next ? 'hand' : null)} items={home.projects.map(project => ({id: project.taskId, href: projectDestination(project), body: <>
-              <span className="qx-tag">{project.stageLabel}</span>
-              <h3 className="qx-card__title hm-card__title">{projectTitle(project)}</h3>
-              <span className="hm-pc__more">{project.phenomenonSummary !== projectTitle(project) && <span className="hm-card__body">{project.phenomenonSummary}</span>}{project.blocker && <span className="hm-card__blocker">{project.blocker.message}</span>}</span>
-              <span className="qx-card__meta hm-card__foot hm-pc__more"><time dateTime={project.updatedAt}>{updatedAt(project.updatedAt)}</time><span>{project.nextActionLabel || '继续研究'} <ArrowRightIcon /></span></span>
-            </>, label: `${project.nextActionLabel || '继续研究'}：${projectTitle(project)}`}))} />
-            : <div className="hm-hand"><Link className="qx-card qx-card--interactive hm-card hm-card--blank" to="/research/new"><PlusIcon /><strong>开始第一项研究</strong><span>还没有研究项目</span><span>问 {agent?.name ?? 'Agent'} 一个问题，或者从一份资料出发</span></Link></div>}
+          {home.history.isPending ? <HomeLoading label="正在读取最近对话" /> : home.history.isError ? <HomeFailure message={home.history.error.message} retry={() => void home.history.refetch()} busy={home.history.isFetching} label="重新加载对话" /> : home.recentConversations.length ?
+            <Pile kind="hand" label="展开对话" open={open === 'hand'} onToggle={next => setOpen(next ? 'hand' : null)} items={home.recentConversations.map(conversation => ({id: conversation.conversation_id, href: `/agent?conversation_id=${encodeURIComponent(conversation.conversation_id)}`, body: <>
+              <span className="qx-tag">最近对话</span>
+              <h3 className="qx-card__title hm-card__title">{conversation.title}</h3>
+              <span className="hm-pc__more"><span className="hm-card__body">{conversation.excerpt}</span></span>
+              <span className="qx-card__meta hm-card__foot hm-pc__more"><time dateTime={conversation.updated_at}>{updatedAt(conversation.updated_at)}</time><span>回到原对话 <ArrowRightIcon /></span></span>
+            </>, label: `继续对话：${conversation.title}`}))} />
+            : <div className="hm-hand"><Link className="qx-card qx-card--interactive hm-card hm-card--blank" to="/agent"><PlusIcon /><strong>开始第一次对话</strong><span>还没有最近对话</span><span>问 {agent?.name ?? 'Agent'} 一个问题，或者从一份资料出发</span></Link></div>}
         </section>
         <section aria-labelledby="home-materials-title" className="hm-section">
           <header className="hm-table__label"><h2 id="home-materials-title" className="qx-heading">我的资料</h2><span className="hm-table__acts">
@@ -86,8 +81,6 @@ function HomeComposer({ home }: { home: Home }) {
 }
 function HomeLoading({label}: {label: string}) {return <div className="qx-card hm-loading" role="status"><span className="qx-meta">{label}</span></div>}
 function HomeFailure({message, retry, busy, label}: {message: string; retry(): void; busy: boolean; label: string}) {return <div className="qx-card hm-failure" role="alert"><p className="qx-meta">{message}</p><button className="qx-btn qx-btn--ghost" type="button" disabled={busy} onClick={retry}>{label}</button></div>}
-function projectTitle(project: MyResearchItem) { return project.projectTitle?.trim() || project.phenomenonSummary }
-function projectDestination(project: MyResearchItem) { return project.retry?.method === 'GET' ? project.retry.href : project.entryPath }
 function updatedAt(value: string) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '最近更新' : `更新于 ${date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}`

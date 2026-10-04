@@ -6,11 +6,13 @@ import {
   getAgentConversation as getConversation,
   getResearchStartJourney as getStartJourney,
   listAgentConversations as listConversations,
+  listRecentConversationContext as listRecentContext,
   renameAgentConversation as renameConversation,
   stopAgentRun as stopRun,
   streamAgentTurn as streamTurn,
 } from './researchAgentApi'
 import type {
+  RecentConversationContext,
   AgentConversation,
   AgentConversationSummary,
   AgentEvent,
@@ -70,4 +72,8 @@ export function saveCanvasNode(...args: Parameters<typeof saveNode>) {
 
 export function getAgentModelCatalog(signal?: AbortSignal) {
   return getModelCatalog(signal)
+}
+
+export function listRecentConversationContext(signal?: AbortSignal): Promise<RecentConversationContext[]> {
+  return listRecentContext(signal)
 }

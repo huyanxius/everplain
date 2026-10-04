@@ -290,9 +290,9 @@ describe('App routes', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
     renderRoute('/app', { status: 'authenticated' })
     expect(await screen.findByRole('heading', { level: 1, name: conversationGreeting('zh-CN', new Date()) })).toBeVisible()
-    expect(screen.getByRole('region', { name: '接着研究' })).toBeVisible()
+    expect(screen.getByRole('region', { name: '接着聊' })).toBeVisible()
     expect(await screen.findByRole('heading', { name: '把第一份资料，放进来。' })).toBeVisible()
-    expect(screen.getByRole('link', { name: /开始第一项研究/ })).toHaveAttribute('href', '/research/new')
+    expect(screen.getByRole('link', { name: /开始第一次对话/ })).toHaveAttribute('href', '/agent')
     expect(screen.getByRole('link', { name: '开始导入' })).toHaveAttribute('href', '/imports')
   })
 
