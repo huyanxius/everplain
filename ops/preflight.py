@@ -111,6 +111,40 @@ def check_configuration():
             invalid.add("EVERPLAIN_TRANSCRIPTION_BASE_URL")
     try:
         settings = Settings(_env_file=None)
+        if settings.billing_model_tariffs or settings.agent_selectable_models:
+            from qunxue_api.adapters.model.tariff_config import configured_model_tariffs
+            from qunxue_api.adapters.research_agent.model_selection import (
+                registered_agent_models,
+            )
+
+            try:
+                tariffs = configured_model_tariffs(settings)
+            except ValueError:
+                invalid.add("EVERPLAIN_BILLING_MODEL_TARIFFS")
+                tariffs = {}
+            try:
+                choices, _ = registered_agent_models(settings)
+                if len(choices) != len(settings.agent_selectable_models):
+                    invalid.add("EVERPLAIN_AGENT_PROVIDER_CREDENTIALS")
+            except ValueError:
+                invalid.add("EVERPLAIN_AGENT_SELECTABLE_MODELS")
+            for entry in settings.agent_selectable_models:
+                provider = settings.agent_providers.get(entry.provider)
+                if provider and not https_url(provider.base_url):
+                    invalid.add("EVERPLAIN_AGENT_PROVIDERS")
+                if entry.model not in tariffs:
+                    invalid.add("EVERPLAIN_BILLING_MODEL_TARIFFS")
+            if settings.agent_selectable_models:
+                for suffix in ("PRICE_VERSION", "MAX_ATTEMPT_USD_MICRO",
+                               "MAX_OPERATION_USD_MICRO", "DAILY_BUDGET_USD_MICRO"):
+                    if getattr(settings, "billing_" + suffix.lower()) is None:
+                        invalid.add("EVERPLAIN_BILLING_" + suffix)
+                fx = (settings.billing_fx_cny_per_usd_micro, settings.billing_fx_snapshot_id,
+                      settings.billing_fx_as_of, settings.billing_fx_source)
+                if (any(value is not None for value in fx) and not all(fx)) or (
+                    not all(fx) and settings.billing_credits_per_usd is None
+                ):
+                    invalid.add("EVERPLAIN_BILLING_CONVERSION")
         if not settings.session_cookie_secure:
             invalid.add("EVERPLAIN_SESSION_COOKIE_SECURE")
         if settings.session_cookie_name != "everplain_session":

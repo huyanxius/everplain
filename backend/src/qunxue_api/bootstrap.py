@@ -1884,6 +1884,7 @@ def _model_headers_from_settings(settings: Settings) -> dict[str, str]:
 
 
 def _billing_runtime(settings, database):
+    from qunxue_api.adapters.model.tariff_config import configured_model_tariffs
     from qunxue_api.adapters.sqlite.durable_billing import DurableBilling
     from qunxue_api.modules.billing import PriceBook, TavilyPrice
 
@@ -1918,6 +1919,7 @@ def _billing_runtime(settings, database):
         price_book=PriceBook(
             **conversion,
             version=settings.billing_price_version,
+            tariffs=configured_model_tariffs(settings),
             aliases=settings.billing_model_aliases,
             usage_policies=settings.billing_usage_policies,
             deepseek_time_basis=settings.billing_deepseek_time_basis,

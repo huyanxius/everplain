@@ -123,6 +123,44 @@ class AgentSelectableModelSettings(BaseModel):
         return self
 
 
+class ModelTariffSettings(BaseModel):
+    """Explicit operator-approved rates; all four token classes are mandatory."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True)
+    version: str = Field(min_length=1, max_length=120)
+    source: str = Field(min_length=1, max_length=500)
+    currency: Literal["USD"]
+    unit: Literal["usd_micro_per_million_tokens"]
+    service_tier: Literal["standard"]
+    input: int = Field(ge=0, le=1_000_000_000_000)
+    cache_read: int = Field(ge=0, le=1_000_000_000_000)
+    cache_write: int = Field(ge=0, le=1_000_000_000_000)
+    output: int = Field(ge=0, le=1_000_000_000_000)
+    # Explicit null means verified flat pricing; never inherit Luna's long-context rule.
+    long_threshold: int | None = Field(ge=1)
+    long_rates: list[int] | None = Field(default=None, min_length=4, max_length=4)
+
+    @field_validator("version", "source")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("rate version and evidence source must not be blank")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def complete_rates(self):
+        if not any((self.input, self.cache_read, self.cache_write, self.output)):
+            raise ValueError("a paid model tariff cannot be all zero")
+        if (self.long_threshold is None) != (self.long_rates is None):
+            raise ValueError("long-context threshold and all four long rates must be paired")
+        if self.long_rates is not None and (
+            any(type(rate) is not int or not 0 <= rate <= 1_000_000_000_000
+                for rate in self.long_rates) or not any(self.long_rates)
+        ):
+            raise ValueError("long-context rates must be exact nonnegative integers")
+        return self
+
+
 class TavilyPriceSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -254,6 +292,7 @@ class Settings(BaseSettings):
     )
     billing_credits_per_usd: int | None = Field(default=None, gt=0)
     billing_price_version: str | None = None
+    billing_model_tariffs: dict[str, ModelTariffSettings] = Field(default_factory=dict)
     billing_tavily_price: TavilyPriceSettings | None = None
     billing_fx_cny_per_usd_micro: int | None = Field(default=None, gt=0)
     billing_fx_snapshot_id: str | None = None
