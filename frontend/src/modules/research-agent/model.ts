@@ -211,6 +211,9 @@ export type RecentConversationContext = {
 }
 
 export type KnowledgeIndexDocument = {
+  stage?: 'ready' | 'index' | 'knowledge'
+  knowledge_status?: string | null
+  knowledge_error?: string | null
   knowledge_base_id: string
   document_id: string
   parse_id: string
@@ -220,6 +223,7 @@ export type KnowledgeIndexDocument = {
   reason?: string | null
 }
 export type KnowledgeIndexStatus = {
+  purpose?: 'search' | 'graph'
   state: 'ready' | 'missing_index' | 'unavailable'
   embedding_model: string | null
   total_count: number
@@ -232,6 +236,7 @@ export type KnowledgeIndexStatus = {
   missing_documents: KnowledgeIndexDocument[]
 }
 export type KnowledgeIndexRepair = {
+  purpose?: 'search' | 'graph'
   documents: Pick<KnowledgeIndexDocument, 'knowledge_base_id' | 'document_id' | 'parse_id'>[]
   reference_knowledge_base_id?: string | null
 }
