@@ -73,7 +73,6 @@ jobs:
           cache-dependency-glob: backend/uv.lock
 
       - name: Install backend dependencies
-        if: needs.changes.outputs.backend == 'true'
         run: make bootstrap-backend
 
       - name: Run backend checks
@@ -82,8 +81,9 @@ jobs:
 
       - name: Check release safety
         run: |
-          uvx ruff check --config backend/pyproject.toml ops/cd ops/tests/test_cd.py
-          python3 -m unittest discover -s ops/tests -v
+          cd backend
+          uv run ruff check --config pyproject.toml ../ops/cd ../ops/tests/test_cd.py
+          uv run python -m unittest discover -s ../ops/tests -v
 
   frontend:
     needs: changes
