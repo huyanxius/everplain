@@ -3,6 +3,8 @@
 import asyncio
 import json
 import logging
+import subprocess
+import sys
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
@@ -42,6 +44,42 @@ def payload(caplog):
     ))
     assert not any(isinstance(arg, BaseException) for arg in record.args)
     return json.loads(record.getMessage().removeprefix("model_provider_failure "))
+
+
+@pytest.fixture(autouse=True)
+def diagnostic_capture_policy(caplog, monkeypatch):
+    # Alembic fixtures run fileConfig in this pytest process, while production
+    # runs Alembic and the API in separate processes. Each unit test explicitly
+    # owns its capture policy and restores the previous disabled flag afterward.
+    # The production helper never overrides an application's logging policy.
+    monkeypatch.setattr(diagnostics.logger, "disabled", False)
+    caplog.set_level(logging.WARNING, logger=diagnostics.__name__)
+
+
+def test_explicitly_disabled_logger_stays_silent(caplog, monkeypatch):
+    monkeypatch.setattr(diagnostics.logger, "disabled", True)
+    diagnostics.log_model_failure(ModelHTTPError(503, "synthetic", SECRET))
+    assert diagnostics.logger.disabled is True
+    assert not [record for record in caplog.records if record.name == diagnostics.__name__]
+
+
+def test_fresh_api_process_emits_safe_diagnostics_without_logger_overrides():
+    script = """
+from pydantic_ai.exceptions import ModelHTTPError
+from qunxue_api.adapters.model.failure_diagnostics import log_model_failure, logger
+assert not logger.disabled
+log_model_failure(ModelHTTPError(503, "private-token", {"prompt": "private-text"}))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=15, check=True,
+    )
+    lines = [line for line in result.stderr.splitlines() if "model_provider_failure " in line]
+    assert len(lines) == 1
+    data = json.loads(lines[0].split("model_provider_failure ", 1)[1])
+    assert data["error_type"] == "ModelHTTPError" and data["http_status"] == 503
+    assert all(value not in result.stdout + result.stderr for value in (
+        "private-token", "private-text", "Authorization", "https://private.test",
+    ))
 
 
 def test_logs_only_allowed_fields_and_exact_uuid_correlations(caplog):
