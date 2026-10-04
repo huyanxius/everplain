@@ -327,6 +327,19 @@ def metadata(name):
     return json.loads(run(["docker", "inspect", name]))[0]
 
 
+def registry_image(expected, reference, role, report):
+    value = json.loads(run(["docker", "image", "inspect", reference]))[0]
+    # Docker verifies the pinned manifest while pulling. Classic stores expose its
+    # config digest as Id; containerd stores expose the manifest digest instead.
+    report[role + "_registry_digest_bound"] = reference in value.get("RepoDigests", [])
+    report[role + "_registry_identity_matches"] = value.get("Id") in {
+        expected, reference.split("@", 1)[1],
+    }
+    require(report[role + "_registry_digest_bound"])
+    require(report[role + "_registry_identity_matches"])
+    return value
+
+
 def pull_registry_images(manifest, stage, report, roles=("api", "web")):
     """Use the job's temporary read token; Docker reuses local content-addressed layers."""
     token = sys.stdin.readline(8193).strip()
@@ -350,7 +363,7 @@ def pull_registry_images(manifest, stage, report, roles=("api", "web")):
             report[role + "_downloaded_layer_count"] = len(set(re.findall(
                 r"^([a-f0-9]+): Pull complete", output, re.MULTILINE)))
             run(["docker", "tag", reference, "everplain-" + role + ":" + REVISION])
-            info = loaded_image(manifest["images"][role], role, report)
+            info = registry_image(manifest["images"][role], reference, role, report)
             require(info["Architecture"] == "amd64" and info["Os"] == "linux")
             require(info["Config"]["Labels"].get("org.opencontainers.image.revision") == REVISION)
             images[role] = info["Id"]
