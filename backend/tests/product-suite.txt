@@ -42,6 +42,7 @@ tests/test_research_project_audit.py
 tests/test_research_material_api.py
 tests/test_research_material_parsing.py
 tests/test_research_material_ingestion.py
+tests/test_research_material_indexing.py
 tests/test_research_material_search.py
 tests/test_embedding_provider.py
 tests/test_reranker_provider.py

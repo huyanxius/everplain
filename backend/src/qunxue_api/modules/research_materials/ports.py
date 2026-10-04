@@ -132,6 +132,15 @@ class ResearchMaterialRepository(Protocol):
         self, job_id: UUID, *, now: datetime, lease_expires_at: datetime
     ) -> MaterialIngestionJob | None: ...
 
+    def checkpoint_ingestion(
+        self,
+        job_id: UUID,
+        *,
+        expected_attempt_count: int,
+        expected_parse_id: UUID,
+        now: datetime,
+    ) -> MaterialIngestionJob | None: ...
+
     def complete_ingestion(
         self,
         job_id: UUID,
