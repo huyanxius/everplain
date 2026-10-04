@@ -25,6 +25,39 @@ release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
 
 
+class RegistryReleaseTests(unittest.TestCase):
+    def test_digest_pull_reuses_layers_and_removes_temporary_credentials(self):
+        manifest = {
+            "registry_images": {role: f"ghcr.io/huyanxius/everplain-{role}@sha256:" + "a" * 64
+                                for role in ("api", "web")},
+            "images": {role: "sha256:" + "b" * 64 for role in ("api", "web")},
+        }
+        info = {"Id": "sha256:" + "b" * 64, "Architecture": "amd64", "Os": "linux",
+                "Config": {"Labels": {"org.opencontainers.image.revision": "c" * 40}}}
+        for failed in (False, True):
+            with self.subTest(failed=failed), tempfile.TemporaryDirectory() as d:
+                report = {}
+                login = subprocess.CompletedProcess([], 0, "", "")
+                with patch.object(release, "REVISION", "c" * 40), \
+                     patch.object(release.sys, "stdin", io.StringIO("synthetic-job-token\n")), \
+                     patch.object(release.subprocess, "run", return_value=login) as auth, \
+                     patch.object(release, "run", side_effect=RuntimeError("pull failed") if failed
+                                  else None, return_value="aaa: Already exists\nbbb: Pull complete\n") as run, \
+                     patch.object(release, "loaded_image", return_value=info):
+                    if failed:
+                        with self.assertRaises(RuntimeError):
+                            release.pull_registry_images(manifest, Path(d), report)
+                    else:
+                        images = release.pull_registry_images(manifest, Path(d), report)
+                        self.assertEqual(set(images), {"api", "web"})
+                        self.assertEqual(report["api_reused_layer_count"], 1)
+                        self.assertTrue(report["registry_credentials_removed"])
+                        self.assertEqual(run.call_args_list[0].args[0][-1],
+                                         manifest["registry_images"]["api"])
+                    self.assertNotIn("synthetic-job-token", str(auth.call_args.args))
+                    self.assertEqual(list(Path(d).iterdir()), [])
+
+
 def container(role, source):
     ports = {"api": ("8297", "8297/tcp"), "web": ("5196", "8080/tcp")}
     port, inside = ports[role]

@@ -188,6 +188,22 @@ class ArtifactTests(unittest.TestCase):
                 artifact.digest(root / "extensions/clipper/package-lock.json"),
             )
             self.assertNotIn(".env", "\n".join(restored["files"]))
+            references = {
+                role: f"ghcr.io/huyanxius/everplain-{role}@sha256:" + "a" * 64
+                for role in ("api", "web")
+            }
+            (root / "prepared/registry.json").write_text(json.dumps(references))
+            (root / "prepared/image-sizes.json").write_text(json.dumps({"api": 100, "web": 200}))
+            thin = artifact.build(root, root / "prepared", root / "thin", NEW, images, {})
+            restored_thin = artifact.unpack(root / "thin/everplain.tar.gz", root / "thin-release",
+                                           NEW, artifact.digest(root / "thin/everplain.tar.gz"))
+            self.assertEqual(thin, restored_thin)
+            self.assertEqual(thin["registry_images"], references)
+            self.assertFalse(any(name.startswith("images/") for name in thin["files"]))
+            for invalid in (references | {"api": "ghcr.io/huyanxius/everplain-api:latest"},
+                            references | {"api": "ghcr.io/other/api@sha256:" + "a" * 64}):
+                with self.assertRaises(ValueError):
+                    artifact.validate_manifest(thin | {"registry_images": invalid}, NEW)
 
 
 class TransactionTests(unittest.TestCase):
