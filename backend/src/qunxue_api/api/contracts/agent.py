@@ -270,3 +270,23 @@ class AgentCanvasNodeEditRequest(BaseModel):
     expected_title: str = Field(max_length=240)
     expected_summary: str | None = Field(default=None, max_length=1200)
     expected_version: int = Field(ge=0)
+
+
+class ConversationExcerptResponse(BaseModel):
+    message_id: UUID
+    sequence: int
+    excerpt: str
+
+
+class RecentConversationContextResponse(BaseModel):
+    conversation_id: UUID
+    title: str
+    updated_at: datetime
+    kind: Literal["user_excerpt"]
+    excerpt: str
+    source_message_id: UUID | None
+    recent_excerpts: list[ConversationExcerptResponse]
+
+
+class RecentConversationContextsResponse(BaseModel):
+    items: list[RecentConversationContextResponse]

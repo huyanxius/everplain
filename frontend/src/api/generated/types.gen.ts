@@ -2197,6 +2197,24 @@ export type ConfirmedTheoryPlanResponse = {
 export type ConsentScope = 'public_use' | 'project_only' | 'team_only' | 'manual_review_only' | 'withdrawn';
 
 /**
+ * ConversationExcerptResponse
+ */
+export type ConversationExcerptResponse = {
+    /**
+     * Excerpt
+     */
+    excerpt: string;
+    /**
+     * Message Id
+     */
+    message_id: string;
+    /**
+     * Sequence
+     */
+    sequence: number;
+};
+
+/**
  * CourseKnowledgeResponse
  */
 export type CourseKnowledgeResponse = {
@@ -6028,6 +6046,50 @@ export type Questionnaire = {
      * Occupation
      */
     occupation?: string;
+};
+
+/**
+ * RecentConversationContextResponse
+ */
+export type RecentConversationContextResponse = {
+    /**
+     * Conversation Id
+     */
+    conversation_id: string;
+    /**
+     * Excerpt
+     */
+    excerpt: string;
+    /**
+     * Kind
+     */
+    kind: 'user_excerpt';
+    /**
+     * Recent Excerpts
+     */
+    recent_excerpts: Array<ConversationExcerptResponse>;
+    /**
+     * Source Message Id
+     */
+    source_message_id: string | null;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
+ * RecentConversationContextsResponse
+ */
+export type RecentConversationContextsResponse = {
+    /**
+     * Items
+     */
+    items: Array<RecentConversationContextResponse>;
 };
 
 /**
@@ -10846,6 +10908,39 @@ export type ListAgentModelsResponses = {
 };
 
 export type ListAgentModelsResponse = ListAgentModelsResponses[keyof ListAgentModelsResponses];
+
+export type ListRecentConversationContextData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/agent/recent-context';
+};
+
+export type ListRecentConversationContextErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ListRecentConversationContextError = ListRecentConversationContextErrors[keyof ListRecentConversationContextErrors];
+
+export type ListRecentConversationContextResponses = {
+    /**
+     * Successful Response
+     */
+    200: RecentConversationContextsResponse;
+};
+
+export type ListRecentConversationContextResponse = ListRecentConversationContextResponses[keyof ListRecentConversationContextResponses];
 
 export type ConfirmAgentResearchStartData = {
     body: ConfirmResearchStartRequest;

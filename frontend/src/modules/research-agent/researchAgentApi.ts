@@ -6,6 +6,7 @@ import type {
   AgentTurnRequest as AgentTurnRequestDto,
 } from '../../api/generated'
 import type {
+  RecentConversationContext,
   AgentModelCatalog,
   AgentCitation,
   AgentConversation,
@@ -448,4 +449,13 @@ export async function saveCanvasNode(conversationId: string, nodeId: string, bod
     throw new Error(result.response?.status === 409 ? '卡片已在另一处更新。你的草稿仍保留，请载入最新版本后核对。' : '卡片未保存，请检查连接后重试。')
   }
   return result.data as AgentConversation
+}
+
+
+export async function listRecentConversationContext(signal?: AbortSignal): Promise<RecentConversationContext[]> {
+  const response = await fetch(apiClient.buildUrl({ url: '/api/agent/recent-context' }), {
+    credentials: 'include', signal, cache: 'no-store',
+  })
+  if (!response.ok) throw new Error('无法加载最近对话')
+  return ((await response.json()) as { items: RecentConversationContext[] }).items
 }

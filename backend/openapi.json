@@ -4028,6 +4028,30 @@
         "title": "ConsentScope",
         "type": "string"
       },
+      "ConversationExcerptResponse": {
+        "properties": {
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message_id",
+          "sequence",
+          "excerpt"
+        ],
+        "title": "ConversationExcerptResponse",
+        "type": "object"
+      },
       "CourseKnowledgeResponse": {
         "properties": {
           "relations": {
@@ -10776,6 +10800,79 @@
           }
         },
         "title": "Questionnaire",
+        "type": "object"
+      },
+      "RecentConversationContextResponse": {
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "kind": {
+            "const": "user_excerpt",
+            "title": "Kind",
+            "type": "string"
+          },
+          "recent_excerpts": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationExcerptResponse"
+            },
+            "title": "Recent Excerpts",
+            "type": "array"
+          },
+          "source_message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Message Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "title",
+          "updated_at",
+          "kind",
+          "excerpt",
+          "source_message_id",
+          "recent_excerpts"
+        ],
+        "title": "RecentConversationContextResponse",
+        "type": "object"
+      },
+      "RecentConversationContextsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecentConversationContextResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RecentConversationContextsResponse",
         "type": "object"
       },
       "RegisterSessionRequest": {
@@ -19471,6 +19568,57 @@
           }
         },
         "summary": "List Agent Models",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/recent-context": {
+      "get": {
+        "operationId": "list_recent_conversation_context",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentConversationContextsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Recent Conversation Context",
         "tags": [
           "agent"
         ]

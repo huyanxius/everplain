@@ -97,3 +97,4 @@ tests/test_retrieval_preflight.py
 
 # Fresh server time on each model run.
 tests/test_agent_time_context.py
+tests/test_conversation_context.py

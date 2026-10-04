@@ -29,6 +29,7 @@ from qunxue_api.modules.agent_conversation import (
     patches_from_tool_summary,
     prepare_canvas_edit,
 )
+from qunxue_api.modules.agent_conversation.context import merge_digest
 
 _MATERIAL_TOOL_NAMES = frozenset({"search_research_materials", "read_research_material_context"})
 _DELETED_MATERIAL_ANSWER = "该回答引用的个人研究材料已删除，原回答内容已隐藏。"
@@ -364,10 +365,18 @@ class SqliteConversationRepository:
                 ),
             ]
         )
-        row = self._session.get(AgentConversationRow, str(conversation.conversation_id))
-        if row is not None:
-            row.updated_at = turn.assistant_message.created_at
-            row.version += 1
+        row = self._session.scalar(select(AgentConversationRow).where(
+            AgentConversationRow.conversation_id == str(conversation.conversation_id),
+            AgentConversationRow.user_id == str(conversation.user_id),
+        ).execution_options(populate_existing=True))
+        if row is None:
+            raise ConversationNotFound(str(conversation.conversation_id))
+        row.context_digest = merge_digest(
+            row.context_digest or {}, message_id=str(turn.user_message.message_id),
+            sequence=turn.user_message.sequence, content=turn.user_message.content,
+        )
+        row.updated_at = max(_utc(row.updated_at), turn.assistant_message.created_at)
+        row.version += 1
         self._session.flush()
         return turn
 

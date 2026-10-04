@@ -56,3 +56,6 @@ export { citationGroup, parseCitationText } from './citationPresentation'
 
 export { getAgentModelCatalog } from './researchAgentGateway'
 export type { AgentModelCatalog, AgentReasoningEffort } from './model'
+
+export { listRecentConversationContext } from './researchAgentGateway'
+export type { RecentConversationContext } from './model'

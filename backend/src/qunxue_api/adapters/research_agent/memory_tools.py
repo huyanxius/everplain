@@ -31,7 +31,12 @@ class AgentMemoryTools:
         conversation_id: UUID,
         prompt: str,
         run_id: UUID,
+        conversation_scope=None,
     ) -> None:
+        from .conversation_tools import AgentConversationTools
+        self.conversations = AgentConversationTools(
+            conversation_scope, user_id=user_id, conversation_id=conversation_id,
+        ) if conversation_scope is not None else None
         self._service_scope = service_scope
         self._user_id, self._task_id = user_id, task_id
         self._conversation_id, self._run_id = conversation_id, run_id
