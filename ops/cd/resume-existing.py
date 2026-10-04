@@ -2,9 +2,11 @@
 
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -12,6 +14,7 @@ from pathlib import Path
 
 REVISION = "97b2f9e83135cc730894ebb47700b47aa7809dfa"
 BASE = Path("/srv/everplain-updates")
+HELPER_HASHES = {'ops/cd/deploy-existing.py': '3ee273fa9791961a7dd7ed6ff122549bc727658184d259d0a05224bda0901fc6', 'ops/cd/artifact.py': '14235026694fe38283f36a57d5b4ebbe2fccba9070562489844393c5b8156424', 'ops/cd/deploy.py': '0a1a042230920ece937a7a9954e0363a67379b4dc7c1345eebf83da176244053', 'ops/database.py': '04022005399281c57cb3d9de3498be80ee3bb0922257a23eba8215c8df2056d8', 'ops/cd/repair_existing_web.py': '8df0c1527646323a37ee6c15d381dec1fd874c9ab92bb120cafd02790d411e27', 'ops/cd/release_identity.py': '9650793cd70f68e7c376bc07707221574c4741ae3759b64cf6221442b4f70ad6'}
 
 
 def run(args):
@@ -22,7 +25,8 @@ def run(args):
 def probe(url):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with opener.open(url, timeout=8) as response:
+        request = urllib.request.Request(url, headers={"User-Agent": "Everplain-Release/1.0"})
+        with opener.open(request, timeout=8) as response:
             body = response.read(16 * 1024**2)
             return response.status, body
     except urllib.error.HTTPError as error:
@@ -73,3 +77,46 @@ with Path("/run/lock/everplain-release.lock").open("a") as lock:
         code, body = probe("https://e.qunxue.xyz" + path)
         print(json.dumps({"public_asset": path, "http_status": code,
                           "digest_matches": hashlib.sha256(body).hexdigest() == expected}))
+
+    roots = [p for p in Path('/tmp').glob('everplain-candidate.*')
+             if all((p / name).is_file() and not (p / name).is_symlink()
+                    and hashlib.sha256((p / name).read_bytes()).hexdigest() == expected
+                    for name, expected in HELPER_HASHES.items())]
+    assert roots
+    sys.path.insert(0, str(roots[0] / 'ops/cd'))
+    spec = importlib.util.spec_from_file_location('checked_release',
+                                                roots[0] / 'ops/cd/deploy-existing.py')
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    helper.REVISION = REVISION
+    helper.RUN_ID, helper.RUN_ATTEMPT = '37205814594', '1'
+    frozen = data.parent / 'release.tar.gz'
+    helper.ARCHIVE_SHA256 = hashlib.sha256(frozen.read_bytes()).hexdigest()
+    checked = helper.load_request(frozen, REVISION, helper.ARCHIVE_SHA256,
+                                  helper.RUN_ID, helper.RUN_ATTEMPT)
+    assert checked == manifest
+    helper.API_IMAGE, helper.WEB_IMAGE = manifest['images']['api'], manifest['images']['web']
+    old = helper.environment(helper.metadata(transaction['old_names']['api']))
+    policy = json.loads((release / 'ops/cd/policy.json').read_text())
+    expected = helper.configure_billing_policy(old, policy, {})
+    expected['EVERPLAIN_RELEASE_REVISION'] = REVISION
+    assert expected == env
+    def checked_http(url):
+        code, body = probe(url)
+        assert code == 200
+        return body
+    helper.http = checked_http
+    helper.public_health(manifest, env['EVERPLAIN_RUNTIME_MODE'])
+    updater = helper.ExistingRelease(frozen, BASE)
+    updater.stage, updater.images = data.parent, transaction['images']
+    updater.state_path = BASE / 'pipeline-state.json'
+    updater.report = transaction['report']
+    updater.expected_billing_policy = expected.get('EVERPLAIN_BILLING_PHASE_POLICIES')
+    updater.complete(manifest)
+    updater.report.update(public_health_ok=True, deployment_succeeded=True,
+                          candidate_resumed=True, forward_stop_required=False,
+                          configuration_preserved_verified=True)
+    transaction['report'] = updater.report
+    helper.save_json(data.parent / 'transaction.json', transaction)
+    print(json.dumps({key: value for key, value in updater.report.items()
+                      if isinstance(value, (bool, int))}))
