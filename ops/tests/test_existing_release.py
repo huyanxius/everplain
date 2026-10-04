@@ -4,8 +4,10 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
 import tarfile
@@ -326,6 +328,52 @@ class ExistingReleaseTests(unittest.TestCase):
                 api["NetworkSettings"]["Networks"] = {"other-product": {}}
             with self.subTest(change=change), self.assertRaises(RuntimeError):
                 release.existing_layout(api, web)
+
+    def test_release_preserves_existing_nested_data_with_owner_mode_and_bytes(self):
+        directory = self.source / "existing-private-data" / "nested"
+        directory.mkdir(parents=True)
+        original = directory / "record.bin"
+        original.write_bytes(b"existing-private-material")
+        directory.chmod(0o750)
+        original.chmod(0o640)
+        before = original.stat()
+        self.assertEqual(release.data_bytes(self.source),
+                         (self.source / "everplain.db").stat().st_size + before.st_size)
+        report = self.execute()
+        target = self.updater.stage / "data" / original.relative_to(self.source)
+        self.assertTrue(report["ancillary_data_preserved"])
+        self.assertEqual(original.read_bytes(), target.read_bytes())
+        after = target.stat()
+        self.assertEqual((after.st_uid, after.st_gid, stat.S_IMODE(after.st_mode)),
+                         (before.st_uid, before.st_gid, stat.S_IMODE(before.st_mode)))
+        self.assertEqual(stat.S_IMODE(target.parent.stat().st_mode), 0o750)
+        self.assertNotEqual(after.st_ino, before.st_ino)
+
+    def test_nested_link_or_special_file_blocks_before_image_load_and_stop(self):
+        for kind in ("link", "fifo"):
+            directory = self.source / kind
+            directory.mkdir()
+            entry = directory / "entry"
+            if kind == "link":
+                entry.symlink_to(self.source / "everplain.db")
+            else:
+                os.mkfifo(entry)
+            with self.subTest(kind=kind), self.assertRaises(RuntimeError):
+                self.execute()
+            self.assertFalse(any(call[:2] in (["docker", "load"], ["docker", "stop"])
+                                 for call in self.calls))
+            entry.unlink()
+            directory.rmdir()
+
+    def test_ancillary_copy_failure_restores_original_data_and_containers(self):
+        original = self.source / "private.bin"
+        original.write_bytes(b"retained")
+        with patch.object(release, "copy_ancillary_data", side_effect=OSError("copy failed")):
+            with self.assertRaises(OSError):
+                self.execute()
+        self.assertEqual(original.read_bytes(), b"retained")
+        self.assertTrue(self.updater.report["old_service_restored"])
+        self.assertFalse(self.updater.report["candidate_started"])
 
     def test_low_disk_blocks_before_copy_or_before_image_load(self):
         from collections import namedtuple

@@ -43,6 +43,11 @@ RUN_ID = None
 RUN_ATTEMPT = None
 BASE = Path("/srv/everplain-updates")
 NAMES = {"api": "everplain-api", "web": "everplain-web"}
+DATABASE_FILES = {
+    name + suffix
+    for name in ("everplain.db", "everplain-retrieval.db")
+    for suffix in ("", "-wal", "-shm", "-journal")
+}
 
 
 def require(condition, message="checked release precondition failed"):
@@ -334,6 +339,52 @@ def environment(container):
     return result
 
 
+def data_entries(source):
+    """Only regular files and directories inside the existing product mount are data."""
+    entries = []
+    pending = sorted(source.iterdir(), reverse=True)
+    while pending:
+        path = pending.pop()
+        info = path.lstat()
+        require(path.resolve() == path)
+        require(stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode))
+        if stat.S_ISDIR(info.st_mode):
+            require(path.parent != source or path.name not in DATABASE_FILES)
+            pending.extend(sorted(path.iterdir(), reverse=True))
+        else:
+            require(info.st_nlink == 1)
+        entries.append((path, info))
+    return entries
+
+
+def data_bytes(source):
+    return sum(info.st_size for _, info in data_entries(source) if stat.S_ISREG(info.st_mode))
+
+
+def copy_ancillary_data(source, target):
+    # Active SQLite files use stopped-writer snapshots. Other material is copied,
+    # never linked, so writes to the candidate cannot change the retained old data.
+    entries = [
+        (path, info) for path, info in data_entries(source)
+        if not (path.parent == source and path.name in DATABASE_FILES)
+    ]
+    for path, info in entries:
+        destination = target / path.relative_to(source)
+        if stat.S_ISDIR(info.st_mode):
+            destination.mkdir(mode=0o700)
+        else:
+            shutil.copy2(path, destination)
+            require(digest(destination) == digest(path))
+            current = path.lstat()
+            require((current.st_size, current.st_mtime_ns) == (info.st_size, info.st_mtime_ns))
+        os.chown(destination, info.st_uid, info.st_gid)
+        destination.chmod(stat.S_IMODE(info.st_mode))
+    # Restore directory timestamps after children have been created.
+    for path, info in reversed(entries):
+        destination = target / path.relative_to(source)
+        os.utime(destination, ns=(info.st_atime_ns, info.st_mtime_ns))
+
+
 
 def configure_billing_policy(current, policy, report):
     """Apply only an explicit, checksum-bound additive writing billing policy."""
@@ -403,12 +454,7 @@ def existing_layout(api, web):
     require(source.is_absolute() and source.resolve() == source)
     require(any(part.startswith("everplain") for part in source.parts))
     require((source / "everplain.db").is_file())
-    allowed = {
-        name + suffix
-        for name in ("everplain.db", "everplain-retrieval.db")
-        for suffix in ("", "-wal", "-shm", "-journal")
-    }
-    require(all(p.is_file() and not p.is_symlink() and p.name in allowed for p in source.iterdir()))
+    data_entries(source)
     environment(api)
     return source, api_network
 
@@ -571,7 +617,7 @@ class ExistingRelease:
             self.base.is_dir() and not self.base.is_symlink() and self.base.resolve() == self.base
         )
         require(self.base.stat().st_uid == os.geteuid() and self.base.stat().st_mode & 0o022 == 0)
-        data_bytes = sum(p.stat().st_size for p in source.iterdir())
+        total_data_bytes = data_bytes(source)
         archive_bytes = self.archive.stat().st_size
         require(archive_bytes <= MAX_BYTES)
         reserve = 512 * 1024**2
@@ -595,7 +641,7 @@ class ExistingRelease:
             else:
                 require(
                     shutil.disk_usage(self.base).free
-                    > archive_bytes + MAX_BYTES + data_bytes * 3 + reserve
+                    > archive_bytes + MAX_BYTES + total_data_bytes * 3 + reserve
                 )
                 self.report["copy_budget_verified"] = True
                 self.stage = Path(tempfile.mkdtemp(prefix=REVISION[:8] + "-", dir=self.base))
@@ -628,7 +674,7 @@ class ExistingRelease:
         image_bytes = sum(
             (release / "images" / (role + ".tar")).stat().st_size for role in ("api", "web")
         )
-        remaining_budget = image_bytes * 3 + data_bytes * 3 + reserve
+        remaining_budget = image_bytes * 3 + total_data_bytes * 3 + reserve
         docker_root = Path(run(["docker", "info", "--format", "{{.DockerRootDir}}"]).strip())
         require(docker_root.is_absolute() and docker_root.is_dir())
         # Check both destinations with a combined budget, including on shared filesystems.
@@ -676,7 +722,7 @@ class ExistingRelease:
         self.report["configuration_verified"] = True
         require(
             shutil.disk_usage(self.base).free
-            > frozen.stat().st_size * 3 + sum(p.stat().st_size for p in source.iterdir()) * 3
+            > frozen.stat().st_size * 3 + data_bytes(source) * 3
         )
         self.report["backup_budget_verified"] = True
         validation = self.stage / "online-validation"
@@ -691,7 +737,7 @@ class ExistingRelease:
         # up independently after stopping writers, never copied from this snapshot.
         require(
             shutil.disk_usage(self.base).free
-            > sum(p.stat().st_size for p in source.iterdir()) * 2 + reserve
+            > data_bytes(source) * 2 + reserve
         )
         self.record()
         if (
@@ -744,6 +790,8 @@ class ExistingRelease:
                 info = origin.stat()
                 os.chown(target, info.st_uid, info.st_gid)
                 target.chmod(stat.S_IMODE(info.st_mode))
+            copy_ancillary_data(source, data)
+            self.report["ancillary_data_preserved"] = True
             self.report["backup_complete"] = True
             run(
                 [
