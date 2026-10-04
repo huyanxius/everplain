@@ -26,6 +26,23 @@ spec.loader.exec_module(release)
 
 
 class RegistryReleaseTests(unittest.TestCase):
+    def test_live_compatibility_overlays_require_reviewed_bytes_and_read_only_mounts(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = Path(d) / "settings.py"
+            source.write_bytes(b"reviewed-model-allowlist")
+            destination = sorted(release.COMPATIBILITY_DESTINATIONS)[0]
+            mount = {"Source": str(source), "Destination": destination,
+                     "Type": "bind", "RW": False}
+            policy = {"reviewed_live_file_overlays": {
+                destination: hashlib.sha256(source.read_bytes()).hexdigest()}}
+            release.verify_live_overlays({"Mounts": [mount]}, policy)
+            for changed in ({**mount, "RW": True}, {**mount, "Destination": "/other.py"}):
+                with self.assertRaises(RuntimeError):
+                    release.verify_live_overlays({"Mounts": [changed]}, policy)
+            source.write_bytes(b"unreviewed")
+            with self.assertRaises(RuntimeError):
+                release.verify_live_overlays({"Mounts": [mount]}, policy)
+
     def test_public_http_identifies_the_release_client(self):
         url = "https://e.qunxue.xyz/api/health"
         with patch.object(release.urllib.request, "build_opener") as factory:
