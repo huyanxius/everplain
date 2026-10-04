@@ -1,7 +1,7 @@
 import json
 from datetime import UTC, datetime, timedelta
 from fractions import Fraction
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from sqlalchemy import case, func, select, text, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -125,6 +125,35 @@ class SqliteCreditRepository:
             len(grants) == 1 and grants[0].kind == "signup_grant"
             and 0 <= account.balance <= grants[0].points
         )
+        baseline = (grants[0].entry_id, grants[0].points) if welcome_only else None
+        reset_table = self._session.scalar(text(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='billing_precision_adjustments'"
+        ))
+        if reset_table:
+            reset = self._session.execute(text(
+                "SELECT * FROM billing_precision_adjustments WHERE user_id=:user "
+                "ORDER BY julianday(created_at) DESC, rowid DESC LIMIT 1"
+            ), {"user": str(user_id)}).mappings().first()
+            if reset is not None:
+                baseline = None
+                entry_id = str(uuid5(
+                    NAMESPACE_URL, f"everplain-balance-reset:{reset['reset_id']}:{user_id}"
+                ))
+                receipt = next((g for g in grants if g.entry_id == entry_id), None)
+                later_grants = self._session.scalar(text(
+                    "SELECT count(*) FROM credit_ledger WHERE user_id=:user "
+                    "AND kind!='usage' AND entry_id!=:entry "
+                    "AND julianday(created_at)>=julianday(:created)"
+                ), {"user": str(user_id), "entry": entry_id, "created": reset["created_at"]})
+                if (reset["reason"] == "user_requested_all_accounts_reset"
+                        and reset["after_precision"] == "0" and reset["after_balance"] > 0
+                        and receipt is not None and receipt.kind == "redemption"
+                        and receipt.model == "admin-balance-reset"
+                        and receipt.points == reset["delta_points"]
+                        and receipt.balance_after == reset["after_balance"]
+                        and not later_grants and 0 <= account.balance <= reset["after_balance"]):
+                    baseline = (entry_id, reset["after_balance"])
         # Read the integer balance and fractional carry in one SQL snapshot.
         # A hold is authorization capacity, not settled consumption.
         precision_exists = self._session.scalar(text(
@@ -139,22 +168,22 @@ class SqliteCreditRepository:
         projection = self._session.execute(text(projection_sql), {"user": str(user_id)}).one()
         exact = Fraction(projection.total_credit_pico or "0") / 10**12
         settled_remaining = max(Fraction(0), Fraction(projection.balance) - (exact % 1))
-        # Historic redemption resets and subscriptions do not establish paid
-        # bucket attribution. Only an unmixed welcome balance is provable here.
+        # Only an unmixed signup grant or a receipted reset establishes this
+        # free allowance. Historical redemption amounts are not a denominator.
         buckets = ({
-            "bucket_id": grants[0].entry_id, "kind": "welcome",
+            "bucket_id": baseline[0], "kind": "welcome",
             "available_points": max(0, account.balance - frozen),
-            "limit_points": grants[0].points, "expires_at": None,
+            "limit_points": baseline[1], "expires_at": None,
             "settled_remaining_points": float(settled_remaining),
-        },) if welcome_only else ()
+        },) if baseline else ()
         return CreditSummary(
             balance=account.balance,
             frozen_points=frozen,
             available_balance=max(0, account.balance - frozen),
             operations=operations,
-            total_granted_points=grants[0].points if welcome_only else None,
+            total_granted_points=baseline[1] if baseline else None,
             active_usage_buckets=buckets,
-            quota_status="known" if welcome_only else "unavailable",
+            quota_status="known" if baseline else "unavailable",
             entries=tuple(self._entry(row) for row in rows),
             total_entries=total_entries,
             next_cursor=(str(offset + page_limit) if offset + page_limit < total_entries else None),
