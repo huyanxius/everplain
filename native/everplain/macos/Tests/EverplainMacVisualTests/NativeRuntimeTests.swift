@@ -174,7 +174,7 @@ final class NativeRuntimeTests: XCTestCase {
         let bibliography = try ResearchWorkspaceExportCSL.bibliography(for: source)
         let pdf = try XCTUnwrap(PDFDocument(data: ResearchWorkspaceExportPDF.data(document: source, bibliography: bibliography)))
         XCTAssertGreaterThan(pdf.pageCount, 3, "The long native body did not paginate")
-        XCTAssertEqual(pdf.documentAttributes?[.titleAttribute] as? String, source.title)
+        XCTAssertEqual(pdf.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String, source.title)
         let first = try XCTUnwrap(pdf.page(at: 0)?.string)
         XCTAssertTrue(first.contains("Native Runtime Export"))
         XCTAssertFalse(first.contains(markers[0]), "Body text leaked onto the title page")
