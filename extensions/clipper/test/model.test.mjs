@@ -22,3 +22,15 @@ test('popup uses Web tokens without private color or typography values', async (
   assert.match(css, /var\(--qx-text-meta\)/)
   assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i)
 })
+
+test('single-line address field keeps Web input typography and pill geometry', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const css = await readFile(new URL('../popup.css', import.meta.url), 'utf8')
+  const input = css.match(/^input \{([^}]+)\}/m)?.[1]
+  assert.ok(input, 'address input styles must be present')
+  assert.match(input, /border-radius: var\(--qx-radius-pill\)/)
+  assert.match(input, /font-family: var\(--qx-font-ui\)/)
+  assert.match(input, /font-size: var\(--qx-text-body\)/)
+  assert.match(input, /line-height: var\(--qx-text-body--line-height\)/)
+  assert.doesNotMatch(input, /font:\s*inherit|--qx-radius-field/)
+})

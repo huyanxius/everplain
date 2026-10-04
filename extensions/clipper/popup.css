@@ -5,7 +5,7 @@ header > span, label, footer { font-size: var(--qx-text-meta); line-height: var(
 h1 { font-family: var(--qx-text-section--font-family); font-size: var(--qx-text-section); line-height: var(--qx-text-section--line-height); font-weight: var(--qx-text-section--font-weight); letter-spacing: var(--qx-text-section--letter-spacing); margin: var(--qx-space-4) 0 var(--qx-space-2); }
 header p { color: var(--qx-color-muted); margin: 0 0 var(--qx-space-6); }
 label { display: block; }
-input { display: block; width: 100%; margin: var(--qx-space-2) 0 var(--qx-space-5); border: 1px solid var(--qx-color-rule); border-radius: var(--qx-radius-field); padding: var(--qx-space-3) var(--qx-space-4); background: var(--qx-color-surface-muted); color: var(--qx-color-ink); font: inherit; }
+input { display: block; width: 100%; margin: var(--qx-space-2) 0 var(--qx-space-5); border: 1px solid var(--qx-color-rule); border-radius: var(--qx-radius-pill); padding: var(--qx-space-3) var(--qx-space-4); background: var(--qx-color-surface-muted); color: var(--qx-color-ink); font-family: var(--qx-font-ui); font-size: var(--qx-text-body); line-height: var(--qx-text-body--line-height); }
 button { display: flex; align-items: center; justify-content: space-between; width: 100%; border: 1px solid var(--qx-color-accent); border-radius: var(--qx-radius-pill); background: var(--qx-color-accent); color: var(--qx-color-on-accent); padding: var(--qx-space-3) var(--qx-space-4); font: inherit; cursor: pointer; margin-bottom: var(--qx-space-3); }
 button:hover { background: var(--qx-color-accent-hover); }
 button.secondary { background: transparent; color: var(--qx-color-ink); border-color: var(--qx-color-rule); }
