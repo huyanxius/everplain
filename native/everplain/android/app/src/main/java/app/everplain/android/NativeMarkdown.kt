@@ -173,7 +173,7 @@ fun NativeMarkdown(
 }
 
 /** The Web gives body lines, headings and paragraph gaps different metrics. */
-private class SourceReadingLineHeight(private val scale: Float) : LineHeightSpan {
+internal class SourceReadingLineHeight(private val scale: Float) : LineHeightSpan {
     override fun chooseHeight(
         text: CharSequence,
         start: Int,

@@ -338,7 +338,14 @@ internal fun MaterialsScreen(controller: MaterialController, s: AppState) {
 @Composable
 internal fun MaterialReader(controller: MaterialController, state: MaterialUiState) {
     val file = state.selected ?: return
+    val annotation = remember(controller, file.taskId) { controller.annotation(file.taskId) }
+    val annotationState by annotation.state.collectAsStateWithLifecycle()
+    DisposableEffect(annotation, file.materialId) { onDispose { annotation.hide() } }
     LibrarySheet(file.filename, controller::closeReader) {
+        if (annotationState.draft != null && !annotationState.open)
+            EpButton("继续片段标记", annotation::reopen)
+        if (annotationState.saved != null) Text("片段标记已保存。", fontSize = 13.sp)
+
         Text(
             "${materialKindLabel(file.materialKind)} · ${formatLibrarySize(file.sizeBytes)}",
             fontSize = 13.sp,
@@ -365,11 +372,12 @@ internal fun MaterialReader(controller: MaterialController, state: MaterialUiSta
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                NativeMarkdown(segment.text)
+                NativeMaterialPassage(segment, annotation::select)
             }
         if (!state.reading && state.readError == null && file.segments.isNullOrEmpty())
             Text(materialStatus(file), color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+    MaterialAnnotationDrawer(annotation)
 }
 
 internal fun materialStatus(file: ResearchMaterialResponse): String =

@@ -152,6 +152,11 @@ class NativeResearchToolsTest {
             compose.onNodeWithText("分析", useUnmergedTree = true).performClick()
             compose.waitUntil(30000) { !analysis.state.value.loading }
             assertNull(analysis.state.value.error)
+            compose.waitUntil(30000) {
+                analysis.state.value.cycle != null || analysis.state.value.cycleError != null
+            }
+            assertNull(analysis.state.value.cycleError)
+            assertNotNull(analysis.state.value.cycle)
             compose.onNodeWithText("写分析备忘").performClick()
             compose.onNodeWithContentDescription("备忘标题").performScrollTo().performTextInput("观察与判断")
             compose
@@ -161,6 +166,7 @@ class NativeResearchToolsTest {
             scrollToText("保存备忘").performClick()
             compose.waitUntil(30000) { api.memoWrites == 1 && !analysis.state.value.busy }
             assertEquals("观察与判断", analysis.state.value.snapshot!!.memos.single().title)
+            assertNull(analysis.state.value.cycleError)
             scrollToText("研究分析")
             capture("analysis")
 
@@ -274,7 +280,8 @@ private class ResearchToolsDeviceApi(private val wire: JsonObject) :
                     )
                 path.endsWith("/materials") ->
                     WireJson.encodeToString(ResearchMaterialListResponse(emptyList(), "task"))
-                path.endsWith("/cycle") -> wire.getValue("ResearchCycleResponse").toString()
+                path.endsWith("/research-cycle") ->
+                    wire.getValue("ResearchCycleResponse").toString()
                 path.endsWith("/navigation") ->
                     wire.getValue("ResearchTaskNavigationResponse").toString()
                 path.endsWith("/run") -> wire.getValue("MatchRunResponse").toString()

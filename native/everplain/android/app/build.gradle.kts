@@ -14,6 +14,8 @@ dependencies {
     implementation(project(":core"))
     implementation("io.noties.markwon:core:4.6.2")
     implementation("com.mohamedrejeb.richeditor:richeditor-compose:1.0.0-rc11")
+    implementation("androidx.javascriptengine:javascriptengine:1.1.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.10.2")
     implementation("org.commonmark:commonmark:0.24.0")
     implementation("org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0")
     implementation("org.commonmark:commonmark-ext-gfm-tables:0.24.0")

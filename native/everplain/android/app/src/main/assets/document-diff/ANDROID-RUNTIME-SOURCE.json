@@ -1,0 +1,9 @@
+{
+  "artifact": "androidx.javascriptengine:javascriptengine:1.1.1",
+  "officialSource": "https://dl.google.com/dl/android/maven2/androidx/javascriptengine/javascriptengine/1.1.1/javascriptengine-1.1.1.aar",
+  "sha256": "cd941752c295975f1d405e07b3ca935d4c3b1b7e63c8f1cea1e64375facf31a9",
+  "license": "Apache-2.0",
+  "manifestInspection": "Only package and uses-sdk minSdk26; no uses-permission or component declarations. minCompileSdk34, minAGP8.1.1. Final merged app manifest still requires CI inspection.",
+  "documentation": "https://developer.android.com/develop/ui/views/layout/webapps/jsengine",
+  "transport": "Out-of-process calculation, no WebView instance. Named input buffer; fixed code; no network/DOM bridge; one process-wide serialized connection;64MiB isolate limit;20second deadline."
+}

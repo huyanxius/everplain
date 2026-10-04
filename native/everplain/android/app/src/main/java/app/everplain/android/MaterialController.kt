@@ -46,10 +46,17 @@ internal class MaterialController(
     private val api: EverplainApi,
     private val scope: CoroutineScope,
     private val store: PrivateStore,
-    owner: String,
+    private val owner: String,
     private val onPrepared: (scope: String, context: AgentMaterialContextResponse) -> Unit,
     private val unauthorized: (ApiFailure) -> Unit,
 ) {
+    private val annotations = mutableMapOf<String, MaterialAnnotationController>()
+
+    fun annotation(task: String): MaterialAnnotationController =
+        annotations.getOrPut(task) {
+            MaterialAnnotationController(api, scope, store, owner, task, unauthorized)
+        }
+
     private val journal = "material-intent:${api.endpoint.origin}:$owner"
     private var intent =
         store.read(journal)?.let {
@@ -115,6 +122,8 @@ internal class MaterialController(
         writeJob?.cancel()
         poll?.cancel()
         selections.clear()
+        annotations.values.forEach { it.close() }
+        annotations.clear()
     }
 
     fun load(more: Boolean = false) {
