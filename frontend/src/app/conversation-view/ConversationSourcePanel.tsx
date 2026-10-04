@@ -2,16 +2,18 @@ import { ArrowLeftIcon, FileTextIcon, GlobeIcon, XIcon } from '@phosphor-icons/r
 import { useEffect, useRef, useState } from 'react'
 import { citationGroup } from '../../modules/research-agent'
 import { useAppLocale } from '../../i18n/AppLocaleProvider'
+import { useNativeDialogCancel } from '../../ui/usePresence'
 import { ConversationToolDetail, ConversationToolStatus } from './ConversationActivity'
 import { ConversationActionControl } from './ConversationHandoff'
 import type { ConversationSourcePanelProps } from './types'
 import './conversation-view.css'
 
-export function ConversationSourcePanel({ detail, activity, citations = [], toolSteps = [], onClose, onBack, onSelectCitation, onSelectActivity }: ConversationSourcePanelProps) {
+export function ConversationSourcePanel({ closing = false, detail, activity, citations = [], toolSteps = [], onClose, onBack, onSelectCitation, onSelectActivity }: ConversationSourcePanelProps) {
   const { text } = useAppLocale()
   const panelRef = useRef<HTMLElement>(null)
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [mobile, setMobile] = useState(() => typeof window !== 'undefined' && Boolean(window.matchMedia?.('(max-width: 760px)').matches))
+  useNativeDialogCancel(dialogRef, mobile)
   useEffect(() => {
     const media = window.matchMedia?.('(max-width: 760px)')
     if (!media) return
@@ -68,5 +70,5 @@ export function ConversationSourcePanel({ detail, activity, citations = [], tool
       <section role="group" aria-label={text('工作流程', 'Workflow')}><h3>{text('工作流程', 'Workflow')}<span>{toolSteps.length}</span></h3>{toolSteps.length ? <ol className="cv-source-panel__rows">{toolSteps.map(step => <li key={step.id}>{onSelectActivity ? <button className="qx-btn qx-btn--ghost" type="button" onClick={() => onSelectActivity(step)}><span>{step.label}{step.detail && step.detail.length <= 160 ? <span className="qx-meta cv-source-panel__result">{step.detail}</span> : null}{step.resultItems?.map(item => <span className="cv-source-panel__result" key={item.id}>{item.title}</span>)}</span><ConversationToolStatus step={step} /></button> : <div><strong>{step.label}</strong><ConversationToolStatus step={step} /></div>}</li>)}</ol> : <p className="qx-meta">{text('实际工具步骤会出现在这里。', 'Actual tool steps will appear here.')}</p>}</section>
     </div>}
   </aside>
-  return mobile ? <dialog ref={dialogRef} className="cv-source-sheet" aria-label={label} onCancel={event => { event.preventDefault(); onClose() }} onClick={event => { if (event.target === event.currentTarget) onClose() }}>{content}</dialog> : content
+  return mobile ? <dialog ref={dialogRef} data-motion-surface="sheet" data-presence={closing ? 'closing' : 'open'} inert={closing} aria-hidden={closing || undefined} className="cv-source-sheet" aria-label={label} onCancel={event => { event.preventDefault(); onClose() }} onClick={event => { if (event.target === event.currentTarget) onClose() }}>{content}</dialog> : content
 }

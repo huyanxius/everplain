@@ -10,6 +10,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy import func, select, text
 
 from qunxue_api.account_extension import install_account_management
@@ -57,6 +58,63 @@ def test_create_app_installs_account_routes_when_admin_secret_is_configured(
         database.engine.dispose()
 
 
+def test_account_settings_work_without_initial_administrator(plain_client: TestClient) -> None:
+    paths = ("/api/account", "/api/account/sessions", "/api/account/credits?limit=10")
+    for path in paths:
+        assert plain_client.get(path).status_code == 401
+    assert plain_client.app.state.credit_exempt_user_ids == frozenset()
+    with plain_client.app.state.database.session() as session:
+        assert session.scalar(select(func.count()).select_from(UserRow)) == 0
+
+    register(plain_client, "member-without-admin@example.com")
+    plain_client.cookies.clear()
+    login(plain_client, "member-without-admin@example.com")
+    for path in paths:
+        response = plain_client.get(path)
+        assert response.status_code == 200, response.text
+    account = plain_client.get("/api/account").json()
+    assert account["role"] == "member"
+    assert account["is_protected_admin"] is False
+    assert plain_client.get("/api/account/credits").json()["is_unlimited"] is False
+    assert plain_client.get("/api/admin/users").status_code == 403
+    assert plain_client.post(
+        "/api/admin/credit-redemption-codes",
+        headers={"Idempotency-Key": str(uuid4())},
+        json={"count": 1, "expires_in_days": 1},
+    ).status_code == 403
+
+
+@pytest.mark.parametrize(
+    "admin_settings",
+    [
+        {"account_initial_admin_password": SecretStr(TEST_ADMIN_PASSWORD)},
+        {
+            "account_initial_admin_email": TEST_ADMIN_EMAIL,
+            "account_initial_admin_password": SecretStr(""),
+        },
+    ],
+)
+def test_partial_initial_administrator_configuration_still_fails_closed(
+    plain_client: TestClient,
+    admin_settings: dict[str, str | SecretStr],
+) -> None:
+    settings = plain_client.app.state.settings.model_copy(update=admin_settings)
+    with pytest.raises(RuntimeError, match="must both be configured"):
+        create_app(settings=settings, database=plain_client.app.state.database)
+
+
+def test_admin_email_without_password_does_not_disable_member_accounts(
+    plain_client: TestClient,
+) -> None:
+    settings = plain_client.app.state.settings.model_copy(
+        update={"account_initial_admin_email": TEST_ADMIN_EMAIL},
+    )
+    app = create_app(settings=settings, database=plain_client.app.state.database)
+    assert app.state.credit_exempt_user_ids == frozenset()
+    with TestClient(app) as client:
+        assert client.get("/api/account").status_code == 401
+
+
 @pytest.fixture
 def client(
     tmp_path: Path,
@@ -74,6 +132,8 @@ def client(
         model_name=None,
         model_extra_headers={},
         model_sft_resource_id=None,
+        account_initial_admin_email=TEST_ADMIN_EMAIL,
+        account_initial_admin_password=TEST_ADMIN_PASSWORD,
     )
     command.upgrade(alembic_config, "head")
     database = Database(database_url)
@@ -161,9 +221,9 @@ def test_registration_grants_a_visible_credit_balance_and_ledger_entry(
     assert response.status_code == 200
     payload = response.json()
     assert payload["is_unlimited"] is False
-    assert payload["balance"] == 3000
-    assert payload["credit_limit"] == 3000
-    assert payload["grant_amount"] == 3000
+    assert payload["balance"] == 30
+    assert payload["credit_limit"] == 30
+    assert payload["grant_amount"] == 30
     assert payload["pricing"] == {
         "input_tokens_per_credit": 100,
         "output_tokens_per_credit": 25,
@@ -228,7 +288,7 @@ def test_credit_reservation_fallback_uses_the_current_welcome_grant(
         summary = repository.get_summary(user_id=user_id, limit=10)
 
     assert summary is not None
-    assert summary.balance == 3000
+    assert summary.balance == 30
 
 
 def test_new_credit_reservation_preempts_an_abandoned_agent_run(
@@ -462,6 +522,8 @@ def test_install_provisions_the_fixed_admin_without_database_or_cli_work(
         model_name=None,
         model_extra_headers={},
         model_sft_resource_id=None,
+        account_initial_admin_email=TEST_ADMIN_EMAIL,
+        account_initial_admin_password=TEST_ADMIN_PASSWORD,
     )
     app = create_app(settings=settings, database=database)
     install_account_management(

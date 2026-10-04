@@ -35,6 +35,7 @@ __all__ = [
     "PICO_USD",
     "PriceBook",
     "Tariff",
+    "TavilyPrice",
     "UnknownPrice",
     "INPUT_TOKENS_PER_CREDIT",
     "OUTPUT_TOKENS_PER_CREDIT",
@@ -55,4 +56,10 @@ __all__ = [
     "usage_credit_cost",
 ]
 
-from qunxue_api.modules.billing.pricing import PICO_USD, PriceBook, Tariff, UnknownPrice
+from qunxue_api.modules.billing.pricing import (
+    PICO_USD,
+    PriceBook,
+    Tariff,
+    TavilyPrice,
+    UnknownPrice,
+)

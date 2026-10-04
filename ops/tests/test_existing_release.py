@@ -65,6 +65,12 @@ def container(role, source):
 
 class ExistingReleaseTests(unittest.TestCase):
     def setUp(self):
+        release.REVISION = "a" * 40
+        release.PREVIOUS_REVISION = "b" * 40  # Test-only previous revision.
+        release.ARCHIVE_SHA256 = hashlib.sha256(b"synthetic archive").hexdigest()
+        release.API_IMAGE = "sha256:" + "c" * 64
+        release.WEB_IMAGE = "sha256:" + "d" * 64
+        release.RUN_ID, release.RUN_ATTEMPT = "200", "1"
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -103,7 +109,30 @@ class ExistingReleaseTests(unittest.TestCase):
         (destination / "images").mkdir()
         for role in ("api", "web"):
             (destination / "images" / (role + ".tar")).write_bytes(b"fixture")
-        return {"images": {"api": release.API_IMAGE, "web": release.WEB_IMAGE}, "web_checks": {}}
+        (destination / "ops/cd").mkdir(parents=True)
+        (destination / "ops/cd/policy.json").write_text(
+            '{"rollback_compatible_migration_trees":[]}'
+        )
+        observed = self.runtime_snapshot()
+        return {
+            "revision": release.REVISION,
+            "images": {"api": release.API_IMAGE, "web": release.WEB_IMAGE}, "web_checks": {},
+            "migration_tree": observed["api"]["migration_tree"],
+            "runtime_identity": {"api": observed["api"], "web_tree": observed["web_tree"]},
+            "initial_live_fingerprint": {"format": 1, "runtime": observed},
+            "provenance": {"run_id": "200", "run_attempt": "1",
+                "workflow_ref": "huyanxius/everplain/.github/workflows/deploy.yml@refs/heads/main"},
+        }
+
+    def runtime_snapshot(self, *_args):
+        resolved = getattr(self, "resolved_images", {})
+        return {
+            "api_image": resolved.get(release.API_IMAGE, release.API_IMAGE),
+            "web_image": resolved.get(release.WEB_IMAGE, release.WEB_IMAGE),
+            "api": {k: "e" * 64 for k in
+                ("source_tree", "dependency_tree", "migration_tree", "ops_tree", "tokenizer_tree")},
+            "web_tree": "f" * 64,
+        }
 
     def command(self, args, **_kwargs):
         self.calls.append(args)
@@ -172,6 +201,7 @@ class ExistingReleaseTests(unittest.TestCase):
         with (
             patch.object(release.shutil, "disk_usage", side_effect=self.disk_usage),
             patch.object(release, "metadata", side_effect=self.metadata),
+            patch.object(release, "snapshot", side_effect=self.runtime_snapshot),
             patch.object(release, "unpack", side_effect=self.unpack),
             patch.object(release, "reusable_stage", return_value=None),
             patch.object(release, "copy_primary", side_effect=backup),
@@ -525,17 +555,13 @@ class ExistingReleaseTests(unittest.TestCase):
         self.assertTrue(report["invalid_other_configuration"])
         self.assertNotIn("private", json.dumps(report))
 
-    def test_workflow_reuses_fixed_artifact_without_application_build(self):
-        text = (ROOT / ".github/workflows/publish-checked-candidate.yml").read_text()
-        self.assertIn("run-id: 37101235437", text)
-        self.assertIn(release.REVISION, text)
-        self.assertIn("if: github.ref == 'refs/heads/main'", text)
-        self.assertNotIn("pull_request", text)
-        self.assertNotIn("build.sh", text)
+    def test_obsolete_fixed_candidate_workflow_is_retired(self):
+        self.assertFalse((ROOT / ".github/workflows/publish-checked-candidate.yml").exists())
+        # The historical recovery script remains checksum-bound if reviewed manually.
         transport = (ROOT / "ops/cd/deploy-existing-ssh.sh").read_text()
-        self.assertIn(release.ARCHIVE_SHA256, transport)
+        self.assertIn('release_identity.py" verify', transport)
         self.assertIn("StrictHostKeyChecking=yes", transport)
-        self.assertLess(transport.index(release.ARCHIVE_SHA256), transport.index("sftp "))
+        self.assertLess(transport.index('release_identity.py" verify'), transport.index("sftp "))
 
 
 if __name__ == "__main__":

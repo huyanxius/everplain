@@ -215,3 +215,67 @@ def test_output_over_limit_is_terminal_and_retains_reservation():
     assert error.value.code == "model_output_limit"
     assert gen.calls == 1
     assert Decimal(saved["cost"]["reserved"]) > 0
+
+
+def billing_runtime(aliases=None):
+    from types import SimpleNamespace
+
+    from qunxue_api.modules.billing import PriceBook
+
+    return SimpleNamespace(
+        max_operation_pico=100_000_000_000,
+        book=PriceBook(credits_per_usd=10000, version="synthetic", aliases=aliases or {}),
+    )
+
+
+def test_absent_legacy_cost_fields_reuse_explicit_price_book_and_operation_cap():
+    from qunxue_api.adapters.research_agent.course_cost import CourseCostLimits
+
+    endpoint = ModelEndpoint("primary", "https://synthetic.test", "openai/gpt-6-luna", None, 30)
+    configured = CourseCostLimits().with_billing_defaults(
+        billing_runtime({"openai/gpt-6-luna": "gpt-6-luna"}), (endpoint,)
+    )
+    assert configured.configured
+    assert configured.budget == Decimal("0.10")
+    # Reserve the largest uncached/read/write rate, not only ordinary input.
+    assert configured.input_rate == Decimal("0.125")
+    assert configured.output_rate == Decimal("0.5")
+    assert configured.currency == "USD"
+    assert configured.input_tokens == 32000
+    assert configured.output_tokens == 3000
+    assert configured.retries == 0
+    assert configured.reservation == Decimal("0.0055")
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"budget": Decimal("0.05")},
+        {"input_rate": Decimal("1")},
+        {"output_rate": Decimal("1")},
+        {"currency": "USD"},
+    ],
+)
+def test_partial_legacy_cost_configuration_never_silently_fills_or_overrides(override):
+    from qunxue_api.adapters.research_agent.course_cost import CourseCostLimits
+
+    original = CourseCostLimits(**override)
+    endpoint = ModelEndpoint("primary", "https://synthetic.test", "gpt-6-luna", None, 30)
+    assert original.with_billing_defaults(billing_runtime(), (endpoint,)) is original
+    assert not original.configured
+
+
+def test_unknown_tariff_missing_runtime_or_routes_stay_disabled():
+    from qunxue_api.adapters.research_agent.course_cost import CourseCostLimits
+
+    original = CourseCostLimits()
+    endpoint = ModelEndpoint("primary", "https://synthetic.test", "unknown", None, 30)
+    assert original.with_billing_defaults(billing_runtime(), (endpoint,)) is original
+    assert original.with_billing_defaults(None, (endpoint,)) is original
+    assert original.with_billing_defaults(billing_runtime(), ()) is original
+
+
+def test_explicit_legacy_budget_rates_and_currency_are_preserved():
+    configured = limits(budget=Decimal("0.03"), currency="CNY")
+    endpoint = ModelEndpoint("primary", "https://synthetic.test", "gpt-6-luna", None, 30)
+    assert configured.with_billing_defaults(billing_runtime(), (endpoint,)) is configured

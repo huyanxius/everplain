@@ -48,6 +48,24 @@ class UploadStateTests(unittest.TestCase):
                         parent / "everplain-candidate.a", len(complete), os.getuid(), parent
                     )
 
+    def test_new_artifact_skips_abandoned_multipart_plan_without_removing_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            parent = Path(d)
+            expected = hashlib.sha256(b"new candidate").hexdigest()
+            for suffix, checksum in (("old", "a" * 64), ("current", expected)):
+                directory = parent / ("everplain-candidate." + suffix)
+                directory.mkdir(mode=0o700)
+                (directory / "release.tar.gz").write_bytes(b"")
+                (directory / "parts").mkdir(mode=0o700)
+                (directory / "parts/plan.json").write_text(json.dumps({
+                    "archive_sha256": checksum,
+                }))
+            with patch.object(upload, "EXPECTED", expected):
+                found = upload.discover(len(b"new candidate"), os.getuid(), parent)
+            self.assertEqual([Path(x["directory"]).name for x in found],
+                             ["everplain-candidate.current"])
+            self.assertTrue((parent / "everplain-candidate.old/parts/plan.json").exists())
+
     def test_live_release_lock_blocks_even_a_transfer_restart(self):
         with tempfile.TemporaryDirectory() as d:
             lock = Path(d) / "release.lock"
@@ -100,13 +118,13 @@ class UploadStateTests(unittest.TestCase):
         self.assertIn("duration=120", script)
         self.assertIn('[[ "$mode" != upload ]] || exit 0', script)
         self.assertLess(
-            script.index(" verify $size $upload"),
+            script.index(" verify $size $EXPECTED_SHA256 $upload"),
             script.index("echo '{\"upload_completed\":true}'"),
         )
-        workflow = (ROOT / ".github/workflows/publish-checked-candidate.yml").read_text()
-        self.assertIn("timeout-minutes: 45", workflow)
-        self.assertIn("deploy-existing-ssh.sh upload", workflow)
-        self.assertIn("deploy-existing-ssh.sh apply", workflow)
+        workflow = (ROOT / ".github/workflows/deploy.yml").read_text()
+        self.assertIn("timeout-minutes: 15", workflow)
+        self.assertIn("deploy-existing-ssh.sh all", workflow)
+        self.assertIn("EXPECTED_SHA256: ${{ needs.build.outputs.digest }}", workflow)
 
 
 if __name__ == "__main__":

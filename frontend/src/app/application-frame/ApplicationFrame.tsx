@@ -9,6 +9,7 @@ export type ApplicationFrameProps = {
   recordsOpen?: boolean
   recordsLabel?: string
   drawerOpen: boolean
+  drawerPresent?: boolean
   narrow: boolean
   immersive: boolean
   workspace: boolean
@@ -34,16 +35,17 @@ export type ApplicationFrameProps = {
 /** The application has one viewport and one content scroll owner. */
 export function ApplicationFrame(props: ApplicationFrameProps) {
   const { collapsed, drawerOpen, narrow, immersive, workspace, wide } = props
+  const drawerPresent = props.drawerPresent ?? drawerOpen
   const [mobileHeaderTarget, setMobileHeaderTarget] = useState<HTMLDivElement | null>(null)
   useMobileViewport(narrow)
   return (
     <MobileHeaderTarget.Provider value={narrow && !immersive ? mobileHeaderTarget : null}>
-    <div className="application-frame" data-collapsed={collapsed} data-drawer={drawerOpen} data-immersive={immersive} data-split-rail={Boolean(props.splitRail && !narrow)} data-records-open={Boolean(props.recordsOpen)}>
+    <div className="application-frame" data-collapsed={collapsed} data-drawer={drawerOpen} data-drawer-present={drawerPresent} data-immersive={immersive} data-split-rail={Boolean(props.splitRail && !narrow)} data-records-open={Boolean(props.recordsOpen)}>
       {props.notice}
       {!immersive && <>
         <a className="application-frame__skip" href="#main-content">{props.skipLabel}</a>
-        {narrow && drawerOpen && <button type="button" className="application-frame__scrim" aria-label={props.dismissLabel} tabIndex={-1} onClick={props.onDismiss} />}
-        <aside ref={props.sidebarRef} id="application-sidebar" className="application-sidebar" aria-label={props.sidebarLabel} role={narrow ? 'dialog' : undefined} aria-modal={narrow && drawerOpen || undefined} aria-hidden={narrow && !drawerOpen || undefined} inert={narrow && !drawerOpen} onClick={event => { if (narrow && (event.target as HTMLElement).closest('a[href], [data-close-navigation]')) props.onDismiss() }}>
+        {narrow && <button aria-hidden={!drawerPresent} inert={!drawerPresent} type="button" className="application-frame__scrim" aria-label={props.dismissLabel} tabIndex={-1} onClick={props.onDismiss} />}
+        <aside ref={props.sidebarRef} id="application-sidebar" className="application-sidebar" aria-label={props.sidebarLabel} role={narrow ? 'dialog' : undefined} aria-modal={narrow && drawerPresent || undefined} aria-hidden={narrow && !drawerPresent || undefined} inert={narrow && !drawerPresent} onClick={event => { if (narrow && (event.target as HTMLElement).closest('a[href], [data-close-navigation]')) props.onDismiss() }}>
           {props.splitRail && !narrow ? <>
             <div className="application-icon-rail">
               <div className="application-sidebar__top">{props.brand}</div>
@@ -53,25 +55,27 @@ export function ApplicationFrame(props: ApplicationFrameProps) {
               </div>
               <div className="application-sidebar__bottom">{props.account}{props.notifications}</div>
             </div>
-            <section id="application-records" className="application-records" hidden={!props.recordsOpen} aria-label={props.recordsLabel}>
+            <section id="application-records" className="application-records" inert={!props.recordsOpen} aria-hidden={!props.recordsOpen} aria-label={props.recordsLabel}>
+              <div className="application-records__content">
               <header className="application-records__heading"><h2 className="qx-card__title">{props.recordsLabel}</h2></header>
               <div className="application-sidebar__history">{props.history}</div>
+              </div>
             </section>
           </> : <>
           <div className="application-sidebar__top">{props.brand}{props.toggle}</div>
           <div className="application-sidebar__scroll">
             <div className="application-sidebar__new">{props.newConversation}</div>
             <div className="application-sidebar__navigation">{props.navigation}{props.secondaryNavigation}</div>
-            <div className="application-sidebar__history">{props.history}</div>
+            <div className="application-sidebar__history" inert={collapsed && !narrow} aria-hidden={collapsed && !narrow || undefined}>{props.history}</div>
           </div>
           <div className="application-sidebar__bottom">{props.account}{props.notifications}</div>
           </>}
         </aside>
       </>}
-      <div className="application-frame__body" inert={!immersive && narrow && drawerOpen}>
+      <div className="application-frame__body" inert={!immersive && narrow && drawerPresent}>
         {!immersive && props.splitRail && !narrow && <div className="application-frame__rail-toggle">{props.toggle}</div>}
         {!immersive && <header className="application-frame__mobile">{props.mobileHeader}<div ref={setMobileHeaderTarget} className="application-frame__mobile-context" /></header>}
-        <main id="main-content" tabIndex={-1} className="application-frame__main" data-workspace={workspace} data-wide={wide || immersive} inert={!immersive && narrow && drawerOpen}>
+        <main id="main-content" tabIndex={-1} className="application-frame__main" data-workspace={workspace} data-wide={wide || immersive} inert={!immersive && narrow && drawerPresent}>
           {props.children}
         </main>
       </div>

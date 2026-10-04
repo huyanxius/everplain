@@ -15,9 +15,22 @@ from qunxue_api.modules.billing import PriceBook
 
 @pytest.mark.parametrize("mode", ["success", "unconfigured", "persistence_failure"])
 def test_existing_extraction_route_meter_owner_persistence_and_replay(client, monkeypatch, mode):
-    register(client, "synthetic-research@example.com")
+    registered = register(client, "synthetic-research@example.com")
     assert client.get("/api/account/credits").status_code == 200
     database = client.app.state.database
+    # This test uses a deliberately high synthetic rate. Fund its reservation
+    # independently of the signup policy, which is covered in test_signup_allowance.
+    user_id = registered["user"]["user_id"]
+    with database.engine.begin() as connection:
+        connection.execute(
+            text("UPDATE credit_accounts SET balance=3000 WHERE user_id=:u"),
+            {"u": user_id},
+        )
+        connection.execute(
+            text("UPDATE credit_ledger SET points=3000,balance_after=3000 "
+                 "WHERE user_id=:u AND kind='signup_grant'"),
+            {"u": user_id},
+        )
     if mode != "unconfigured":
         client.app.state.billing_operations.runtime = DurableBilling(
             database.engine,

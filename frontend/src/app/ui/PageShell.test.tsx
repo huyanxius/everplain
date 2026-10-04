@@ -28,6 +28,7 @@ afterEach(() => {
   setSidebarLayoutPreference(false)
   window.localStorage.removeItem(sidebarLayoutPreferenceStorageKey)
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 })
+  vi.useRealTimers()
 })
 
 describe('PageShell global chrome', () => {
@@ -40,8 +41,10 @@ describe('PageShell global chrome', () => {
     expect(within(views).getByRole('link', { name: label })).toHaveAttribute('href', destination)
     fireEvent.click(screen.getByText('更多功能', { selector: 'summary span' }))
     expect(within(screen.getByRole('navigation', { name: '更多功能' })).getByRole('link', { name: '新建研究' })).toHaveAttribute('href', '/research/new')
-    const identityQuery = path.slice(path.indexOf('?'))
-    expect(within(screen.getByRole('navigation', { name: '桌面主导航' })).getByRole('link', { name: '研究 Agent' })).toHaveAttribute('href', `/agent${identityQuery}`)
+    expect(screen.queryByRole('link', { name: '研究 Agent' })).not.toBeInTheDocument()
+    const sidebar = screen.getByRole('complementary', { name: 'Everplain 功能栏' })
+    expect(within(sidebar).getAllByRole('link', { name: '新对话' })).toHaveLength(1)
+    expect(within(sidebar).getByRole('link', { name: '新对话' })).toHaveAttribute('href', '/agent')
   })
 
   it('does not inject the retired help and boundary trigger', () => {
@@ -102,6 +105,47 @@ it('keeps extra destinations and notifications reachable from the mobile drawer'
   fireEvent.keyDown(document, { key: 'Escape' })
   expect(screen.queryByRole('dialog', { name: 'Everplain 功能栏' })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '打开菜单' })).toHaveFocus()
+})
+
+it('keeps drawer, scrim, and main modal ownership through the visible mobile close', () => {
+  vi.useFakeTimers()
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+  const { container } = render(<MemoryRouter><PageShell><h1>应用</h1></PageShell></MemoryRouter>)
+  const opener = screen.getByRole('button', { name: '打开菜单' })
+  fireEvent.click(opener)
+  const drawer = screen.getByRole('dialog', { name: 'Everplain 功能栏' })
+  drawer.style.transitionProperty = 'transform'
+  drawer.style.transitionDuration = '240ms'
+  drawer.style.transitionDelay = '0s'
+  fireEvent.keyDown(document, { key: 'Escape' })
+  expect(container.querySelector('.application-frame')).toHaveAttribute('data-drawer', 'false')
+  expect(container.querySelector('.application-frame')).toHaveAttribute('data-drawer-present', 'true')
+  expect(drawer).toHaveAttribute('aria-modal', 'true')
+  expect(drawer).not.toHaveAttribute('inert')
+  expect(container.querySelector('.application-frame__scrim')).not.toHaveAttribute('inert')
+  expect(container.querySelector('.application-frame__body')).toHaveAttribute('inert')
+  expect(document.body.style.overflow).toBe('hidden')
+  act(() => vi.advanceTimersByTime(239))
+  expect(drawer).toHaveAttribute('aria-modal', 'true')
+  act(() => vi.advanceTimersByTime(1))
+  expect(drawer).toHaveAttribute('inert')
+  expect(container.querySelector('.application-frame__scrim')).toHaveAttribute('inert')
+  expect(container.querySelector('.application-frame__body')).not.toHaveAttribute('inert')
+  expect(document.body.style.overflow).toBe('')
+  expect(opener).toHaveFocus()
+})
+
+it('clears a mobile drawer immediately on immersive entry and does not reopen it on return', () => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+  const view = render(<MemoryRouter><PageShell><h1>应用</h1></PageShell></MemoryRouter>)
+  fireEvent.click(screen.getByRole('button', { name: '打开菜单' }))
+  expect(document.body.style.overflow).toBe('hidden')
+  view.rerender(<MemoryRouter><PageShell immersive><h1>应用</h1></PageShell></MemoryRouter>)
+  expect(document.body.style.overflow).toBe('')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  view.rerender(<MemoryRouter><PageShell><h1>应用</h1></PageShell></MemoryRouter>)
+  expect(screen.getByRole('button', { name: '打开菜单' })).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
 
@@ -166,12 +210,18 @@ describe('opt-in split sidebar layout', () => {
     expect(toggle).toHaveAttribute('aria-controls', records.id)
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
     fireEvent.click(toggle)
-    expect(records).not.toBeVisible()
+    expect(records).toHaveAttribute('inert')
+    expect(records).toHaveAttribute('aria-hidden', 'true')
+    expect(records).not.toHaveAttribute('hidden')
+    expect(records).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: '对话与研究' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '展开对话与研究' })).toBeVisible()
     expect(frame).toHaveAttribute('data-records-open', 'false')
     expect(screen.getByRole('navigation', { name: '桌面主导航' })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '展开对话与研究' }))
-    expect(records).toBeVisible()
+    expect(screen.getByRole('region', { name: '对话与研究' })).toBe(records)
+    expect(records).not.toHaveAttribute('inert')
+    expect(records).toHaveAttribute('aria-hidden', 'false')
     expect(frame).toHaveAttribute('data-records-open', 'true')
     expect(screen.getByRole('textbox', { name: '未发送草稿' })).toBe(input)
     expect(input).toHaveValue('保留未发送的问题')
@@ -238,4 +288,18 @@ it('keeps the records pane closed across a route remount and page reload', () =>
   fireEvent.click(screen.getByRole('button', { name: '展开对话与研究' }))
   expect(window.localStorage.getItem(sidebarRecordsPreferenceStorageKey)).toBe('open')
   expect(screen.getByRole('region', { name: '对话与研究' })).toBeVisible()
+})
+
+it.each([1024, 390])('returns to the public website from either brand at %spx', (width) => {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
+  render(<MemoryRouter initialEntries={['/app']}><Routes>
+    <Route path="/app" element={<PageShell><h1>工作台</h1></PageShell>} />
+    <Route path="/welcome" element={<h1>官网</h1>} />
+  </Routes></MemoryRouter>)
+  const brands = screen.getAllByRole('link', { name: 'Everplain 官网' }); const brand = brands[0]
+  expect(brand).toHaveAttribute('href', '/welcome')
+  expect(brand.querySelector('strong')).toHaveTextContent('Everplain')
+  expect(brand.querySelector('.application-brand__mark')).not.toBeNull()
+  fireEvent.click(brand.querySelector('strong')!)
+  expect(screen.getByRole('heading', { name: '官网' })).toBeVisible()
 })

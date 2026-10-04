@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AgentAvatar, agentAvatarPresets, type AgentAvatarId } from '../../modules/agent-avatar'
+import { AgentAvatar, AgentLiquid, agentAvatarPresets, type AgentAvatarId } from '../../modules/agent-avatar'
 import { readAgentProfile, type PersonalAgentProfile } from '../../modules/agent-profile'
 import { useAccount } from '../../modules/account'
+import { useReducedMotion } from '../../ui/useReducedMotion'
 import './agent-loading.css'
 
 export type LoadingPersona = Pick<PersonalAgentProfile, 'avatar_id' | 'color'>
@@ -13,25 +13,12 @@ export type PersonaLoadingProps = {
   compact?: boolean
 }
 
-function useReducedMotion() {
-  const [reduced, setReduced] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return
-    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const update = () => setReduced(media.matches)
-    update()
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
-  }, [])
-  return reduced
-}
-
-/** A real pending state. Unknown identity stays text-only; there is no synthetic progress. */
+/** Real pending state: the liquid represents Everplain; compact avatars require a known identity. */
 export function PersonaLoading({ message, profile, state = 'think', compact = false }: PersonaLoadingProps) {
   const reduced = useReducedMotion()
-  const avatar = profile && agentAvatarPresets.find(preset => preset.id === profile.avatar_id)?.id
+  const avatar: AgentAvatarId | undefined = agentAvatarPresets.find(preset => preset.id === profile?.avatar_id)?.id
   return <div className="agent-loading" data-compact={compact} data-reduced-motion={reduced} role="status" aria-live="polite" aria-busy="true">
-    {avatar && <AgentAvatar avatar={avatar as AgentAvatarId} color={profile!.color} state={state} size={compact ? 40 : 72} playing={!reduced} />}
+    {!compact ? <AgentLiquid lead={avatar} color={profile?.color} /> : avatar && <AgentAvatar avatar={avatar} color={profile?.color} state={state} size={compact ? 40 : 72} playing={!reduced} />}
     <p>{message}</p>
   </div>
 }

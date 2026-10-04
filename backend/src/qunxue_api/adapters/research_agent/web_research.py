@@ -32,6 +32,13 @@ SearchTransport = Callable[[str, float], Mapping[str, object]]
 SearchProfile = Literal["generic", "sociology"]
 
 _USER_AGENT = "QunxueResearchAgent/2.0"
+# Search is a discovery step, not a bulk page download. Keep provider extracts
+# bounded in UTF-8 bytes so parallel CJK searches cannot exhaust the next
+# model request before it can choose and read the relevant pages.
+_SEARCH_SNIPPET_MAX_BYTES = 800
+_SEARCH_TITLE_MAX_BYTES = 500
+
+
 _TRACKING_PREFIXES = ("utm_", "gclid", "fbclid", "msclkid")
 _OFFICIAL_SUFFIXES = (".gov.cn", ".edu.cn", ".ac.cn", ".org.cn", ".gov", ".edu")
 _AUTHORITATIVE_DOMAINS = {
@@ -69,30 +76,53 @@ def _clean_text(value: str) -> str:
     return re.sub(r"\s+", " ", unescape(value)).strip()
 
 
+def _bounded_search_text(value: str, max_bytes: int) -> str:
+    text = _clean_text(value)
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    return encoded[:max_bytes - 3].decode("utf-8", errors="ignore").rstrip() + "…"
+
+
 def _search_tavily(
-    query: str, max_results: int, *, api_key: str, timeout: float, language: str | None = None
+    query: str, max_results: int, *, api_key: str, timeout: float, language: str | None = None,
+    require_billing: bool = False,
 ) -> Iterable[Mapping[str, object]]:
     # Adapted from STORM's MIT-licensed TavilySearchRM and Open Deep
     # Research's MIT-licensed Tavily async search: use the provider SDK,
-    # request raw content, and let the caller normalize/dedupe URLs.
+    # request search extracts, and let the caller normalize/dedupe URLs.
+    # Full raw pages belong to read_web_page; returning them as snippets can
+    # overflow the model context immediately after successful search events.
     from tavily import TavilyClient
 
+    from qunxue_api.adapters.research_agent.search_metering import metered_tavily_search
+
     search_options: dict[str, object] = {
-        "max_results": max_results,
-        "include_raw_content": True,
+        "max_results": max(1, min(max_results, 20)),
+        "include_raw_content": False,
+        "search_depth": "basic",
         "topic": "general",
+        "auto_parameters": False,
+        "include_usage": True,
         "timeout": timeout,
     }
     if language:
         search_options["language"] = language
-    response = TavilyClient(api_key=api_key).search(query, **search_options)
+    client = TavilyClient(api_key=api_key)
+    try:
+        response = metered_tavily_search(
+            client, query, search_options, require_billing=require_billing,
+        )
+    finally:
+        if close := getattr(client, "close", None):
+            close()
     values = response.get("results") if isinstance(response, Mapping) else None
     if not isinstance(values, list):
         raise RuntimeError("Tavily 返回了无效结果")
     return (
         {
             **item,
-            "content": item.get("raw_content") or item.get("content") or "",
+            "content": item.get("content") or "",
         }
         for item in values
         if isinstance(item, Mapping)
@@ -227,6 +257,7 @@ class OpenWebResearchClient:
         profile: SearchProfile = "generic",
         allowed_domains: tuple[str, ...] = (),
         reranker: WebCandidateReranker | None = None,
+        require_search_billing: bool = False,
         fetch: FetchFunction = _fetch_page,
         extract: ExtractFunction = _extract_page,
         extract_title: ExtractFunction = _extract_title,
@@ -257,6 +288,7 @@ class OpenWebResearchClient:
                 api_key=search_api_key,
                 timeout=search_timeout_seconds,
                 language="zh" if profile == "sociology" else None,
+                require_billing=require_search_billing,
             )
         self._provider = search_provider
         self._profile = profile
@@ -304,10 +336,12 @@ class OpenWebResearchClient:
         api_key: str | None,
         timeout: float,
         language: str | None,
+        require_billing: bool = False,
     ) -> Iterable[Mapping[str, object]]:
         if provider == "tavily" and api_key:
             return _search_tavily(
-                query, max_results, api_key=api_key, timeout=timeout, language=language
+                query, max_results, api_key=api_key, timeout=timeout, language=language,
+                require_billing=require_billing,
             )
         raise ValueError(f"搜索提供方 {provider} 缺少有效配置")
 
@@ -348,7 +382,11 @@ class OpenWebResearchClient:
                 if canonical_url in seen_urls:
                     continue
                 seen_urls.add(canonical_url)
-                candidates.append({"title": title, "url": url, "snippet": snippet})
+                candidates.append({
+                    "title": _bounded_search_text(title, _SEARCH_TITLE_MAX_BYTES),
+                    "url": url,
+                    "snippet": _bounded_search_text(snippet, _SEARCH_SNIPPET_MAX_BYTES),
+                })
         candidates.sort(
             key=lambda item: (-_authority_score(item["url"]), -_relevance_score(query, item))
         )

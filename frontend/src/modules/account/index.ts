@@ -32,3 +32,5 @@ export { readAccountUsage, accountUsageFromCredits, type AccountUsage, type Acco
 
 export { settingsAgentColors, settingsSpeakingStyles, useAgentSettingsController } from "./useAgentSettingsController"
 export { AgentSoulEditor } from './AgentSoulEditor'
+
+export { notifyAccountUsageChanged, watchAccountUsageChanges } from './accountUsageEvents'

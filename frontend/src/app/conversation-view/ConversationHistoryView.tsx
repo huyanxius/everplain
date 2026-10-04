@@ -1,3 +1,4 @@
+import { useAnimatedDismiss } from '../../ui/usePresence'
 import { CaretDownIcon, CaretRightIcon, DotsThreeIcon, FolderIcon, FolderOpenIcon, MagnifyingGlassIcon, PencilLineIcon, PlusIcon, TrashIcon, XIcon } from '@phosphor-icons/react'
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -56,6 +57,14 @@ export function ConversationHistoryView(props: ConversationHistoryViewProps) {
   const projectsRef = useRef(projects)
   const rootRef = useRef<HTMLElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
+  const modalMotion = useAnimatedDismiss(rootRef, () => onClose?.())
+  const dismissModal = modalMotion.dismiss
+  const restoreActionFocus = useRef(true)
+  const actionMotion = useAnimatedDismiss(popoverRef, () => {
+    if (restoreActionFocus.current && action?.anchor.isConnected) action.anchor.focus({ preventScroll: true })
+    setAction(null); setError(null)
+  })
+  const dismissPopover = actionMotion.dismiss
   const searchRef = useRef<HTMLInputElement>(null)
   const restoreModalFocus = useRef(true)
   const idPrefix = useId()
@@ -72,9 +81,9 @@ export function ConversationHistoryView(props: ConversationHistoryViewProps) {
 
   const dismissAction = useCallback((restore = true) => {
     if (busyRef.current) return
-    setAction(current => { if (restore && current?.anchor.isConnected) current.anchor.focus({ preventScroll: true }); return null })
-    setError(null)
-  }, [])
+    restoreActionFocus.current = restore
+    dismissPopover()
+  }, [dismissPopover])
   useLayoutEffect(() => {
     if (!action) return
     const place = () => {
@@ -103,9 +112,10 @@ export function ConversationHistoryView(props: ConversationHistoryViewProps) {
         event.preventDefault(); event.stopPropagation()
         if (busyRef.current) return
         if (action) dismissAction()
-        else if (modal) onClose?.()
+        else if (modal) dismissModal()
       }
       if (modal && event.key === 'Tab') {
+        if (modalMotion.props.inert) { event.preventDefault(); return }
         const items = focusables(rootRef.current)
         const first = items[0], last = items.at(-1)
         if (!first) return
@@ -128,10 +138,11 @@ export function ConversationHistoryView(props: ConversationHistoryViewProps) {
     boundary?.addEventListener('keydown', keydown)
     document.addEventListener('pointerdown', outside)
     return () => { boundary?.removeEventListener('keydown', keydown); document.removeEventListener('pointerdown', outside) }
-  }, [action, dismissAction, modal, onClose])
+  }, [action, dismissAction, modal, dismissModal, modalMotion.props.inert])
 
   function openAction(next: HistoryAction) {
     if (busyRef.current) return
+    actionMotion.cancel()
     setError(null)
     setDraftTitle(next.kind === 'rename' ? next.conversation.title : '')
     setAction(next)
@@ -185,8 +196,8 @@ export function ConversationHistoryView(props: ConversationHistoryViewProps) {
     </div>
   }
 
-  const content = <section ref={rootRef} className={`cv-history${modal ? ' cv-history--modal qx-panel' : ''}`} role={modal ? 'dialog' : 'region'} aria-modal={modal || undefined} aria-label={modal ? text('研究记录', 'Research history') : text('Agent 对话记录', 'Agent conversation history')}>
-    <header className="cv-history__head"><h2 className="qx-heading">{modal ? text('研究记录', 'Research history') : text('项目', 'Projects')}</h2><div><button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={text('新建项目', 'New project')} title={text('新建项目', 'New project')} aria-haspopup="dialog" aria-expanded={action?.kind === 'create'} disabled={busy} onClick={event => { if (action?.kind === 'create') dismissAction(); else openAction({ kind: 'create', anchor: event.currentTarget }) }}><PlusIcon /></button>{modal && onClose ? <button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={text('关闭研究记录', 'Close research history')} disabled={busy} onClick={onClose}><XIcon /></button> : null}</div></header>
+  const content = <section ref={rootRef} data-motion-surface={modal ? 'modal' : undefined} {...(modal ? modalMotion.props : {})} className={`cv-history${modal ? ' cv-history--modal qx-panel' : ''}`} role={modal ? 'dialog' : 'region'} aria-modal={modal || undefined} aria-label={modal ? text('研究记录', 'Research history') : text('Agent 对话记录', 'Agent conversation history')}>
+    <header className="cv-history__head"><h2 className="qx-heading">{modal ? text('研究记录', 'Research history') : text('项目', 'Projects')}</h2><div><button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={text('新建项目', 'New project')} title={text('新建项目', 'New project')} aria-haspopup="dialog" aria-expanded={action?.kind === 'create'} disabled={busy} onClick={event => { if (action?.kind === 'create') dismissAction(); else openAction({ kind: 'create', anchor: event.currentTarget }) }}><PlusIcon /></button>{modal && onClose ? <button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={text('关闭研究记录', 'Close research history')} disabled={busy} onClick={modalMotion.dismiss}><XIcon /></button> : null}</div></header>
     {searchable ? <label className="cv-history__search"><MagnifyingGlassIcon aria-hidden="true" /><input ref={searchRef} aria-label={text('搜索研究记录', 'Search research history')} value={query} onChange={event => { setQuery(event.target.value); setSearchCollapsed(new Set()) }} placeholder={text('搜索问题或项目', 'Search questions or projects')} /></label> : null}
     {projectListError ? <p className="cv-history__error" role="alert">{projectListError}</p> : null}
     <div className="cv-history__body">{loading ? <p className="qx-meta" role="status">{text('正在加载记录…', 'Loading history…')}</p> : <>
@@ -205,11 +216,11 @@ export function ConversationHistoryView(props: ConversationHistoryViewProps) {
   </section>
 
   const formActions = (label: string, danger = false) => <div className="cv-history-popover__actions"><button className="qx-btn qx-btn--ghost" type="button" disabled={busy} onClick={() => dismissAction()}>{text('取消', 'Cancel')}</button><button className={`qx-btn ${danger ? 'qx-btn--danger' : 'qx-btn--primary'}`} type="submit" aria-label={label} disabled={busy || (!danger && !draftTitle.trim())}>{busy ? text('处理中…', 'Working…') : danger ? text('删除', 'Delete') : action?.kind === 'create' ? text('创建', 'Create') : text('保存', 'Save')}</button></div>
-  const popover: ReactNode = action ? <div ref={popoverRef} className="cv-history-popover qx-panel" style={position}>
+  const popover: ReactNode = action ? <div ref={popoverRef} data-motion-surface="popover" {...actionMotion.props} className="cv-history-popover qx-panel" style={position}>
     {action.kind === 'conversation-menu' ? <div role="menu" aria-label={text('对话操作', 'Conversation actions')}><button className="qx-btn qx-btn--ghost" type="button" role="menuitem" onClick={() => openAction({ ...action, kind: 'rename' })}><PencilLineIcon />{text('修改名称', 'Rename')}</button><button className="qx-btn qx-btn--danger" type="button" role="menuitem" onClick={() => openAction({ ...action, kind: 'delete-conversation' })}><TrashIcon />{text('删除对话', 'Delete conversation')}</button></div> : action.kind === 'project-menu' ? <div role="menu" aria-label={text('项目操作', 'Project actions')}><button className="qx-btn qx-btn--danger" type="button" role="menuitem" onClick={() => openAction({ ...action, kind: 'delete-project' })}><TrashIcon />{text('删除项目', 'Delete project')}</button></div> : <form role="dialog" aria-label={action.kind === 'create' ? text('新建项目', 'New project') : action.kind === 'rename' ? text('修改对话名称', 'Rename conversation') : action.kind === 'delete-project' ? text('删除项目', 'Delete project') : text('删除对话', 'Delete conversation')} onSubmit={event => { event.preventDefault(); void mutate() }}>
       {action.kind === 'create' || action.kind === 'rename' ? <><strong>{action.kind === 'create' ? text('新建项目', 'New project') : text('修改对话名称', 'Rename conversation')}</strong><input className="qx-input" aria-label={action.kind === 'create' ? text('项目名称', 'Project name') : text('修改对话名称', 'Rename conversation')} maxLength={action.kind === 'create' ? 300 : 120} value={draftTitle} disabled={busy} onChange={event => setDraftTitle(event.target.value)} />{formActions(action.kind === 'create' ? text('创建项目', 'Create project') : text('保存对话名称', 'Save conversation name'))}</> : <><strong>{action.kind === 'delete-project' ? text(`删除“${action.project.project_title}”？`, `Delete “${action.project.project_title}”?`) : text('删除这段对话？', 'Delete this conversation?')}</strong>{action.kind === 'delete-project' ? <p>{text('项目材料和研究内容将被删除，所属对话会保留为独立对话。', 'Project materials and research will be deleted. Conversations will remain as independent conversations.')}</p> : <p>{'conversation' in action ? action.conversation.title : ''}</p>}{formActions(action.kind === 'delete-project' ? text('确认删除项目', 'Confirm delete project') : text('确认删除对话', 'Confirm delete conversation'), true)}</>}
     </form>}
     {error ? <p className="cv-history__error" role="alert">{error}</p> : null}
   </div> : null
-  return <>{modal ? <div className="cv-history-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !busyRef.current) onClose?.() }}>{content}</div> : content}{popover ? createPortal(popover, rootRef.current ?? document.body) : null}</>
+  return <>{modal ? <div className="cv-history-backdrop" data-motion-surface="backdrop" {...modalMotion.props} onMouseDown={event => { if (event.target === event.currentTarget && !busyRef.current) dismissModal() }}>{content}</div> : content}{popover ? createPortal(popover, rootRef.current ?? document.body) : null}</>
 }

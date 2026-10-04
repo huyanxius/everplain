@@ -1,9 +1,9 @@
+import { PageLoading } from '../../ui/PageLoading'
 import { Select } from '../../ui/Select'
 import {
   ArrowDownIcon,
   BookOpenTextIcon,
   CheckCircleIcon,
-  CircleNotchIcon,
   FileArrowUpIcon,
   FolderPlusIcon,
   LinkSimpleIcon,
@@ -279,7 +279,7 @@ export function ProfessionalMaterialArchivePanel({
   }
 
   if (loading && !archive) {
-    return <p className="ep-material-notice" role="status"><CircleNotchIcon className="ep-material-library__spin" size={17} aria-hidden="true" />正在清点研究档案</p>
+    return <PageLoading message="正在清点研究档案" />
   }
   if (!archive || !draft) {
     return <div className="ep-material-notice" role="alert"><WarningCircleIcon size={17} aria-hidden="true" /><span>{error || '当前材料档案暂时无法打开。'}</span><button type="button" className="qx-btn qx-btn--secondary" onClick={() => { void refresh() }}>重新读取档案</button></div>

@@ -37,3 +37,11 @@ echo 'Approved ED25519 host fingerprint verified'
 # Uses only the existing sudo capability. The selected operation is fixed above.
 ssh "${opts[@]}" -p "$port" "$EVERPLAIN_DEPLOY_USER@$EVERPLAIN_DEPLOY_HOST" \
   'sudo -n python3 -' < "$root/ops/cd/$script"
+
+if [[ "${1:-inspect}" == inspect ]]; then
+  # Stream the checked helper via stdin; install nothing and expose only hashes.
+  echo 'EVERPLAIN_RUNTIME_FINGERPRINT_BEGIN'
+  ssh "${opts[@]}" -p "$port" "$EVERPLAIN_DEPLOY_USER@$EVERPLAIN_DEPLOY_HOST" \
+    'sudo -n python3 - inspect' < "$root/ops/cd/release_identity.py"
+  echo 'EVERPLAIN_RUNTIME_FINGERPRINT_END'
+fi

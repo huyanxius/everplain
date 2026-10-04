@@ -5,6 +5,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { AppRoutes } from './App'
+import { conversationGreeting } from './conversation-view/researchPrompts'
 import { AccountProvider } from '../modules/account'
 
 const cytoscapeMock = vi.hoisted(() => vi.fn(() => {
@@ -412,7 +413,7 @@ describe('App routes', () => {
 
   it.each([
     ['/app', /今天想弄清楚什么？/],
-    ['/agent', '今天想聊什么？'],
+    ['/agent', conversationGreeting('zh-CN', new Date())],
     ['/research/new', '从一个问题开始'],
     ['/research/task-1/phenomenon', '社区互助研究'],
     ['/research/task-1/match', '社区互助研究'],
@@ -513,7 +514,7 @@ describe('App routes', () => {
 
     const agentConversation = screen.getByRole('region', { name: 'Everplain Agent 对话' })
     expect(within(agentConversation).queryByText('从知识库出发，和你的学科 Agent 直接聊。')).not.toBeInTheDocument()
-    expect(within(agentConversation).getByRole('heading', { name: '今天想聊什么？' })).toBeVisible()
+    expect(within(agentConversation).getByRole('heading', { name: conversationGreeting('zh-CN', new Date()) })).toBeVisible()
     const textbox = within(agentConversation).getByRole('textbox', { name: '问 Everplain' })
     const sendButton = within(agentConversation).getByRole('button', {
       name: '发送给 Everplain',
@@ -941,7 +942,7 @@ describe('App routes', () => {
 
   it.each([
     ['anonymous' as const, '登录'],
-    ['authenticated' as const, '工作台'],
+    ['authenticated' as const, '继续'],
   ])('keeps /welcome public for a %s visitor', async (status, action) => {
     renderRoute('/welcome', { status })
 
@@ -952,6 +953,14 @@ describe('App routes', () => {
     ).toBeVisible()
     expect(screen.getByRole('link', { name: action })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/welcome')
+  })
+
+  it('does not flash login while the public website restores the session', async () => {
+    renderRoute('/welcome', { status: 'loading' })
+    expect(await screen.findByRole('heading', { level: 1, name: /^Everplain，帮你/ })).toBeVisible()
+    expect(screen.getByText('确认登录中…')).toHaveAttribute('role', 'status')
+    expect(screen.queryByRole('link', { name: '登录' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '继续' })).not.toBeInTheDocument()
   })
 
   it.each([

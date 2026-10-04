@@ -1,5 +1,6 @@
 import { CaretDownIcon, CheckIcon } from '@phosphor-icons/react'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type KeyboardEvent } from 'react'
+import { usePresence } from './usePresence'
 import './select.css'
 
 export interface SelectOption {
@@ -42,6 +43,7 @@ export function Select(props: SelectProps) {
   const hasValue = multiple ? selected.length > 0 : selected.some(option => String(option.value) !== '')
   const showInvalid = Boolean(invalid && required && !hasValue)
   const expanded = open && !disabled
+  const motion = usePresence(expanded, menuRef)
   const firstEnabled = options.findIndex(option => !option.disabled)
   const lastEnabled = options.findLastIndex(option => !option.disabled)
   const selectedIndex = options.findIndex(option => selectedValues.includes(String(option.value)) && !option.disabled)
@@ -185,9 +187,14 @@ export function Select(props: SelectProps) {
       window.removeEventListener('scroll', updatePosition, true)
       viewport?.removeEventListener('resize', updatePosition)
       viewport?.removeEventListener('scroll', updatePosition)
-      menu.hidePopover?.()
+
     }
   }, [expanded, options.length])
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current
+    return () => menu?.hidePopover?.()
+  }, [motion.present])
 
   useLayoutEffect(() => {
     const menu = menuRef.current
@@ -218,7 +225,7 @@ export function Select(props: SelectProps) {
       onInvalid={event => { event.preventDefault(); setInvalid(true); triggerRef.current?.focus() }} /> : null}
     {multiple && name ? selectedValues.map(item => <input key={item} type="hidden" name={name} form={form} value={item} disabled={disabled} />) : null}
     {showInvalid ? <span id={errorId} className="qx-select__error" role="alert">{validationMessage}</span> : null}
-    {expanded ? <div ref={menuRef} id={listId} className="qx-select__menu" popover="manual" role="listbox"
+    {motion.present ? <div ref={menuRef} data-motion-surface="popover" {...motion.props} id={listId} className="qx-select__menu" popover="manual" role="listbox"
       aria-labelledby={id} aria-multiselectable={multiple || undefined} style={position}>
       {options.map((option, index) => <div id={`${listId}-${index}`} key={String(option.value)} role="option"
         aria-selected={selectedValues.includes(String(option.value))} aria-disabled={option.disabled || undefined}

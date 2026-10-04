@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-from qunxue_api.api.routes.account_management import routers
 from qunxue_api.api.routes.frameworks import router as legacy_frameworks_router
 from qunxue_api.api.routes.knowledge import router as legacy_knowledge_router
 from qunxue_api.api.routes.matching import router as legacy_matching_router
@@ -17,7 +16,7 @@ app = create_app(settings=Settings(
 ))
 # Shared source modules still reference historic types for document compatibility.
 # These contracts are generated only; create_app never serves these legacy APIs.
-for router in (*routers, legacy_knowledge_router, legacy_matching_router,
+for router in (legacy_knowledge_router, legacy_matching_router,
                legacy_frameworks_router, legacy_examples_router):
     app.include_router(router)
 

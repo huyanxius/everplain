@@ -173,7 +173,7 @@ function pausableStream() {
   return { close: () => close(), response }
 }
 
-function renderPage(path = '/research/new', strict = false, userId = 'user-a') {
+function renderPage(path = '/research/new', strict = false, userId: string | null = 'user-a') {
   function LocationProbe() {
     const location = useLocation()
     return <output aria-label="当前测试路径">{location.pathname}{location.search}</output>
@@ -183,6 +183,25 @@ function renderPage(path = '/research/new', strict = false, userId = 'user-a') {
 }
 
 describe('NewResearchWorkspacePage', () => {
+  it('keeps an accessible page name and navigation without the redundant title bar', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ items: [] })))
+    const { container } = renderPage()
+    expect(screen.getByRole('heading', { name: '新建研究', level: 1 })).toHaveClass('cv-visually-hidden')
+    expect(container.querySelector('.research-launch__bar')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '返回研究' })).toHaveAttribute('href', '/research/materials')
+    expect(screen.getByRole('navigation', { name: '研究工作区视图' })).toBeInTheDocument()
+    await waitFor(() => expect(container.querySelector('.ep-map__idle-content .agent-avatar')).toHaveAttribute('data-avatar', 'cheng'))
+    expect(container.querySelector('.ep-map__idle-content .agent-avatar')).toHaveStyle({ '--aa-color': '#b8c5b0' })
+    expect(container.querySelector('[data-research-agent-bot]')).not.toBeInTheDocument()
+  })
+
+  it('uses the existing default Agent avatar while no user profile is known', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ items: [] })))
+    const { container } = renderPage('/research/new', false, null)
+    await screen.findByLabelText('画布说明')
+    expect(container.querySelector('.ep-map__idle-content .agent-avatar')).toHaveAttribute('data-avatar', 'shi')
+  })
+
   it('keeps the draft when switching between mobile Agent and map panes', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [] })))
     renderPage()
@@ -865,7 +884,7 @@ describe('NewResearchWorkspacePage', () => {
     expect(within(workspace).queryByText('预览 Agent')).not.toBeInTheDocument()
   })
 
-  it('marks an uncited answer as a working hypothesis instead of implying sourced evidence', async () => {
+  it('omits the unsourced warning while preserving the uncited answer', async () => {
     const conversation = conversationFixture(
       '请先不用检索，解释社区互助为什么会减少。',
       '可以先从信任、资源压力与互动机会三个层面提出解释。',
@@ -883,8 +902,9 @@ describe('NewResearchWorkspacePage', () => {
     fireEvent.change(textbox, { target: { value: conversation.title } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
-    expect(await within(workspace).findByText(/未调用知识库/)).toBeVisible()
-    expect(within(workspace).getByText(/工作假设/)).toBeVisible()
+    await waitFor(() => expect(workspace).toHaveTextContent('可以先从信任、资源压力与互动机会三个层面提出解释。'))
+    expect(within(workspace).queryByText(/未调用知识库/)).not.toBeInTheDocument()
+    expect(within(workspace).queryByText(/工作假设/)).not.toBeInTheDocument()
   })
 
   it('renders a real GFM table in the Agent answer', async () => {

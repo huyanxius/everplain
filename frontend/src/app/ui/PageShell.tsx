@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { usePresence } from '../../ui/usePresence'
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Dispatch, PropsWithChildren, ReactNode, Ref, SetStateAction } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, NavLink, useLocation } from 'react-router'
@@ -12,6 +13,7 @@ import { ApplicationFrame } from '../application-frame/ApplicationFrame'
 import { AccountMenu } from './AccountMenu'
 import { useSidebarLayoutPreference } from '../../styles/sidebarLayoutPreference'
 import { useSidebarRecordsOpen } from '../../styles/sidebarRecordsPreference'
+import { useDrawerPresence } from './useDrawerPresence'
 
 type PageTitleProps = { eyebrow?: string; title: string; lede?: string }
 type RailState = { collapsed: boolean; setCollapsed: Dispatch<SetStateAction<boolean>> }
@@ -86,9 +88,13 @@ export function PageShell({ children, workspace = false, immersive = false, wide
   const drawerRef = useRef<HTMLElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const notificationButtonRef = useRef<HTMLButtonElement>(null)
+  const notificationSurface = useRef<HTMLElement>(null)
   const session = account.sessionState.status === 'authenticated' ? account.sessionState.session : null
   const authenticated = session !== null
   const userId = session?.user.userId
+  const drawerMotion = useDrawerPresence({ open: drawerOpen, enabled: narrow && !immersive, scopeKey: userId, drawerRef, triggerRef: menuButtonRef, onDismiss: () => setDrawerOpen(false) })
+  const notificationMotion = usePresence(notificationsOpen, notificationSurface, userId)
+  useLayoutEffect(() => { setDrawerOpen(false); setNotificationsOpen(false) }, [userId])
   const accountName = session ? session.user.displayName?.trim() || text('我的账户', 'My account') : text('账户', 'Account')
 
   useEffect(() => {
@@ -97,26 +103,7 @@ export function PageShell({ children, workspace = false, immersive = false, wide
     return () => window.removeEventListener('resize', resize)
   }, [])
   useEffect(() => { setDrawerOpen(false); setNotificationsOpen(false) }, [location.pathname, location.search])
-  useEffect(() => { if (!narrow) setDrawerOpen(false) }, [narrow])
-  useEffect(() => {
-    if (!narrow || !drawerOpen) return
-    const trigger = menuButtonRef.current
-    const overflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    drawerRef.current?.querySelector<HTMLButtonElement>('[data-close-drawer]')?.focus()
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return
-      if (event.key === 'Escape') { event.preventDefault(); setDrawerOpen(false); return }
-      if (event.key !== 'Tab') return
-      const controls = Array.from(drawerRef.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input:not(:disabled),summary,[tabindex="0"]') ?? []).filter(node => node.getClientRects().length > 0)
-      if (!controls.length) return
-      const first = controls[0], last = controls[controls.length - 1]
-      if (event.shiftKey && (document.activeElement === first || !drawerRef.current?.contains(document.activeElement))) { event.preventDefault(); last.focus() }
-      else if (!event.shiftKey && (document.activeElement === last || !drawerRef.current?.contains(document.activeElement))) { event.preventDefault(); first.focus() }
-    }
-    document.addEventListener('keydown', handleKey)
-    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', handleKey); trigger?.focus() }
-  }, [narrow, drawerOpen])
+  useEffect(() => { if (!narrow || immersive) setDrawerOpen(false) }, [narrow, immersive])
 
   const params = new URLSearchParams(location.search)
   const conversationId = params.get('conversation_id')
@@ -127,13 +114,12 @@ export function PageShell({ children, workspace = false, immersive = false, wide
   }
   const projectId = location.pathname.match(/^\/research\/([^/]+)\/workspace/)?.[1]
   if (projectId && !viewParams.has('task_id')) viewParams.set('task_id', decodeURIComponent(projectId))
-  const conversationHref = conversationId && isConversationPage ? `/agent?${viewParams}` : '/agent'
   const viewDestination = conversationId && isConversationPage ? `${location.pathname === '/agent' ? '/research/new' : '/agent'}?${viewParams}` : null
   const viewLabel = location.pathname === '/agent' ? text('研究画布', 'Research canvas') : text('对话视图', 'Conversation view')
   const navigation = [
     ['/app', text('首页', 'Home'), 'home'],
-    [conversationHref, text('研究 Agent', 'Research Agent'), 'chat'],
     ['/library', text('知识库', 'Library'), 'library'],
+    ['/writing', text('写作', 'Writing'), 'compose'],
     ['/my/graph', text('图谱', 'Graph'), 'graph'],
     ['/research/materials', text('研究', 'Research'), 'file'],
   ] as const
@@ -149,7 +135,7 @@ export function PageShell({ children, workspace = false, immersive = false, wide
 
 
   return <ApplicationFrame
-    collapsed={splitRail || collapsed} drawerOpen={drawerOpen} narrow={narrow}
+    collapsed={splitRail || collapsed} drawerOpen={drawerMotion.open} drawerPresent={drawerMotion.present} narrow={narrow}
     splitRail={splitRail} recordsOpen={recordsOpen} recordsLabel={text('对话与研究', 'Conversations and research')}
     immersive={immersive} workspace={workspace} wide={wide}
     sidebarRef={drawerRef} onDismiss={() => setDrawerOpen(false)}
@@ -157,7 +143,7 @@ export function PageShell({ children, workspace = false, immersive = false, wide
     sidebarLabel={text('Everplain 功能栏', 'Everplain navigation')}
     dismissLabel={text('关闭菜单', 'Close menu')}
     notice={<NetworkStatusNotice />}
-    brand={<Link className="application-brand" to="/app" aria-label={text('Everplain 工作台', 'Everplain workbench')}><ProductMark /><strong>Everplain</strong></Link>}
+    brand={<Link className="application-brand" to="/welcome" aria-label={text('Everplain 官网', 'Everplain website')}><ProductMark /><strong>Everplain</strong></Link>}
     toggle={<button aria-controls={splitRail ? 'application-records' : undefined} aria-expanded={splitRail ? recordsOpen : undefined} data-close-drawer={narrow || undefined} className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={narrow ? text('关闭菜单', 'Close menu') : splitRail ? recordsOpen ? text('收起对话与研究', 'Hide conversations and research') : text('展开对话与研究', 'Show conversations and research') : collapsed ? text('展开侧栏', 'Expand sidebar') : text('收起侧栏', 'Collapse sidebar')} onClick={() => narrow ? setDrawerOpen(false) : splitRail ? setRecordsOpen(value => !value) : setCollapsed(value => !value)}>{narrow ? <NavIcon name="close" /> : <NavIcon name="sidebar" />}</button>}
     newConversation={<Link className="qx-item" to="/agent" title={text('新对话', 'New conversation')}><NavIcon name="compose" /><span className="application-navigation__label">{text('新对话', 'New conversation')}</span></Link>}
     navigation={<nav className="application-navigation" aria-label={narrow ? text('移动主导航', 'Mobile navigation') : text('桌面主导航', 'Main navigation')}>
@@ -175,7 +161,7 @@ export function PageShell({ children, workspace = false, immersive = false, wide
         <button ref={notificationButtonRef} className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={text('通知', 'Notifications')} aria-expanded={notificationsOpen} aria-controls="desktop-notifications" onClick={() => setNotificationsOpen(value => !value)}><NavIcon name="bell" /></button>
       </> : account.sessionState.status === 'loading' ? <span className="qx-meta" role="status">{text('确认账户中', 'Checking account')}</span> : <Link className="qx-item" to="/login" title={text('登录', 'Sign in')}><NavIcon name="user" /><span className="application-navigation__label">{text('登录', 'Sign in')}</span></Link>}
     </div>}
-    notifications={notificationsOpen ? <section className="qx-panel application-notifications" id="desktop-notifications" aria-label={text('通知栏', 'Notifications panel')} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setNotificationsOpen(false); notificationButtonRef.current?.focus() } }}>
+    notifications={notificationMotion.present ? <section ref={notificationSurface} data-motion-surface="popover" {...notificationMotion.props} className="qx-panel application-notifications" id="desktop-notifications" aria-label={text('通知栏', 'Notifications panel')} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setNotificationsOpen(false); notificationButtonRef.current?.focus() } }}>
             <header><h2 className="qx-card__title">{text('通知', 'Notifications')}</h2><button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label={text('关闭通知', 'Close notifications')} onClick={() => { setNotificationsOpen(false); notificationButtonRef.current?.focus() }}><NavIcon name="close" /></button></header>
             <div className="qx-segmented application-notifications__tabs" role="tablist" aria-label={text('通知分类', 'Notification categories')}>
               {([['all', text('全部', 'All')], ['updates', text('更新日志', 'Updates')], ['messages', text('消息', 'Messages')]] as const).map(([filter, label]) => <button className="qx-btn qx-btn--ghost" key={filter} type="button" role="tab" aria-selected={notificationFilter === filter} onClick={() => setNotificationFilter(filter)}>{label}</button>)}
@@ -184,8 +170,8 @@ export function PageShell({ children, workspace = false, immersive = false, wide
             {notificationFilter !== 'updates' ? <article className="application-notifications__item"><strong>{text('暂无新消息', 'No new messages')}</strong></article> : null}
           </section> : null}
     mobileHeader={<>
-      <button ref={menuButtonRef} className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={text('打开菜单', 'Open menu')} aria-expanded={drawerOpen} aria-controls="application-sidebar" onClick={() => setDrawerOpen(true)}><NavIcon name="menu" /></button>
-      <Link className="application-brand" to="/app"><ProductMark /><strong>Everplain</strong></Link>
+      <button ref={menuButtonRef} className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={text('打开菜单', 'Open menu')} aria-expanded={drawerMotion.open} aria-controls="application-sidebar" onClick={() => setDrawerOpen(true)}><NavIcon name="menu" /></button>
+      <Link className="application-brand" to="/welcome" aria-label={text('Everplain 官网', 'Everplain website')}><ProductMark /><strong>Everplain</strong></Link>
       <Link data-mobile-new className="qx-btn qx-btn--ghost qx-btn--icon" to="/agent" aria-label={text('新对话', 'New conversation')}><NavIcon name="compose" /></Link>
     </>}
   >{children}</ApplicationFrame>

@@ -1,3 +1,4 @@
+import { PageLoading } from '../../ui/PageLoading'
 import { Select } from '../../ui/Select'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -624,7 +625,7 @@ export function M4TheoryJudgment({ task, gateway, onConfirmed }: M4TheoryJudgmen
   }
 
   if (operation === 'loading' || operation === 'starting') {
-    return <section className="m4-theory-judgment" aria-label="M4 理论判断"><div className="m4-state m4-state--loading" role="status"><span className="m4-state__spinner" aria-hidden="true" />{operation === 'starting' ? '正在从正式知识发布生成候选…' : '正在恢复理论判断与决定草稿…'}</div></section>
+    return <section className="m4-theory-judgment" aria-label="M4 理论判断"><PageLoading message={operation === 'starting' ? '正在从正式知识发布生成候选…' : '正在恢复理论判断与决定草稿…'} /></section>
   }
 
   if (failure && !workspace) {

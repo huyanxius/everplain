@@ -3,11 +3,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AccountMenu } from './AccountMenu'
-import { readAccountUsage } from '../../modules/account'
+import { readAccountUsage, notifyAccountUsageChanged } from '../../modules/account'
 import { subscription } from '../../modules/product-integrations'
 
 vi.mock('./RoleIdentityPanel', () => ({ RoleIdentityPanel: ({ open, initialTab }: { open: boolean; initialTab: string }) => open ? <section role="dialog" aria-label="AI 伙伴">{initialTab}</section> : null }))
-vi.mock('../../modules/account', () => ({ readAccountUsage: vi.fn() }))
+vi.mock('../../modules/account', async () => ({ ...(await vi.importActual('../../modules/account/accountUsageEvents')), readAccountUsage: vi.fn() }))
 vi.mock('../../modules/product-integrations', () => ({ subscription: vi.fn() }))
 vi.mock('../../modules/agent-profile', () => ({ readAgentProfile: vi.fn() }))
 const clients: QueryClient[] = []
@@ -62,14 +62,14 @@ describe('AccountMenu', () => {
     vi.mocked(readAccountUsage).mockResolvedValueOnce({ isUnlimited: false, remainingPercent: 42, buckets: [{ id: 'period-current', kind: 'subscription', remainingPercent: 42, expiresAt: null }] }).mockResolvedValueOnce({ isUnlimited: true, remainingPercent: null, buckets: [] })
     const { trigger } = setup()
     fireEvent.click(trigger)
-    expect(await screen.findByText('42%')).toBeVisible()
+    expect(await screen.findByText('剩余 42%')).toBeVisible()
     fireEvent.pointerDown(screen.getByRole('button', { name: '其他入口' }))
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     fireEvent.click(trigger)
     expect((await screen.findAllByText('不限量'))[0]).toBeVisible()
     expect(readAccountUsage).toHaveBeenCalledTimes(2)
   })
-  it('shows only the subscription percentage in the first-level monthly summary', async () => {
+  it('shows each real allowance once with its own progress bar', async () => {
     vi.mocked(readAccountUsage).mockResolvedValue({ isUnlimited: false, remainingPercent: null, buckets: [
       { id: 'current', kind: 'subscription', remainingPercent: 42, expiresAt: null },
       { id: 'gift', kind: 'welcome', remainingPercent: 100, expiresAt: null },
@@ -78,25 +78,40 @@ describe('AccountMenu', () => {
     const { trigger } = setup()
     expect(readAccountUsage).not.toHaveBeenCalled()
     fireEvent.click(trigger)
-    const meter = await screen.findByRole('progressbar', { name: '当前套餐周期剩余额度' })
+    const meter = await screen.findByRole('progressbar', { name: '套餐额度剩余' })
     expect(meter).toHaveAttribute('aria-valuenow', '42')
     expect(meter.firstElementChild).toHaveStyle({ width: '42%' })
     expect(screen.getByRole('menu').firstElementChild).toHaveClass('account-menu__identity')
-    expect(screen.getByRole('menu').children[1]).toHaveTextContent('本月额度剩余 42%')
-    expect(screen.getByText('按当前套餐周期，非自然月统计')).toBeVisible()
-    expect(screen.getByRole('menuitem', { name: /剩余使用额度/ })).toHaveAttribute('href', '/subscription')
-    expect(screen.getByText('赠送额度')).toBeVisible()
-    expect(screen.getByText('额外购买额度')).toBeVisible()
+    expect(screen.getByRole('menu').children[1]).toHaveTextContent('套餐额度剩余 42%')
+    expect(screen.getAllByRole('progressbar')).toHaveLength(3)
+    expect(screen.getByRole('menuitem', { name: '使用情况' })).toHaveAttribute('href', '/subscription')
+    expect(screen.getAllByText('赠送额度')).toHaveLength(1)
+    expect(screen.getAllByText('额外购买额度')).toHaveLength(1)
+    expect(screen.getByRole('menuitem', { name: '使用情况' })).not.toHaveTextContent('%')
   })
-  it('does not turn a welcome allowance into a monthly percentage', async () => {
-    vi.mocked(readAccountUsage).mockResolvedValue({ isUnlimited: false, remainingPercent: 100, buckets: [
-      { id: 'gift', kind: 'welcome', remainingPercent: 100, expiresAt: null },
+  it.each([0, 99, 100])('renders a welcome allowance of %s%% without calling it monthly usage', async percent => {
+    vi.mocked(readAccountUsage).mockResolvedValue({ isUnlimited: false, remainingPercent: percent, buckets: [
+      { id: 'gift', kind: 'welcome', remainingPercent: percent, expiresAt: null },
     ] })
     const { trigger } = setup()
     fireEvent.click(trigger)
-    expect(await screen.findByText('暂无月度额度')).toBeVisible()
+    const meter = await screen.findByRole('progressbar', { name: '赠送额度剩余' })
+    expect(meter).toHaveAttribute('aria-valuenow', String(percent))
+    expect(meter.firstElementChild).toHaveStyle({ width: `${percent}%` })
+    expect(screen.getAllByText('赠送额度')).toHaveLength(1)
+    expect(screen.getAllByText(`剩余 ${percent}%`)).toHaveLength(1)
+    expect(screen.getByRole('menu')).not.toHaveTextContent('月度')
+  })
+  it('does not draw an empty meter for unknown allowance', async () => {
+    vi.mocked(readAccountUsage).mockResolvedValue({ isUnlimited: false, remainingPercent: null, buckets: [
+      { id: 'gift', kind: 'welcome', remainingPercent: null, expiresAt: null },
+    ] })
+    const { trigger } = setup()
+    fireEvent.click(trigger)
+    expect(await screen.findByText('赠送额度')).toBeVisible()
+    expect(screen.getByText('暂不可用')).toBeVisible()
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
-    expect(screen.getByText('赠送额度')).toBeVisible()
+    expect(screen.getByRole('menu').querySelector('.account-menu__meter')).toBeNull()
   })
   it('renders exhausted subscription usage as zero rather than missing data', async () => {
     vi.mocked(readAccountUsage).mockResolvedValue({ isUnlimited: false, remainingPercent: 0, buckets: [
@@ -107,15 +122,15 @@ describe('AccountMenu', () => {
     expect(await screen.findByRole('progressbar')).toHaveAttribute('aria-valuenow', '0')
     expect(screen.getByText('剩余 0%')).toBeVisible()
   })
-  it('does not choose between overlapping subscription buckets', async () => {
+  it('keeps overlapping subscription buckets separate without combining them', async () => {
     vi.mocked(readAccountUsage).mockResolvedValue({ isUnlimited: false, remainingPercent: null, buckets: [
       { id: 'one', kind: 'subscription', remainingPercent: 20, expiresAt: null },
       { id: 'two', kind: 'subscription', remainingPercent: 90, expiresAt: null },
     ] })
     const { trigger } = setup()
     fireEvent.click(trigger)
-    expect(await screen.findByText('待确认')).toBeVisible()
-    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+    const meters = await screen.findAllByRole('progressbar')
+    expect(meters.map(meter => meter.getAttribute('aria-valuenow'))).toEqual(['20', '90'])
   })
   it('shows loading and failures without fabricated usage', async () => {
     let rejectUsage!: (reason: Error) => void
@@ -125,7 +140,7 @@ describe('AccountMenu', () => {
     expect(screen.getByRole('menu').children[1]).toHaveTextContent('正在读取…')
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
     await act(async () => rejectUsage(new Error('offline')))
-    expect(await screen.findByText('暂不可用')).toBeVisible()
+    expect(await screen.findByText('额度信息暂不可用')).toBeVisible()
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
   })
   it('keeps missing plans honest and updates the selected pet from the shared profile cache', async () => {
@@ -146,8 +161,8 @@ describe('AccountMenu', () => {
     fireEvent.click(trigger)
     expect(await screen.findByText('套餐额度')).toBeVisible()
     expect(screen.getByText('额外购买额度')).toBeVisible()
-    expect(screen.getByText('40%')).toBeVisible()
-    expect(screen.getByText('100%')).toBeVisible()
+    expect(screen.getByText('剩余 40%')).toBeVisible()
+    expect(screen.getByText('剩余 100%')).toBeVisible()
     expect(screen.queryByText('额度信息暂不可用')).not.toBeInTheDocument()
   })
 })
@@ -159,4 +174,20 @@ it.each([['Soul · 人格', 'identity'], ['Memory · 记忆', 'memory']])('opens
   expect(screen.getByRole('dialog', { name: 'AI 伙伴' })).toHaveTextContent(tab)
   expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   expect(screen.getByTestId('location')).toHaveTextContent('/library|')
+})
+
+
+it('refreshes on settled usage and ignores an older pending response', async () => {
+  const value = (remainingPercent: number) => ({ isUnlimited: false, remainingPercent, buckets: [{ id: 'gift', kind: 'welcome' as const, remainingPercent, expiresAt: null }] })
+  let resolveOld!: (resolved: ReturnType<typeof value>) => void
+  vi.mocked(readAccountUsage).mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+    .mockResolvedValueOnce(value(99.98))
+  const { trigger } = setup()
+  fireEvent.click(trigger)
+  await waitFor(() => expect(readAccountUsage).toHaveBeenCalledTimes(1))
+  act(() => notifyAccountUsageChanged())
+  expect(await screen.findByText('剩余 99.98%')).toBeVisible()
+  await act(async () => resolveOld(value(90)))
+  expect(screen.getByText('剩余 99.98%')).toBeVisible()
+  expect(screen.queryByText('剩余 90%')).not.toBeInTheDocument()
 })

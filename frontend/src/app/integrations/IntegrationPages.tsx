@@ -1,3 +1,4 @@
+import { useAnimatedDismiss } from '../../ui/usePresence'
 import { Select } from '../ui/Select'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -109,7 +110,7 @@ function SharingContent() {
         </div> : <Empty title="还没有知识库"><p className="qx-meta">导入自己的资料，或使用邀请加入知识库。</p><Link className="qx-btn qx-btn--secondary" to="/imports">导入资料<ArrowRightIcon /></Link></Empty>}
       </section>
     </div>
-    {publishing ? <PublishDialog busy={busy} onClose={() => setPublishing(undefined)} trigger={publishTrigger.current}>
+    {publishing ? <PublishDialog busy={busy} onClose={() => setPublishing(undefined)} trigger={publishTrigger.current}>{dismiss =>
       <form className="ep-publish-form" onSubmit={event => {
         event.preventDefault()
         if (!confirm) return
@@ -123,22 +124,24 @@ function SharingContent() {
         <label className="ep-integration-field">主题标签<input className="qx-input" value={topics} onChange={event => setTopics(event.target.value)} placeholder="用顿号分隔，最多 12 个" /></label>
         <label className="ep-integration-check"><input type="checkbox" checked={confirm} onChange={event => setConfirm(event.target.checked)} /><span>我确认将当前 {list.data?.find(item => item.id === publishing)?.ready_document_count ?? 0} 份可读资料及原文公开，任何人都可阅读。以后新增的资料不会自动公开。</span></label>
         {error ? <p role="alert" className="qx-notice qx-notice--danger">{error}</p> : null}
-        <footer className="ep-integrations__actions"><button className="qx-btn qx-btn--secondary" type="button" disabled={busy} onClick={() => setPublishing(undefined)}>取消</button><button className="qx-btn qx-btn--primary" disabled={busy || !confirm}>{busy ? '正在公开…' : '确认公开当前资料'}</button></footer>
-      </form>
+        <footer className="ep-integrations__actions"><button className="qx-btn qx-btn--secondary" type="button" disabled={busy} onClick={dismiss}>取消</button><button className="qx-btn qx-btn--primary" disabled={busy || !confirm}>{busy ? '正在公开…' : '确认公开当前资料'}</button></footer>
+      </form>}
     </PublishDialog> : null}
   </IntegrationPage>
 }
 
-function PublishDialog({ busy, onClose, trigger, children }: { busy: boolean; onClose(): void; trigger: HTMLButtonElement | null; children: ReactNode }) {
+function PublishDialog({ busy, onClose, trigger, children }: { busy: boolean; onClose(): void; trigger: HTMLButtonElement | null; children: (dismiss: () => void) => ReactNode }) {
   const titleId = useId()
   const surface = useRef<HTMLElement>(null)
-  const interaction = useRef({ busy, onClose })
-  useEffect(() => { interaction.current = { busy, onClose } }, [busy, onClose])
+  const motion = useAnimatedDismiss(surface, onClose)
+  const interaction = useRef({ busy, onClose: motion.dismiss, closing: motion.props.inert })
+  useEffect(() => { interaction.current = { busy, onClose: motion.dismiss, closing: motion.props.inert } }, [busy, motion.dismiss, motion.props.inert])
   useEffect(() => {
     surface.current?.querySelector<HTMLButtonElement>('button')?.focus()
     function handleKey(event: KeyboardEvent) {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (!interaction.current.busy) interaction.current.onClose() }
       if (event.key !== 'Tab') return
+      if (interaction.current.closing) { event.preventDefault(); return }
       const controls = Array.from(surface.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled)') ?? [])
       const first = controls[0]; const last = controls.at(-1)
       if (!first || !last) return
@@ -148,7 +151,7 @@ function PublishDialog({ busy, onClose, trigger, children }: { busy: boolean; on
     document.addEventListener('keydown', handleKey)
     return () => { document.removeEventListener('keydown', handleKey); if (trigger?.isConnected) trigger.focus() }
   }, [trigger])
-  return <div className="ep-integration-dialog"><section ref={surface} role="dialog" aria-modal="true" aria-labelledby={titleId} className="qx-modal ep-integration-dialog__surface"><header><h2 className="qx-section-title" id={titleId}>发布公共主题</h2><button className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="关闭发布" disabled={busy} onClick={onClose}><XIcon /></button></header>{children}</section></div>
+  return <div className="ep-integration-dialog" data-motion-surface="backdrop" {...motion.props}><section ref={surface} data-motion-surface="modal" {...motion.props} role="dialog" aria-modal="true" aria-labelledby={titleId} className="qx-modal ep-integration-dialog__surface"><header><h2 className="qx-section-title" id={titleId}>发布公共主题</h2><button className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="关闭发布" disabled={busy || motion.props.inert} onClick={motion.dismiss}><XIcon /></button></header>{children(motion.dismiss)}</section></div>
 }
 
 export function PublicDirectoryPage() {

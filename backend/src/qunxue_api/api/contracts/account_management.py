@@ -69,6 +69,8 @@ class CreditUsageBucketResponse(BaseModel):
     bucket_id: str
     kind: Literal["subscription", "top_up", "welcome"]
     available_points: int = Field(ge=0)
+    # Settled balance includes fractional consumption, excludes temporary holds.
+    settled_remaining_points: float | None = Field(default=None, ge=0)
     limit_points: int = Field(gt=0)
     expires_at: datetime | None = None
 

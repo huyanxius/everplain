@@ -37,7 +37,7 @@ import { resolveCssColor } from '../../styles/resolveCssColor'
 import { arrangeResearchCanvas, researchCanvasStages, CANVAS_CARD_SIZE, CANVAS_COLUMN_GAP } from '../../modules/research-workspace'
 import { canvasSuggestions, type AgentConversation } from '../../modules/research-agent'
 import { CanvasCardEditor, type CanvasCardDraft } from './CanvasCardEditor'
-import { ResearchAgentBot } from '../agent/ResearchAgentBot'
+import { AgentAvatar } from '../../modules/agent-avatar'
 import '@xyflow/react/dist/style.css'
 import './research-map-canvas.css'
 
@@ -46,6 +46,7 @@ type ResearchMapCanvasProps = {
   readonly onConversationChange?: (conversation: AgentConversation) => void
   readonly projection: ResearchCanvasProjection
   readonly idleActions?: ReactNode
+  readonly idleCompanion?: ReactNode
   readonly selectedNodeId?: string | null
   readonly onSelectNode?: (node: ResearchCanvasNode) => void
   readonly onClearSelection?: () => void
@@ -146,11 +147,11 @@ function ArgumentNode({ data, selected }: NodeProps<ArgumentFlowNode>) {
 
 const nodeTypes = { argument: ArgumentNode }
 
-function MapIdleNote({ actions }: { readonly actions?: ReactNode }) {
+function MapIdleNote({ actions, companion }: { readonly actions?: ReactNode; readonly companion?: ReactNode }) {
   return (
     <div className="ep-map__idle-state">
       <div className="ep-map__idle-content">
-        <ResearchAgentBot />
+        {companion ?? <AgentAvatar avatar="shi" size={96} state="greet" />}
         <div className="ep-map__idle-note" aria-label="画布说明">
           <h2 className="qx-section-title">从一个问题开始</h2>
           <p>对话中形成的研究结构会在这里展开。</p>
@@ -166,6 +167,7 @@ export function ResearchMapCanvas({
   conversation = null,
   onConversationChange,
   idleActions,
+  idleCompanion,
   selectedNodeId = null,
   onSelectNode,
   onClearSelection,
@@ -331,7 +333,7 @@ export function ResearchMapCanvas({
         </ReactFlow>
         </ExpandedNodeContentContext.Provider>
         )}
-        {!projection.nodes.length ? <MapIdleNote actions={idleActions} /> : null}
+        {!projection.nodes.length ? <MapIdleNote actions={idleActions} companion={idleCompanion} /> : null}
         {projection.nodes.length && !focusedDocumentContent ? (
           <>
             {['thinking', 'retrieving', 'answering'].includes(projection.status) ? <div className="ep-map__layout-status" role="status">{projection.status === 'retrieving' ? 'Agent 正在查找依据…' : 'Agent 正在推进研究…'}{selectedNode ? ` · ${selectedNode.title}` : ''}</div> : null}

@@ -5,7 +5,9 @@ from typing import Literal
 from uuid import UUID
 
 WELCOME_GRANT = 10_000
-SIGNUP_GRANT = 3_000
+# Fixed signup gift; shared by registration and missing-account fallbacks.
+# Existing balances and redemption amounts are unchanged.
+SIGNUP_GRANT = 30
 INPUT_TOKENS_PER_CREDIT = 100
 OUTPUT_TOKENS_PER_CREDIT = 25
 

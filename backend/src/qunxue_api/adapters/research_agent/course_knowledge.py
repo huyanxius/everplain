@@ -14,7 +14,11 @@ from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.usage import UsageLimits
 
-from qunxue_api.adapters.model.metering import MeteredOpenAIChatModel, reject_current_attempt
+from qunxue_api.adapters.model.metering import (
+    MeteredOpenAIChatModel,
+    MeteredOpenAIResponsesModel,
+    reject_current_attempt,
+)
 from qunxue_api.adapters.model.routing import (
     ModelAttemptFailure,
     ModelAttemptResult,
@@ -109,9 +113,21 @@ class CourseWorkCancelled(RuntimeError):
 class CourseKnowledgeGenerator:
     VERSION = 2
 
-    def __init__(self, endpoints, *, route_executor=None, max_concurrency=None, cost_limits=None):
+    def __init__(
+        self,
+        endpoints,
+        *,
+        route_executor=None,
+        max_concurrency=None,
+        cost_limits=None,
+        protocol="chat_completions",
+        reasoning_effort=None,
+    ):
+        if protocol not in {"chat_completions", "responses"}:
+            raise ValueError("unsupported organization model protocol")
         endpoints = tuple(endpoints) if isinstance(endpoints, (list, tuple)) else (endpoints,)
         self.router = route_executor or ModelRouteExecutor(endpoints=endpoints)
+        self.protocol, self.reasoning_effort = protocol, reasoning_effort
         self.cost_limits = cost_limits or CourseCostLimits()
         self.max_concurrency = min(
             self.cost_limits.concurrency, max_concurrency or self.cost_limits.concurrency
@@ -157,8 +173,12 @@ class CourseKnowledgeGenerator:
     async def _generate_at_endpoint(self, endpoint, batch):
         timeout = endpoint.timeout_seconds
         settings = {"max_tokens": self.cost_limits.output_tokens, "timeout": timeout}
-        if endpoint.model.lower().startswith("gpt-5"):
+        if self.reasoning_effort is not None:
+            settings["openai_reasoning_effort"] = self.reasoning_effort
+        elif endpoint.model.lower().startswith("gpt-5"):
             settings["openai_reasoning_effort"] = "low"
+        if self.protocol == "responses":
+            settings["openai_store"] = False
         # Compact IDs reduce copying/token cost; only original IDs leave this adapter.
         sources = {str(i): item["segment_id"] for i, item in enumerate(batch)}
         prompt_batch = [
@@ -171,8 +191,13 @@ class CourseKnowledgeGenerator:
         async with AsyncOpenAI(
             base_url=endpoint.base_url, api_key=endpoint.api_key, max_retries=0, timeout=timeout
         ) as client:
+            model_type = (
+                MeteredOpenAIResponsesModel
+                if self.protocol == "responses"
+                else MeteredOpenAIChatModel
+            )
             agent = Agent(
-                MeteredOpenAIChatModel(
+                model_type(
                     endpoint.model,
                     provider=OpenAIProvider(openai_client=client),
                     require_billing=True,

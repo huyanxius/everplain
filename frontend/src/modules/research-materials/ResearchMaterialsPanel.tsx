@@ -1,3 +1,4 @@
+import { useAnimatedDismiss, usePresence } from '../../ui/usePresence'
 import { CheckCircleIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
 import { useEffect, useRef, useState, type ReactNode, type ChangeEvent } from 'react'
 
@@ -569,6 +570,12 @@ export function ResearchMaterialsPanel({
         : null
     : null
 
+  const surface = useRef<HTMLElement>(null)
+  const archive = useRef<HTMLElement>(null)
+  const motion = useAnimatedDismiss(surface, () => onClose?.())
+  const archiveMotion = usePresence(archiveOpen && !!selectedMaterial, archive)
+  const cancelDismiss = motion.cancel
+  useEffect(() => cancelDismiss(), [taskId, presentation, cancelDismiss])
   const workspacePresentation = presentation === 'workspace'
   const body = selectedMaterial ? (
     <div className="ep-material-panel__reading">
@@ -656,17 +663,17 @@ export function ResearchMaterialsPanel({
   )
 
   return <div className="ep-material-panel" data-presentation={presentation}>
-    <section className="ep-material-panel__surface" role={workspacePresentation ? 'region' : 'dialog'} aria-modal={workspacePresentation ? undefined : true} aria-label="研究材料">
-      {onClose ? <button type="button" className="ep-material-panel__close qx-btn qx-btn--ghost qx-btn--icon" aria-label="关闭研究材料" onClick={onClose}><XIcon size={18} aria-hidden="true" /></button> : null}
+    <section ref={surface} data-motion-surface={workspacePresentation ? undefined : 'modal'} {...(workspacePresentation ? {} : motion.props)} className="ep-material-panel__surface" role={workspacePresentation ? 'region' : 'dialog'} aria-modal={workspacePresentation ? undefined : true} aria-label="研究材料">
+      {onClose ? <button type="button" className="ep-material-panel__close qx-btn qx-btn--ghost qx-btn--icon" aria-label="关闭研究材料" onClick={motion.dismiss}><XIcon size={18} aria-hidden="true" /></button> : null}
       {selectedMaterial && error ? <p className="ep-material-notice" role="alert"><WarningCircleIcon size={17} aria-hidden="true" />{error}</p> : null}
       {selectionNotice ? <p className="ep-material-notice" role="alert">{selectionNotice}</p> : null}
       {annotationError ? <p className="ep-material-notice" role="alert"><WarningCircleIcon size={17} aria-hidden="true" />{annotationError}</p> : null}
       {annotationNotice ? <p className="ep-material-notice" role="status"><CheckCircleIcon size={17} aria-hidden="true" />{annotationNotice}</p> : null}
       {!selectedMaterial ? workspaceNavigation : null}
       {body}
-      {archiveOpen && selectedMaterial ? <div className="ep-material-panel__archive-layer">
+      {archiveMotion.present && selectedMaterial ? <div className="ep-material-panel__archive-layer" data-motion-surface="backdrop" {...archiveMotion.props}>
         <button type="button" className="ep-material-panel__scrim" aria-label="关闭材料档案" onClick={() => setArchiveOpen(false)} />
-        <aside className="ep-material-panel__archive" role="region" aria-label="材料档案">
+        <aside ref={archive} data-motion-surface="drawer" {...archiveMotion.props} className="ep-material-panel__archive" role="region" aria-label="材料档案">
           <header><div><p className="qx-group-label">材料档案</p><h2 className="qx-card__title">{selectedMaterial.filename}</h2></div><button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="收起材料档案" onClick={() => setArchiveOpen(false)}><XIcon size={18} aria-hidden="true" /></button></header>
           <ProfessionalMaterialArchivePanel taskId={taskId} selectedMaterial={selectedMaterial} materials={materials} onMaterialsChanged={() => { void loadMaterials(); onMaterialsChange?.() }} />
         </aside>

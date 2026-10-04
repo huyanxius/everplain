@@ -9,8 +9,11 @@ const defaultSourceRoot = path.resolve(path.dirname(scriptPath), '../src')
 /** Every module is declared, even when it has no dependencies. */
 export const defaultBoundaryPolicy = Object.freeze({
   moduleDependencies: Object.freeze({
-    account: Object.freeze(['agent-avatar', 'agent-profile']),
+    account: Object.freeze(['agent-avatar', 'agent-profile', 'channel-gateway']),
     'agent-avatar': Object.freeze([]),
+    'channel-gateway': Object.freeze([]),
+    writing: Object.freeze([]),
+    'shared-editor': Object.freeze([]),
     companion: Object.freeze([]),
     'agent-profile': Object.freeze([]),
     'knowledge-import': Object.freeze([]),
@@ -37,6 +40,8 @@ export const defaultBoundaryPolicy = Object.freeze({
     'api/system.ts',
     'modules/account/accountApi.ts',
     'modules/agent-profile/agentProfileApi.ts',
+    'modules/channel-gateway/channelGatewayApi.ts',
+    'modules/writing/writingApi.ts',
     'modules/knowledge-import/knowledgeImportApi.ts',
     'modules/personal-graph/personalGraphApi.ts',
     'modules/product-integrations/productIntegrationsApi.ts',
@@ -58,6 +63,8 @@ export const defaultBoundaryPolicy = Object.freeze({
   moduleApiAdapters: Object.freeze([
     'modules/account/accountApi.ts',
     'modules/agent-profile/agentProfileApi.ts',
+    'modules/channel-gateway/channelGatewayApi.ts',
+    'modules/writing/writingApi.ts',
     'modules/knowledge-import/knowledgeImportApi.ts',
     'modules/personal-graph/personalGraphApi.ts',
     'modules/product-integrations/productIntegrationsApi.ts',

@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from qunxue_api.account_extension import install_account_management
@@ -60,6 +61,7 @@ from qunxue_api.adapters.research_agent.graph_topic_namer import GraphTopicNamer
 from qunxue_api.adapters.research_agent.memory_extractor import PydanticMemoryExtractor
 from qunxue_api.adapters.research_agent.memory_overview import PydanticMemoryOverview
 from qunxue_api.adapters.research_agent.memory_tools import AgentMemoryTools
+from qunxue_api.adapters.research_agent.pydantic_runner import AgentModelRouteError
 from qunxue_api.adapters.research_agent.shared_knowledge import SharedKnowledgeReferences
 from qunxue_api.adapters.research_exchange import map_published_qunxue_project
 from qunxue_api.adapters.research_materials import parse_material
@@ -74,6 +76,7 @@ from qunxue_api.adapters.sqlite.agent_conversation_repository import SqliteConve
 from qunxue_api.adapters.sqlite.agent_memory_repository import SqliteMemoryRepository
 from qunxue_api.adapters.sqlite.agent_profile import SqliteAgentProfileRepository
 from qunxue_api.adapters.sqlite.billing_repository import SqliteCreditRepository
+from qunxue_api.adapters.sqlite.channel_gateway import SqliteChannelGatewayRepository
 from qunxue_api.adapters.sqlite.database import Database
 from qunxue_api.adapters.sqlite.external_agents import SqliteExternalAgentRepository
 from qunxue_api.adapters.sqlite.identity_repository import SqliteIdentityRepository
@@ -120,6 +123,7 @@ from qunxue_api.adapters.sqlite.theory_matching import (
     SqliteMatchingRequestRepository,
     SqliteMatchRunRepository,
 )
+from qunxue_api.adapters.sqlite.writing import SqliteWritingRepository
 from qunxue_api.adapters.stripe_subscriptions import StripeSubscriptionGateway
 from qunxue_api.adapters.theory_evidence import (
     CatalogTheoryEvidenceSource,
@@ -132,6 +136,7 @@ from qunxue_api.adapters.transcription import (
 from qunxue_api.api.contracts.common import ErrorCode, ErrorDetail, ErrorResponse
 from qunxue_api.api.routes.agent import router as agent_router
 from qunxue_api.api.routes.agent_profile import router as agent_profile_router
+from qunxue_api.api.routes.channel_gateway import router as channel_gateway_router
 from qunxue_api.api.routes.commerce import router as commerce_router
 from qunxue_api.api.routes.external_agents import router as external_agents_router
 from qunxue_api.api.routes.health import router as health_router
@@ -153,6 +158,7 @@ from qunxue_api.api.routes.research_method import router as research_method_rout
 from qunxue_api.api.routes.research_tasks import router as research_tasks_router
 from qunxue_api.api.routes.session import router as session_router
 from qunxue_api.api.routes.shared_knowledge import router as shared_knowledge_router
+from qunxue_api.api.routes.writing import router as writing_router
 from qunxue_api.application import (
     DisciplinaryAgentApplication,
     ProfessionalMaterialsApplication,
@@ -170,6 +176,7 @@ from qunxue_api.application import (
 )
 from qunxue_api.application.agent_profile import AgentProfileApplication
 from qunxue_api.application.agent_research_workflow import AgentResearchWorkflow
+from qunxue_api.application.channel_gateway import ChannelGatewayApplication
 from qunxue_api.application.external_agents import ExternalAgentApplication
 from qunxue_api.application.knowledge_import import KnowledgeImportApplication
 from qunxue_api.application.memory_learning import MemoryLearningWorker
@@ -177,6 +184,7 @@ from qunxue_api.application.memory_overview import MemoryOverview
 from qunxue_api.application.personal_graph import PersonalGraphApplication
 from qunxue_api.application.shared_knowledge import SharedKnowledgeApplication
 from qunxue_api.application.subscriptions import SubscriptionApplication
+from qunxue_api.application.writing import WritingApplication, WritingPipeline
 from qunxue_api.modules.agent_conversation import ConversationNotFound, ConversationService
 from qunxue_api.modules.agent_memory import MemoryService
 from qunxue_api.modules.billing import SIGNUP_GRANT, CreditService
@@ -222,6 +230,7 @@ from qunxue_api.modules.transcription import (
     TranscriptionProvider,
     UnavailableTranscriptionProvider,
 )
+from qunxue_api.modules.writing import WritingConflict, WritingUnavailable
 from qunxue_api.settings import (
     KNOWLEDGE_ROOT,
     Settings,
@@ -401,6 +410,9 @@ def create_app(
     from qunxue_api.api.billing_errors import install_billing_error_handlers
 
     install_billing_error_handlers(app)
+    from qunxue_api.api.writing_errors import install_writing_error_handlers
+
+    install_writing_error_handlers(app)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(resolved_settings.cors_allowed_origins),
@@ -1228,6 +1240,7 @@ def create_app(
                         catalog=app.state.knowledge_catalog,
                         retriever=app.state.knowledge_retriever,
                         web_research=OpenWebResearchClient(
+                            require_search_billing=True,
                             search_provider=resolved_settings.web_search_provider,
                             search_api_key=(
                                 resolved_settings.web_search_api_key.get_secret_value()
@@ -1275,6 +1288,54 @@ def create_app(
             )
 
     app.state.agent_profile_scope = agent_profile_scope
+
+    app.state.writing_generate = None
+    if app.state.model_endpoints and _effective_model_runtime_mode(resolved_settings) != "mock":
+        def generate_writing(document, request, samples, run_id):
+            # Match ordinary Agent request scoping: an async SDK client must not
+            # be shared by concurrent FastAPI worker threads/event loops.
+            writing_endpoint = selected_endpoint or app.state.model_endpoints[0]
+            writing_runner = PydanticAIKnowledgeRunner(
+                base_url=writing_endpoint.base_url,
+                api_key=writing_endpoint.api_key,
+                model=writing_endpoint.model,
+                fallback_endpoints=() if selected_endpoint else tuple(
+                    (e.base_url, e.api_key, e.model) for e in app.state.model_endpoints[1:]
+                ),
+                timeout_seconds=resolved_settings.model_timeout_seconds,
+                extra_headers=writing_endpoint.extra_headers,
+                reasoning_effort=(
+                    selected_choices[0].default_reasoning_effort if selected_endpoint
+                    else resolved_settings.model_reasoning_effort
+                ),
+                route_executor=selected_agent_router or app.state.model_router,
+                protocol="responses" if selected_endpoint else "chat_completions",
+                require_billing=True,
+            )
+            try:
+                return WritingPipeline(writing_runner.run_writing_stage).generate(
+                    document, request, samples, run_id
+                )
+            except AgentModelRouteError as exc:
+                raise WritingUnavailable("模型暂时不可用，原文没有改变，请稍后重试") from exc
+
+        app.state.writing_generate = generate_writing
+
+    @contextmanager
+    def writing_scope():
+        try:
+            with resolved_database.session() as session:
+                yield WritingApplication(
+                    SqliteWritingRepository(session),
+                    generate=app.state.writing_generate,
+                    sample_parser=parse_material,
+                    billing=app.state.billing_operations.bound_to(session)
+                    if app.state.model_endpoints else None,
+                )
+        except IntegrityError as exc:
+            raise WritingConflict("请求与另一操作冲突，请刷新后重试") from exc
+
+    app.state.writing_scope = writing_scope
 
     def current_persona(user_id):
         with agent_profile_scope() as application:
@@ -1327,8 +1388,12 @@ def create_app(
     app.state.course_organization_worker = CourseOrganizationWorker(
         resolved_database,
         generate=CourseKnowledgeGenerator(
-            app.state.model_endpoints,
-            route_executor=app.state.model_router,
+            (selected_endpoint,) if selected_endpoint else app.state.model_endpoints,
+            route_executor=selected_agent_router or app.state.model_router,
+            protocol="responses" if selected_endpoint else "chat_completions",
+            reasoning_effort=(
+                selected_choices[0].default_reasoning_effort if selected_endpoint else None
+            ),
             cost_limits=CourseCostLimits(
                 input_tokens=resolved_settings.organization_max_input_tokens,
                 output_tokens=resolved_settings.organization_max_output_tokens,
@@ -1340,6 +1405,9 @@ def create_app(
                 input_rate=resolved_settings.organization_input_rate_per_million,
                 output_rate=resolved_settings.organization_output_rate_per_million,
                 currency=resolved_settings.organization_cost_currency,
+            ).with_billing_defaults(
+                app.state.billing_operations.runtime,
+                (selected_endpoint,) if selected_endpoint else app.state.model_endpoints,
             ),
         )
         if app.state.model_endpoints
@@ -1391,12 +1459,22 @@ def create_app(
         cancel_url=commerce_settings.stripe_cancel_url,
         portal_return_url=commerce_settings.stripe_portal_return_url,
     )
+    @contextmanager
+    def channel_gateway_scope():
+        with resolved_database.session() as session:
+            yield ChannelGatewayApplication(
+                SqliteChannelGatewayRepository(session), SqliteIdentityRepository(session)
+            )
+
+    app.state.channel_gateway_scope = channel_gateway_scope
+    app.include_router(channel_gateway_router)
     app.state.external_agents_scope = external_agents_scope
     app.include_router(external_agents_router)
     app.include_router(commerce_router)
     app.include_router(personal_graph_router)
     app.include_router(knowledge_import_router)
     app.include_router(agent_profile_router)
+    app.include_router(writing_router)
     app.include_router(agent_router)
 
     @app.exception_handler(ResearchTaskNotFound)
@@ -1649,12 +1727,11 @@ def create_app(
             content=body.model_dump(mode="json"),
         )
 
-    if resolved_settings.account_initial_admin_password is not None:
-        install_account_management(
-            app,
-            database=resolved_database,
-            password_hasher=password_hasher,
-        )
+    install_account_management(
+        app,
+        database=resolved_database,
+        password_hasher=password_hasher,
+    )
 
     return app
 
@@ -1793,7 +1870,7 @@ def _model_headers_from_settings(settings: Settings) -> dict[str, str]:
 
 def _billing_runtime(settings, database):
     from qunxue_api.adapters.sqlite.durable_billing import DurableBilling
-    from qunxue_api.modules.billing import PriceBook
+    from qunxue_api.modules.billing import PriceBook, TavilyPrice
 
     fields = (
         settings.billing_price_version,
@@ -1830,6 +1907,10 @@ def _billing_runtime(settings, database):
             usage_policies=settings.billing_usage_policies,
             deepseek_time_basis=settings.billing_deepseek_time_basis,
             calendar_version=settings.billing_calendar_version,
+            tavily_price=(
+                TavilyPrice(**settings.billing_tavily_price.model_dump())
+                if settings.billing_tavily_price else None
+            ),
         ),
         max_attempt_pico=settings.billing_max_attempt_usd_micro * 10**6,
         max_operation_pico=settings.billing_max_operation_usd_micro * 10**6,

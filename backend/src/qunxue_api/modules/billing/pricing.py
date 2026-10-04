@@ -41,6 +41,21 @@ STANDARD_TARIFFS = {
 
 
 @dataclass(frozen=True)
+class TavilyPrice:
+    """Explicit operator-approved search price; never inherits the model discount."""
+
+    usd_micro_per_credit: int
+    retail_rate_ppm: int
+    source: str
+
+    def __post_init__(self):
+        if (type(self.usd_micro_per_credit) is not int or self.usd_micro_per_credit <= 0
+                or type(self.retail_rate_ppm) is not int or self.retail_rate_ppm <= 0
+                or not isinstance(self.source, str) or not self.source.strip()):
+            raise ValueError("complete explicit Tavily price and retail rate required")
+
+
+@dataclass(frozen=True)
 class PriceBook:
     credits_per_usd: int | None
     version: str
@@ -60,6 +75,7 @@ class PriceBook:
     fx_source: str | None = None
     procurement_estimate_source: str = "user_reported_estimate"
     procurement_estimate_ratio: str = "1/35"
+    tavily_price: TavilyPrice | None = None
 
     def lock_dispatch(self, model: str, instant: datetime):
         if self.aliases.get(model, model) != "deepseek-flash":
@@ -180,3 +196,25 @@ class PriceBook:
                 * self.retail_rate_ppm, 10**12,
             )
         return cost_pico_usd * self.credits_per_usd
+
+    def search_cost(self, credits: int) -> int:
+        if self.tavily_price is None:
+            raise UnknownPrice("Tavily credit price must be explicitly configured")
+        if type(credits) is not int or credits < 0:
+            raise ValueError("invalid Tavily credit usage")
+        return credits * self.tavily_price.usd_micro_per_credit * 10**6
+
+    def search_credit_numerator(self, cost_pico_usd: int) -> Fraction:
+        self.search_cost(0)
+        if self.points_per_cny is None:
+            raise UnknownPrice("Tavily requires an explicit CNY/FX snapshot")
+        return Fraction(
+            cost_pico_usd * self.points_per_cny * self.fx_cny_per_usd_micro
+            * self.tavily_price.retail_rate_ppm, 10**12,
+        )
+
+    def maximum_credit_numerator(self, cost_pico_usd: int) -> int | Fraction:
+        model = self.credit_numerator(cost_pico_usd)
+        return (
+            max(model, self.search_credit_numerator(cost_pico_usd)) if self.tavily_price else model
+        )

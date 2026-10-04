@@ -1,9 +1,9 @@
-import { serviceOrigin, bookmarksHtml } from './model.mjs'
+import { serviceOrigin, bookmarksHtml, DEFAULT_SERVICE_ORIGIN } from './model.mjs'
 const originInput = document.querySelector('#origin')
 const status = document.querySelector('#status')
 const buttons = [...document.querySelectorAll('button')]
 const stored = await chrome.storage.local.get('everplainOrigin')
-originInput.value = stored.everplainOrigin || ''
+originInput.value = stored.everplainOrigin || DEFAULT_SERVICE_ORIGIN
 function busy(value) { for (const button of buttons) button.disabled = value }
 async function allowTarget(bookmarks = false) {
   const origin = serviceOrigin(originInput.value.trim())

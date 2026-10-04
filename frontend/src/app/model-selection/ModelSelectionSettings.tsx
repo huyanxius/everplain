@@ -1,6 +1,7 @@
 import { CaretDownIcon } from '@phosphor-icons/react'
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { useAppLocale } from '../../i18n/AppLocaleProvider'
+import { usePresence } from '../../ui/usePresence'
 import type { AgentTurnRequest } from '../../modules/research-agent'
 import { ModelSelectionControl } from './ModelSelectionControl'
 import { isModelSelectionValid, type ModelSelection } from './modelSelection'
@@ -19,6 +20,7 @@ export function ModelSelectionSettings({ state, disabled, activeRequest }: {
   const root = useRef<HTMLElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
+  const motion = usePresence(open, panel)
   const id = useId()
   const activeSelection: ModelSelection | null = disabled && activeRequest?.model_id && activeRequest.reasoning_effort
     ? { modelId: activeRequest.model_id, reasoningEffort: activeRequest.reasoning_effort } : null
@@ -46,21 +48,26 @@ export function ModelSelectionSettings({ state, disabled, activeRequest }: {
   useLayoutEffect(() => {
     if (!open || !panel.current) return
     const menu = panel.current
+    const boundary = root.current?.closest('.cv-layout__main')
     menu.showPopover?.()
     const place = () => {
       const rect = trigger.current?.getBoundingClientRect()
       if (!rect) return
       const viewport = window.visualViewport
-      const left = (viewport?.offsetLeft ?? 0) + 12
+      const bounds = boundary?.getBoundingClientRect()
+      const viewportLeft = (viewport?.offsetLeft ?? 0) + 12
+      const viewportRight = viewportLeft + (viewport?.width ?? window.innerWidth) - 24
+      const left = bounds?.width ? Math.max(viewportLeft, bounds.left + 12) : viewportLeft
+      const right = bounds?.width ? Math.min(viewportRight, bounds.right - 12) : viewportRight
       const top = (viewport?.offsetTop ?? 0) + 12
-      const width = Math.max(0, Math.min(300, (viewport?.width ?? window.innerWidth) - 24))
+      const width = Math.max(0, Math.min(300, right - left))
       const bottom = top + (viewport?.height ?? window.innerHeight) - 24
       const above = Math.max(0, rect.top - top - 8)
       const below = Math.max(0, bottom - rect.bottom - 8)
       const upwards = above > below
       menu.style.width = `${width}px`
       menu.style.maxHeight = `${Math.min(400, upwards ? above : below)}px`
-      menu.style.left = `${Math.max(left, Math.min(rect.right - width, left + (viewport?.width ?? window.innerWidth) - 24 - width))}px`
+      menu.style.left = `${Math.max(left, Math.min(rect.right - width, right - width))}px`
       menu.style.top = `${upwards ? Math.max(top, rect.top - Math.min(menu.scrollHeight, above, 400) - 8) : rect.bottom + 8}px`
     }
     place()
@@ -68,12 +75,17 @@ export function ModelSelectionSettings({ state, disabled, activeRequest }: {
     firstControl.focus()
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place)
     observer?.observe(menu)
+    if (boundary) observer?.observe(boundary)
     window.addEventListener('resize', place)
     window.addEventListener('scroll', place, true)
     window.visualViewport?.addEventListener('resize', place)
     window.visualViewport?.addEventListener('scroll', place)
-    return () => { observer?.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); window.visualViewport?.removeEventListener('resize', place); window.visualViewport?.removeEventListener('scroll', place); menu.hidePopover?.() }
+    return () => { observer?.disconnect(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); window.visualViewport?.removeEventListener('resize', place); window.visualViewport?.removeEventListener('scroll', place) }
   }, [open])
+  useLayoutEffect(() => {
+    const menu = panel.current
+    return () => menu?.hidePopover?.()
+  }, [motion.present])
 
   return <section ref={root} className="model-selection-settings" aria-label={text('模型设置', 'Model settings')}>
     <button ref={trigger} type="button" className="qx-btn qx-btn--ghost model-selection-settings__summary"
@@ -82,7 +94,7 @@ export function ModelSelectionSettings({ state, disabled, activeRequest }: {
       onClick={() => setOpen(value => !value)}>{state.status === 'ready' && model && selection && supported
         ? <><span>{model.label}</span><span className="model-selection-settings__summary-effort">{text(effortLabels[selection.reasoningEffort][0], effortLabels[selection.reasoningEffort][1])}</span></>
         : <span>{summary}</span>}<CaretDownIcon size={12} aria-hidden="true" /></button>
-    {open && <div ref={panel} id={id} className="qx-menu model-selection-settings__popover" popover="manual" role="dialog" tabIndex={-1} aria-label={text('选择模型与思考强度', 'Choose model and reasoning effort')}>
+    {motion.present && <div ref={panel} id={id} className="qx-menu model-selection-settings__popover" data-motion-surface="popover" {...motion.props} popover="manual" role="dialog" tabIndex={-1} aria-label={text('选择模型与思考强度', 'Choose model and reasoning effort')}>
     {state.status === 'ready' && selection && supported ? <>
       <ModelSelectionControl className="model-selection--compact" catalog={state.catalog} value={selection} onChange={value => { if (!disabled) state.onChange(value) }} disabled={disabled} />
       {state.runtimeMode === 'mock' && <p className="qx-meta">{text('当前是隔离测试模型。', 'This is the isolated test runtime.')}</p>}

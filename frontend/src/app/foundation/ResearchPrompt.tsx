@@ -10,7 +10,7 @@ export function ResearchPrompt() {
     <form onSubmit={(event) => {
       event.preventDefault()
       const prompt = question.trim()
-      navigate(prompt ? `/agent?prompt=${encodeURIComponent(prompt)}` : '/agent')
+      navigate(prompt ? `/agent?prompt=${encodeURIComponent(prompt)}&prompt_source=user` : '/agent')
     }}>
       <textarea aria-label="输入你的研究问题" placeholder="有什么想研究的？" rows={2} maxLength={2000} value={question}
         onChange={(event) => setQuestion(event.target.value)}

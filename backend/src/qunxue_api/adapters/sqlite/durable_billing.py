@@ -14,7 +14,7 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from sqlalchemy import text
 
-from qunxue_api.modules.billing import PICO_USD, PriceBook, Tariff, UnknownPrice
+from qunxue_api.modules.billing import PICO_USD, PriceBook, Tariff, TavilyPrice, UnknownPrice
 from qunxue_api.modules.billing import (
     BillingBudgetExceeded as BillingBudgetExceeded,
 )
@@ -129,6 +129,7 @@ class DurableBilling:
                 "fx_source": book.fx_source,
                 "procurement_estimate_source": book.procurement_estimate_source,
                 "procurement_estimate_ratio": book.procurement_estimate_ratio,
+                "tavily_price": asdict(book.tavily_price) if book.tavily_price else None,
             },
             sort_keys=True,
         )
@@ -151,6 +152,7 @@ class DurableBilling:
                 "procurement_estimate_source", "procurement_estimate_ratio",
             ) if name in data},
             tariffs={k: Tariff(**v) for k, v in data["tariffs"].items()},
+            tavily_price=TavilyPrice(**data["tavily_price"]) if data.get("tavily_price") else None,
         )
 
     def _available(self, conn, user_id):
@@ -187,7 +189,7 @@ class DurableBilling:
                 raise BillingReplayBlocked("paused billing operation is missing")
             book = self._book(previous["price_json"]) if previous else self.book
             available = 0 if exempt else self._available(conn, user_id)
-            cap = ceil(Fraction(book.credit_numerator(self.max_operation_pico), PICO_USD))
+            cap = ceil(Fraction(book.maximum_credit_numerator(self.max_operation_pico), PICO_USD))
             if previous:
                 cap = max(0, cap - Fraction(previous["credit_pico"]) // PICO_USD)
             hold = 0 if exempt else min(available, cap)
@@ -268,23 +270,30 @@ class DurableBilling:
             if requested_service_tier not in {None, "default", "standard"}:
                 raise UnknownPrice("requested service tier has no configured tariff")
             book = self._book(run["price_json"]).lock_dispatch(model, self.clock())
-            reserved = book.maximum_cost(model, input_limit, output_limit)
-            aggregate = self._one(
-                conn,
-                "SELECT count(*) AS n, "
-                "coalesce(sum(coalesce(reference_cost_pico,reserved_cost_pico)),0) "
-                "AS cost,coalesce(sum(CASE WHEN billable=1 THEN reference_cost_pico "
-                "WHEN outcome='in_flight' THEN reserved_cost_pico ELSE 0 END),0) "
-                "AS user_cost FROM billing_attempts WHERE run_id=:run",
-                run=str(run_id),
-            )
-            operation_risk = aggregate["cost"] + reserved
-            user_risk = aggregate["user_cost"] + reserved
-            unsettled = max(0, book.credit_numerator(user_risk) - Fraction(run["credit_pico"]))
+            if api_type == "tavily_search":
+                if model != "tavily:basic" or input_limit != 1 or output_limit != 0:
+                    raise UnknownPrice("only explicitly bounded Tavily basic search is supported")
+                reserved = book.search_cost(1)
+                new_credit = book.search_credit_numerator(reserved)
+            else:
+                reserved = book.maximum_cost(model, input_limit, output_limit)
+                new_credit = book.credit_numerator(reserved)
+            attempts = conn.execute(
+                text("SELECT * FROM billing_attempts WHERE run_id=:run"), {"run": str(run_id)}
+            ).mappings().all()
+            operation_risk = sum(
+                a["reference_cost_pico"] if a["reference_cost_pico"] is not None
+                else a["reserved_cost_pico"] for a in attempts
+            ) + reserved
+            user_credit = sum(
+                self._attempt_credit(a, reserved=a["outcome"] == "in_flight")
+                for a in attempts if a["billable"] or a["outcome"] == "in_flight"
+            ) + new_credit
+            unsettled = max(0, user_credit - Fraction(run["credit_pico"]))
             max_credit = ceil(Fraction(unsettled, PICO_USD))
             if (
                 reserved > self.max_attempt_pico
-                or aggregate["n"] >= self.max_attempts
+                or len(attempts) >= self.max_attempts
                 or operation_risk > self.max_operation_pico
                 or self._risk(conn) + reserved > self.daily_budget_pico
             ):
@@ -331,6 +340,72 @@ class DurableBilling:
                 {"now": now, "run": str(run_id)},
             )
         return attempt
+
+    def _attempt_credit(self, attempt, *, reserved=False):
+        book = self._book(attempt["price_json"])
+        cost = attempt["reserved_cost_pico"] if reserved else attempt["reference_cost_pico"] or 0
+        if attempt["api_type"] == "tavily_search":
+            return book.search_credit_numerator(cost)
+        return book.credit_numerator(cost)
+
+    def complete_search_attempt(self, *, attempt_id, credits=None, receipt=None,
+                                outcome="error", failure_code=None):
+        """Record one actual provider request, without pretending credits are tokens."""
+        exceeded = duplicate = False
+        with self._transaction() as conn:
+            row = self._one(
+                conn, "SELECT * FROM billing_attempts WHERE attempt_id=:id", id=attempt_id
+            )
+            if row is None or row["api_type"] != "tavily_search":
+                raise BillingReplayBlocked("search attempt is missing")
+            if row["usage_state"] == "known":
+                return
+            valid = (
+                type(credits) is int and 0 <= credits <= 1_000_000
+                and isinstance(receipt, str) and 0 < len(receipt) <= 200
+                and receipt == receipt.strip()
+            )
+            cost = self._book(row["price_json"]).search_cost(credits) if valid else None
+            if valid:
+                duplicate = self._one(
+                    conn, "SELECT attempt_id FROM billing_attempts WHERE provider_host=:host "
+                    "AND provider_response_id=:receipt AND attempt_id<>:id",
+                    host=row["provider_host"], receipt=receipt, id=attempt_id,
+                ) is not None
+                exceeded = cost > row["reserved_cost_pico"] or credits > 1
+                if duplicate:
+                    # The original provider receipt remains authoritative. The
+                    # duplicate observation has no additional provider cost.
+                    cost, outcome, failure_code = 0, "rejected", "duplicate_provider_receipt"
+                elif exceeded:
+                    outcome, failure_code = "overrun", "search_usage_overrun"
+            if not valid:
+                outcome = "error"
+                failure_code = failure_code or "search_usage_unknown"
+            operation = self._one(
+                conn, "SELECT status FROM billing_operations WHERE run_id=:run", run=row["run_id"]
+            )
+            conn.execute(
+                text("UPDATE billing_attempts SET outcome=:outcome,usage_state=:state,"
+                     "billable=:billable,reference_cost_pico=:cost,provider_response_id=:receipt,"
+                     "returned_model=:model,raw_usage_json=:raw,overrun_cost_pico=:overrun,"
+                     "failure_code=:failure,updated_at=:now WHERE attempt_id=:id"),
+                {
+                    "outcome": outcome, "state": "known" if valid else "unknown",
+                    "billable": int(valid and outcome == "success"
+                                    and operation["status"] == "active"),
+                    "cost": cost, "receipt": receipt if valid and not duplicate else None,
+                    "model": "tavily:basic" if valid else None,
+                    "raw": (json.dumps({"credits": credits, "request_id": receipt})
+                            if valid else "{}"),
+                    "overrun": max(0, (cost or 0) - row["reserved_cost_pico"]),
+                    "failure": failure_code, "now": self._now(), "id": attempt_id,
+                },
+            )
+        if duplicate:
+            raise BillingReplayBlocked("Tavily receipt was already recorded")
+        if exceeded:
+            raise BillingBudgetExceeded("Tavily usage exceeded its request reservation")
 
     def assert_usage_contract(self, attempt_id, raw):
         from collections.abc import Mapping
@@ -548,11 +623,10 @@ class DurableBilling:
                 outcome, delivered = "error", False
             if delivered and attempts and not any(a["billable"] for a in attempts):
                 outcome, delivered = "error", False
-            book = self._book(run["price_json"])
-            numerator = book.credit_numerator(sum(
-                a["reference_cost_pico"] or 0
+            numerator = sum(
+                self._attempt_credit(a)
                 for a in attempts if a["outcome"] == "success" and a["billable"]
-            )) if delivered else 0
+            ) if delivered else 0
             previous = self._one(
                 conn, "SELECT total_credit_pico FROM billing_precision WHERE user_id=:user",
                 user=run["user_id"],

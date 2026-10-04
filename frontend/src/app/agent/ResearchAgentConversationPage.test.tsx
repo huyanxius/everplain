@@ -4,7 +4,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { remarkProgressParagraphs } from './remarkProgressParagraphs'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AgentCitation, AgentConversation } from '../../modules/research-agent'
 import { AppLocaleProvider } from '../../i18n/AppLocaleProvider'
@@ -27,6 +27,10 @@ it('preserves structured Markdown and decimal numbers in stage notes', () => {
   expect(container.querySelector('pre code')).toHaveTextContent('代码第一句。第二句。')
   expect(container.querySelectorAll('code')).toHaveLength(2)
 })
+
+// Protocol/ownership regression checks use the accessible immediate-render mode.
+// The animated SSE handoff is exercised explicitly below and in the motion suites.
+beforeEach(() => vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(prefers-reduced-motion: reduce)', addEventListener: vi.fn(), removeEventListener: vi.fn() })))
 
 afterEach(() => {
   cleanup()
@@ -1702,7 +1706,8 @@ describe('ResearchAgentConversationPage', () => {
     fireEvent.change(textbox, { target: { value: '研究青年孤独。' } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
-    expect(await within(region).findByText('正在阅读研究材料')).toBeVisible()
+    await waitFor(() => expect(within(region).getByRole('button', { name: /Agent 正在调用工具/ })).toBeVisible())
+    expect(within(region).queryByRole('status', { name: '正在阅读研究材料' })).not.toBeInTheDocument() // The first answer has already collapsed thinking.
     expect(within(region).queryByText(/已运行/)).not.toBeInTheDocument()
     expect(within(region).queryByText('Agent 正在组织问题与证据…')).not.toBeInTheDocument()
     const runningTool = within(region).getByRole('button', { name: /Agent 正在调用工具/ })
@@ -2191,19 +2196,37 @@ it('keeps one embedded research panel toggle closed until clicked', async () => 
   expect(screen.queryByRole('complementary', { name: '研究面板' })).not.toBeInTheDocument()
 })
 
-it('restores a homepage question into the composer without submitting a paid run', async () => {
+it('restores explicitly entered public-page text without submitting a paid run', async () => {
   const requests: string[] = []
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input)
-    requests.push(url)
-    if (url.includes('/api/agent/conversations')) return json({ items: [] })
+    requests.push(String(input))
     return json({ items: [], tasks: [] })
   }))
-  render(<MemoryRouter initialEntries={['/agent?prompt=Compare%20the%20uploaded%20specifications']}>
+  render(<MemoryRouter initialEntries={['/agent?prompt=Compare%20the%20uploaded%20specifications&prompt_source=user']}>
     <ResearchAgentConversationPage userId="personal-owner" />
   </MemoryRouter>)
   await waitFor(() => expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('Compare the uploaded specifications'))
   expect(requests.some(url => url.includes('/api/agent/turns'))).toBe(false)
+})
+
+it('does not seed a legacy automatic prompt into a new empty conversation', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], tasks: [] })))
+  render(<MemoryRouter initialEntries={['/agent?prompt=' + encodeURIComponent('关于「日常问候」。先问我目标，再帮我研究。')]}>
+    <ResearchAgentConversationPage userId="personal-owner" />
+  </MemoryRouter>)
+  await waitFor(() => expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue(''))
+})
+
+it('keeps a real saved draft when a legacy automatic prompt is present in the URL', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], tasks: [] })))
+  const scope = 'personal-owner.draft.agent.independent'
+  localStorage.setItem(`everplain.agent.composer-draft.v2.${scope}`, '用户尚未发送的真实问题')
+  const automaticPrompt = encodeURIComponent('关于「日常问候」。先问我目标，再帮我研究。')
+  render(<MemoryRouter initialEntries={[`/agent?prompt=${automaticPrompt}`]}>
+    <ResearchAgentConversationPage userId="personal-owner" />
+  </MemoryRouter>)
+  await waitFor(() => expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('用户尚未发送的真实问题'))
+  expect(localStorage.getItem(`everplain.agent.composer-draft.v2.${scope}`)).toBe('用户尚未发送的真实问题')
 })
 
 function render(ui: Parameters<typeof rtlRender>[0], options?: Parameters<typeof rtlRender>[1]) {
@@ -2211,4 +2234,129 @@ function render(ui: Parameters<typeof rtlRender>[0], options?: Parameters<typeof
   return rtlRender(ui, { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>, ...options })
 }
 
+it.each(['attachment', 'model', 'source', 'history'])('immediately clears the %s surface when the same-position account scope changes', async surface => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => urlFor(input).pathname === '/api/agent/models'
+    ? json({ runtime_mode: 'base', items: [{ model_id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoning_efforts: ['low', 'medium', 'high'], default_reasoning_effort: 'medium' }] })
+    : json({ items: [] })))
+  const page = (userId: string) => <MemoryRouter><ResearchAgentConversationPage userId={userId} /></MemoryRouter>
+  const view = render(page('scope-account-a'))
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  if (surface === 'attachment') fireEvent.click(screen.getByRole('button', { name: '添加附件' }))
+  if (surface === 'model') fireEvent.click(await screen.findByRole('button', { name: /GPT 6 Luna · 中/ }))
+  if (surface === 'source') {
+    fireEvent.click(screen.getByRole('button', { name: '更多对话操作' }))
+    fireEvent.click(screen.getByRole('button', { name: '研究面板' }))
+  }
+  if (surface === 'history') fireEvent.click(screen.getByRole('button', { name: '打开研究记录' }))
+  const node = surface === 'source' ? view.container.querySelector<HTMLElement>('.cv-layout__source')
+    : surface === 'model' ? document.querySelector<HTMLElement>('.model-selection-settings__popover')
+    : surface === 'history' ? document.querySelector<HTMLElement>('[data-motion-surface="modal"]')
+    : document.querySelector<HTMLElement>('#conversation-tools')
+  expect(node).not.toBeNull()
+  node!.style.transitionProperty = 'opacity'; node!.style.transitionDuration = '.14s'; node!.style.transitionDelay = '0s'
+  view.rerender(page('scope-account-b'))
+  expect(node).not.toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: '问 Everplain' })).toBe(input)
+})
+
 vi.mock('../../modules/agent-profile', () => ({ readAgentProfile: vi.fn(async () => ({ name: 'Everplain', avatar_id: 'cheng', color: '#b8c5b0', greeting: '你想研究什么？', speaking_style: 'clear', setup_step: 4, setup_completed: true, questionnaire: { occupation: '', industry: '', goals: [], interests: [], additional: '' }, version: 1 })) }))
+
+it('preserves the animated turn and Bot color across real SSE completion without duplicate sends', async () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+  const answer = '开头。' + '流式完成后仍按节拍保留这些已经收到的文字。'.repeat(4)
+  const completed = conversationFixture({ id: 'motion-completion', prompt: '实际发送的问题', answer })
+  const stream = deferredStream([
+    ['turn_started', { conversation_id: completed.conversation_id, run_id: 'motion-run', replayed: false, runtime_mode: 'base' }],
+    ['agent_status', { status: 'answering' }],
+    ['assistant_delta', { delta: '开头。' }],
+  ])
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const path = urlFor(input).pathname
+    if (path === '/api/agent/turns') return stream.response
+    if (path === `/api/agent/conversations/${completed.conversation_id}`) return json(completed)
+    return json({ items: [] })
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const view = renderPage()
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  fireEvent.change(input, { target: { value: completed.title } })
+  fireEvent.keyDown(input, { key: 'Enter' })
+  fireEvent.keyDown(input, { key: 'Enter', repeat: true })
+  await waitFor(() => expect(view.container.querySelector('.cv-turn__prose')).toHaveTextContent('开头。'))
+  const article = view.container.querySelector('.cv-turn')!
+  expect(article).toHaveStyle({ '--agent-color': '#b8c5b0' })
+  expect(article.querySelector('.agent-avatar')).toHaveStyle({ '--aa-color': '#b8c5b0' })
+  await act(async () => stream.finish([
+    ['assistant_delta', { delta: answer.slice(3) }],
+    ['turn_completed', { conversation: completed, knowledge_release_id: 'release-agent' }],
+  ]))
+  await waitFor(() => expect(screen.getByRole('button', { name: '重新生成' })).toBeVisible())
+  expect(view.container.querySelector('.cv-turn')).toBe(article)
+  expect(view.container.querySelectorAll('[data-role="user-message"]')).toHaveLength(1)
+  await waitFor(() => expect(article.querySelector('.cv-turn__prose')).toHaveTextContent(answer), { timeout: 5000 })
+  await waitFor(() => expect(article.querySelectorAll('.stream-fresh')).toHaveLength(0), { timeout: 3000 })
+  expect(fetchMock.mock.calls.filter(([input]) => urlFor(input).pathname === '/api/agent/turns')).toHaveLength(1)
+  view.unmount(); expect(document.querySelector('.cv-flight')).toBeNull()
+})
+
+it('allocates distinct presentation keys when a paused run returns beside a completed turn', async () => {
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    const id = 'motion-recovery-a', questionA = '保留的旧问题', answerA = '旧轮仍待继续的内容。'
+    const questionB = '另一个已完成问题', answerB = '后一轮已完成的完整答案。'
+    const completed = conversationFixture({ id, prompt: questionB, answer: answerB })
+    completed.unfinished_runs = [{ run_id: 'motion-paused-run', idempotency_key: 'replace-from-request', status: 'interrupted', request: { conversation_id: id, message: questionA, mode: 'standard', workspace: 'agent' }, partial_answer: answerA, updated_at: '2026-10-03T12:00:00Z', cancel_requested: true }]
+    const resumed = { ...completed, turns: [...completed.turns, ...conversationFixture({ id: 'motion-resumed', prompt: questionA, answer: '旧问题继续后的完整答案。' }).turns], turn_count: 2, unfinished_runs: [] }
+    const other = conversationFixture({ id: 'motion-recovery-b', prompt: '另一条记录', answer: '别处已保存的内容。' })
+    let saved: AgentConversation = { ...completed, turns: [], turn_count: 0, unfinished_runs: [] }
+    const requests: RequestInit[] = []
+    const first = deferredStream([
+      ['turn_started', { conversation_id: id, run_id: 'motion-paused-run', replayed: false }],
+      ['assistant_delta', { delta: answerA }],
+    ])
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = urlFor(input).pathname
+      if (path === '/api/agent/turns') {
+        requests.push(init ?? {})
+        if (requests.length === 1) return first.response
+        if (requests.length === 2) {
+          completed.unfinished_runs![0].idempotency_key = new Headers(requests[0].headers).get('Idempotency-Key')!
+          saved = completed
+          return streamResponse(completed)
+        }
+        saved = resumed
+        return streamResponse(resumed)
+      }
+      if (path.endsWith('/stop')) return json({ run_id: 'motion-paused-run', status: 'interrupted', cancel_requested: true })
+      if (path === `/api/agent/conversations/${id}`) return json(saved)
+      if (path === `/api/agent/conversations/${other.conversation_id}`) return json(other)
+      return json({ items: [] })
+    }))
+    const page = (conversationId: string) => <MemoryRouter><ResearchAgentConversationPage embedded userId="motion-owner" conversationId={conversationId} /></MemoryRouter>
+    const view = render(page(id))
+    const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+    await waitFor(() => expect(input).not.toBeDisabled())
+    fireEvent.change(input, { target: { value: questionA } }); fireEvent.submit(input.closest('form')!)
+    expect(await screen.findByText(answerA)).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '停止生成' }))
+    await screen.findByRole('button', { name: '继续研究' })
+    fireEvent.change(input, { target: { value: questionB } }); fireEvent.submit(input.closest('form')!)
+    expect(await screen.findByText(answerB)).toBeVisible()
+    view.rerender(page(other.conversation_id))
+    expect(await screen.findByText(other.turns[0].assistant.content)).toBeVisible()
+    view.rerender(page(id))
+    expect(await screen.findByText(answerA)).toBeVisible()
+    expect(screen.getAllByText(answerA)).toHaveLength(1); expect(screen.getAllByText(answerB)).toHaveLength(1)
+    const keys = () => Array.from(view.container.querySelectorAll('[data-turn-id]'), node => node.getAttribute('data-turn-id'))
+    expect(keys()).toHaveLength(2); expect(new Set(keys()).size).toBe(2)
+    expect(errors.mock.calls.some(call => call.map(String).join(' ').includes('same key'))).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: '继续研究' }))
+    expect(await screen.findByText('旧问题继续后的完整答案。')).toBeVisible()
+    expect(screen.getAllByText(answerB)).toHaveLength(1)
+    expect(new Set(keys()).size).toBe(2)
+    expect(requests).toHaveLength(3)
+    expect(new Headers(requests[2].headers).get('Idempotency-Key')).toBe(new Headers(requests[0].headers).get('Idempotency-Key'))
+    expect(JSON.parse(String(requests[2].body))).toMatchObject({ conversation_id: id, message: questionA })
+  } finally { errors.mockRestore() }
+})

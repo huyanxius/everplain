@@ -13,6 +13,7 @@ from qunxue_api.modules.agent_conversation.domain import (
 from qunxue_api.modules.agent_conversation.errors import (
     AgentConversationError,
     AgentInterrupted,
+    AgentModelRouteFailure,
     ConversationNotFound,
     ConversationTaskBindingConflict,
     ResearchMaterialCitationUnavailable,
@@ -49,6 +50,7 @@ from .model_selection import (
 )
 
 __all__ = [
+    "AgentModelRouteFailure",
     "AgentModelChoice",
     "AgentModelSelection",
     "AgentModelSelectionUnavailable",

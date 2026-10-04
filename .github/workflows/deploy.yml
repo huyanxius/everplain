@@ -3,13 +3,6 @@ name: Release Everplain
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      operation:
-        description: 'Recovery only: previous successfully activated release, retaining current data'
-        type: choice
-        options: [rollback-previous]
-        required: true
 
 permissions:
   contents: read
@@ -25,7 +18,7 @@ jobs:
 
   build:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: checks
+    # Build may run beside checks; deployment still requires both to pass.
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     outputs:
@@ -60,34 +53,22 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
+      - name: Require a reviewed initial live baseline
+        run: |
+          if [[ ! -s ops/cd/live-baseline.json ]]; then
+            echo 'Initial live baseline is not bound; run production inspection and review its fingerprints before release.' >&2
+            exit 2
+          fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: everplain-${{ github.sha }}-${{ github.run_attempt }}
           path: dist/release
       - name: Deploy the checked artifact
         env:
-          EVERPLAIN_DEPLOY_HOST: ${{ vars.EVERPLAIN_DEPLOY_HOST }}
-          EVERPLAIN_DEPLOY_USER: ${{ vars.EVERPLAIN_DEPLOY_USER }}
-          EVERPLAIN_DEPLOY_PORT: ${{ vars.EVERPLAIN_DEPLOY_PORT }}
+          EVERPLAIN_DEPLOY_HOST: ${{ vars.EVERPLAIN_DEPLOY_HOST || '43.142.87.170' }}
+          EVERPLAIN_DEPLOY_USER: ${{ vars.EVERPLAIN_DEPLOY_USER || 'ubuntu' }}
+          EVERPLAIN_DEPLOY_PORT: ${{ vars.EVERPLAIN_DEPLOY_PORT || '22' }}
           EVERPLAIN_SSH_PRIVATE_KEY: ${{ secrets.EVERPLAIN_SSH_PRIVATE_KEY }}
-          EVERPLAIN_SSH_KNOWN_HOSTS: ${{ secrets.EVERPLAIN_SSH_KNOWN_HOSTS }}
+          EVERPLAIN_SSH_HOST_KEY_FINGERPRINT: SHA256:2QamxRsk36HjNhAek1+zT6Db1PtPKuuDoplLOCdTTmA
           EXPECTED_SHA256: ${{ needs.build.outputs.digest }}
-        run: bash ops/cd/transport.sh deploy
-
-  recovery:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.operation == 'rollback-previous'
-    environment: everplain-production
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          persist-credentials: false
-      - name: Roll back only the recorded previous release
-        env:
-          EVERPLAIN_DEPLOY_HOST: ${{ vars.EVERPLAIN_DEPLOY_HOST }}
-          EVERPLAIN_DEPLOY_USER: ${{ vars.EVERPLAIN_DEPLOY_USER }}
-          EVERPLAIN_DEPLOY_PORT: ${{ vars.EVERPLAIN_DEPLOY_PORT }}
-          EVERPLAIN_SSH_PRIVATE_KEY: ${{ secrets.EVERPLAIN_SSH_PRIVATE_KEY }}
-          EVERPLAIN_SSH_KNOWN_HOSTS: ${{ secrets.EVERPLAIN_SSH_KNOWN_HOSTS }}
-        run: bash ops/cd/transport.sh rollback-previous
+        run: bash ops/cd/deploy-existing-ssh.sh all

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-time checked candidate update of the existing Everplain containers.
+"""Current-run checked artifact update of the existing Everplain containers.
 
 No installed controller, new account or new network. All host details stay local.
 """
@@ -23,14 +23,24 @@ import urllib.request
 from pathlib import Path
 
 from artifact import MAX_BYTES, digest, tree_hash, unpack, validate_manifest
-from deploy import Controller, atomic_bytes, copy_index, expected_runtime_mode
+from deploy import Controller, atomic_bytes, check_compatible, copy_index, expected_runtime_mode
+from release_identity import (
+    SHA,
+    load_request,
+    read_state,
+    snapshot,
+    validate_provenance,
+    verify_baseline,
+)
 from repair_existing_web import repair as repair_web
 
-REVISION = "0dae10baff6a78cb0e12f67cc6f5ad153336a8a4"
-ARCHIVE_SHA256 = "85f2b033ed68e94d9d0563800d3d5b078c4b4e2d7b6ad868c4a3fa2e0cf3ec03"
-API_IMAGE = "sha256:e3101bab572ab3f795a13a4c7ccd70198d4908b7ab949fefc3e05afcd19b14a0"
-WEB_IMAGE = "sha256:d7fa4418995958435e783f23d627be4542bf4aa6ba0c9b0d805f56c3338ff8d3"
-PREVIOUS_REVISION = "c226d64523dd6d1c30606aad4730856c0cbbb80e"
+# Set only from the checksum- and current-run-verified manifest in main().
+REVISION = None
+ARCHIVE_SHA256 = None
+API_IMAGE = None
+WEB_IMAGE = None
+RUN_ID = None
+RUN_ATTEMPT = None
 BASE = Path("/srv/everplain-updates")
 NAMES = {"api": "everplain-api", "web": "everplain-web"}
 
@@ -452,6 +462,19 @@ class ExistingRelease:
             },
         )
 
+    def complete(self, manifest):
+        actual = snapshot(run, metadata)
+        require(actual["api"] == manifest["runtime_identity"]["api"])
+        require(actual["web_tree"] == manifest["runtime_identity"]["web_tree"])
+        require(actual["api_image"] in {API_IMAGE, self.images["api"]})
+        require(actual["web_image"] in {WEB_IMAGE, self.images["web"]})
+        save_json(self.state_path, {
+            "format": 1, "application": "everplain", "revision": REVISION,
+            "run_id": int(RUN_ID), "run_attempt": int(RUN_ATTEMPT),
+            "archive_sha256": ARCHIVE_SHA256, "runtime": actual,
+        })
+        self.report["runtime_identity_verified"] = True
+
     def recover(self):
         # After API start, even background writes belong to the new database/schema.
         if self.started:
@@ -493,7 +516,7 @@ class ExistingRelease:
         api, web = metadata(NAMES["api"]), metadata(NAMES["web"])
         source, network = existing_layout(api, web)
         old_env = environment(api)
-        require(old_env.get("EVERPLAIN_RELEASE_REVISION") in {PREVIOUS_REVISION, REVISION})
+        require(bool(SHA.fullmatch(old_env.get("EVERPLAIN_RELEASE_REVISION", ""))))
         self.old_revision = old_env["EVERPLAIN_RELEASE_REVISION"]
         self.report["live_layout_verified"] = True
         self.base.mkdir(mode=0o700, exist_ok=True)
@@ -536,6 +559,22 @@ class ExistingRelease:
                 manifest = unpack(frozen, release, REVISION, ARCHIVE_SHA256)
         self.old_names = {role: NAMES[role] + "-before-" + self.stage.name for role in NAMES}
         require(manifest["images"] == {"api": API_IMAGE, "web": WEB_IMAGE})
+        validate_provenance(manifest, REVISION, RUN_ID, RUN_ATTEMPT)
+        self.state_path = self.base / "pipeline-state.json"
+        self.previous_state = read_state(self.state_path, os.geteuid())
+        self.report["baseline_available"] = (
+            self.previous_state is not None or manifest.get("initial_live_fingerprint") is not None
+        )
+        self.baseline = snapshot(run, metadata)
+        verify_baseline(
+            self.baseline, self.previous_state, manifest.get("initial_live_fingerprint"),
+            REVISION, RUN_ID, ARCHIVE_SHA256,
+        )
+        check_compatible(
+            {"migration_tree": self.baseline["api"]["migration_tree"]}, manifest,
+            json.loads((release / "ops/cd/policy.json").read_text()),
+        )
+        self.report["live_overlay_guard_verified"] = True
         self.report["artifact_verified"] = True
         image_bytes = sum(
             (release / "images" / (role + ".tar")).stat().st_size for role in ("api", "web")
@@ -614,6 +653,7 @@ class ExistingRelease:
         ):
             Controller(self.stage).health(REVISION)
             public_health(manifest, mode)
+            self.complete(manifest)
             self.report.update(
                 api_health_ok=True,
                 web_health_ok=True,
@@ -624,6 +664,9 @@ class ExistingRelease:
             return self.report
         require(metadata(NAMES["api"])["Id"] == api["Id"])
         require(metadata(NAMES["web"])["Id"] == web["Id"])
+        # Catch a manual overlay or another writer between inspection and cutover.
+        require(snapshot(run, metadata) == self.baseline)
+        require(read_state(self.state_path, os.geteuid()) == self.previous_state)
         try:
             # Only these exact Everplain containers are stopped; old containers/config stay intact.
             self.stopped = True
@@ -762,6 +805,7 @@ class ExistingRelease:
             self.report["web_health_ok"] = True
             public_health(manifest, mode)
             self.report["public_health_ok"] = True
+            self.complete(manifest)
             self.report["deployment_succeeded"] = True
             self.record()
         except BaseException:
@@ -777,7 +821,10 @@ def interrupted(_signum, _frame):
 if __name__ == "__main__":
     updater = None
     try:
-        require(os.geteuid() == 0 and len(sys.argv) == 2)
+        require(os.geteuid() == 0 and len(sys.argv) == 6)
+        archive, REVISION, ARCHIVE_SHA256, RUN_ID, RUN_ATTEMPT = sys.argv[1:]
+        request = load_request(Path(archive), REVISION, ARCHIVE_SHA256, RUN_ID, RUN_ATTEMPT)
+        API_IMAGE, WEB_IMAGE = request["images"]["api"], request["images"]["web"]
         with Path("/run/lock/everplain-release.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):

@@ -63,6 +63,17 @@ export function getRouteMotionDirection(
   return next.order > current.order ? 'forward' : 'backward'
 }
 
+function researchCanvasScope(pathname: string) {
+  if (pathname === '/research/new') return 'new'
+  const match = pathname.match(/^\/research\/([^/]+)(?:\/(?:workspace(?:\/[^/]+)?|phenomenon|match|framework|method))?$/)
+  if (!match || ['materials', 'existing', 'tools'].includes(match[1])) return null
+  return `task:${match[1]}`
+}
+
 export function isContinuousResearchTransition(currentPath: string, nextPath: string) {
-  return currentPath.startsWith('/research/') && nextPath.startsWith('/research/')
+  const current = researchCanvasScope(currentPath)
+  const next = researchCanvasScope(nextPath)
+  // A task's stages and the first saved route keep the same live canvas. Lists,
+  // entry pages and another task are genuine destinations and must still enter.
+  return current !== null && next !== null && (current === next || current === 'new')
 }

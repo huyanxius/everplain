@@ -2,17 +2,12 @@ name: Repair existing Everplain Web upstream
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/repair-existing-web.yml
-      - ops/cd/repair_existing_web.py
 
 permissions:
   contents: read
 
 concurrency:
-  group: everplain-checked-candidate
+  group: everplain-production
   cancel-in-progress: false
 
 jobs:

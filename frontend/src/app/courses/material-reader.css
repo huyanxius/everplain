@@ -36,3 +36,7 @@
 .ep-material__agent-content { height: min(64vh, 620px); min-height: 360px; min-width: 0; overflow: hidden; }
 @media (max-width: 960px) { .ep-material__layout { grid-template-columns: minmax(0, 1fr); gap: var(--qx-space-8); } .ep-material__rail { position: static; } .ep-material__article { max-width: none; } }
 @media (max-width: 720px) { .ep-material { padding: var(--qx-space-4) var(--qx-space-4) var(--qx-space-16); } .ep-material__bar { align-items: flex-start; flex-wrap: wrap; } .ep-material__nav { width: 100%; } .ep-material__nav > .qx-select { flex: 1; max-width: none; } .ep-material__title { font-size: var(--qx-text-section); } }
+
+.ep-material__rail-tabs { width: 100%; }
+.ep-material__rail-tabs > button { flex: 1; padding-inline: var(--qx-space-2); }
+.ep-material__knowledge-panel { display: grid; gap: var(--qx-space-4); }

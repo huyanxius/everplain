@@ -135,6 +135,17 @@ function openPartition(name: string) {
 }
 
 describe('AccountSettingsPage', () => {
+  it('uses the shared liquid Bot while the settings page is pending, then removes it', async () => {
+    const result = deferred<AccountProfile>()
+    const { container } = render(<AccountSettingsPage api={createApi({ getAccount: () => result.promise })} />)
+    expect(screen.getByRole('status')).toHaveTextContent('正在读取账户设置')
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true')
+    expect(container.querySelector('svg.aa-liquid')).toBeInTheDocument()
+    result.resolve(account)
+    await screen.findByRole('region', { name: '个人资料' })
+    expect(container.querySelector('.agent-loading')).not.toBeInTheDocument()
+  })
+
   it('renders new Mock-style label/control rows without legacy settings markup', async () => {
     const { container } = render(<AccountSettingsPage api={createApi()} />)
     const panel = await screen.findByRole('region', { name: '个人资料' })
@@ -235,7 +246,7 @@ describe('AccountSettingsPage', () => {
     expect(updatePreferences).not.toHaveBeenCalled()
   })
 
-  it('reaches all seven categories through the compact picker and retains the Agent editor', async () => {
+  it('reaches all eight categories through the compact picker and retains the Agent editor', async () => {
     const onResetAgent = vi.fn()
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     queryClient.setQueryData(['agent-profile', account.userId], {
@@ -246,7 +257,7 @@ describe('AccountSettingsPage', () => {
 
     const navigation = await screen.findByRole('navigation', { name: '账户设置分区' })
     expect(within(navigation).getAllByRole('button').map((button) => button.textContent)).toEqual([
-      '我的 Agent', '个人资料', '使用情况', '使用偏好', '安全', '数据与隐私', '账户状态',
+      '我的 Agent', '聊天平台', '个人资料', '使用情况', '使用偏好', '安全', '数据与隐私', '账户状态',
     ])
     expect(screen.queryByRole('button', { name: '重新设置我的 AI 伙伴' })).not.toBeInTheDocument()
     expect(screen.getAllByText('林同学')).toHaveLength(1)
@@ -256,7 +267,7 @@ describe('AccountSettingsPage', () => {
     fireEvent.click(picker)
     const categoryOptions = within(screen.getByRole('listbox', { hidden: true })).getAllByRole('option', { hidden: true })
     expect(categoryOptions.map(option => option.textContent)).toEqual([
-      '我的 Agent', '个人资料', '使用情况', '使用偏好', '安全', '数据与隐私', '账户状态',
+      '我的 Agent', '聊天平台', '个人资料', '使用情况', '使用偏好', '安全', '数据与隐私', '账户状态',
     ])
     const content = screen.getByRole('region', { name: '个人资料' })
     content.scrollTop = 240
@@ -458,6 +469,7 @@ describe('AccountSettingsPage', () => {
     await waitFor(() => expect(getCreditSummary).toHaveBeenLastCalledWith({
       cursor: '10',
       limit: 10,
+      signal: expect.any(AbortSignal),
     }))
     await waitFor(() => expect(document.querySelector('time[datetime="2026-08-01T06:00:00Z"]')).toBeInTheDocument())
     expect(document.querySelector('time[datetime="2026-08-23T06:00:00Z"]')).not.toBeInTheDocument()
@@ -478,7 +490,7 @@ describe('AccountSettingsPage', () => {
         totalEntries: 0,
         nextCursor: null,
       })
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         balance: 3000,
         activeUsageBuckets: [{ id: 'top-up', kind: 'top_up', availablePoints: 3000, limitPoints: 6000, expiresAt: null }],
         creditLimit: 3000,
@@ -506,6 +518,7 @@ describe('AccountSettingsPage', () => {
     }))
     await waitFor(() => expect(screen.getByRole('progressbar', { name: '额外购买额度' })).toHaveAttribute('aria-valuenow', '50'))
     expect(screen.getByRole('status')).toHaveTextContent('兑换成功')
+    await waitFor(() => expect(getCreditSummary).toHaveBeenCalledTimes(3))
     expect(screen.queryByText(/3,000|6,000|积分/)).not.toBeInTheDocument()
   })
 
@@ -535,7 +548,7 @@ describe('AccountSettingsPage', () => {
 
   it('keeps a successful redemption successful when its follow-up usage read fails', async () => {
     const initial = await createApi().getCreditSummary()
-    const getCreditSummary = vi.fn().mockResolvedValueOnce(initial).mockRejectedValueOnce(new Error('read failed'))
+    const getCreditSummary = vi.fn().mockResolvedValueOnce(initial).mockRejectedValue(new Error('read failed'))
     const redeemCredits = vi.fn(async () => ({ redeemedPoints: 3000, balance: 4200 }))
     render(<AccountSettingsPage api={createApi({ getCreditSummary, redeemCredits })} />)
     await screen.findByRole('heading', { name: '个人资料' })
@@ -546,6 +559,7 @@ describe('AccountSettingsPage', () => {
     expect(screen.getByText('额度信息暂不可用')).toBeVisible()
     expect(screen.getByLabelText('兑换码')).toHaveValue('')
     expect(redeemCredits).toHaveBeenCalledOnce()
+    await waitFor(() => expect(getCreditSummary).toHaveBeenCalledTimes(3))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 

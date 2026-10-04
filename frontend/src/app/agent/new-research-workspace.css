@@ -1,4 +1,5 @@
 .research-launch {
+  position: relative;
   display: flex;
   width: 100%;
   height: 100%;
@@ -9,17 +10,8 @@
   background: var(--qx-color-canvas);
 }
 
-.research-launch__bar {
-  display: flex;
-  min-height: 64px;
-  flex: none;
-  align-items: center;
-  gap: var(--qx-space-3);
-  padding: var(--qx-space-2) var(--qx-space-5);
-  border-bottom: 1px solid var(--qx-color-rule);
-  background: var(--qx-color-surface);
-}
-.research-launch__bar h1 { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.research-launch__back:not(:focus-visible) { position: absolute; width: 1px; height: 1px; min-height: 0; overflow: hidden; padding: 0; clip-path: inset(50%); white-space: nowrap; }
+.research-launch__back:focus-visible { position: absolute; z-index: 30; top: var(--qx-space-2); left: var(--qx-space-2); background: var(--qx-color-surface); }
 .research-launch__views { display: none; }
 .research-launch__body {
   position: relative;
@@ -32,7 +24,7 @@
 }
 .research-launch__body[data-resizing='true'] { cursor: col-resize; user-select: none; }
 .research-launch__canvas { display: grid; min-width: 0; min-height: 0; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
-.research-launch__agent { display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; border-left: 1px solid var(--qx-color-rule); background: var(--qx-color-surface); }
+.research-launch__agent { container: research-agent-panel / inline-size; display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; border-left: 1px solid var(--qx-color-rule); background: var(--qx-color-surface); }
 .research-launch__agent > * { flex: 1; min-height: 0; }
 .research-launch__resize { position: absolute; z-index: 10; top: 0; bottom: 0; right: calc(var(--qx-research-agent-width, 430px) - 6px); width: 12px; cursor: col-resize; touch-action: none; }
 .research-launch__resize::after { position: absolute; top: 0; bottom: 0; left: 5px; width: 2px; content: ''; background: transparent; }
@@ -66,9 +58,39 @@
 .research-start-spin { animation: research-start-spin 1s linear infinite; }
 @keyframes research-start-spin { to { transform: rotate(360deg); } }
 
+/* The split pane can be narrow even on a wide desktop. Keep these overrides local. */
+@container research-agent-panel (max-width: 560px) {
+  .research-launch__agent .cv-layout__top { min-height: 60px; gap: var(--qx-space-1); padding: var(--qx-space-2) var(--qx-space-3); }
+  .research-launch__agent .cv-layout__identity h1 { font-size: var(--qx-text-control); }
+  .research-launch__agent .cv-layout[data-empty='true'] .cv-layout__body { justify-content: flex-start; overflow-y: auto; padding-block: var(--qx-space-5); }
+  .research-launch__agent .cv-layout[data-empty='true'] .cv-layout__scroll { flex: none; overflow: visible; }
+  .research-launch__agent .cv-layout__greeting { min-height: 0; gap: var(--qx-space-3); padding: var(--qx-space-3) var(--qx-space-4); }
+  .research-launch__agent .cv-layout__greeting h1 { font-size: var(--qx-text-section); line-height: var(--qx-text-section--line-height); overflow-wrap: anywhere; }
+  .research-launch__agent .cv-layout__greeting .agent-avatar { max-width: 64px; max-height: 64px; }
+  .research-launch__agent .cv-layout__compose { min-width: 0; padding-inline: var(--qx-space-3); }
+  .research-launch__agent .cv-layout[data-empty='true'] .cv-layout__compose { max-height: none; overflow: visible; }
+  .research-launch__agent .conversation-composer { min-width: 0; border-radius: var(--qx-radius-panel); }
+  .research-launch__agent .conversation-composer__row { grid-template-columns: var(--qx-icon-control-size) minmax(0, 1fr) var(--qx-icon-control-size); row-gap: var(--qx-space-3); }
+  .research-launch__agent .conversation-composer__row > textarea { grid-column: 1 / -1; grid-row: 1; padding-inline: var(--qx-space-2); }
+  .research-launch__agent .conversation-composer__tools { grid-column: 1; grid-row: 2; }
+  .research-launch__agent .conversation-composer__model { grid-column: 2; grid-row: 2; justify-self: end; max-width: 100%; }
+  .research-launch__agent .conversation-composer__send { grid-column: 3; grid-row: 2; }
+  .research-launch__agent .model-selection-settings__summary { max-width: 100%; padding-inline: var(--qx-space-2); }
+  .research-launch__agent .cv-research-base { min-width: 0; margin-inline: var(--qx-space-2); }
+  .research-launch__agent .cv-research-base > .cv-project-selector { flex: 1 1 100%; max-width: 100%; }
+  .research-launch__agent .cv-research-base .qx-btn { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .research-launch__agent .cv-research-suggestions { min-width: 0; margin-inline: 0; }
+  .research-launch__agent .cv-layout__source { position: absolute; z-index: 30; inset: var(--qx-space-3); width: auto; height: auto; max-height: none; padding: 0; }
+  .research-launch__agent .cv-mode-intro { width: min(340px, calc(100cqi - var(--qx-space-6))); }
+  .research-launch__import { padding-inline: var(--qx-space-2); }
+  .research-launch__import-summary { flex-wrap: wrap; }
+  .research-launch__import-summary > strong { flex-basis: 50%; }
+  .research-start-card { min-width: 0; padding: var(--qx-space-4); overflow-wrap: anywhere; }
+  .research-start-card__actions > .qx-btn { max-width: 100%; white-space: normal; }
+}
+
 @media (max-width: 900px) {
-  .research-launch__bar { gap: var(--qx-space-2); padding-inline: var(--qx-space-3); }
-  .research-launch__views { display: inline-flex; }
+  .research-launch__views { display: inline-flex; flex: none; align-self: center; margin: var(--qx-space-2); }
   .research-launch__views button { gap: var(--qx-space-1); }
   .research-launch__body { display: flex; }
   .research-launch__canvas, .research-launch__agent { width: 100%; flex: 1; border: 0; }
@@ -76,7 +98,6 @@
   .research-launch__body[data-mobile-pane='agent'] .research-launch__canvas, .research-launch__body[data-mobile-pane='map'] .research-launch__agent { display: none; }
 }
 @media (max-width: 480px) {
-  .research-launch__bar h1 { font-size: var(--qx-text-control); line-height: var(--qx-text-control--line-height); }
   .research-launch__views button > svg { display: none; }
   .research-start-card { padding: var(--qx-space-4); }
 }

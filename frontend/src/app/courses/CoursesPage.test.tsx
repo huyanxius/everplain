@@ -1,8 +1,12 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactNode, PropsWithChildren } from 'react'
+import { cleanup, fireEvent, render as testingRender, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, useNavigate } from 'react-router'
 import { afterAll, beforeAll, afterEach, expect, it, vi } from 'vitest'
 import { CoursesPage } from './CoursesPage'
 
+function render(children: ReactNode) { return testingRender(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{children}</QueryClientProvider>) }
+vi.mock('../ui/PageShell', () => ({ PageShell: ({ children }: PropsWithChildren) => children, PageContent: ({ children }: PropsWithChildren) => children }))
 const dialogMethods = Object.getOwnPropertyDescriptors(HTMLDialogElement.prototype)
 beforeAll(() => {
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value(this: HTMLDialogElement) { this.setAttribute('open', '') } })
@@ -15,7 +19,7 @@ afterAll(() => {
   }
 })
 
-vi.mock('../../modules/account', () => ({ useAccount: () => ({ sessionState: { status: 'authenticated', session: { user: { displayName: '研究者' } } } }) }))
+vi.mock('../../modules/account', () => ({ useAccount: () => ({ sessionState: { status: 'authenticated', session: { user: { displayName: '研究者', userId: 'owner-1' } } } }) }))
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllGlobals() })
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
 const course = { id: 'kb-1', name: 'Product research', description: 'My sources', viewer_access: 'owner', sharing_enabled: false, documents: [], ready_document_count: 0 }
@@ -32,7 +36,7 @@ it('creates a private library without role selection or sharing', async () => {
   fireEvent.change(screen.getByLabelText('知识库名称'), { target: { value: 'Product research' } })
   fireEvent.click(screen.getByRole('button', { name: '保存知识库' }))
   expect(await screen.findByRole('heading', { name: 'Product research' })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '上传资料' })).toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: '上传资料' })).toBeInTheDocument()
   expect(screen.queryByText('我是教师')).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: '开启分享' })).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: '基于本库研究' })).toHaveAttribute('href', '/agent?reference_knowledge_base_id=kb-1')
@@ -47,6 +51,8 @@ it('hides foreign libraries even when returned by an old service', async () => {
 
 it('shows independent processing stages and the personal knowledge graph', async () => {
   vi.stubGlobal('fetch', async (input: Request) => {
+    if (input.url.endsWith('/knowledge-storage')) return json({ used_bytes: 0, max_bytes: 100000000, library_count: 1, max_libraries: 10, max_file_bytes: 20000000, max_documents_per_library: 100 })
+    if (input.url.endsWith('/imports')) return json({ items: [] })
     if (input.url.endsWith('/course-profile')) return json({ role: 'teacher' })
     if (input.url.endsWith('/kb-1')) return json({ ...course, documents: [{
       id: 'd1', filename: '课件.pptx', media_type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
@@ -58,22 +64,26 @@ it('shows independent processing stages and the personal knowledge graph', async
   render(<MemoryRouter initialEntries={['/library?kb_id=kb-1']}><CoursesPage /></MemoryRouter>)
   expect(await screen.findByText('知识整理中')).toBeInTheDocument()
   expect(screen.getByText('语义索引失败')).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: '浏览知识与关系' })).toHaveAttribute('href', '/library/knowledge?kb_id=kb-1')
+  expect(screen.getByRole('link', { name: '浏览知识与关系' })).toHaveAttribute('href', '/my/graph?kb_id=kb-1&view=points')
   expect(screen.getByRole('button', { name: '重试处理 课件.pptx' })).toBeInTheDocument()
 })
 
 it('requires explicit library deletion and lets the owner cancel', async () => {
   const deleted = vi.fn()
   vi.stubGlobal('fetch', async (input: Request) => {
+    if (input.url.endsWith('/knowledge-storage')) return json({ used_bytes: 0, max_bytes: 100000000, library_count: 1, max_libraries: 10, max_file_bytes: 20000000, max_documents_per_library: 100 })
+    if (input.url.endsWith('/imports')) return json({ items: [] })
     if (input.url.endsWith('/course-profile')) return json({ role: 'owner', guide_dismissed: true })
     if (input.method === 'DELETE') { deleted(); return new Response(null, { status: 204 }) }
     return json(input.url.endsWith('/kb-1') ? course : { items: [course] })
   })
   render(<MemoryRouter initialEntries={['/library?kb_id=kb-1']}><CoursesPage /></MemoryRouter>)
-  fireEvent.click(await screen.findByRole('button', { name: '删除知识库' }))
+  fireEvent.click(await screen.findByRole('button', { name: '知识库选项' }))
+  fireEvent.click(screen.getByRole('button', { name: '删除知识库' }))
   expect(await screen.findByRole('dialog', { name: '删除知识库？' })).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '保留知识库' }))
   expect(deleted).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: '知识库选项' }))
   fireEvent.click(screen.getByRole('button', { name: '删除知识库' }))
   fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
   await waitFor(() => expect(deleted).toHaveBeenCalledTimes(1))
@@ -82,6 +92,8 @@ it('requires explicit library deletion and lets the owner cancel', async () => {
 it('finishes the remaining uploads and reports a failed file without losing the batch', async () => {
   let uploads = 0
   vi.stubGlobal('fetch', async (input: Request) => {
+    if (input.url.endsWith('/knowledge-storage')) return json({ used_bytes: 0, max_bytes: 100000000, library_count: 1, max_libraries: 10, max_file_bytes: 20000000, max_documents_per_library: 100 })
+    if (input.url.endsWith('/imports')) return json({ items: [] })
     if (input.url.endsWith('/course-profile')) return json({ role: 'owner', guide_dismissed: true })
     if (input.method === 'POST') {
       uploads++
@@ -91,10 +103,12 @@ it('finishes the remaining uploads and reports a failed file without losing the 
     return json(input.url.endsWith('/kb-1') ? course : { items: [course] })
   })
   const { container } = render(<MemoryRouter initialEntries={['/library?kb_id=kb-1']}><CoursesPage /></MemoryRouter>)
-  await screen.findByRole('button', { name: '上传资料' })
+  fireEvent.click(await screen.findByRole('button', { name: '上传资料' }))
+  fireEvent.click(screen.getByRole('button', { name: '文件' }))
+  await waitFor(() => expect(screen.getByLabelText('选择文件')).not.toBeDisabled())
   fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['first'], 'first.txt'), new File(['second'], 'second.txt')] } })
   await waitFor(() => expect(uploads).toBe(2))
-  expect(await screen.findByRole('status')).toHaveTextContent('1 份资料上传或解析失败')
+  expect(await screen.findByText(/1 份资料上传或解析失败/)).toBeInTheDocument()
 })
 
 it('uses real document cards as the primary view and retains secondary library management', async () => {
@@ -109,10 +123,14 @@ it('uses real document cards as the primary view and retains secondary library m
   expect(screen.getByRole('link', { name: '城市空间.pdf' })).toBeInTheDocument()
   fireEvent.change(screen.getByRole('searchbox', { name: '搜索资料' }), { target: { value: '无结果' } })
   expect(screen.getByText('没有找到相关资料')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '切换知识库：全部资料' }))
   fireEvent.click(screen.getByRole('button', { name: '管理知识库' }))
   fireEvent.click(screen.getByRole('button', { name: '打开知识库 Product research' }))
   expect(await screen.findByRole('button', { name: '上传资料' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '知识库选项' }))
   expect(screen.getByRole('button', { name: '编辑知识库' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '知识库选项' }))
+  fireEvent.click(screen.getByRole('button', { name: '管理资料 城市空间.pdf' }))
   expect(screen.getByRole('button', { name: '删除 城市空间.pdf' })).toBeInTheDocument()
 })
 
@@ -122,4 +140,29 @@ it('does not expose documents if a library detail loses owner access', async () 
   expect(await screen.findByText(/部分资料暂时无法读取/)).toBeInTheDocument()
   expect(screen.queryByText('不可访问.pdf')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '重试读取资料' })).toBeInTheDocument()
+})
+
+
+it('opens library management from a scoped library and returns to materials', async () => {
+  vi.stubGlobal('fetch', async (input: Request) => json(input.url.endsWith('/kb-1') ? course : { items: [course] }))
+  render(<MemoryRouter initialEntries={['/library?kb_id=kb-1']}><CoursesPage /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: '切换知识库：Product research' }))
+  fireEvent.click(screen.getByRole('button', { name: '管理知识库' }))
+  expect(await screen.findByRole('button', { name: '打开知识库 Product research' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '返回资料' }))
+  expect(screen.queryByRole('button', { name: '打开知识库 Product research' })).not.toBeInTheDocument()
+  expect(screen.getByRole('searchbox', { name: '搜索资料' })).toBeInTheDocument()
+})
+
+
+it('dismisses a scoped delete confirmation when browser history leaves that scope', async () => {
+  vi.stubGlobal('fetch', async (input: Request) => json(input.url.endsWith('/kb-1') ? course : { items: [course] }))
+  function Back() { const navigate = useNavigate(); return <button onClick={() => navigate(-1)}>浏览器后退</button> }
+  render(<MemoryRouter initialEntries={['/library', '/library?kb_id=kb-1']}><CoursesPage /><Back /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: '知识库选项' }))
+  fireEvent.click(screen.getByRole('button', { name: '删除知识库' }))
+  expect(screen.getByRole('dialog', { name: '删除知识库？' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '浏览器后退' }))
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: '删除知识库？' })).not.toBeInTheDocument())
+  expect(await screen.findByRole('button', { name: '切换知识库：全部资料' })).toBeInTheDocument()
 })

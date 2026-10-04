@@ -4,8 +4,9 @@ import { readAppearancePreference, setAppearancePreference, type AppearancePrefe
 import { accountManagementApi } from './accountManagementApi'
 import { isAccountManagementRequestError, type AccountManagementApi, type AccountProfile, type AccountSession, type CreditSummary, type PersonalDataExport } from './accountManagementModels'
 import { MutationIntentLedger } from './mutationIntent'
+import { notifyAccountUsageChanged, watchAccountUsageChanges } from './accountUsageEvents'
 
-export type SettingsSection = 'agent' | 'profile' | 'credits' | 'preferences' | 'security' | 'privacy' | 'danger'
+export type SettingsSection = 'agent' | 'channels' | 'profile' | 'credits' | 'preferences' | 'security' | 'privacy' | 'danger'
 export type SettingsConfirmation =
   | { kind: 'session'; session: AccountSession }
   | { kind: 'model'; allowed: boolean }
@@ -57,6 +58,10 @@ export function useAccountSettingsController({
   const pendingRef = useRef<string | null>(null)
   const intents = useRef(new MutationIntentLedger())
   const confirmationTrigger = useRef<HTMLElement | null>(null)
+  const creditReadVersion = useRef(0)
+  const creditAbort = useRef<AbortController | null>(null)
+  const creditCursor = useRef<string | undefined>(undefined)
+  const creditTargetPage = useRef(1)
   const text = (zh: string, en: string) => locale === 'en-US' ? en : zh
 
   useEffect(() => {
@@ -80,6 +85,26 @@ export function useAccountSettingsController({
       })
     return () => { active = false }
   }, [api, onSessionExpired, reload, setAppLocale])
+
+  useEffect(() => {
+    if (state.status !== 'ready') return watchAccountUsageChanges(() => setReload(value => value + 1))
+    const refresh = () => {
+      const version = ++creditReadVersion.current
+      creditAbort.current?.abort()
+      const controller = new AbortController()
+      creditAbort.current = controller
+      void api.getCreditSummary({ cursor: creditCursor.current, limit: creditPageSize, signal: controller.signal })
+        .then(credits => {
+          if (version !== creditReadVersion.current || controller.signal.aborted) return
+          setState(current => current.status === 'ready' ? { ...current, credits } : current)
+          setCreditPage(creditTargetPage.current)
+        }).catch(() => { /* Keep the last verified ledger on a failed refresh. */ })
+    }
+    const unwatch = watchAccountUsageChanges(refresh)
+    // Cancel the latest request, including one started after the effect mounted.
+    const cancelLatestRead = () => { creditAbort.current?.abort(); ++creditReadVersion.current }
+    return () => { unwatch(); cancelLatestRead() }
+  }, [api, state.status])
 
   function updateAccount(account: AccountProfile) {
     setState(current => current.status === 'ready' ? { ...current, account } : current)
@@ -156,7 +181,8 @@ export function useAccountSettingsController({
       return { redemption, credits }
     }, ({ redemption, credits }) => {
       setState(current => current.status === 'ready' ? { ...current, credits: credits ?? { ...current.credits, balance: redemption.balance, activeUsageBuckets: null } } : current)
-      if (credits) setCreditPage(1)
+      if (credits) { setCreditPage(1); creditCursor.current = undefined; creditTargetPage.current = 1 }
+      notifyAccountUsageChanged()
       setRedemptionCode('')
     }, text('兑换成功。', 'Code redeemed.'))
   }
@@ -166,11 +192,19 @@ export function useAccountSettingsController({
     pendingRef.current = 'credit-page'
     setPendingAction('credit-page')
     setError(null)
+    const version = ++creditReadVersion.current
+    creditAbort.current?.abort()
+    const controller = new AbortController()
+    creditAbort.current = controller
+    creditCursor.current = cursor
+    creditTargetPage.current = page
     try {
-      const credits = await api.getCreditSummary({ ...(cursor ? { cursor } : {}), limit: creditPageSize })
+      const credits = await api.getCreditSummary({ ...(cursor ? { cursor } : {}), limit: creditPageSize, signal: controller.signal })
+      if (version !== creditReadVersion.current || controller.signal.aborted) return
       setState(current => current.status === 'ready' ? { ...current, credits } : current)
       setCreditPage(page)
     } catch (failure) {
+      if (version !== creditReadVersion.current || controller.signal.aborted) return
       setError(failureMessage(failure))
     } finally {
       pendingRef.current = null

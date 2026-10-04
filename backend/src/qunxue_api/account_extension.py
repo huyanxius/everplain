@@ -64,22 +64,25 @@ def install_account_management(
         setting = app.state.settings.account_initial_admin_password
         if setting is not None:
             configured_admin_password = setting.get_secret_value()
-    if not configured_admin_email or not configured_admin_password:
-        raise RuntimeError(
-            "EVERPLAIN_ACCOUNT_INITIAL_ADMIN_EMAIL and "
-            "EVERPLAIN_ACCOUNT_INITIAL_ADMIN_PASSWORD must be configured before "
-            "installing account management"
+    credit_exempt_user_ids: frozenset[UUID] = frozenset()
+    # Account settings are available to every registered member. Administrator
+    # provisioning and signing capabilities are optional deployment features.
+    if configured_admin_password is not None:
+        if not configured_admin_email or not configured_admin_password:
+            raise RuntimeError(
+                "EVERPLAIN_ACCOUNT_INITIAL_ADMIN_EMAIL and "
+                "EVERPLAIN_ACCOUNT_INITIAL_ADMIN_PASSWORD must both be configured "
+                "to provision an initial administrator"
+            )
+        if len(configured_admin_password) < 12:
+            raise RuntimeError("the initial administrator password must have 12+ characters")
+        configured_admin_user_id = _provision_initial_administrator(
+            database=database,
+            password_hasher=password_hasher,
+            email=configured_admin_email,
+            password=configured_admin_password,
         )
-    if len(configured_admin_password) < 12:
-        raise RuntimeError("the initial administrator password must have 12+ characters")
-
-    configured_admin_user_id = _provision_initial_administrator(
-        database=database,
-        password_hasher=password_hasher,
-        email=configured_admin_email,
-        password=configured_admin_password,
-    )
-    credit_exempt_user_ids = frozenset({configured_admin_user_id})
+        credit_exempt_user_ids = frozenset({configured_admin_user_id})
 
     @contextmanager
     def service_scope() -> Iterator[AccountManagementService]:

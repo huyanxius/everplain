@@ -43,6 +43,21 @@ function setup(options: { catalog?: unknown; catalogStatus?: number; conversatio
 }
 
 describe('conversation model selection integration', () => {
+  it('fills a suggested question without sending or changing request mode', async () => {
+    const { requests } = setup()
+    mount()
+    await screen.findByRole('button', { name: /GPT 6 Luna · 中/ })
+    expect(document.querySelectorAll('.cv-suggestions__card')).toHaveLength(3)
+    fireEvent.click(screen.getByRole('button', { name: /理清下一步/ }))
+    expect((screen.getByRole('textbox', { name: '问 Everplain' }) as HTMLTextAreaElement).value).toContain('3个可执行的下一步')
+    expect(requests).toHaveLength(0)
+    fireEvent.click(screen.getByRole('tab', { name: 'Research' }))
+    expect(document.querySelectorAll('.cv-suggestions__card')).toHaveLength(3)
+    fireEvent.click(screen.getByRole('button', { name: /缩小研究问题/ }))
+    expect((screen.getByRole('textbox', { name: '问 Everplain' }) as HTMLTextAreaElement).value).toContain('3个可验证的子问题')
+    expect(requests).toHaveLength(0)
+  })
+
   it('keeps Chat a single input row and places Research tools on a separate base', async () => {
     setup()
     mount()
@@ -182,6 +197,8 @@ describe('conversation model selection integration', () => {
     await openSettings()
     fireEvent.keyDown(await screen.findByRole('slider'), { key: 'End' })
     view.rerender(<ResearchAgentConversationPage userId="second-owner" />)
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+    await openSettings()
     expect(await screen.findByText(/模型选择尚未启用/)).toBeVisible()
     expect(screen.queryByRole('slider')).not.toBeInTheDocument()
     closeTools()

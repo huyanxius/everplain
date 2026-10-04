@@ -36,6 +36,12 @@ function smoothRadial(cx: number, cy: number, radius: (theta: number) => number,
     const r = radius(theta)
     return [cx + Math.cos(theta) * r, cy + Math.sin(theta) * r] as const
   })
+  return closedSmoothPath(points)
+}
+
+/** Shared closed Catmull-Rom outline for the preset and its liquid interpolation. */
+export function closedSmoothPath(points: readonly (readonly [number, number])[]) {
+  const samples = points.length
   const at = (index: number) => points[(index + samples) % samples]
   const f = (value: number) => value.toFixed(2)
   let d = `M${f(points[0][0])} ${f(points[0][1])}`

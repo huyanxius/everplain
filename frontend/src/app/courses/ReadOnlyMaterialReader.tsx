@@ -1,7 +1,7 @@
 import { Select } from '../ui/Select'
 import { DocumentKnowledgeEditor } from './DocumentKnowledgeEditor'
 import { copyCourseText } from './copyCourseText'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ArrowLeftIcon, ChatCircleIcon, CopyIcon, FileTextIcon, InfoIcon, ListBulletsIcon, MagnifyingGlassIcon, PencilSimpleIcon, XIcon } from '@phosphor-icons/react'
 import type { SharedSource, SharedDocument } from '../../modules/shared-knowledge'
 import { formatMaterialLocator, formatMaterialSize, type ResearchMaterialSegment } from '../../modules/research-materials'
@@ -29,6 +29,7 @@ export function ReadOnlyMaterialReader({ source, selectedSegmentId, onBack, navi
   const [selected, setSelected] = useState(selectedSegmentId ?? null)
   const [page, setPage] = useState(() => Math.floor(Math.max(0, segments.findIndex((s) => s.segmentId === selectedSegmentId)) / PAGE_SIZE))
   const [agentOpen, setAgentOpen] = useState(false)
+  const tabsId = useId()
   const [panelOpen, setPanelOpen] = useState(true)
   const [zoom, setZoom] = useState(100)
   const [copied, setCopied] = useState(false)
@@ -74,7 +75,7 @@ export function ReadOnlyMaterialReader({ source, selectedSegmentId, onBack, navi
     <header className="ep-material__bar">
       {navigation ?? <button className="qx-btn qx-btn--ghost" onClick={onBack}><ArrowLeftIcon size={18} />知识库</button>}
       <div className="ep-material__actions">
-        {agentPanel && <button type="button" className="qx-btn qx-btn--secondary" aria-expanded={agentOpen} onClick={() => { setAgentOpen(!agentOpen); setPanelOpen(true) }}><ChatCircleIcon size={18} />结合本库提问</button>}
+        {agentPanel && <button type="button" className="qx-btn qx-btn--secondary" aria-expanded={agentOpen && panelOpen} onClick={() => { setAgentOpen(true); setPanelOpen(true) }}><ChatCircleIcon size={18} />结合本库提问</button>}
         <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label={outlineOpen ? '收起章节' : '展开章节'} aria-pressed={outlineOpen} onClick={() => setOutlineOpen(!outlineOpen)}><ListBulletsIcon size={18} /></button>
         <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="在材料中查找" title="查找（⌘⇧F）" aria-pressed={searchOpen} onClick={() => setSearchOpen(!searchOpen)}><MagnifyingGlassIcon size={18} /></button>
         <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label={panelOpen ? '收起研究侧栏' : '展开研究侧栏'} aria-pressed={panelOpen} onClick={() => setPanelOpen(!panelOpen)}><InfoIcon size={18} /></button>
@@ -98,12 +99,21 @@ export function ReadOnlyMaterialReader({ source, selectedSegmentId, onBack, navi
         <nav className="ep-material__pagination" aria-label="原文分页"><button type="button" className="qx-btn qx-btn--secondary" disabled={activePage === 0} onClick={() => changePage(activePage - 1)}>上一页</button><span className="qx-meta">第 {activePage + 1} / {pageCount} 页</span><button type="button" className="qx-btn qx-btn--secondary" disabled={activePage + 1 >= pageCount} onClick={() => changePage(activePage + 1)}>下一页</button></nav>
       </article>
       <aside className="ep-material__rail" aria-label="资料研究侧栏" hidden={!panelOpen}>
-        {agentPanel && <section className="qx-card ep-material__rail-block ep-material__agent" hidden={!agentOpen}><header className="ep-material__rail-head"><h2 className="qx-heading">结合本库提问</h2><button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="收起 Agent" onClick={() => setAgentOpen(false)}><XIcon size={16} /></button></header><div className="ep-material__agent-content">{agentPanel}</div></section>}
-        <section className="qx-card ep-material__rail-block"><header className="ep-material__rail-head"><h2 className="qx-heading">知识点</h2>{canEdit && !editing && <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="编辑知识" onClick={() => setEditing(true)}><PencilSimpleIcon size={17} /></button>}</header>
+        {agentPanel && <div className="qx-segmented ep-material__rail-tabs" role="tablist" aria-label="资料研究内容" onKeyDown={event => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+          event.preventDefault()
+          const ask = event.key === 'Home' ? false : event.key === 'End' ? true : !agentOpen
+          setAgentOpen(ask)
+          document.getElementById(`${tabsId}-${ask ? 'ask' : 'knowledge'}-tab`)?.focus()
+        }}><button id={`${tabsId}-knowledge-tab`} type="button" role="tab" aria-controls={`${tabsId}-knowledge`} aria-selected={!agentOpen} tabIndex={agentOpen ? -1 : 0} onClick={() => setAgentOpen(false)}>知识点</button><button id={`${tabsId}-ask-tab`} type="button" role="tab" aria-controls={`${tabsId}-ask`} aria-selected={agentOpen} tabIndex={agentOpen ? 0 : -1} onClick={() => setAgentOpen(true)}>结合本库提问</button></div>}
+        {selectedSource && <section className="qx-card ep-material__rail-block" aria-label="原文依据"><header className="ep-material__rail-head"><h2 className="qx-heading">原文依据</h2><button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="关闭原文依据" onClick={() => setSelected(null)}><XIcon size={16} /></button></header><span className="qx-meta">{formatMaterialLocator(selectedSource.locator)}</span><blockquote>{selectedSource.text}</blockquote><button className="qx-btn qx-btn--secondary" type="button" onClick={() => { setCopyError(false); void copyCourseText(`${source.document.filename}\n${formatMaterialLocator(selectedSource.locator)}\n${selectedSource.text}`).then(() => setCopied(true)).catch(() => setCopyError(true)) }}><CopyIcon size={15} />{copied ? '已复制' : '复制原文与定位'}</button>{copyError && <p role="alert">复制失败，请手动选择原文复制。</p>}<p className="qx-meta">{source.document.filename} · {source.knowledgeBaseName}</p></section>}
+        {agentPanel && <section id={`${tabsId}-ask`} role="tabpanel" aria-labelledby={`${tabsId}-ask-tab`} className="qx-card ep-material__rail-block ep-material__agent" hidden={!agentOpen}><header className="ep-material__rail-head"><h2 className="qx-heading">结合本库提问</h2><button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="收起 Agent" onClick={() => setAgentOpen(false)}><XIcon size={16} /></button></header><div className="ep-material__agent-content">{agentPanel}</div></section>}
+        <div id={`${tabsId}-knowledge`} role={agentPanel ? 'tabpanel' : undefined} aria-labelledby={agentPanel ? `${tabsId}-knowledge-tab` : undefined} hidden={agentOpen} className="ep-material__knowledge-panel"><section className="qx-card ep-material__rail-block"><header className="ep-material__rail-head"><h2 className="qx-heading">知识点</h2>{canEdit && !editing && <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="编辑知识" onClick={() => setEditing(true)}><PencilSimpleIcon size={17} /></button>}</header>
           {editing && onKnowledgeSaved ? <DocumentKnowledgeEditor source={source} onCancel={() => setEditing(false)} onSaved={document => { onKnowledgeSaved(document); setEditing(false) }} /> : knowledge ? <ul className="ep-material__points">{knowledge.topics.map((topic, index) => <li key={`${topic.title}:${index}`}><button type="button" className="qx-item" onClick={() => { const segment = segments.find(item => item.segmentId === topic.segmentIds[0]); if (segment) select(segment) }}>{topic.title}</button><p className="qx-meta">{topic.summary}</p><div className="ep-material__citations">{topic.segmentIds.map((id, index) => <button className="qx-tag qx-tag--outline" key={id} type="button" onClick={() => { const segment = segments.find(item => item.segmentId === id); if (segment) select(segment) }}>原文 {index + 1}</button>)}</div></li>)}</ul> : <p className="qx-meta">{source.document.knowledgeStatus === 'failed' ? '知识整理暂未完成，请到资料详情重试。' : '正在整理知识点，完成后会显示在这里。'}</p>}
         </section>
         {!!knowledge?.relations.length && <section className="qx-card ep-material__rail-block"><h2 className="qx-heading">知识关系</h2>{knowledge.relations.map((relation, index) => <article className="ep-material__relation" key={index}><strong>{relation.source} → {relation.target}</strong><p className="qx-meta">{relation.label}</p><div className="ep-material__citations">{relation.segmentIds.map((id, i) => <button className="qx-tag qx-tag--outline" key={id} onClick={() => { const segment = segments.find(item => item.segmentId === id); if (segment) select(segment) }}>依据 {i + 1}</button>)}</div></article>)}</section>}
-        {selectedSource && <section className="qx-card ep-material__rail-block" aria-label="原文依据"><header className="ep-material__rail-head"><h2 className="qx-heading">原文依据</h2><button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="关闭原文依据" onClick={() => setSelected(null)}><XIcon size={16} /></button></header><span className="qx-meta">{formatMaterialLocator(selectedSource.locator)}</span><blockquote>{selectedSource.text}</blockquote><button className="qx-btn qx-btn--secondary" type="button" onClick={() => { setCopyError(false); void copyCourseText(`${source.document.filename}\n${formatMaterialLocator(selectedSource.locator)}\n${selectedSource.text}`).then(() => setCopied(true)).catch(() => setCopyError(true)) }}><CopyIcon size={15} />{copied ? '已复制' : '复制原文与定位'}</button>{copyError && <p role="alert">复制失败，请手动选择原文复制。</p>}<p className="qx-meta">{source.document.filename} · {source.knowledgeBaseName}</p></section>}
+
+        </div>
       </aside>
     </div>
   </section>

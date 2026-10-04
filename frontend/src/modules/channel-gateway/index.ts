@@ -1,0 +1,1 @@
+export { ChannelBindingsPanel } from './ChannelBindingsPanel'

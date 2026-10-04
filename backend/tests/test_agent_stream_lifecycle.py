@@ -1,4 +1,5 @@
 import asyncio
+import json
 import threading
 from contextlib import contextmanager
 from types import SimpleNamespace
@@ -101,3 +102,36 @@ def test_stop_unknown_run_does_not_claim_success():
             headers={"Idempotency-Key": "stop-unknown"},
         )
     assert response.status_code == 404
+
+
+def test_input_limit_stream_error_is_not_a_provider_outage():
+    from qunxue_api.adapters.model import ModelAttemptFailure
+    from qunxue_api.adapters.research_agent.pydantic_runner import AgentModelRouteError
+
+    class LimitedApplication:
+        def run_turn(self, **kwargs):
+            raise AgentModelRouteError.from_attempt(
+                ModelAttemptFailure(code="model_input_limit", retryable=False)
+            )
+
+    @contextmanager
+    def application_scope():
+        yield LimitedApplication()
+
+    async def exercise():
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+            settings=Settings(_env_file=None), disciplinary_agent_scope=application_scope,
+        )))
+        response = stream_agent_turn(
+            payload=AgentTurnRequest(message="synthetic context limit"), request=request,
+            current=SimpleNamespace(user=SimpleNamespace(user_id=UUID(int=943))),
+            idempotency_key="input-limit-test",
+        )
+        frames = [frame async for frame in response.body_iterator]
+        failed = next(frame for frame in frames if "event: turn_failed" in frame)
+        payload = json.loads(failed.split("data: ", 1)[1].strip())
+        assert payload["code"] == "agent_input_limit"
+        assert "上下文上限" in payload["message"]
+        assert "暂时不可用" not in payload["message"]
+
+    asyncio.run(exercise())

@@ -36,6 +36,7 @@
   --qx-color-ink: light-dark(#111111, #e6e7e3);
   --qx-color-ink-soft: light-dark(#303030, #c9ccc6);
   --qx-color-muted: light-dark(#6c6c6c, #a4aaa2);
+  --qx-color-shine: light-dark(#cfcfcf, #f4f5f1);
   --qx-color-faint: light-dark(#969696, #92998f);
 
   --qx-color-rule: light-dark(#e3e3e3, #383d38);
@@ -221,10 +222,12 @@
   --qx-shadow-menu: var(--qx-shadow-ring), 0 12px 32px rgb(17 17 17 / 10%);
   --qx-shadow-float: 0 20px 48px rgb(17 17 17 / 18%);
 
+  --qx-motion-breathe: 1600ms;
   --qx-motion-fast: 140ms;
   --qx-motion-base: 240ms;
   --qx-motion-slow: 420ms;
   --qx-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --qx-ease-spring: cubic-bezier(.34, 1.4, .64, 1);
   --qx-ease-standard: cubic-bezier(0.65, 0, 0.35, 1);
 
   /* ---- 兼容别名：老模块继续用短名，新代码不要引用这一段 ---- */

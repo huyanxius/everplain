@@ -1,4 +1,5 @@
-import { CourseKnowledgePage } from './courses/CourseKnowledgePage'
+import { WritingHomePage } from './writing/WritingHomePage'
+import { WritingDocumentPage } from './writing/WritingDocumentPage'
 import { CoursesPage } from './courses/CoursesPage'
 import {
   BrowserRouter,
@@ -7,6 +8,7 @@ import {
   Routes,
   useLocation,
   useNavigate,
+  useNavigationType,
   useParams,
 } from 'react-router'
 import { type ReactNode } from 'react'
@@ -29,9 +31,10 @@ import { ResearchProjectWorkspacePage } from './research-workspace/ResearchProje
 import { legacyResearchWorkspaceDestination } from './research-workspace/researchProjectWorkspaceModel'
 import { FoundationPage } from './foundation/FoundationPage'
 import { AppHomePage } from './home/AppHomePage'
+import { HomeCompanion } from './home/HomeCompanion'
 import { SharingPage, PublicDirectoryPage, SharedReaderPage, ConnectionsPage, SubscriptionPage } from './integrations/IntegrationPages'
-import { ImportsPage } from './imports/ImportsPage'
-import { PersonalGraphPage } from './personal-graph/PersonalGraphPage'
+import { LibrarySharedPage } from './courses/LibrarySharedPage'
+import { LibraryGraphPage, LegacyLibraryKnowledgeRoute } from './courses/LibraryGraphPage'
 import { OnboardingGate, WelcomeSetupPage } from './welcome/WelcomeSetupPage'
 import { PageContent, PageShell, RailStateProvider } from './ui/PageShell'
 import { ErrorState, LoadingState } from './ui/States'
@@ -221,6 +224,8 @@ export function AppRoutes({
 }: AppRoutesProps) {
   const account = useAccount()
   const location = useLocation()
+  // Read outside Routes: its explicit background location reports POP to descendants.
+  const entryNavigationType = useNavigationType()
   const resolvedSessionState: SessionState = sessionState ?? account.sessionState
   const settingsOpen = location.pathname === '/settings' && resolvedSessionState.status === 'authenticated'
   const settingsBackground = settingsOpen ? location.state?.settingsBackground : undefined
@@ -237,12 +242,13 @@ export function AppRoutes({
     <ProtectedRoute sessionState={resolvedSessionState}><OnboardingGate userId={authenticatedUserId}>{element}</OnboardingGate></ProtectedRoute>
   )
   const productHome = (
-    <FoundationPage authenticated={resolvedSessionState.status === 'authenticated'} />
+    <FoundationPage authenticated={resolvedSessionState.status === 'authenticated'} checkingSession={resolvedSessionState.status === 'loading'} />
   )
 
   return (
     <RailStateProvider>
-      <RouteMotionSurface>
+      <HomeCompanion active={resolvedSessionState.status === 'authenticated' && location.pathname === '/app'} />
+      <RouteMotionSurface identityKey={authenticatedUserId}>
         <Routes location={settingsOpen ? settingsBackground ?? { pathname: '/app' } : location}>
       <Route
         path="/"
@@ -255,15 +261,17 @@ export function AppRoutes({
       <Route path="/sharing" element={protectedRoute(<SharingPage />)} />
       <Route path="/connections" element={protectedRoute(<ConnectionsPage />)} />
       <Route path="/subscription" element={protectedRoute(<SubscriptionPage />)} />
-      <Route path="/shared/:libraryId" element={protectedRoute(<SharedReaderPage />)} />
+      <Route path="/shared/:libraryId" element={protectedRoute(<LibrarySharedPage />)} />
       <Route path="/discover" element={<PublicDirectoryPage />} />
       <Route path="/discover/:libraryId" element={<SharedReaderPage publicView />} />
-      <Route path="/imports" element={protectedRoute(<ImportsPage userId={authenticatedUserId} />)} />
-      <Route path="/my/graph" element={protectedRoute(<PersonalGraphPage userId={authenticatedUserId} />)} />
+      <Route path="/imports" element={protectedRoute(<Navigate replace to="/library?add=extension" />)} />
+      <Route path="/my/graph" element={protectedRoute(<LibraryGraphPage userId={authenticatedUserId} />)} />
       <Route path="/app" element={protectedRoute(<AppHomePage />)} />
-      <Route path="/agent" element={protectedRoute(<ResearchAgentPage userId={authenticatedUserId} introSessionId={authenticatedSessionId} />)} />
+      <Route path="/agent" element={protectedRoute(<ResearchAgentPage userId={authenticatedUserId} introSessionId={authenticatedSessionId} entryNavigationType={entryNavigationType} />)} />
+      <Route path="/writing" element={protectedRoute(<WritingHomePage userId={authenticatedUserId} />)} />
+      <Route path="/writing/:documentId" element={protectedRoute(<WritingDocumentPage userId={authenticatedUserId} />)} />
       <Route path="/library" element={protectedRoute(<CoursesPage />)} />
-      <Route path="/library/knowledge" element={protectedRoute(<CourseKnowledgePage />)} />
+      <Route path="/library/knowledge" element={protectedRoute(<LegacyLibraryKnowledgeRoute />)} />
       <Route path="/knowledge/*" element={<Navigate replace to="/library" />} />
       <Route path="/research/new" element={protectedRoute(<NewResearchRoute userId={authenticatedUserId} />)} />
       <Route path="/research/existing" element={protectedRoute(<ExistingResearchEntryPage />)} />

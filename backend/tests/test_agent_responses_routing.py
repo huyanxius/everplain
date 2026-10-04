@@ -143,8 +143,9 @@ def test_responses_route_rejects_input_budget_before_any_network():
                     max_input_tokens=10,
                 ),
             )
-            with pytest.raises(AgentModelRouteError):
+            with pytest.raises(AgentModelRouteError) as caught:
                 await Agent(model).run("synthetic question")
+            assert caught.value.code == "agent_input_limit"
 
     asyncio.run(run())
     assert calls == []

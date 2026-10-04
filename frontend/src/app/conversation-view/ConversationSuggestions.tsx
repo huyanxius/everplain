@@ -1,15 +1,13 @@
-import { useState } from 'react'
 import { useAppLocale } from '../i18n/AppLocaleProvider'
-import { englishResearchTopicPresets, researchTopicPresets } from './researchPrompts'
+import { buildConversationSuggestions, type ConversationSuggestionContext } from './conversationSuggestionsModel'
 
-export function ConversationSuggestions({ onSelect }: { onSelect: (question: string) => void }) {
-  const { locale, text } = useAppLocale()
-  const [page, setPage] = useState(0)
-  const prompts = locale === 'en-US' ? englishResearchTopicPresets : researchTopicPresets
-  return <details className="cv-suggestions">
-    <summary className="qx-item">{text('问题示例', 'Suggested questions')}</summary>
-    <div>{prompts.slice(page * 4, page * 4 + 4).map(prompt => <button className="qx-btn qx-btn--ghost" type="button" key={prompt} onClick={() => onSelect(prompt)}>{prompt}</button>)}
-      <button className="qx-btn qx-btn--ghost" type="button" onClick={() => setPage(current => (current + 1) % Math.ceil(prompts.length / 4))}>{text('换一组', 'More ideas')}</button>
-    </div>
-  </details>
+export function ConversationSuggestions({ onSelect, ...context }: ConversationSuggestionContext & { onSelect: (question: string) => void }) {
+  const { locale } = useAppLocale()
+  const { label, cards } = buildConversationSuggestions(context, locale)
+  return <section className="cv-suggestions" aria-label={label}>
+    <p className="cv-suggestions__label qx-meta">{label}</p>
+    <div className="cv-suggestions__cards">{cards.map(card => <button className="qx-btn qx-btn--ghost cv-suggestions__card" type="button" key={card.title} onClick={() => onSelect(card.prompt)}>
+      <strong>{card.title}</strong><span>{card.description}</span>
+    </button>)}</div>
+  </section>
 }

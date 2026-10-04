@@ -66,13 +66,20 @@ describe('ResearchMapCanvas', () => {
 
     expect(screen.getByLabelText('空白研究画布')).toBeVisible()
     expect(container.querySelector('.react-flow__background')).not.toBeInTheDocument()
-    expect(container.querySelector('[data-research-agent-bot]')).toBeInTheDocument()
+    expect(container.querySelector('[data-research-agent-bot]')).not.toBeInTheDocument()
+    expect(container.querySelector('.ep-map__idle-content .agent-avatar')).toHaveAttribute('data-avatar', 'shi')
     expect(screen.getByLabelText('画布说明')).toHaveTextContent('对话中形成的研究结构会在这里展开。')
     expect(within(screen.getByLabelText('画布说明')).queryByRole('button')).not.toBeInTheDocument()
     expect(screen.queryByText('让问题在这里形成结构')).not.toBeInTheDocument()
     expect(screen.queryByText('ARGUMENT MAP')).not.toBeInTheDocument()
     expect(screen.queryByText('不是聊天摘要。这里仅保留 Agent 明确建立的问题、理论、主张、证据与缺口。')).not.toBeInTheDocument()
     expect(screen.queryByText(/0 个节点/)).not.toBeInTheDocument()
+  })
+
+  it('uses the supplied personal companion in the empty canvas', () => {
+    const { container } = render(<ResearchMapCanvas projection={{ status: 'empty', question: '', nodes: [], edges: [] }} idleCompanion={<span aria-label="个人 Agent">个人头像</span>} />)
+    expect(within(screen.getByLabelText('研究论证地图')).getByLabelText('个人 Agent')).toBeVisible()
+    expect(container.querySelector('.ep-map__idle-content .agent-avatar')).not.toBeInTheDocument()
   })
 
   it('lays out typed argument nodes with mature navigation aids', async () => {

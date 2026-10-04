@@ -1,33 +1,33 @@
-import { Select } from '../ui/Select'
-import { useAccount } from '../../modules/account'
-import { ResearchAgentConversationPage } from '../agent/ResearchAgentConversationPage'
-import { ArrowClockwiseIcon, ArrowLeftIcon, ArrowUpRightIcon, BooksIcon, PencilSimpleIcon, TreeStructureIcon, FileTextIcon, MagnifyingGlassIcon, PlusIcon, TrashIcon, UploadSimpleIcon } from '@phosphor-icons/react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
+import { ArrowClockwiseIcon, ArrowLeftIcon, ArrowUpRightIcon, BooksIcon, DotsThreeIcon, MagnifyingGlassIcon, PencilSimpleIcon, PlusIcon, ShareNetworkIcon, TrashIcon, TreeStructureIcon, UploadSimpleIcon } from '@phosphor-icons/react'
+import { Select } from '../ui/Select'
+import { useAccount } from '../../modules/account'
+import { readImportBatches } from '../../modules/knowledge-import'
+import { readPersonalGraph } from '../../modules/personal-graph'
+import { ResearchAgentConversationPage } from '../agent/ResearchAgentConversationPage'
 import { PageContent, PageShell } from '../ui/PageShell'
 import { ReadOnlyMaterialReader } from './ReadOnlyMaterialReader'
-import { formatMaterialSize } from '../../modules/research-materials'
-import { COURSE_DOCUMENT_ACCEPT, retryCourseDocument, createCourse, deleteCourse, detachCourseDocument, getCourse, listCourses, readCourseDocument, updateCourse, uploadCourseDocument, readKnowledgeStorage, type SharedCourse, type SharedDocument, type SharedSource } from '../../modules/shared-knowledge'
+import { retryCourseDocument, createCourse, deleteCourse, detachCourseDocument, getCourse, listCourses, readCourseDocument, updateCourse, readKnowledgeStorage, type SharedCourse, type SharedDocument, type SharedSource } from '../../modules/shared-knowledge'
 import { KnowledgePage, KnowledgePageHead, KnowledgeViewSwitch } from './KnowledgeLayout'
+import { LibraryScopeSwitcher } from './LibraryScopeSwitcher'
+import { LibraryDialog } from './LibraryDialog'
+import { LibraryMaterialCard, LibrarySkeleton, type LibraryMaterialSource } from './LibraryMaterialCard'
+import { documentKind, isProcessing } from './libraryMaterials'
+import { LibraryAddDialog } from '../imports/LibraryAddDialog'
+import chromeLogo from '../../assets/brand/chrome.svg'
+import obsidianLogo from '../../assets/brand/obsidian.svg'
 import './courses.css'
 
-function documentKind(document: SharedDocument) {
-  const extension = document.filename.split('.').pop()?.toLocaleLowerCase()
-  if (extension === 'pdf' || document.mediaType === 'application/pdf') return 'PDF'
-  if (extension === 'docx') return 'Word'
-  if (extension === 'pptx') return '演示文稿'
-  if (document.mediaType?.startsWith('image/')) return '图片'
-  if (extension === 'html' || extension === 'htm') return '网页'
-  return '笔记'
-}
-
-function isProcessing(document: SharedDocument) {
-  return document.status === 'processing' || (document.status === 'ready' && [document.knowledgeStatus, document.indexStatus].some(status => status === 'queued' || status === 'running'))
-}
+const sourceNames: Record<string, string> = { chrome: '浏览器收藏', obsidian: 'Obsidian', markdown: 'Markdown', apple_notes: 'Apple 备忘录', enex: '印象笔记', notion: 'Notion', flomo: 'flomo', keep: 'Google Keep', bilibili: 'B 站收藏', image: '图片与截图' }
 
 export function CoursesPage() {
   const account = useAccount()
   const userId = account.sessionState.status === 'authenticated' ? account.sessionState.session.user.userId : null
+  return <LibraryContent key={userId ?? 'anonymous'} userId={userId} />
+}
+
+function LibraryContent({ userId }: { userId: string | null }) {
   const [params, setParams] = useSearchParams()
   const routerNavigate = useNavigate()
   const id = params.get('kb_id')
@@ -35,61 +35,107 @@ export function CoursesPage() {
   const segmentId = params.get('segment_id')
   const [reload, setReload] = useState(0)
   const [courses, setCourses] = useState<SharedCourse[]>([])
+  const [libraryChoices, setLibraryChoices] = useState<SharedCourse[]>([])
   const [detail, setDetail] = useState<SharedCourse | null>(null)
   const [source, setSource] = useState<SharedSource | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [uploadProgress, setUploadProgress] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [showLibraries, setShowLibraries] = useState(false)
-  const [libraryFilter, setLibraryFilter] = useState('')
+  const showLibraries = params.has('manage')
   const [kindFilter, setKindFilter] = useState('')
   const [catalogError, setCatalogError] = useState<string | null>(null)
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState<'create' | 'edit' | null>(params.has('new') ? 'create' : null)
   const [deleting, setDeleting] = useState(false)
+  const [deletingDocument, setDeletingDocument] = useState<{ course: SharedCourse; document: SharedDocument } | null>(null)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [libraryMenu, setLibraryMenu] = useState(false)
   const [storage, setStorage] = useState<Awaited<ReturnType<typeof readKnowledgeStorage>> | null>(null)
-  const deleteDialog = useRef<HTMLDialogElement>(null)
-  const uploadRef = useRef<HTMLInputElement>(null)
+  const [materialSources, setMaterialSources] = useState<Record<string, LibraryMaterialSource>>({})
   const busyRef = useRef(false)
+  const currentScope = useRef(params.toString())
+  currentScope.current = params.toString()
+  const currentLibrary = useRef(id)
+  currentLibrary.current = id
+  const menuRef = useRef<HTMLDivElement>(null)
+  const editorSeed = useRef<string | null>(null)
+  const newOpen = params.has('new')
+  const editOpen = params.has('edit')
   useEffect(() => {
-    if (deleting) deleteDialog.current?.showModal()
-    else deleteDialog.current?.close()
-  }, [deleting])
+    if (newOpen && editorSeed.current !== 'new') { editorSeed.current = 'new'; setName(''); setDescription(''); setEditing('create') }
+    else if (editOpen && detail && editorSeed.current !== detail.id) { editorSeed.current = detail.id; setName(detail.name ?? ''); setDescription(detail.description ?? ''); setEditing('edit') }
+    else if (!newOpen && !editOpen) { editorSeed.current = null; setEditing(null) }
+  }, [newOpen, editOpen, detail])
+  useEffect(() => {
+    if (!libraryMenu) return
+    const outside = (event: MouseEvent) => { if (!menuRef.current?.contains(event.target as Node)) setLibraryMenu(false) }
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') setLibraryMenu(false) }
+    document.addEventListener('mousedown', outside); document.addEventListener('keydown', key)
+    return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', key) }
+  }, [libraryMenu])
+  useEffect(() => { setQuery(''); setKindFilter(''); setLibraryMenu(false); setDeleting(false); setDeletingDocument(null) }, [id, documentId])
   useEffect(() => {
     let active = true
     setLoading(true); setError(null); setCatalogError(null); setDetail(null); setSource(null)
     void (async () => {
       const list = await listCourses()
       if (!active) return
-      const owned = list.filter((item) => item.access === 'owner')
+      const owned = list.filter(item => item.access === 'owner')
+      setLibraryChoices(list.filter(item => item.access === 'owner' || item.access === 'reader'))
       setCourses(owned)
       if (id) {
         const value = await getCourse(id)
         if (!active) return
         if (value.access !== 'owner') throw new Error('此知识库不可访问。')
         setDetail(value)
+        setCourses(owned.map(item => item.id === value.id ? value : item))
         if (documentId) {
           const result = await readCourseDocument(id, documentId)
           if (active) setSource(result)
         }
       } else {
-        // The list API contains library summaries; document cards use owner-checked details.
         const results = await Promise.allSettled(owned.map(item => getCourse(item.id)))
         if (!active) return
-        setCourses(owned.map((item, index) => {
+        const values = owned.map((item, index) => {
           const result = results[index]
           return result.status === 'fulfilled' && result.value.access === 'owner' ? result.value : { ...item, documents: [] }
-        }))
+        })
+        setCourses(values)
+        setLibraryChoices([...values, ...list.filter(item => item.access === 'reader')])
         if (results.some(result => result.status === 'rejected' || result.value.access !== 'owner')) setCatalogError('部分资料暂时无法读取。已保留可访问的资料，你可以重试或打开对应知识库。')
       }
-    })().catch((e: Error) => { if (active) setError(e.message) }).finally(() => { if (active) setLoading(false) })
-    void readKnowledgeStorage().then((value) => { if (active) setStorage(value) }).catch(() => {})
+    })().catch((failure: Error) => { if (active) setError(failure.message) }).finally(() => { if (active) setLoading(false) })
+    void readKnowledgeStorage().then(value => { if (active) setStorage(value) }).catch(() => {})
+    void readImportBatches().then(batches => {
+      if (!active || !Array.isArray(batches)) return
+      const metadata: Record<string, LibraryMaterialSource> = {}
+      for (const batch of batches) for (const item of batch.items ?? []) if (item.document_id) metadata[`${batch.library_id}:${item.document_id}`] = { source: sourceNames[batch.source_type], url: item.source_url }
+      setMaterialSources(metadata)
+    }).catch(() => {})
     return () => { active = false }
   }, [id, documentId, reload])
+  const materials = (detail ? [detail] : courses).flatMap(course => course.documents.map(document => ({ course, document })))
+  const hasImages = materials.some(({ document }) => documentKind(document) === '图片')
+  useEffect(() => {
+    if (!hasImages) return
+    let active = true
+    void readPersonalGraph().then(graph => {
+      if (!active) return
+      setMaterialSources(current => {
+        const next = { ...current }
+        for (const record of Object.values(graph.sources ?? {})) {
+          const key = `${record.library_id}:${record.document_id}`
+          let image: string | undefined
+          if (record.asset_url) { try { const url = new URL(record.asset_url, window.location.origin); if (url.origin === window.location.origin && /^https?:$/.test(url.protocol)) image = url.href } catch { /* No synthetic preview. */ } }
+          next[key] = { ...next[key], image, url: record.source_url ?? next[key]?.url }
+        }
+        return next
+      })
+    }).catch(() => {})
+    return () => { active = false }
+  }, [hasImages, reload, id])
   useEffect(() => {
     const pending = (detail ? [detail] : courses).filter(course => course.documents.some(isProcessing))
     if (!pending.length) return
@@ -105,66 +151,48 @@ export function CoursesPage() {
           const refreshed = values.find(value => value.id === course.id)
           return refreshed ? refreshed.access === 'owner' ? [refreshed] : [] : [course]
         }))
-      }).catch((e: Error) => { if (active) { setError(e.message); window.clearInterval(timer) } })
+      }).catch((failure: Error) => { if (active) { setError(failure.message); window.clearInterval(timer) } })
     }, 3000)
     return () => { active = false; window.clearInterval(timer) }
   }, [detail, courses])
   function navigate(libraryId?: string, docId?: string) {
-    setEditing(false); setNotice(null); setError(null)
+    setEditing(null); setNotice(null); setError(null)
     const next = new URLSearchParams()
     if (libraryId) next.set('kb_id', libraryId)
     if (docId) next.set('document_id', docId)
     if (libraryId === id && params.get('conversation_id')) next.set('conversation_id', params.get('conversation_id')!)
     routerNavigate(`/library${next.size ? `?${next}` : ''}`)
   }
-  async function action(work: () => Promise<void>) {
+  function openAdd(source = 'extension', libraryId = id) {
+    setParams(current => { const next = new URLSearchParams(current); if (libraryId) next.set('kb_id', libraryId); next.set('add', source); return next })
+  }
+  function closeAdd() { setParams(current => { const next = new URLSearchParams(current); next.delete('add'); return next }, { replace: true }) }
+  function closeEditor() { setEditing(null); setParams(current => { const next = new URLSearchParams(current); next.delete('new'); next.delete('edit'); return next }, { replace: true }) }
+  function startCreate() { setName(''); setDescription(''); setEditing('create'); setParams(current => { const next = new URLSearchParams(current); next.delete('edit'); next.set('new', ''); return next }) }
+  async function action(work: (isCurrent: () => boolean) => Promise<void>) {
     if (busyRef.current) return
-    busyRef.current = true
-    setBusy(true); setError(null); setNotice(null)
-    try { await work(); void readKnowledgeStorage().then(setStorage).catch(() => {}) }
-    catch (e) { setError(e instanceof Error ? e.message : '操作失败，请重试。') }
+    const scope = currentScope.current
+    const isCurrent = () => currentScope.current === scope
+    busyRef.current = true; setBusy(true); setError(null); setNotice(null)
+    try { await work(isCurrent); void readKnowledgeStorage().then(setStorage).catch(() => {}) }
+    catch (failure) { if (isCurrent()) setError(failure instanceof Error ? failure.message : '操作失败，请重试。') }
     finally { busyRef.current = false; setBusy(false) }
   }
   async function save(event: FormEvent) {
     event.preventDefault()
-    await action(async () => {
-      const result = detail ? await updateCourse(detail.id, { name: name.trim(), description }) : await createCourse({ name: name.trim(), description })
-      setDetail(result); setEditing(false); setCourses((await listCourses()).filter((item) => item.access === 'owner'))
-      if (!detail) setParams({ kb_id: result.id })
+    await action(async isCurrent => {
+      const result = editing === 'edit' && detail ? await updateCourse(detail.id, { name: name.trim(), description }) : await createCourse({ name: name.trim(), description })
+      if (!isCurrent()) { setReload(value => value + 1); return }
+      setDetail(result); setEditing(null)
+      setParams({ kb_id: result.id }); setReload(value => value + 1)
     })
   }
-  const visible = courses.filter((course) => !query || `${course.name} ${course.description}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
-  const search = query.trim().toLocaleLowerCase()
-  const materials = courses.flatMap(course => course.documents.map(document => ({ course, document })))
-  const kinds = [...new Set(materials.map(({ document }) => documentKind(document)))]
-  const shownMaterials = materials.filter(({ course, document }) =>
-    (!libraryFilter || course.id === libraryFilter) && (!kindFilter || documentKind(document) === kindFilter) &&
-    (!search || `${document.filename} ${document.knowledge?.summary ?? ''} ${document.knowledge?.topics.map(topic => `${topic.title} ${topic.summary}`).join(' ') ?? ''} ${course.name ?? ''}`.toLocaleLowerCase().includes(search)))
-  const pendingCount = materials.filter(({ document }) => isProcessing(document)).length
-  const startCreate = () => { setName(''); setDescription(''); setEditing(!editing) }
-  const maxFileBytes = storage?.max_file_bytes ?? 20 * 1024 * 1024
-  const maxDocuments = storage?.max_documents_per_library ?? 100
-
-  async function upload(files: File[]) {
-    if (!detail || !files.length) return
-    await action(async () => {
-      if (files.length + detail.documents.length > maxDocuments) throw new Error(`每个知识库最多 ${maxDocuments} 份资料，请减少本次文件数量。`)
-      const failed: string[] = []
-      try {
-        for (const [index, file] of files.entries()) {
-          setUploadProgress(`正在上传 ${index + 1}/${files.length}：${file.name}`)
-          try {
-            if (file.size > maxFileBytes) throw new Error(`超过 ${formatMaterialSize(maxFileBytes)}`)
-            const result = await uploadCourseDocument(detail.id, file)
-            if (result.status === 'failed') failed.push(`${file.name}：${result.errorMessage ?? '解析失败'}`)
-          } catch (e) { failed.push(`${file.name}：${e instanceof Error ? e.message : '上传失败'}`) }
-        }
-        setDetail(await getCourse(detail.id))
-        setNotice(failed.length ? `${failed.length} 份资料上传或解析失败：${failed.join('；')}。其余文件已保留，可单独重试失败文件。` : '资料已上传，正在后台建立语义索引并整理知识。')
-      } finally { setUploadProgress(null) }
-    })
+  async function refreshLibrary(libraryId: string) {
+    const refreshed = await getCourse(libraryId)
+    if (refreshed.access !== 'owner') { setCourses(current => current.filter(course => course.id !== libraryId)); if (currentLibrary.current === libraryId) { setDetail(null); setSource(null) }; throw new Error('此知识库不可访问。') }
+    setCourses(current => current.map(course => course.id === libraryId ? refreshed : course))
+    if (currentLibrary.current === libraryId) setDetail(refreshed)
   }
-
   if (source) return <PageShell wide><PageContent>
     <ReadOnlyMaterialReader key={source.document.id} source={{ ...source, document: detail?.documents.find(doc => doc.id === source.document.id) ?? source.document }} selectedSegmentId={segmentId}
       onKnowledgeSaved={document => { setSource({ ...source, document }); setDetail(value => value ? { ...value, documents: value.documents.map(item => item.id === document.id ? document : item) } : value) }}
@@ -176,44 +204,43 @@ export function CoursesPage() {
       navigation={<div className="ep-material__nav"><button className="qx-btn qx-btn--ghost" type="button" aria-label="返回知识库" onClick={() => navigate(source.knowledgeBaseId)}><ArrowLeftIcon size={18} />知识库</button><Select aria-label="切换资料" value={source.document.id} onChange={nextValue => navigate(source.knowledgeBaseId, nextValue)} options={detail?.documents.filter(doc => doc.status === 'ready').map(doc => ({ value: doc.id, label: doc.filename })) ?? []} /><Link className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="知识与关系" to={`/library/knowledge?kb_id=${encodeURIComponent(source.knowledgeBaseId)}`}><TreeStructureIcon size={18} /></Link></div>} />
   </PageContent></PageShell>
 
-  const documents = detail ? detail.documents.filter(doc => !search || `${doc.filename} ${doc.knowledge?.summary ?? ''} ${doc.knowledge?.topics.map(topic => topic.title).join(' ') ?? ''}`.toLocaleLowerCase().includes(search)).map(document => ({ course: detail, document })) : shownMaterials
+  const search = query.trim().toLocaleLowerCase()
+  const kinds = [...new Set(materials.map(({ document }) => documentKind(document)))]
+  const documents = materials.filter(({ course, document }) => (!kindFilter || documentKind(document) === kindFilter) && (!search || `${document.filename} ${document.knowledge?.summary ?? ''} ${document.knowledge?.topics.map(topic => `${topic.title} ${topic.summary}`).join(' ') ?? ''} ${course.name ?? ''}`.toLocaleLowerCase().includes(search)))
+  const visible = courses.filter(course => !search || `${course.name} ${course.description}`.toLocaleLowerCase().includes(search))
+  const pendingCount = materials.filter(({ document }) => isProcessing(document)).length
+  const maxDocuments = storage?.max_documents_per_library ?? 100
+  const full = !!detail && detail.documents.length >= maxDocuments
+  const scopeLibraries = detail ? libraryChoices.map(library => library.id === detail.id ? detail : library) : libraryChoices
   return <KnowledgePage>
-    <KnowledgePageHead title={detail?.name ?? '知识库'} actions={detail ? <>
-      <button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label="编辑知识库" disabled={busy} onClick={() => { setName(detail.name ?? ''); setDescription(detail.description ?? ''); setEditing(!editing) }}><PencilSimpleIcon size={18} /></button>
-      <button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label="删除知识库" disabled={busy} onClick={() => setDeleting(true)}><TrashIcon size={18} /></button>
-      <button type="button" className="qx-btn qx-btn--primary" disabled={busy || detail.documents.length >= maxDocuments} onClick={() => uploadRef.current?.click()}><UploadSimpleIcon size={18} />{busy ? '正在处理…' : '上传资料'}</button>
-    </> : <><KnowledgeViewSwitch view="cards" /><button type="button" className="qx-btn qx-btn--ghost" aria-pressed={showLibraries} onClick={() => { setShowLibraries(!showLibraries); setQuery(''); setEditing(false) }}>管理知识库</button><Link className="qx-btn qx-btn--primary" to="/imports"><PlusIcon size={18} />添加资料</Link></>}>
-      {detail && <div className="ep-library__context"><button className="qx-btn qx-btn--ghost" type="button" onClick={() => { navigate(); setQuery('') }}><ArrowLeftIcon size={16} />所有知识库</button><p className="qx-meta">{detail.description || '只有你可以访问这个知识库。'}</p><Link className="qx-btn qx-btn--ghost" to={`/library/knowledge?kb_id=${encodeURIComponent(detail.id)}`}><TreeStructureIcon size={16} />浏览知识与关系</Link><Link className="qx-btn qx-btn--secondary" to={`/agent?reference_knowledge_base_id=${encodeURIComponent(detail.id)}`}>基于本库研究</Link></div>}
-      <div className="ep-library__search-row"><label className="qx-search ep-knowledge-search"><MagnifyingGlassIcon size={18} /><input type="search" aria-label={showLibraries && !detail ? '搜索知识库' : '搜索资料'} placeholder={showLibraries && !detail ? '搜索名称或说明' : '搜标题、摘要、知识点'} value={query} onChange={event => setQuery(event.target.value)} /></label>{showLibraries && !detail && <button type="button" className="qx-btn qx-btn--secondary" disabled={!!storage && courses.length >= storage.max_libraries} onClick={startCreate}><PlusIcon size={17} />新建知识库</button>}</div>
-      {!showLibraries && !detail && <div className="ep-knowledge-filters" aria-label="资料筛选"><button type="button" className="qx-tag" aria-pressed={!libraryFilter && !kindFilter} onClick={() => { setLibraryFilter(''); setKindFilter('') }}>全部 {materials.length}</button>{courses.map(course => <button type="button" className="qx-tag" key={course.id} aria-pressed={libraryFilter === course.id} onClick={() => setLibraryFilter(libraryFilter === course.id ? '' : course.id)}>{course.name}</button>)}{kinds.length > 1 && <><span className="ep-knowledge-filters__separator" aria-hidden="true" />{kinds.map(kind => <button type="button" key={kind} className="qx-tag qx-tag--outline" aria-pressed={kindFilter === kind} onClick={() => setKindFilter(kindFilter === kind ? '' : kind)}>{kind}</button>)}</>}</div>}
+    <KnowledgePageHead title={<LibraryScopeSwitcher libraries={scopeLibraries} selectedId={id} view="cards" storage={storage} onCreate={startCreate} onManage={() => { setParams({ manage: '' }); setQuery('') }} />} actions={<>
+      {detail && <Link className="qx-btn qx-btn--secondary" to="/sharing"><ShareNetworkIcon />共享</Link>}
+      <button type="button" className="qx-btn qx-btn--primary" aria-label={detail ? '上传资料' : '添加资料'} disabled={busy || full} title={full ? `每个知识库最多 ${maxDocuments} 份资料` : undefined} onClick={() => openAdd()}><PlusIcon />添加</button>
+      {detail && <div className="ep-library__options" ref={menuRef}><button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label="知识库选项" aria-expanded={libraryMenu} onClick={() => setLibraryMenu(value => !value)}><DotsThreeIcon weight="bold" /></button>{libraryMenu && <div className="qx-menu ep-library__options-menu"><button className="qx-item" type="button" aria-label="编辑知识库" disabled={busy} onClick={() => { setName(detail.name ?? ''); setDescription(detail.description ?? ''); setEditing('edit'); setLibraryMenu(false); setParams(current => { const next = new URLSearchParams(current); next.set('edit', ''); return next }) }}><PencilSimpleIcon />编辑名称与说明</button><button className="qx-item" type="button" aria-label="删除知识库" disabled={busy} onClick={() => { setDeleting(true); setLibraryMenu(false) }}><TrashIcon />删除知识库</button></div>}</div>}
+    </>}>
+      {detail && <div className="ep-library__context"><p className="qx-meta">{detail.description || '只有你可以访问这个知识库。'}</p><Link className="qx-btn qx-btn--ghost" to={`/my/graph?kb_id=${encodeURIComponent(detail.id)}&view=points`}>浏览知识与关系<TreeStructureIcon size={16} /></Link><Link className="qx-btn qx-btn--ghost" to={`/agent?reference_knowledge_base_id=${encodeURIComponent(detail.id)}`}>基于本库研究<ArrowUpRightIcon size={16} /></Link></div>}
+      <div className="ep-library__search-row"><KnowledgeViewSwitch view="cards" /><label className="qx-search ep-library__search"><MagnifyingGlassIcon size={18} /><input type="search" aria-label={showLibraries && !detail ? '搜索知识库' : '搜索资料'} placeholder={showLibraries && !detail ? '搜索名称或说明' : '搜标题、摘要、知识点'} value={query} onChange={event => setQuery(event.target.value)} /></label>{showLibraries && <button type="button" className="qx-btn qx-btn--ghost" onClick={() => setParams(current => { const next = new URLSearchParams(current); next.delete('manage'); return next })}>返回资料</button>}</div>
+      {!showLibraries && !loading && materials.length > 0 && <div className="ep-knowledge-filters" aria-label="资料筛选"><button type="button" className="qx-tag" aria-pressed={!kindFilter} onClick={() => setKindFilter('')}>全部 {materials.length}</button>{kinds.map(kind => <button type="button" key={kind} className="qx-tag qx-tag--outline" aria-pressed={kindFilter === kind} onClick={() => setKindFilter(kindFilter === kind ? '' : kind)}>{kind}</button>)}</div>}
     </KnowledgePageHead>
-    {error && <p role="alert" className="qx-notice qx-notice--danger">{error}<button type="button" className="qx-btn qx-btn--ghost" onClick={() => setReload(n => n + 1)}>重新加载</button></p>}
-    {(notice || uploadProgress) && <p role="status" className="qx-notice">{uploadProgress ?? notice}</p>}
-    {loading && <p className="qx-meta" role="status">正在读取知识库…</p>}
-    {editing && <form className="qx-card ep-library__form" onSubmit={event => void save(event)}><h2 className="qx-card__title">{detail ? '编辑知识库' : '新建知识库'}</h2><label>知识库名称<input className="qx-input" value={name} required maxLength={100} onChange={event => setName(event.target.value)} autoFocus /></label><label>说明（选填）<textarea className="qx-textarea" value={description} maxLength={1000} rows={3} onChange={event => setDescription(event.target.value)} placeholder="这些资料围绕什么主题？" /></label><div className="ep-knowledge-actions"><button type="submit" className="qx-btn qx-btn--primary" disabled={busy || !name.trim()}>保存知识库</button><button type="button" className="qx-btn qx-btn--ghost" disabled={busy} onClick={() => setEditing(false)}>取消</button></div></form>}
+    {error && <p role="alert" className="qx-notice qx-notice--danger">{error}<button type="button" className="qx-btn qx-btn--ghost" onClick={() => setReload(value => value + 1)}>重新加载</button></p>}
+    {notice && <p role="status" className="qx-notice">{notice}</p>}
+    {loading && <LibrarySkeleton />}
     {!loading && !error && <>
       {showLibraries && !detail ? <>
-        <div className="ep-library__grid">{visible.map(course => <article className="qx-card ep-library-folder" key={course.id}><span className="qx-meta">私有 · {course.documents.length || course.readyDocumentCount} 份资料</span><h2 className="qx-card__title">{course.name}</h2><p className="qx-card__body">{course.description || '你的资料与研究依据'}</p><button type="button" className="qx-btn qx-btn--ghost" aria-label={`打开知识库 ${course.name}`} onClick={() => { navigate(course.id); setQuery('') }}>打开知识库<ArrowUpRightIcon size={16} /></button></article>)}</div>
-        {!visible.length && !editing && <div className="ep-knowledge-empty"><BooksIcon size={32} /><h2 className="qx-card__title">{query ? '没有找到相关知识库' : '创建你的第一个知识库'}</h2><p className="qx-meta">按工作、兴趣或研究主题归集资料。</p></div>}
+        <div className="ep-library__grid">{visible.map(course => <article className="qx-card ep-library-folder" key={course.id}><span className="qx-meta">私有 · {course.documents.length || course.readyDocumentCount} 份资料</span><h2 className="qx-card__title">{course.name}</h2><p className="qx-card__body">{course.description || '你的资料与研究依据'}</p><button type="button" className="qx-btn qx-btn--ghost" aria-label={`打开知识库 ${course.name}`} onClick={() => navigate(course.id)}>打开知识库<ArrowUpRightIcon size={16} /></button></article>)}</div>
+        {!visible.length && <div className="ep-knowledge-empty"><BooksIcon size={32} /><h2 className="qx-card__title">{search ? '没有找到相关知识库' : '创建你的第一个知识库'}</h2><button type="button" className="qx-btn qx-btn--secondary" onClick={startCreate}>新建知识库</button></div>}
       </> : <>
-        {catalogError && <p className="qx-notice" role="alert">{catalogError}<button type="button" className="qx-btn qx-btn--ghost" onClick={() => setReload(n => n + 1)}>重试读取资料</button></p>}
-        {!detail && pendingCount > 0 && <div className="qx-notice ep-library__status" role="status"><ArrowClockwiseIcon size={18} /><span>{pendingCount} 份资料正在解析、整理知识或建立语义索引。</span><Link className="qx-btn qx-btn--ghost" to="/imports">导入记录</Link></div>}
-        <div className="ep-library__grid" aria-label="资料卡片">{documents.map(({ course, document: doc }) => <article className="qx-card qx-card--interactive ep-library-card" key={`${course.id}:${doc.id}`}>
-          <div className="ep-library-card__top"><span><FileTextIcon size={16} />{documentKind(doc)}</span><span title={course.name ?? undefined}>{course.name}</span></div>
-          <h2 className="qx-card__title">{doc.status === 'ready' ? <Link to={`/library?kb_id=${encodeURIComponent(course.id)}&document_id=${encodeURIComponent(doc.id)}`}>{doc.filename}</Link> : doc.filename}</h2>
-          <p className="qx-card__body ep-library-card__summary">{doc.knowledge?.summary || doc.errorMessage || (doc.status === 'processing' ? '正在解析资料，完成后即可阅读原文。' : doc.status === 'failed' ? '资料解析失败，可查看原因后重新上传。' : '原文已保存，知识摘要将在整理完成后显示。')}</p>
-          <div className="ep-library-card__states"><span>{doc.status === 'ready' ? '可阅读' : doc.status === 'failed' ? '解析失败' : '解析中'}</span>{doc.status === 'ready' && <><span>{({queued: '等待知识整理', running: '知识整理中', ready: '知识已整理', failed: '知识整理失败'})[doc.knowledgeStatus]}</span><span>{({queued: '等待语义索引', running: '建立语义索引中', ready: '语义索引就绪', failed: '语义索引失败'})[doc.indexStatus]}</span></>}</div>
-          {(doc.knowledgeError || doc.indexError) && <p className="ep-library-card__error">{doc.knowledgeError || doc.indexError}</p>}{detail && doc.warnings.map(warning => <p className="qx-meta" key={warning}>{warning}</p>)}
-          <footer className="qx-card__meta"><span>{formatMaterialSize(doc.sizeBytes)}{doc.knowledge ? ` · ${doc.knowledge.topics.length} 个知识点` : ''}</span><div className="ep-library-card__actions">{detail ? <>
-            {doc.status === 'ready' && (doc.knowledgeStatus === 'failed' || doc.indexStatus === 'failed') && <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label={`重试处理 ${doc.filename}`} disabled={busy} onClick={() => void action(async () => { await retryCourseDocument(course.id, doc.id); setDetail(await getCourse(course.id)) })}><ArrowClockwiseIcon size={17} /></button>}
-            <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label={`删除 ${doc.filename}`} disabled={busy} onClick={() => { if (window.confirm(`删除“${doc.filename}”及其知识与索引？此操作无法撤销。`)) void action(async () => { await detachCourseDocument(course.id, doc.id); setDetail(await getCourse(course.id)); setNotice('资料及其知识、索引已从知识库删除。') }) }}><TrashIcon size={17} /></button>
-          </> : <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label={`管理资料 ${doc.filename}`} onClick={() => { navigate(course.id); setQuery('') }}><ArrowUpRightIcon size={17} /></button>}</div></footer>
-        </article>)}</div>
-        {!documents.length && !editing && <div className="ep-knowledge-empty"><BooksIcon size={32} /><h2 className="qx-card__title">{search || libraryFilter || kindFilter ? '没有找到相关资料' : !courses.length ? '创建你的第一个知识库' : '把第一份资料，放进来。'}</h2><p className="qx-meta">{search || libraryFilter || kindFilter ? '换个关键词，或调整筛选条件。' : '收藏、笔记和文档会汇集在这里，保留原文与知识点。'}</p>{!detail && !search && !libraryFilter && !kindFilter && <div className="ep-knowledge-actions"><Link className="qx-btn qx-btn--primary" to="/imports">导入资料</Link><button type="button" className="qx-btn qx-btn--secondary" disabled={!!storage && courses.length >= storage.max_libraries} onClick={startCreate}><PlusIcon size={17} />新建知识库</button></div>}</div>}
+        {catalogError && <p className="qx-notice qx-notice--danger" role="alert">{catalogError}<button type="button" className="qx-btn qx-btn--ghost" onClick={() => setReload(value => value + 1)}>重试读取资料</button></p>}
+        {pendingCount > 0 && <div className="qx-notice ep-library__status" role="status"><ArrowClockwiseIcon size={18} /><span>{pendingCount} 份资料正在解析、整理知识或建立语义索引。</span><button className="qx-btn qx-btn--ghost" type="button" onClick={() => openAdd('records')}>导入记录</button></div>}
+        <div className="ep-library__grid" aria-label="资料卡片">{documents.map(({ course, document }) => <LibraryMaterialCard key={`${course.id}:${document.id}`} course={course} document={document} showLibrary={!detail} source={materialSources[`${course.id}:${document.id}`]} busy={busy} onRetry={() => void action(async () => { await retryCourseDocument(course.id, document.id); await refreshLibrary(course.id) })} onDelete={() => setDeletingDocument({ course, document })} onReupload={() => openAdd('file', course.id)} />)}</div>
+        {!documents.length && <div className="ep-knowledge-empty ep-library__empty"><BooksIcon size={32} /><h2 className="qx-card__title">{search || kindFilter ? '没有找到相关资料' : !courses.length ? '创建你的第一个知识库' : '把第一份资料，放进来。'}</h2><p className="qx-meta">{search || kindFilter ? '换个关键词，或调整筛选条件。' : detail ? '在这里上传的文件只属于这个库。从其他应用导入的资料会统一放进「我的资料」。' : '收藏、笔记和文档会汇集在这里，保留原文与知识点。'}</p>
+          {search || kindFilter ? <button className="qx-btn qx-btn--secondary" type="button" onClick={() => { setQuery(''); setKindFilter('') }}>清除搜索和筛选</button> : detail ? <button className="qx-btn qx-btn--primary" type="button" onClick={() => openAdd('file')}><UploadSimpleIcon />上传文件</button> : <><div className="ep-knowledge-actions"><button className="qx-btn qx-btn--secondary" type="button" onClick={() => openAdd('file')}><UploadSimpleIcon />上传文件</button><button className="qx-btn qx-btn--secondary" type="button" onClick={() => openAdd('chrome')}><img className="ep-library__source-logo" src={chromeLogo} alt="" />导入浏览器收藏</button><button className="qx-btn qx-btn--secondary" type="button" onClick={() => openAdd('obsidian')}><img className="ep-library__source-logo" src={obsidianLogo} alt="" />导入 Obsidian</button></div><button className="qx-btn qx-btn--ghost" type="button" onClick={() => openAdd()}>还支持印象笔记、Notion、flomo、B 站收藏等 →</button><button className="qx-btn qx-btn--ghost" type="button" disabled={!!storage && courses.length >= storage.max_libraries} onClick={startCreate}>新建知识库</button></>}
+        </div>}
       </>}
     </>}
-    {detail && <><input ref={uploadRef} type="file" aria-label="选择资料文件" hidden multiple accept={COURSE_DOCUMENT_ACCEPT} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void upload(files) }} /><p className="qx-meta ep-library__footnote">支持 PDF、DOCX、PPTX、Markdown、TXT，单份不超过 {formatMaterialSize(maxFileBytes)}，每库最多 {maxDocuments} 份。扫描图片需先转为可选取文字的文档；PPTX 读取可见页正文。</p></>}
-    {storage && Number.isFinite(storage.used_bytes) && <p className="qx-meta ep-library__footnote">知识库存储 {formatMaterialSize(storage.used_bytes)} / {formatMaterialSize(storage.max_bytes)} · {storage.library_count} / {storage.max_libraries} 个知识库 · 资料仅对你可见</p>}
-    <dialog ref={deleteDialog} className="qx-modal ep-library__delete" aria-labelledby="course-delete-title" onCancel={event => { event.preventDefault(); if (!busy) setDeleting(false) }}><h2 id="course-delete-title" className="qx-section-title">删除知识库？</h2><p className="qx-card__body">此知识库内的资料、整理结果与索引将被删除，无法恢复。已生成的对话和文稿会保留，需要时可分别删除。</p><div className="ep-knowledge-actions"><button type="button" className="qx-btn qx-btn--secondary" disabled={busy} onClick={() => setDeleting(false)}>保留知识库</button><button type="button" className="qx-btn qx-btn--primary" disabled={busy} onClick={() => void action(async () => { if (!detail) return; await deleteCourse(detail.id); setDeleting(false); navigate(); setReload(n => n + 1) })}>{busy ? '正在删除…' : '确认删除'}</button></div>{deleting && error && <p role="alert" className="qx-notice qx-notice--danger">{error}</p>}</dialog>
+    {params.has('add') && <LibraryAddDialog key={`${id ?? 'all'}:${params.get('add')}`} userId={userId} libraries={courses} initialLibraryId={id ?? undefined} initialSource={params.get('add') || 'extension'} onClose={closeAdd} onChanged={() => setReload(value => value + 1)} />}
+    {editing && <LibraryDialog title={editing === 'edit' ? '编辑知识库' : '新建知识库'} busy={busy} onClose={closeEditor}><form className="ep-library__form" onSubmit={event => void save(event)}><label>知识库名称<input className="qx-input" value={name} required maxLength={100} onChange={event => setName(event.target.value)} autoFocus /></label><label>说明（选填）<textarea className="qx-textarea" value={description} maxLength={1000} rows={3} onChange={event => setDescription(event.target.value)} placeholder="这些资料围绕什么主题？" /></label><div className="ep-knowledge-actions"><button type="submit" className="qx-btn qx-btn--primary" disabled={busy || !name.trim()}>保存知识库</button><button type="button" className="qx-btn qx-btn--ghost" disabled={busy} onClick={closeEditor}>取消</button></div>{error && <p className="qx-notice qx-notice--danger" role="alert">{error}</p>}</form></LibraryDialog>}
+    {deleting && <LibraryDialog title="删除知识库？" busy={busy} onClose={() => setDeleting(false)}><p className="qx-card__body">此知识库内的资料、整理结果与索引将被删除，无法恢复。已生成的对话和文稿会保留，需要时可分别删除。</p><div className="ep-knowledge-actions"><button type="button" className="qx-btn qx-btn--secondary" disabled={busy} onClick={() => setDeleting(false)}>保留知识库</button><button type="button" className="qx-btn qx-btn--danger" disabled={busy} onClick={() => void action(async isCurrent => { if (!detail) return; await deleteCourse(detail.id); setDeleting(false); if (isCurrent()) navigate(); setReload(value => value + 1) })}>确认删除</button></div>{error && <p role="alert" className="qx-notice qx-notice--danger">{error}</p>}</LibraryDialog>}
+    {deletingDocument && <LibraryDialog title="删除资料？" busy={busy} onClose={() => setDeletingDocument(null)}><p className="qx-card__body">删除“{deletingDocument.document.filename}”及其知识与索引？此操作无法撤销。</p><div className="ep-knowledge-actions"><button type="button" className="qx-btn qx-btn--secondary" disabled={busy} onClick={() => setDeletingDocument(null)}>保留资料</button><button type="button" className="qx-btn qx-btn--danger" disabled={busy} onClick={() => void action(async isCurrent => { await detachCourseDocument(deletingDocument.course.id, deletingDocument.document.id); await refreshLibrary(deletingDocument.course.id); setDeletingDocument(null); if (isCurrent()) setNotice('资料及其知识、索引已从知识库删除。') })}>确认删除资料</button></div>{error && <p role="alert" className="qx-notice qx-notice--danger">{error}</p>}</LibraryDialog>}
   </KnowledgePage>
 }

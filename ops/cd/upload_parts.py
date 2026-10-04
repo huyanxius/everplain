@@ -1,4 +1,4 @@
-"""Three bounded transfers of a fixed public artifact; host metadata stays private."""
+"""Three bounded transfers of a checksum-verified current artifact; host metadata stays private."""
 
 import base64
 import concurrent.futures
@@ -13,8 +13,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-
-EXPECTED = "85f2b033ed68e94d9d0563800d3d5b078c4b4e2d7b6ad868c4a3fa2e0cf3ec03"
 
 
 def require(value):
@@ -61,6 +59,7 @@ def make_parts(archive, prefix_size, prefix_hash, target):
             remaining -= count
     return {
         "size": archive.stat().st_size,
+        "archive_sha256": digest(archive),
         "prefix_size": prefix_size,
         "prefix_sha256": prefix_hash,
         "parts": parts,
@@ -90,6 +89,7 @@ def host_prepare(directory, plan, uid):
     info = directory.lstat()
     require(stat.S_ISDIR(info.st_mode) and info.st_uid == uid and info.st_mode & 0o077 == 0)
     require(0 <= plan["prefix_size"] < plan["size"] <= 2 * 1024**3)
+    require(re.fullmatch(r"[a-f0-9]{64}", plan["archive_sha256"]))
     require(1 <= len(plan["parts"]) <= 3)
     require(sum(part["size"] for part in plan["parts"]) + plan["prefix_size"] == plan["size"])
     for index, part in enumerate(plan["parts"]):
@@ -140,7 +140,9 @@ def part_status(parts, plan, uid):
     return result
 
 
-def assemble(directory, parts, plan, uid, expected=EXPECTED):
+def assemble(directory, parts, plan, uid, expected=None):
+    expected = expected or plan["archive_sha256"]
+    require(re.fullmatch(r"[a-f0-9]{64}", expected))
     status = part_status(parts, plan, uid)
     for item, actual in zip(plan["parts"], status, strict=True):
         require(item == actual)

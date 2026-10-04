@@ -31,29 +31,40 @@ describe('selected persona loading', () => {
     const view = render(<PersonaLoading profile={profile(avatar, color)} message="正在读取资料" />)
     const pet = view.container.querySelector('svg')!
     expect(pet).toHaveAttribute('data-avatar', avatar)
-    expect(pet).toHaveAttribute('data-state', 'think')
+    expect(pet).toHaveClass('aa-liquid')
+    expect(pet).toHaveAttribute('data-state', 'idle')
     expect(pet.style.getPropertyValue('--aa-color')).toBe(color)
     expect(pet).toHaveAttribute('aria-hidden', 'true')
     expect(screen.getByRole('status')).toHaveTextContent('正在读取资料')
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
     view.rerender(<PersonaLoading compact state="work" profile={profile(avatar, color)} message="正在生成草稿" />)
-    expect(pet).toHaveAttribute('data-state', 'work')
-    expect(pet).toHaveAttribute('data-playing', 'true')
+    expect(view.container.querySelector('svg')).not.toHaveClass('aa-liquid')
+    expect(view.container.querySelector('svg')).toHaveAttribute('data-state', 'work')
+    expect(view.container.querySelector('svg')).toHaveAttribute('data-playing', 'true')
+  })
+
+  it.each(['', 'unrecognized'])('uses generic liquid for invalid profile avatar %s without inventing a compact identity', avatar => {
+    const view = render(<PersonaLoading profile={profile(avatar)} message="正在读取资料" />)
+    expect(view.container.querySelector('svg')).toHaveClass('aa-liquid')
+    expect(view.container.querySelector('svg')).toHaveAttribute('data-avatar', 'cheng')
+    view.rerender(<PersonaLoading compact profile={profile(avatar)} message="正在读取资料" />)
+    expect(view.container.querySelector('svg')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('正在读取资料')
   })
 
   it('preserves static status text and stops animation when reduced motion changes', () => {
-    let notify!: () => void
-    const media = { matches: true, addEventListener: vi.fn((_event: string, listener: () => void) => { notify = listener }), removeEventListener: vi.fn() }
+    const listeners = new Set<() => void>()
+    const media = { matches: true, addEventListener: vi.fn((_event: string, listener: () => void) => { listeners.add(listener) }), removeEventListener: vi.fn((_event: string, listener: () => void) => listeners.delete(listener)) }
     vi.stubGlobal('matchMedia', vi.fn(() => media))
     const view = render(<PersonaLoading profile={profile()} message="正在读取资料" />)
     const pet = view.container.querySelector('svg')!
     expect(pet).toHaveAttribute('data-playing', 'false')
     expect(screen.getByRole('status')).toHaveAttribute('data-reduced-motion', 'true')
     expect(screen.getByRole('status')).toHaveTextContent('正在读取资料')
-    act(() => { media.matches = false; notify() })
+    act(() => { media.matches = false; listeners.forEach(listener => listener()) })
     expect(pet).toHaveAttribute('data-playing', 'true')
     view.unmount()
-    expect(media.removeEventListener).toHaveBeenCalledWith('change', notify)
+    expect(listeners.size).toBe(0)
   })
 
   it('uses the authenticated profile cache and tracks avatar/color changes without refetching', async () => {
@@ -85,15 +96,15 @@ describe('selected persona loading', () => {
     expect(view.container.querySelector('svg')).toHaveAttribute('data-avatar', 'heng')
     authenticate('owner-two')
     view.rerender(<QueryClientProvider client={client}><AgentLoading message="正在打开研究" /></QueryClientProvider>)
-    expect(view.container.querySelector('svg')).not.toBeInTheDocument()
+    expect(view.container.querySelector('svg')).toHaveAttribute('data-avatar', 'cheng')
     expect(screen.getByRole('status')).toHaveTextContent('正在打开研究')
     await act(async () => finish(profile('ruo', '#9a80e0')))
     await waitFor(() => expect(view.container.querySelector('svg')).toHaveAttribute('data-avatar', 'ruo'))
   })
 
-  it('keeps unknown or unavailable identity text-only without a made-up fallback avatar', async () => {
+  it('cycles the shared Everplain liquid for unknown identity without fetching a made-up profile', async () => {
     const first = render(<AgentLoading message="正在确认登录状态" />)
-    expect(first.container.querySelector('svg')).not.toBeInTheDocument()
+    expect(first.container.querySelector('svg')).toHaveClass('aa-liquid')
     expect(readAgentProfile).not.toHaveBeenCalled()
     first.unmount()
     authenticate('owner')
@@ -101,7 +112,7 @@ describe('selected persona loading', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const next = render(<QueryClientProvider client={client}><AgentLoading message="正在读取资料" /></QueryClientProvider>)
     await waitFor(() => expect(client.getQueryState(['agent-profile', 'owner'])?.status).toBe('error'))
-    expect(next.container.querySelector('svg')).not.toBeInTheDocument()
+    expect(next.container.querySelector('svg')).toHaveClass('aa-liquid')
     expect(screen.getByRole('status')).toHaveTextContent('正在读取资料')
   })
 

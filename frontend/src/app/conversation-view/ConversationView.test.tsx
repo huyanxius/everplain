@@ -59,7 +59,7 @@ describe('ConversationThread', () => {
     fireEvent.click(screen.getByRole('button', { name: '复制回答' }))
     await waitFor(() => expect(screen.getByRole('button', { name: '复制失败' })).toBeVisible())
     rerender(<ConversationThread turns={[{ ...turn, streaming: true, statusText: '正在核对证据', onCopy: copy, onRegenerate: vi.fn() }]} onSelectCitation={vi.fn()} />)
-    expect(screen.getByText('正在核对证据')).toBeVisible()
+    expect(screen.queryByRole('status', { name: '正在核对证据' })).not.toBeInTheDocument() // First answer has already arrived.
     expect(screen.getByRole('button', { name: '查看来源 1：网页资料' })).toBeVisible()
     expect(screen.queryByRole('button', { name: '重新生成' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '复制失败' })).not.toBeInTheDocument()
