@@ -79,7 +79,9 @@ class SharedKnowledgeRepository(Protocol):
     def subscribed(self, user_id: UUID, kb_id: UUID) -> bool: ...
     def subscribe(self, user_id: UUID, kb_id: UUID) -> bool: ...
     def unsubscribe(self, user_id: UUID, kb_id: UUID) -> None: ...
-    def documents(self, kb_id: UUID) -> tuple[SharedDocument, ...]: ...
+    def documents(
+        self, kb_id: UUID, *, include_segments: bool = True, document_id: UUID | None = None
+    ) -> tuple[SharedDocument, ...]: ...
     def detach(self, kb_id: UUID, document_id: UUID | None = None) -> None: ...
     def quota_guard(self, user_id: UUID) -> None: ...
     def commit(self) -> None: ...
@@ -287,11 +289,21 @@ class SharedKnowledgeService:
         self.repository.unsubscribe(user_id, kb_id)
         self.repository.commit()
 
-    def documents(self, user_id: UUID, kb_id: UUID, *, ready_only=False):
+    def documents(
+        self,
+        user_id: UUID,
+        kb_id: UUID,
+        *,
+        ready_only=False,
+        include_segments=True,
+        document_id=None,
+    ):
         kb = self.require_read(user_id, kb_id)
         return tuple(
             doc
-            for doc in self.repository.documents(kb_id)
+            for doc in self.repository.documents(
+                kb_id, include_segments=include_segments, document_id=document_id
+            )
             if doc.owner_user_id == kb.owner_user_id
             and (not ready_only and user_id == kb.owner_user_id or doc.status == "ready")
         )
@@ -300,7 +312,7 @@ class SharedKnowledgeService:
         doc = next(
             (
                 doc
-                for doc in self.documents(user_id, kb_id)
+                for doc in self.documents(user_id, kb_id, document_id=document_id)
                 if doc.id == document_id and doc.status == "ready"
             ),
             None,

@@ -18,7 +18,7 @@ from sqlalchemy import (
     or_,
     select,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, defer, mapped_column
 
 from qunxue_api.adapters.sqlite.base import Base
 from qunxue_api.adapters.sqlite.identity_model import UserRow
@@ -140,7 +140,7 @@ def _kb(row):
     )
 
 
-def _document(row):
+def _document(row, *, include_segments=True):
     return SharedDocument(
         id=UUID(row.id),
         owner_user_id=UUID(row.owner_user_id),
@@ -150,7 +150,7 @@ def _document(row):
         size_bytes=row.size_bytes,
         parse_id=UUID(row.parse_id),
         status=row.status,
-        segments=tuple(row.segments),
+        segments=tuple(row.segments) if include_segments else (),
         error_message=row.error_message,
         warnings=tuple(row.warnings),
         created_at=row.created_at,
@@ -410,19 +410,29 @@ class SqliteSharedKnowledgeRepository:
             )
         )
 
-    def documents(self, kb_id):
-        return tuple(
-            _document(row)
-            for row in self.session.scalars(
-                select(SharedDocumentRow)
-                .join(
-                    SharedKnowledgeDocumentRow,
-                    SharedKnowledgeDocumentRow.document_id == SharedDocumentRow.id,
-                )
-                .where(SharedKnowledgeDocumentRow.knowledge_base_id == str(kb_id))
-                .execution_options(populate_existing=True)
-                .order_by(SharedDocumentRow.created_at.desc())
+    def documents(self, kb_id, *, include_segments=True, document_id=None):
+        # Catalog reads need metadata, never vectors or import checkpoints.
+        statement = (
+            select(SharedDocumentRow)
+            .options(
+                defer(SharedDocumentRow.vectors, raiseload=True),
+                defer(SharedDocumentRow.knowledge_checkpoints, raiseload=True),
             )
+            .join(
+                SharedKnowledgeDocumentRow,
+                SharedKnowledgeDocumentRow.document_id == SharedDocumentRow.id,
+            )
+            .where(SharedKnowledgeDocumentRow.knowledge_base_id == str(kb_id))
+            .execution_options(populate_existing=True)
+            .order_by(SharedDocumentRow.created_at.desc())
+        )
+        if not include_segments:
+            statement = statement.options(defer(SharedDocumentRow.segments, raiseload=True))
+        if document_id is not None:
+            statement = statement.where(SharedDocumentRow.id == str(document_id))
+        return tuple(
+            _document(row, include_segments=include_segments)
+            for row in self.session.scalars(statement)
         )
 
     def detach(self, kb_id, document_id=None):

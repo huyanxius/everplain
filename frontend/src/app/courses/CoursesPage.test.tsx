@@ -197,3 +197,27 @@ it('polls a queued import even before any document is created', async () => {
   expect(await screen.findByRole('link', { name: 'Imported title.md' }, { timeout: 6000 })).toBeInTheDocument()
   expect(screen.queryByText(/1 条处理中/)).not.toBeInTheDocument()
 }, 8000)
+
+it('opens a document deep link without waiting for the library selector', async () => {
+  const document = { id: 'd1', filename: 'Direct source.txt', media_type: 'text/plain', size_bytes: 10, parse_id: 'p1', status: 'ready', knowledge_status: 'ready', index_status: 'ready', warnings: [], created_at: '2026-09-08' }
+  vi.stubGlobal('fetch', async (input: Request) => {
+    if (input.url.endsWith('/shared-knowledge-bases')) return new Promise<Response>(() => {})
+    if (input.url.endsWith('/kb-1')) return json({ ...course, documents: [document] })
+    if (input.url.includes('/d1/source')) return json({ document, knowledge_base_id: 'kb-1', knowledge_base_name: course.name, segments: [] })
+    return json({ items: [] })
+  })
+  render(<MemoryRouter initialEntries={['/library?kb_id=kb-1&document_id=d1']}><CoursesPage /></MemoryRouter>)
+  expect(await screen.findByRole('heading', { name: 'Direct source.txt' })).toBeInTheDocument()
+})
+
+it('cancels catalog requests when leaving the library page', async () => {
+  let signal: AbortSignal | undefined
+  vi.stubGlobal('fetch', async (input: Request) => {
+    if (input.url.endsWith('/shared-knowledge-bases')) { signal = input.signal; return new Promise<Response>(() => {}) }
+    return json({ items: [] })
+  })
+  const view = render(<MemoryRouter><CoursesPage /></MemoryRouter>)
+  await waitFor(() => expect(signal).toBeDefined())
+  view.unmount()
+  expect(signal?.aborted).toBe(true)
+})
