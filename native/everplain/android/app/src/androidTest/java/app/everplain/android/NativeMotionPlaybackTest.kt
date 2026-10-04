@@ -86,7 +86,7 @@ class NativeMotionPlaybackTest {
         val inst = InstrumentationRegistry.getInstrumentation()
         val dir =
             File(inst.targetContext.getExternalFilesDir(null), "visual-fixtures").apply { mkdirs() }
-        val bitmap = takeScreenshot()
+        val bitmap = inst.uiAutomation.takeScreenshot() ?: error("Framebuffer capture unavailable")
         File(dir, "android-synthetic-$name.png").outputStream().use {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
         }

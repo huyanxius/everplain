@@ -113,6 +113,37 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private var profileIntent: Pair<AgentProfileUpdate, String>? = null
     private var accountIntent: Pair<UpdateProfileRequest, String>? = null
 
+    private var agentSettingsDraft: AgentSettingsDraft? = null
+    private var agentSettingsDraftOwner: String? = null
+
+    internal fun agentDraft(profile: AgentProfileResponse): AgentSettingsDraft {
+        val owner = "${state.value.origin}:${sessionOwner ?: error("尚未登录") }"
+        if (agentSettingsDraftOwner != owner || agentSettingsDraft == null) {
+            val key = "agent-settings-draft:$owner"
+            val saved =
+                store.read(key)?.let {
+                    runCatching { WireJson.decodeFromString<AgentDraftData>(it) }.getOrNull()
+                }
+            val initial =
+                saved
+                    ?: AgentDraftData(
+                        profile.version,
+                        profile.name,
+                        profile.speakingStyle,
+                        profile.soulText.orEmpty(),
+                        profile.avatarId,
+                        profile.color,
+                    )
+            agentSettingsDraftOwner = owner
+            agentSettingsDraft =
+                AgentSettingsDraft(initial) { data ->
+                    if (agentSettingsDraftOwner == owner)
+                        store.write(key, WireJson.encodeToString(data))
+                }
+        }
+        return agentSettingsDraft!!
+    }
+
     private var memoryFeature: MemoryController? = null
     private var memoryIdentity: Pair<String, EverplainApi>? = null
 
@@ -407,6 +438,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             graphIdentity = null
             memoryFeature = null
             memoryIdentity = null
+            agentSettingsDraft = null
+            agentSettingsDraftOwner = null
             sessionOwner = null
             update {
                 AppState(
@@ -1634,7 +1667,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 graphIdentity = null
                 memoryFeature = null
                 memoryIdentity = null
-                sessionOwner = null
+                agentSettingsDraft = null
+            agentSettingsDraftOwner = null
+            sessionOwner = null
                 profileIntent = null
                 update {
                     AppState(origin = it.origin, appearance = it.appearance, starting = false)

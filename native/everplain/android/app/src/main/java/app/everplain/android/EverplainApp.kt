@@ -1633,12 +1633,13 @@ private fun AgentSettings(s: AppState, vm: AppViewModel) {
         }
         return
     }
-    var expectedVersion by rememberSaveable { mutableLongStateOf(p.version) }
-    var name by rememberSaveable { mutableStateOf(p.name) }
-    var style by rememberSaveable { mutableStateOf(p.speakingStyle) }
-    var soul by rememberSaveable { mutableStateOf(p.soulText.orEmpty()) }
-    var avatar by rememberSaveable { mutableStateOf(p.avatarId) }
-    var color by rememberSaveable { mutableStateOf(p.color) }
+    val draft = vm.agentDraft(p)
+    var expectedVersion by draft.expectedVersion
+    var name by draft.name
+    var style by draft.style
+    var soul by draft.soul
+    var avatar by draft.avatar
+    var color by draft.color
     var saved by remember { mutableStateOf(false) }
     var discard by remember { mutableStateOf(false) }
     val colors =
