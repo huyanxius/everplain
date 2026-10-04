@@ -56,6 +56,18 @@ class ProductionPreflightTests(unittest.TestCase):
             if "KEY" in key or "PASSWORD" in key:
                 self.assertNotIn(value, result.stdout + result.stderr)
 
+    def test_free_retrieval_configuration_passes_without_weakening_other_checks(self):
+        env = production_env()
+        env["EVERPLAIN_EMBEDDING_MODEL"] = "BAAI/bge-m3"
+        env["EVERPLAIN_RERANKER_MODEL"] = "BAAI/bge-reranker-v2-m3"
+        result = self.run_preflight(env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["status"], "configuration_ready")
+        env["EVERPLAIN_EMBEDDING_MODEL"] = "BAAI/bge-small-zh-v1.5"
+        rejected = self.run_preflight(env)
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("EVERPLAIN_EMBEDDING_MODEL", json.loads(rejected.stdout)["invalid_fields"])
+
     def test_partial_email_and_template_origin_are_rejected(self):
         env = production_env()
         env["EVERPLAIN_EMAIL_FROM"] = "Everplain <owner@example.invalid>"

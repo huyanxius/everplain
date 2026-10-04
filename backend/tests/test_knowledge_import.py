@@ -215,3 +215,33 @@ def test_public_bilibili_discovery_expands_durable_batch_and_imports_transcript(
     ).json()
     assert "Real subtitle fixture" in str(source["segments"])
     assert "metadata only" not in str(source["segments"])
+
+
+def test_fifty_bookmarks_keep_failed_items_and_continue_importing(plain_client):
+    c = plain_client
+    c.app.state.import_worker_enabled = False
+    _authenticate(c)
+
+    def fetch(url):
+        if int(url.rsplit("/", 1)[1]) >= 5:
+            raise ValueError("未读取到网页正文，请收藏当前页面。")
+        return "A real article body, with useful details and a source to preserve."
+
+    c.app.state.import_fetch_text = fetch
+    html = (
+        "<DL>"
+        + "".join(f'<DT><A HREF="https://example.org/{i}">Bookmark {i}</A>' for i in range(50))
+        + "</DL>"
+    )
+    batch = start(c, [("bookmarks.html", html.encode())], "chrome")
+    assert batch["total"] == 50
+    for _ in range(51):
+        if not c.app.state.run_import_once():
+            break
+    result = c.get("/api/imports/" + batch["id"]).json()
+    assert result["total"] == 50 and result["finished"] == 50
+    assert result["imported"] == 5 and result["failed"] == 45
+    assert len(result["items"]) == 50
+    library = c.get("/api/shared-knowledge-bases/" + batch["library_id"]).json()
+    assert len(library["documents"]) == 5
+    assert all(doc["filename"].startswith("Bookmark ") for doc in library["documents"])

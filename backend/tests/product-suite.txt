@@ -59,6 +59,7 @@ tests/test_architecture.py
 
 tests/test_agent_profile.py
 tests/test_import_sources.py
+tests/test_bookmark_fetch.py
 tests/test_imported_knowledge_availability.py
 tests/test_knowledge_import.py
 tests/test_media_import.py
@@ -86,3 +87,8 @@ tests/test_agent_model_selection.py
 tests/test_agent_provider_registry.py
 tests/billing/test_configured_tariffs.py
 tests/billing/test_unigate_transport.py
+
+# Free retrieval model configuration and production preflight.
+tests/test_retrieval_settings.py
+tests/test_free_retrieval_models.py
+tests/test_retrieval_preflight.py

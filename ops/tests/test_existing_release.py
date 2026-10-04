@@ -4,8 +4,10 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
 import tarfile
@@ -21,6 +23,121 @@ spec = importlib.util.spec_from_file_location(
 )
 release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
+
+
+class RegistryReleaseTests(unittest.TestCase):
+    def test_live_compatibility_overlays_require_reviewed_bytes_and_read_only_mounts(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = Path(d) / "settings.py"
+            source.write_bytes(b"reviewed-model-allowlist")
+            destination = sorted(release.COMPATIBILITY_DESTINATIONS)[0]
+            mount = {"Source": str(source), "Destination": destination,
+                     "Type": "bind", "RW": False}
+            policy = {"reviewed_live_file_overlays": {
+                destination: hashlib.sha256(source.read_bytes()).hexdigest()}}
+            release.verify_live_overlays({"Mounts": [mount]}, policy)
+            for changed in ({**mount, "RW": True}, {**mount, "Destination": "/other.py"}):
+                with self.assertRaises(RuntimeError):
+                    release.verify_live_overlays({"Mounts": [changed]}, policy)
+            source.write_bytes(b"unreviewed")
+            with self.assertRaises(RuntimeError):
+                release.verify_live_overlays({"Mounts": [mount]}, policy)
+
+    def test_public_http_identifies_the_release_client(self):
+        url = "https://e.qunxue.xyz/api/health"
+        with patch.object(release.urllib.request, "build_opener") as factory:
+            response = factory.return_value.open.return_value.__enter__.return_value
+            response.url, response.status = url, 200
+            response.read.return_value = b"{}"
+            self.assertEqual(release.http(url), b"{}")
+            request = factory.return_value.open.call_args.args[0]
+            self.assertEqual(request.full_url, url)
+            self.assertEqual(request.get_header("User-agent"), "Everplain-Release/1.0")
+
+    def test_registry_identity_accepts_config_or_pinned_manifest_and_rejects_unbound_images(self):
+        expected = "sha256:" + "b" * 64
+        digest = "sha256:" + "a" * 64
+        reference = "ghcr.io/huyanxius/everplain-api@" + digest
+        for identity, references, valid in (
+            (expected, [reference], True), (digest, [reference], True),
+            (expected, [], False), ("sha256:" + "d" * 64, [reference], False),
+            (digest, ["ghcr.io/huyanxius/everplain-api@" + expected], False),
+        ):
+            with self.subTest(identity=identity, references=references):
+                value = {"Id": identity, "RepoDigests": references}
+                with patch.object(release, "run", return_value=json.dumps([value])) as inspect:
+                    if valid:
+                        self.assertEqual(
+                            release.registry_image(expected, reference, "api", {}), value)
+                    else:
+                        with self.assertRaises(RuntimeError):
+                            release.registry_image(expected, reference, "api", {})
+                    inspect.assert_called_once_with(["docker", "image", "inspect", reference])
+
+    def test_web_only_release_never_stops_api_or_copies_data_and_restores_web_on_failure(self):
+        for failed in (False, True):
+            with self.subTest(failed=failed), tempfile.TemporaryDirectory() as d:
+                root = Path(d)
+                api = container("api", root)
+                api["Image"] = "sha256:" + "b" * 64
+                web = container("web", root)
+                web["Mounts"] = [{"Destination": "/etc/nginx/conf.d/default.conf"}]
+                update = release.ExistingRelease(root / "input", root)
+                update.stage = root
+                update.old_names = {"web": "everplain-web-before-test"}
+                update.images = {"api": api["Image"], "web": "sha256:" + "a" * 64}
+                update.baseline, update.previous_state = {}, None
+                update.state_path = root / "state"
+                update.old_revision = "c" * 40
+                with patch.object(release, "snapshot", return_value={}), \
+                     patch.object(release, "read_state", return_value=None), \
+                     patch.object(release, "run", return_value="") as commands, \
+                     patch.object(release, "metadata", return_value=api), \
+                     patch.object(release, "environment", return_value={"EVERPLAIN_RUNTIME_MODE": "base"}), \
+                     patch.object(release, "public_health", side_effect=RuntimeError("health") if failed else None), \
+                     patch.object(update, "complete"), patch.object(update, "record"):
+                    if failed:
+                        with self.assertRaises(RuntimeError):
+                            update.activate_web_only({}, api, web, "bridge")
+                        self.assertTrue(update.report["old_service_restored"])
+                    else:
+                        update.activate_web_only({}, api, web, "bridge")
+                        self.assertTrue(update.report["api_unchanged_verified"])
+                    for call in commands.call_args_list:
+                        self.assertNotIn("everplain-api", call.args[0])
+                        self.assertNotIn("alembic", call.args[0])
+                    self.assertFalse((root / "data").exists())
+
+    def test_digest_pull_reuses_layers_and_removes_temporary_credentials(self):
+        manifest = {
+            "registry_images": {role: f"ghcr.io/huyanxius/everplain-{role}@sha256:" + "a" * 64
+                                for role in ("api", "web")},
+            "images": {role: "sha256:" + "b" * 64 for role in ("api", "web")},
+        }
+        info = {"Id": "sha256:" + "b" * 64, "Architecture": "amd64", "Os": "linux",
+                "Config": {"Labels": {"org.opencontainers.image.revision": "c" * 40}}}
+        for failed in (False, True):
+            with self.subTest(failed=failed), tempfile.TemporaryDirectory() as d:
+                report = {}
+                login = subprocess.CompletedProcess([], 0, "", "")
+                with patch.object(release, "REVISION", "c" * 40), \
+                     patch.object(release.sys, "stdin", io.StringIO("synthetic-job-token\n")), \
+                     patch.object(release.subprocess, "run", return_value=login) as auth, \
+                     patch.object(release, "run", side_effect=RuntimeError("pull failed") if failed
+                                  else None, return_value="aaa: Already exists\nbbb: Pull complete\n") as run, \
+                     patch.object(release, "registry_image", return_value=info):
+                    if failed:
+                        with self.assertRaises(RuntimeError):
+                            release.pull_registry_images(manifest, Path(d), report)
+                    else:
+                        images = release.pull_registry_images(manifest, Path(d), report)
+                        self.assertEqual(set(images), {"api", "web"})
+                        self.assertEqual(report["api_reused_layer_count"], 1)
+                        self.assertTrue(report["registry_credentials_removed"])
+                        self.assertEqual(run.call_args_list[0].args[0][-1],
+                                         manifest["registry_images"]["api"])
+                    self.assertNotIn("synthetic-job-token", str(auth.call_args.args))
+                    self.assertEqual(list(Path(d).iterdir()), [])
 
 
 def container(role, source):
@@ -307,7 +424,16 @@ class ExistingReleaseTests(unittest.TestCase):
                 self.updater = release.ExistingRelease(self.archive, self.root / "updates")
                 with self.assertRaises(RuntimeError):
                     self.execute()
-                self.assertTrue(self.updater.report["forward_stop_required"])
+                if failure == "public-health":
+                    self.assertTrue(self.updater.report["candidate_kept_running"])
+                    self.assertFalse(self.updater.report["forward_stop_required"])
+                    api_start = next(i for i, call in enumerate(self.calls)
+                                     if call[:2] == ["docker", "run"]
+                                     and "everplain-api" in call)
+                    self.assertFalse(any(call[:2] == ["docker", "stop"]
+                                         for call in self.calls[api_start + 1:]))
+                else:
+                    self.assertTrue(self.updater.report["forward_stop_required"])
                 self.assertFalse(self.updater.report["old_service_restored"])
                 self.assertFalse(any(call[:2] == ["docker", "start"] for call in self.calls))
                 self.assertEqual(
@@ -326,6 +452,52 @@ class ExistingReleaseTests(unittest.TestCase):
                 api["NetworkSettings"]["Networks"] = {"other-product": {}}
             with self.subTest(change=change), self.assertRaises(RuntimeError):
                 release.existing_layout(api, web)
+
+    def test_release_preserves_existing_nested_data_with_owner_mode_and_bytes(self):
+        directory = self.source / "existing-private-data" / "nested"
+        directory.mkdir(parents=True)
+        original = directory / "record.bin"
+        original.write_bytes(b"existing-private-material")
+        directory.chmod(0o750)
+        original.chmod(0o640)
+        before = original.stat()
+        self.assertEqual(release.data_bytes(self.source),
+                         (self.source / "everplain.db").stat().st_size + before.st_size)
+        report = self.execute()
+        target = self.updater.stage / "data" / original.relative_to(self.source)
+        self.assertTrue(report["ancillary_data_preserved"])
+        self.assertEqual(original.read_bytes(), target.read_bytes())
+        after = target.stat()
+        self.assertEqual((after.st_uid, after.st_gid, stat.S_IMODE(after.st_mode)),
+                         (before.st_uid, before.st_gid, stat.S_IMODE(before.st_mode)))
+        self.assertEqual(stat.S_IMODE(target.parent.stat().st_mode), 0o750)
+        self.assertNotEqual(after.st_ino, before.st_ino)
+
+    def test_nested_link_or_special_file_blocks_before_image_load_and_stop(self):
+        for kind in ("link", "fifo"):
+            directory = self.source / kind
+            directory.mkdir()
+            entry = directory / "entry"
+            if kind == "link":
+                entry.symlink_to(self.source / "everplain.db")
+            else:
+                os.mkfifo(entry)
+            with self.subTest(kind=kind), self.assertRaises(RuntimeError):
+                self.execute()
+            self.assertFalse(any(call[:2] in (["docker", "load"], ["docker", "stop"])
+                                 for call in self.calls))
+            entry.unlink()
+            directory.rmdir()
+
+    def test_ancillary_copy_failure_restores_original_data_and_containers(self):
+        original = self.source / "private.bin"
+        original.write_bytes(b"retained")
+        with patch.object(release, "copy_ancillary_data", side_effect=OSError("copy failed")):
+            with self.assertRaises(OSError):
+                self.execute()
+        self.assertEqual(original.read_bytes(), b"retained")
+        self.assertTrue(self.updater.report["old_service_restored"])
+        self.assertFalse(self.updater.report["candidate_started"])
 
     def test_low_disk_blocks_before_copy_or_before_image_load(self):
         from collections import namedtuple

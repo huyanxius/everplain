@@ -282,3 +282,58 @@ def test_bounded_parallel_batches_save_out_of_order_and_merge_in_source_order():
     assert peak == 3
     assert snapshots == sorted(snapshots)
     assert result["topics"][0]["segment_ids"] == ["s0", "s1", "s2", "s3"]
+
+
+@pytest.mark.parametrize(
+    "code,expected",
+    [
+        ("authentication", "拒绝授权"),
+        ("quota_exhausted", "上游向量服务额度不足"),
+        ("timeout", "响应超时"),
+        ("invalid_response", "无效向量"),
+        ("not_configured", "尚未配置"),
+    ],
+)
+def test_index_failure_preserves_body_and_reports_only_safe_reason(
+    plain_client, monkeypatch, code, expected
+):
+    from test_research_material_api import _authenticate
+    from test_shared_knowledge_api import create_library, upload
+
+    from qunxue_api.adapters.research_agent.embedding import EmbeddingProviderError
+    from qunxue_api.adapters.sqlite.shared_knowledge import SharedDocumentRow
+
+    _authenticate(plain_client)
+    kb = create_library(plain_client)
+    doc = upload(plain_client, kb["id"])
+    with plain_client.app.state.shared_knowledge_scope() as app:
+        row = app.repository.session.get(SharedDocumentRow, doc["id"])
+        row.knowledge_status = "ready"
+        row.index_status = "queued"
+        original_segments = list(row.segments)
+        app.repository.commit()
+
+    class FailingEmbedder:
+        def embed_documents(self, texts):
+            raise EmbeddingProviderError("private-provider-secret", code=code)
+
+    records = []
+    monkeypatch.setattr(
+        "qunxue_api.adapters.research_agent.course_organization.logger.warning",
+        lambda message, *args: records.append(message % args),
+    )
+    worker = plain_client.app.state.course_organization_worker
+    worker.embedder = None if code == "not_configured" else FailingEmbedder()
+    worker.embedding_model = "test-model"
+    assert worker.run_once()
+    with plain_client.app.state.shared_knowledge_scope() as app:
+        row = app.repository.session.get(SharedDocumentRow, doc["id"])
+        assert row.status == "ready" and row.knowledge_status == "ready"
+        assert row.index_status == "failed"
+        assert expected in row.index_error
+        assert row.segments == original_segments
+        assert "private-provider-secret" not in row.index_error
+        assert row.job_token is None
+    assert any(f"code={code}" in record for record in records)
+    assert all("private-provider-secret" not in record for record in records)
+    assert worker.run_once() is False  # A failed stage requires an explicit retry.

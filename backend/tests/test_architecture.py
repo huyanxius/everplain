@@ -87,6 +87,7 @@ ALLOWED_TOP_LEVEL_DEPENDENCIES = {
         "settings",
     },
     "settings": set(),
+    "retrieval_preflight": {"adapters", "settings"},
     "main": {"bootstrap"},
 }
 ALLOWED_MODULE_INTERNAL_DEPENDENCIES = {

@@ -44,6 +44,7 @@ def test_openai_compatible_embedding_provider_posts_documents_to_configured_mode
     assert provider.embed_documents(["问题一", "问题二"]) == [[1.0, 0.0], [0.0, 1.0]]
     assert captured["url"] == "http://embedding.internal/v1/embeddings"
     assert captured["body"] == {"input": ["问题一", "问题二"], "model": "BAAI/bge-m3"}
+    assert captured["headers"]["User-agent"] == "Everplain/1.0"
 
 
 def test_embedding_provider_restores_vectors_by_provider_index(
@@ -151,3 +152,57 @@ def test_embedding_provider_rejects_unusable_provider_payloads(
 
     with pytest.raises(EmbeddingProviderError):
         provider.embed_query("问题")
+
+
+@pytest.mark.parametrize(
+    "status,code",
+    [
+        (401, "authentication"),
+        (402, "quota_exhausted"),
+        (403, "access_denied"),
+        (404, "endpoint_unavailable"),
+        (429, "rate_limited"),
+        (400, "request_rejected"),
+        (422, "request_rejected"),
+        (502, "service_error"),
+    ],
+)
+def test_embedding_http_errors_have_safe_codes(monkeypatch, status, code):
+    from urllib.error import HTTPError
+
+    calls = []
+
+    def fail(*args, **kwargs):
+        calls.append(1)
+        raise HTTPError("https://private.invalid/secret", status, "private-provider-key", {}, None)
+
+    monkeypatch.setattr(embedding, "urlopen", fail)
+    provider = OpenAICompatibleEmbeddingProvider(
+        base_url="https://example.invalid/v1", api_key="secret", model="test", timeout_seconds=1
+    )
+    with pytest.raises(EmbeddingProviderError) as caught:
+        provider.embed_documents(["synthetic fixture"])
+    assert caught.value.code == code
+    assert caught.value.status_code == status
+    assert len(calls) == 1  # In particular, billing failures are never retried automatically.
+    assert "private" not in str(caught.value)
+    assert "secret" not in embedding.index_error_message(caught.value)
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_embedding_timeouts_are_distinct_from_configuration(monkeypatch, wrapped):
+    from urllib.error import URLError
+
+    def fail(*args, **kwargs):
+        error = TimeoutError("private-details")
+        raise URLError(error) if wrapped else error
+
+    monkeypatch.setattr(embedding, "urlopen", fail)
+    provider = OpenAICompatibleEmbeddingProvider(
+        base_url="https://example.invalid/v1", api_key=None, model="test", timeout_seconds=1
+    )
+    with pytest.raises(EmbeddingProviderError) as caught:
+        provider.embed_query("test")
+    assert caught.value.code == "timeout"
+    assert "超时" in embedding.index_error_message(caught.value)
+    assert "配置" not in embedding.index_error_message(caught.value)

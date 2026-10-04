@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router'
 import { ArrowClockwiseIcon, ArrowLeftIcon, ArrowUpRightIcon, BooksIcon, DotsThreeIcon, MagnifyingGlassIcon, PencilSimpleIcon, PlusIcon, ShareNetworkIcon, TrashIcon, TreeStructureIcon, UploadSimpleIcon } from '@phosphor-icons/react'
 import { Select } from '../ui/Select'
 import { useAccount } from '../../modules/account'
-import { readImportBatches } from '../../modules/knowledge-import'
+import { readImportBatches, type ImportBatch } from '../../modules/knowledge-import'
 import { readPersonalGraph } from '../../modules/personal-graph'
 import { ResearchAgentConversationPage } from '../agent/ResearchAgentConversationPage'
 import { PageContent, PageShell } from '../ui/PageShell'
@@ -54,6 +54,7 @@ function LibraryContent({ userId }: { userId: string | null }) {
   const [libraryMenu, setLibraryMenu] = useState(false)
   const [storage, setStorage] = useState<Awaited<ReturnType<typeof readKnowledgeStorage>> | null>(null)
   const [materialSources, setMaterialSources] = useState<Record<string, LibraryMaterialSource>>({})
+  const [importBatches, setImportBatches] = useState<ImportBatch[]>([])
   const busyRef = useRef(false)
   const currentScope = useRef(params.toString())
   currentScope.current = params.toString()
@@ -110,6 +111,7 @@ function LibraryContent({ userId }: { userId: string | null }) {
     void readKnowledgeStorage().then(value => { if (active) setStorage(value) }).catch(() => {})
     void readImportBatches().then(batches => {
       if (!active || !Array.isArray(batches)) return
+      setImportBatches(batches)
       const metadata: Record<string, LibraryMaterialSource> = {}
       for (const batch of batches) for (const item of batch.items ?? []) if (item.document_id) metadata[`${batch.library_id}:${item.document_id}`] = { source: sourceNames[batch.source_type], url: item.source_url }
       setMaterialSources(metadata)
@@ -137,12 +139,25 @@ function LibraryContent({ userId }: { userId: string | null }) {
     return () => { active = false }
   }, [hasImages, reload, id])
   useEffect(() => {
-    const pending = (detail ? [detail] : courses).filter(course => course.documents.some(isProcessing))
+    const importing = new Set(importBatches.filter(batch => batch.status === 'processing').map(batch => batch.library_id))
+    const pending = (detail ? [detail] : courses).filter(course => course.documents.some(isProcessing) || importing.has(course.id))
     if (!pending.length) return
     let active = true
+    let refreshing = false
     const timer = window.setInterval(() => {
-      void Promise.all(pending.map(course => getCourse(course.id))).then(values => {
+      if (refreshing) return
+      refreshing = true
+      void (async () => {
+        // Read the batch before its documents so the final newly-created file is not missed.
+        const batches = importing.size ? await readImportBatches() : null
+        const values = await Promise.all(pending.map(course => getCourse(course.id)))
         if (!active) return
+        if (Array.isArray(batches)) {
+          setImportBatches(batches)
+          const metadata: Record<string, LibraryMaterialSource> = {}
+          for (const batch of batches) for (const item of batch.items ?? []) if (item.document_id) metadata[`${batch.library_id}:${item.document_id}`] = { source: sourceNames[batch.source_type], url: item.source_url }
+          setMaterialSources(metadata)
+        }
         if (detail) {
           const refreshed = values.find(value => value.id === detail.id)
           if (refreshed?.access === 'owner') setDetail(refreshed)
@@ -151,10 +166,10 @@ function LibraryContent({ userId }: { userId: string | null }) {
           const refreshed = values.find(value => value.id === course.id)
           return refreshed ? refreshed.access === 'owner' ? [refreshed] : [] : [course]
         }))
-      }).catch((failure: Error) => { if (active) { setError(failure.message); window.clearInterval(timer) } })
+      })().catch((failure: Error) => { if (active) { setError(failure.message); window.clearInterval(timer) } }).finally(() => { refreshing = false })
     }, 3000)
     return () => { active = false; window.clearInterval(timer) }
-  }, [detail, courses])
+  }, [detail, courses, importBatches])
   function navigate(libraryId?: string, docId?: string) {
     setEditing(null); setNotice(null); setError(null)
     const next = new URLSearchParams()
@@ -209,6 +224,8 @@ function LibraryContent({ userId }: { userId: string | null }) {
   const documents = materials.filter(({ course, document }) => (!kindFilter || documentKind(document) === kindFilter) && (!search || `${document.filename} ${document.knowledge?.summary ?? ''} ${document.knowledge?.topics.map(topic => `${topic.title} ${topic.summary}`).join(' ') ?? ''} ${course.name ?? ''}`.toLocaleLowerCase().includes(search)))
   const visible = courses.filter(course => !search || `${course.name} ${course.description}`.toLocaleLowerCase().includes(search))
   const pendingCount = materials.filter(({ document }) => isProcessing(document)).length
+  const relevantImports = importBatches.filter(batch => (!id || batch.library_id === id) && (batch.status === 'processing' || batch.failed > 0))
+  const importProgress = relevantImports.reduce((sum, batch) => ({ total: sum.total + batch.total, imported: sum.imported + batch.imported, duplicates: sum.duplicates + batch.duplicates, failed: sum.failed + batch.failed, pending: sum.pending + batch.total - batch.finished }), { total: 0, imported: 0, duplicates: 0, failed: 0, pending: 0 })
   const maxDocuments = storage?.max_documents_per_library ?? 100
   const full = !!detail && detail.documents.length >= maxDocuments
   const scopeLibraries = detail ? libraryChoices.map(library => library.id === detail.id ? detail : library) : libraryChoices
@@ -231,6 +248,7 @@ function LibraryContent({ userId }: { userId: string | null }) {
         {!visible.length && <div className="ep-knowledge-empty"><BooksIcon size={32} /><h2 className="qx-card__title">{search ? '没有找到相关知识库' : '创建你的第一个知识库'}</h2><button type="button" className="qx-btn qx-btn--secondary" onClick={startCreate}>新建知识库</button></div>}
       </> : <>
         {catalogError && <p className="qx-notice qx-notice--danger" role="alert">{catalogError}<button type="button" className="qx-btn qx-btn--ghost" onClick={() => setReload(value => value + 1)}>重试读取资料</button></p>}
+        {relevantImports.length > 0 && <div className="qx-notice ep-library__status" role="status"><span>导入记录：{importProgress.total} 条已提交 · {importProgress.imported} 条已入库 · {importProgress.duplicates} 条重复 · {importProgress.pending} 条处理中 · {importProgress.failed} 条读取失败。下方仅显示已生成的资料。</span><button className="qx-btn qx-btn--ghost" type="button" onClick={() => openAdd('records')}>查看导入详情</button></div>}
         {pendingCount > 0 && <div className="qx-notice ep-library__status" role="status"><ArrowClockwiseIcon size={18} /><span>{pendingCount} 份资料正在解析、整理知识或建立语义索引。</span><button className="qx-btn qx-btn--ghost" type="button" onClick={() => openAdd('records')}>导入记录</button></div>}
         <div className="ep-library__grid" aria-label="资料卡片">{documents.map(({ course, document }) => <LibraryMaterialCard key={`${course.id}:${document.id}`} course={course} document={document} showLibrary={!detail} source={materialSources[`${course.id}:${document.id}`]} busy={busy} onRetry={() => void action(async () => { await retryCourseDocument(course.id, document.id); await refreshLibrary(course.id) })} onDelete={() => setDeletingDocument({ course, document })} onReupload={() => openAdd('file', course.id)} />)}</div>
         {!documents.length && <div className="ep-knowledge-empty ep-library__empty"><BooksIcon size={32} /><h2 className="qx-card__title">{search || kindFilter ? '没有找到相关资料' : !courses.length ? '创建你的第一个知识库' : '把第一份资料，放进来。'}</h2><p className="qx-meta">{search || kindFilter ? '换个关键词，或调整筛选条件。' : detail ? '在这里上传的文件只属于这个库。从其他应用导入的资料会统一放进「我的资料」。' : '收藏、笔记和文档会汇集在这里，保留原文与知识点。'}</p>

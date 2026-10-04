@@ -1,18 +1,21 @@
 # Everplain 收藏助手
 
-当前为未上架商店的 Manifest V3 扩展。下载按钮先询问 macOS / Windows；系统识别仅作提示，不会自动下载。自动准备工具下载并校验扩展，打开固定目录和浏览器管理页。用户仍需打开开发者模式并“加载已解压的扩展程序”，脚本不会静默安装。
+当前为未上架商店的 Manifest V3 扩展。主流程只下载普通 ZIP，不要求脚本。
 
 ## 用户流程
 
-1. 在导入页选择系统，下载并完整解压准备工具 ZIP。
-2. macOS 双击 `.command`；Windows 双击 `.cmd`，保留同目录的 `.ps1`。选择 Chrome 或 Edge。
-3. 在扩展管理页启用开发者模式并加载工具打开的文件夹；同一浏览器用户资料中登录 `https://e.qunxue.xyz`。
+1. 下载 `everplain-clipper.zip`。macOS 双击解压；Windows 右键“全部解压缩”。保留解压目录，不从 ZIP 预览加载。
+2. 地址栏打开 `chrome://extensions` 或 `edge://extensions`，启用“开发者模式”，点击“加载已解压的扩展程序 / 载入未封装的项目”。
+3. 选择直接含 `manifest.json` 的文件夹，不选择 ZIP 或上一级。macOS 在 Finder 选中目录按 Option+Command+C 复制路径，在选择器按 Command+Shift+G 粘贴；Windows 在目录地址栏 Ctrl+L、Ctrl+C，在选择器 Ctrl+L 粘贴。
+4. 同一浏览器用户资料登录 `https://e.qunxue.xyz`，保留标签页，固定扩展后收藏。
+
+历史准备脚本只作为兼容文件保留，下载界面不再推荐，也不需要用户运行。
 
 官网已预填；已有保存地址保持不变，自建站仍可填写自己的 HTTPS 地址。本机开发支持 localhost。首次点击收藏才申请目标站点权限并读取当前页，只有点击导入全部书签才申请书签权限。通过目标应用页面同源会话提交；无密码、Cookie、令牌或配对码流程。
 
-Windows 默认执行策略、下载标记或组织管理可能阻止脚本；macOS Gatekeeper/文件权限也可能阻止。此时直接回退普通扩展 ZIP，不更改执行策略、不移除隔离标记、不绕过系统/浏览器限制。Windows 使用正常 `PowerShell -NoProfile -File`；无需管理员权限、额外运行时或注册表修改。Mac 仅用系统 Bash、curl、unzip、shasum 等工具。
+Windows 默认执行策略、下载标记或组织管理可能阻止脚本；macOS Gatekeeper/文件权限也可能阻止。macOS 脚本未签名/公证；用户核对官方下载来源后，可在“系统设置 → 隐私与安全”中针对该脚本手动选择“仍要打开/强制打开”（[Apple 官方说明](https://support.apple.com/102445)）。这不是安全保证。不愿运行或被组织策略限制时回退普通扩展 ZIP，不更改执行策略、不移除隔离标记、不绕过管理限制。Windows 使用正常 `PowerShell -NoProfile -File`；无需管理员权限、额外运行时或注册表修改。Mac 仅用系统 Bash、curl、unzip、shasum 等工具。
 
-## 安全与更新
+## 历史脚本的安全与更新（兼容说明）
 
 - 下载仅来自固定 HTTPS 官方源；TLS 校验保留，拒绝重定向，下载体积/时间受限。
 - 同源 SHA-256 清单由每次构建自动生成，验证 ZIP 和每个文件；它防损坏/错版，**不是独立代码签名或第三方信任保证**。
@@ -46,3 +49,10 @@ Windows 默认执行策略、下载标记或组织管理可能阻止脚本；mac
 [Chrome 官方加载步骤](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-unpacked)、[Chrome 分发限制](https://developer.chrome.com/docs/extensions/how-to/distribute)、[Edge 官方侧载步骤](https://learn.microsoft.com/en-us/microsoft-edge/extensions/getting-started/extension-sideloading)。
 
 正文提取使用 Defuddle 0.19.0（MIT）；许可随构建保留。未替任何用户安装或授权扩展。
+
+
+## 共享界面令牌与商店准备
+
+`build.mjs` 将 Web 的 `frontend/src/styles/tokens.css` 原样内嵌到扩展 `popup.css`，不请求远程样式，按钮、字体、间距和浅深色使用同一语义令牌。修改 Web 令牌后重新构建扩展即可同步。
+
+运行 `node build-store.mjs` 会基于已构建的 `dist/` 生成独立商店 ZIP，并包含 16/48/128 品牌图标。普通侧载 ZIP 仍保持六个文件，与历史校验脚本兼容。商店包准备不代表提交或上架；真实功能截图、公开准确的隐私政策和开发者账户审核仍需完成。

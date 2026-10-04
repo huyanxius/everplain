@@ -6,10 +6,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
 WORKDIR /app/backend
 RUN pip install --no-cache-dir uv==0.11.29
 COPY backend/pyproject.toml backend/uv.lock backend/README.md ./
-COPY backend/src ./src
-RUN uv sync --frozen --no-dev --no-editable \
+RUN uv sync --frozen --no-dev --no-install-project \
     && python -c "import tiktoken; tiktoken.get_encoding('o200k_base')" \
     && chmod -R a+rX /opt/tiktoken-cache
+COPY backend/src ./src
+RUN uv sync --frozen --no-dev --no-editable
 COPY backend/alembic.ini ./
 COPY backend/migrations ./migrations
 COPY ops /app/ops
