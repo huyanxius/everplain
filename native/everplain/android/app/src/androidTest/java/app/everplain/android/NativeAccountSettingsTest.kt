@@ -3,6 +3,8 @@ package app.everplain.android
 import android.graphics.Bitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.takeScreenshot
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -48,6 +50,12 @@ class NativeAccountSettingsTest {
                 .copy(name = "澄", avatarId = "cheng", color = "#5d8fe6")
         val account =
             WireJson.decodeFromJsonElement<AccountResponse>(schemas.getValue("AccountResponse"))
+                .let {
+                    it.copy(
+                        preferences =
+                            it.preferences.copy(locale = "zh-CN", timezone = "Asia/Shanghai")
+                    )
+                }
                 .copy(
                     displayName = "合成验收用户",
                     email = "fixture@example.invalid",
@@ -132,6 +140,19 @@ class NativeAccountSettingsTest {
         compose.waitUntil(30000) { api.passwordWrites == 1 }
         compose.onNodeWithContentDescription("当前密码").performScrollTo().assertTextEquals("")
         inst.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.runOnUiThread { compose.activity.currentFocus?.clearFocus() }
+        compose.waitUntil(30000) {
+            var hidden = false
+            compose.runOnUiThread {
+                val insets = ViewCompat.getRootWindowInsets(compose.activity.window.decorView)
+                hidden =
+                    insets != null &&
+                        !insets.isVisible(WindowInsetsCompat.Type.ime()) &&
+                        insets.getInsets(WindowInsetsCompat.Type.ime()).bottom == 0
+            }
+            hidden
+        }
+        compose.onNodeWithText("安全").performScrollTo().assertIsDisplayed()
         capture("security")
         section("数据与隐私")
         capture("privacy")
