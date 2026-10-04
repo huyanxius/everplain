@@ -159,7 +159,12 @@ public enum KnowledgeLogic {
         guard !nodes.isEmpty else { return [:] }
         if nodes.contains(where: { $0.kind == "self" }) {
             let groups = Dictionary(grouping: nodes.filter { $0.kind != "self" }, by: { max(1, $0.level) })
-            let step = groups.map { level, group in max(120.0, Double(group.count) * 50 / (2 * .pi * Double(level))) }.max() ?? 120
+            var step: Double = 120.0
+            for (level, group) in groups {
+                let scaledCount: Double = Double(group.count) * 50.0
+                let circumference: Double = 2.0 * Double.pi * Double(level)
+                step = max(step, scaledCount / circumference)
+            }
             var result: [String: KnowledgePosition] = [:]
             for node in nodes where node.kind == "self" { result[node.id] = KnowledgePosition(x: 0, y: 0) }
             for (level, group) in groups {

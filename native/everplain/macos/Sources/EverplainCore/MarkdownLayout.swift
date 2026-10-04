@@ -96,7 +96,9 @@ public enum NativeMarkdownLayout {
                 for (index, child) in node.children.enumerated() { walk(child, indent: indent, quote: quote + 1, marker: index == 0 ? marker : nil) }
             } else if let table = node as? Table {
                 let allRows: [any Markup] = [table.head] + table.body.rows.map { $0 as any Markup }
-                let rows = allRows.map { row in row.children.enumerated().map { index, cell in
+                let rows: [[NativeMarkdownCell]] = allRows.map { row -> [NativeMarkdownCell] in
+                    return row.children.enumerated().map { entry -> NativeMarkdownCell in
+                    let (index, cell) = entry
                     // cmark's child span counts decoded escapes in table cells.
                     // Split the original row so an escaped pipe never truncates text.
                     let lineIndex = max(0, min(lines.count - 1, (row.range?.lowerBound.line ?? 1) - 1))
@@ -121,9 +123,14 @@ public enum NativeMarkdownLayout {
                         let bounds = trimmed(ranges[index])
                         text = rawLine.substring(with: NSRange(location: bounds.lowerBound, length: bounds.count))
                         offsets = Array((lineOffsets[lineIndex] + bounds.lowerBound)..<(lineOffsets[lineIndex] + bounds.upperBound))
-                    } else { (text, offsets) = slice(cell, quoteDepth: quote) }
+                    } else {
+                        let sliced: (String, [Int]) = slice(cell, quoteDepth: quote)
+                        text = sliced.0
+                        offsets = sliced.1
+                    }
                     let alignment: String
-                    switch table.columnAlignments.indices.contains(index) ? table.columnAlignments[index] : nil { case .center?: alignment = "center"; case .right?: alignment = "right"; default: alignment = "left" }
+                    let columnAlignment: Table.ColumnAlignment? = table.columnAlignments.indices.contains(index) ? table.columnAlignments[index] : nil
+                    switch columnAlignment { case .center?: alignment = "center"; case .right?: alignment = "right"; default: alignment = "left" }
                     return NativeMarkdownCell(text: text, sourceOffsets: offsets, alignment: alignment)
                 } }
                 append(kind: "table", text: "", offsets: [], indent: indent, quote: quote, marker: marker, rows: rows)
