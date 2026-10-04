@@ -43,6 +43,10 @@ RUN_ID = None
 RUN_ATTEMPT = None
 BASE = Path("/srv/everplain-updates")
 NAMES = {"api": "everplain-api", "web": "everplain-web"}
+COMPATIBILITY_DESTINATIONS = {
+    "/app/backend/.venv/lib/python3.12/site-packages/qunxue_api/settings.py",
+    "/app/ops/preflight.py",
+}
 DATABASE_FILES = {
     name + suffix
     for name in ("everplain.db", "everplain-retrieval.db")
@@ -470,6 +474,20 @@ def configure_billing_policy(current, policy, report):
     return result
 
 
+def verify_live_overlays(api, policy):
+    reviewed = policy.get("reviewed_live_file_overlays", {})
+    require(set(reviewed) <= COMPATIBILITY_DESTINATIONS)
+    for mount in api["Mounts"]:
+        if mount["Destination"] == "/data":
+            continue
+        path = Path(mount["Source"])
+        require(mount["Type"] == "bind" and not mount["RW"])
+        require(path.is_absolute() and path.resolve() == path and path.is_file())
+        require(path.stat().st_size < 1024**2)
+        require(mount["Destination"] in reviewed)
+        require(digest(path) == reviewed[mount["Destination"]], "unreviewed live source overlay")
+
+
 def existing_layout(api, web):
     for role, value, port, inside in (
         ("api", api, "8297", "8297/tcp"),
@@ -489,7 +507,11 @@ def existing_layout(api, web):
     web_network = next(iter(web["NetworkSettings"]["Networks"]))
     require(api_network == web_network)
     require(api_network == "bridge" or api_network.startswith("everplain"))
-    mounts = api["Mounts"]
+    mounts = [item for item in api["Mounts"] if item["Destination"] == "/data"]
+    require(all(item["Destination"] == "/data" or (
+        item["Destination"] in COMPATIBILITY_DESTINATIONS
+        and item["Type"] == "bind" and not item["RW"]
+    ) for item in api["Mounts"]))
     require(len(mounts) == 1 and mounts[0]["Destination"] == "/data" and mounts[0]["RW"])
     mount = mounts[0]
     require(mount["Type"] in {"volume", "bind"})
@@ -755,6 +777,7 @@ class ExistingRelease:
             REVISION, RUN_ID, ARCHIVE_SHA256,
         )
         policy = json.loads((release / "ops/cd/policy.json").read_text())
+        verify_live_overlays(api, policy)
         env = configure_billing_policy(old_env, policy, self.report)
         self.expected_billing_policy = env.get("EVERPLAIN_BILLING_PHASE_POLICIES")
         check_compatible(

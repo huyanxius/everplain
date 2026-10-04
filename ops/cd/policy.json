@@ -3,5 +3,9 @@
   "rollback_compatible_migration_trees": [],
   "add_user_billing_phases": [
     "writing"
-  ]
+  ],
+  "reviewed_live_file_overlays": {
+    "/app/backend/.venv/lib/python3.12/site-packages/qunxue_api/settings.py": "1c228c9b7a13458d54e0a6e37c774a4ba40c466df6132d37566f4b3c49a7af1b",
+    "/app/ops/preflight.py": "66342f60c121901fb815b5dd5baa4a94f637f54a7cfdce7f99dc79ec2ea42fe3"
+  }
 }
