@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   inspect:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/fix/105-live-baseline')
     runs-on: ubuntu-22.04
     environment: everplain-production
     timeout-minutes: 5

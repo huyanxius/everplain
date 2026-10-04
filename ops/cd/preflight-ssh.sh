@@ -45,3 +45,19 @@ if [[ "${1:-inspect}" == inspect ]]; then
     'sudo -n python3 - inspect' < "$root/ops/cd/release_identity.py"
   echo 'EVERPLAIN_RUNTIME_FINGERPRINT_END'
 fi
+
+# Temporary read-only ledger for the reviewed baseline branch.
+if [[ "${1:-inspect}" == inspect ]]; then
+  echo 'EVERPLAIN_SOURCE_AUDIT_BEGIN'
+  python3 - <<'AUDIT' | ssh "${opts[@]}" -p "$port" "$EVERPLAIN_DEPLOY_USER@$EVERPLAIN_DEPLOY_HOST" 'sudo -n python3 -'
+import json
+from pathlib import Path
+import importlib.util
+spec = importlib.util.spec_from_file_location('identity', Path('ops/cd/release_identity.py'))
+identity = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(identity)
+probe = identity.API_PROBE.replace("'source_tree':digest(source),", "'source_tree':digest(source), 'source_files':source,")
+print("import subprocess; r = subprocess.run(" + repr(['docker', 'exec', 'everplain-api', 'python', '-c', probe]) + ", capture_output=True, text=True, timeout=60); assert r.returncode == 0; print(r.stdout)")
+AUDIT
+  echo 'EVERPLAIN_SOURCE_AUDIT_END'
+fi
