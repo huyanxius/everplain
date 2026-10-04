@@ -53,7 +53,8 @@ with Path("/run/lock/everplain-release.lock").open("a") as lock:
     for role in ("api", "web"):
         assert transaction["images"][role] == json.loads(
             run(["docker", "inspect", "everplain-" + role]))[0]["Image"]
-        run(["docker", "start", "everplain-" + role])
+        if not json.loads(run(['docker', 'inspect', 'everplain-' + role]))[0]['State']['Running']:
+            run(['docker', 'start', 'everplain-' + role])
     for attempt in range(20):
         code, body = probe("http://127.0.0.1:5196/api/health")
         if code == 200 and json.loads(body).get("release_revision") == REVISION:
@@ -100,6 +101,8 @@ with Path("/run/lock/everplain-release.lock").open("a") as lock:
     policy = json.loads((release / 'ops/cd/policy.json').read_text())
     expected = helper.configure_billing_policy(old, policy, {})
     expected.update(EVERPLAIN_RELEASE_REVISION=REVISION, EVERPLAIN_MIGRATIONS_MANAGED='1')
+    print(json.dumps({'live_mounts': [{key: item[key] for key in ('Destination','Type','RW')} for item in api['Mounts']]}))
+    print(json.dumps({'current_runtime': helper.snapshot(helper.run, helper.metadata)}))
     mismatches = sorted(key for key, value in expected.items() if env.get(key) != value)
     print(json.dumps({'configuration_mismatch_keys': mismatches}))
     assert not mismatches
