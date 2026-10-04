@@ -13,6 +13,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.paths.outputs.backend }}
+      frontend: ${{ steps.paths.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: paths
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          result = subprocess.run(['git', 'diff', '--name-only', os.environ['BASE_SHA'], 'HEAD'], capture_output=True, text=True)
+          paths = result.stdout.splitlines()
+          unknown = result.returncode != 0 or not paths or any(not p.startswith(('backend/', 'frontend/', 'extensions/', 'ops/', '.github/workflows/', 'docs/')) for p in paths)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for role, prefixes in [('backend', ('backend/',)), ('frontend', ('frontend/', 'extensions/', 'backend/openapi.json'))]:
+                  output.write(f'{role}={str(unknown or any(p.startswith(prefixes) for p in paths)).lower()}\n')
+          PY
   release-build:
     # Validate the actual runtime images before merge. Main builds its publishable
     # artifact in deploy.yml after the reusable checks pass, without doing it twice.
@@ -30,6 +53,7 @@ jobs:
         run: bash ops/cd/build.sh
 
   backend:
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -52,6 +76,7 @@ jobs:
         run: make bootstrap-backend
 
       - name: Run backend checks
+        if: needs.changes.outputs.backend == 'true'
         run: make check-backend
 
       - name: Check release safety
@@ -61,6 +86,8 @@ jobs:
           uv run python -m unittest discover -s ../ops/tests -v
 
   frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

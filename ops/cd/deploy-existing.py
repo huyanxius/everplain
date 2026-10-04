@@ -327,6 +327,36 @@ def metadata(name):
     return json.loads(run(["docker", "inspect", name]))[0]
 
 
+def pull_registry_images(manifest, stage, report):
+    """Use the job's temporary read token; Docker reuses local content-addressed layers."""
+    token = sys.stdin.readline(8193).strip()
+    require(0 < len(token) <= 8192 and not any(c.isspace() for c in token))
+    images = {}
+    with tempfile.TemporaryDirectory(prefix="registry-auth-", dir=stage) as private:
+        login = subprocess.run(
+            ["docker", "--config", private, "login", "ghcr.io", "--username", "huyanxius",
+             "--password-stdin"],
+            input=token + "\n", capture_output=True, text=True, timeout=30, check=False,
+        )
+        report["registry_authentication_succeeded"] = login.returncode == 0
+        require(login.returncode == 0, "registry authentication failed")
+        for role, reference in manifest["registry_images"].items():
+            output = run(["docker", "--config", private, "pull", "--platform", "linux/amd64",
+                          reference], timeout=600, report=report, prefix=role + "_pull_")
+            report[role + "_reused_layer_count"] = len(set(re.findall(
+                r"^([a-f0-9]+): Already exists", output, re.MULTILINE)))
+            report[role + "_downloaded_layer_count"] = len(set(re.findall(
+                r"^([a-f0-9]+): Pull complete", output, re.MULTILINE)))
+            run(["docker", "tag", reference, "everplain-" + role + ":" + REVISION])
+            info = loaded_image(manifest["images"][role], role, report)
+            require(info["Architecture"] == "amd64" and info["Os"] == "linux")
+            require(info["Config"]["Labels"].get("org.opencontainers.image.revision") == REVISION)
+            images[role] = info["Id"]
+            report[role + "_image_verified"] = True
+    report["registry_credentials_removed"] = True
+    return images
+
+
 def environment(container):
     result = dict(item.split("=", 1) for item in container["Config"]["Env"])
     require(result.get("EVERPLAIN_RUNTIME_MODE") == "base")
@@ -671,9 +701,10 @@ class ExistingRelease:
         )
         self.report["live_overlay_guard_verified"] = True
         self.report["artifact_verified"] = True
-        image_bytes = sum(
+        registry = "registry_images" in manifest
+        image_bytes = (sum(manifest["image_sizes"].values()) if registry else sum(
             (release / "images" / (role + ".tar")).stat().st_size for role in ("api", "web")
-        )
+        ))
         remaining_budget = image_bytes * 3 + total_data_bytes * 3 + reserve
         docker_root = Path(run(["docker", "info", "--format", "{{.DockerRootDir}}"]).strip())
         require(docker_root.is_absolute() and docker_root.is_dir())
@@ -682,7 +713,9 @@ class ExistingRelease:
         self.report["stage_load_budget_verified"] = True
         require(shutil.disk_usage(docker_root).free > remaining_budget)
         self.report["docker_load_budget_verified"] = True
-        for role, image in (("api", API_IMAGE), ("web", WEB_IMAGE)):
+        if registry:
+            self.images = pull_registry_images(manifest, self.stage, self.report)
+        for role, image in (() if registry else (("api", API_IMAGE), ("web", WEB_IMAGE))):
             archive_path = release / "images" / (role + ".tar")
             archive_config = inspect_image_archive(archive_path, image, self.report, role)
             self.report[role + "_load_started"] = True
