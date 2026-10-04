@@ -45,3 +45,29 @@ if [[ "${1:-inspect}" == inspect ]]; then
     'sudo -n python3 - inspect' < "$root/ops/cd/release_identity.py"
   echo 'EVERPLAIN_RUNTIME_FINGERPRINT_END'
 fi
+
+ssh "${opts[@]}" -p "$port" "$EVERPLAIN_DEPLOY_USER@$EVERPLAIN_DEPLOY_HOST" 'sudo -n python3 -' <<'PYDIAG'
+import subprocess,json,urllib.request,urllib.error,socket
+r=subprocess.run(['journalctl','-u','docker','--since','20 minutes ago','--no-pager','-n','500'],capture_output=True,text=True,timeout=15)
+# Only classifications leave the host; daemon messages may contain signed URLs.
+logs=r.stdout.lower()
+report={'docker_journal_readable':r.returncode==0}
+for key,terms in {
+ 'tls_handshake_timeout':['tls handshake timeout'],
+ 'connection_timeout':['i/o timeout','context deadline exceeded','client.timeout exceeded'],
+ 'connection_reset':['connection reset','unexpected eof'],
+ 'dns_failure':['no such host','temporary failure in name resolution'],
+ 'registry_unauthorized':['unauthorized','authentication required'],
+ 'manifest_missing':['manifest unknown','manifest not found'],
+ 'platform_mismatch':['no matching manifest'],
+ 'ghcr_log_present':['ghcr.io'],
+ 'github_blob_log_present':['pkg-containers.githubusercontent.com'],
+}.items(): report[key]=any(term in logs for term in terms)
+for name,host in [('registry','ghcr.io'),('blob','pkg-containers.githubusercontent.com')]:
+ try:
+  urllib.request.urlopen('https://'+host+('/v2/' if name=='registry' else '/'),timeout=15).close()
+  report[name+'_https_reachable']=True
+ except urllib.error.HTTPError: report[name+'_https_reachable']=True
+ except Exception: report[name+'_https_reachable']=False
+print(json.dumps(report))
+PYDIAG
