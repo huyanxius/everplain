@@ -11,6 +11,7 @@ struct Composer: View {
     @StateObject private var editor = ComposerEditorHandle()
     @State private var editorHeight: CGFloat = 36
     @State private var width: CGFloat = 700
+    @State private var viewportWidth: CGFloat = 1200
     @State private var modelOpen = false
     @State private var toolsOpen = false
     @FocusState private var modelFocused: Bool
@@ -25,9 +26,9 @@ struct Composer: View {
         VStack(alignment: .leading, spacing: T.space2) {
             VStack(alignment: .leading, spacing: 12) {
             if hasExtras { ComposerAttachments(busy: busy) }
-            ComposerRowLayout(narrow: width < 480, multiline: multiline, research: research, editorHeight: displayEditorHeight) {
+            ComposerRowLayout(viewportWidth: viewportWidth, multiline: multiline, research: research, editorHeight: displayEditorHeight) {
                 toolsButton
-                NativeComposer(text: $store.composer, height: $editorHeight, focusToken: store.focusComposer,
+                NativeComposer(text: $store.composer, height: $editorHeight, viewportWidth: $viewportWidth, focusToken: store.focusComposer,
                                handle: editor, dark: scheme == .dark,
                                placeholder: home ? "问\(store.agentName)，或者丢一个链接进来" : "问一个问题",
                                textVerticalInset: research ? 0 : 5, canSubmit: store.canSend && !busy, onSubmit: submit)
@@ -37,8 +38,8 @@ struct Composer: View {
             }
             }
             .padding(.leading, T.space3).padding(.trailing, research ? 12 : 10).padding(.top, research ? 16 : 10).padding(.bottom, research ? 12 : 10)
-            .background(p.surface, in: RoundedRectangle(cornerRadius: multiline || width < 480 || research || hasExtras ? T.radiusPanel : T.radiusPill))
-            .overlay(RoundedRectangle(cornerRadius: multiline || width < 480 || research || hasExtras ? T.radiusPanel : T.radiusPill).stroke(p.ring, lineWidth: 1))
+            .background(p.surface, in: RoundedRectangle(cornerRadius: multiline || viewportWidth <= 480 || research || hasExtras ? T.radiusPanel : T.radiusPill))
+            .overlay(RoundedRectangle(cornerRadius: multiline || viewportWidth <= 480 || research || hasExtras ? T.radiusPanel : T.radiusPill).stroke(p.ring, lineWidth: 1))
             .shadow(color: T.shadowComposer(dark: scheme == .dark).last!.color.color, radius: 16, y: 8)
             .animation(reducedMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.320), value: editorHeight)
             .animation(reducedMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: T.motionBase / 1000), value: multiline)
@@ -103,26 +104,19 @@ struct Composer: View {
 
 /// Single-line controls share the exact 36pt center. Only real multiline rows bottom-align.
 private struct ComposerRowLayout: Layout {
-    let narrow: Bool
+    let viewportWidth: CGFloat
     let multiline: Bool
     let research: Bool
     let editorHeight: CGFloat
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        CGSize(width: proposal.width ?? 680, height: research ? editorHeight + 12 + 36 : narrow ? editorHeight + 8 + 36 : max(36, editorHeight))
+        CGSize(width: proposal.width ?? 680, height:ComposerGeometry.rowHeight(editorHeight:Double(editorHeight),viewportWidth:Double(viewportWidth),research:research))
     }
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         guard subviews.count == 4 else { return }
-        let modelWidth = min(260, subviews[2].sizeThatFits(.unspecified).width, max(0, bounds.width - (narrow || research ? 88 : 128)))
-        let inputWidth = research ? bounds.width - 16 : narrow ? bounds.width - 44 : max(40, bounds.width - modelWidth - 96)
-        let controlsY = research || narrow || multiline ? bounds.maxY - 36 : bounds.midY - 18
-        subviews[0].place(at: CGPoint(x: bounds.minX, y: narrow && !research ? editorHeight - 36 : controlsY), anchor: .topLeading,
-                          proposal: ProposedViewSize(width: 36, height: 36))
-        subviews[1].place(at: CGPoint(x: bounds.minX + (research ? 8 : 44), y: bounds.minY), anchor: .topLeading,
-                          proposal: ProposedViewSize(width: inputWidth, height: editorHeight))
-        subviews[2].place(at: CGPoint(x: bounds.maxX - 44 - modelWidth, y: controlsY), anchor: .topLeading,
-                          proposal: ProposedViewSize(width: modelWidth, height: 36))
-        subviews[3].place(at: CGPoint(x: bounds.maxX - 36, y: controlsY), anchor: .topLeading,
-                          proposal: ProposedViewSize(width: 36, height: 36))
+        let positions = ComposerGeometry.make(width:Double(bounds.width),originX:Double(bounds.minX),originY:Double(bounds.minY),editorHeight:Double(editorHeight),idealModelWidth:Double(subviews[2].sizeThatFits(.unspecified).width),viewportWidth:Double(viewportWidth),research:research,multiline:multiline)
+        for (index,box) in [positions.tools,positions.input,positions.model,positions.send].enumerated() {
+            subviews[index].place(at:CGPoint(x:box.x,y:box.y),anchor:.topLeading,proposal:ProposedViewSize(width:box.width,height:box.height))
+        }
     }
 }
 
@@ -142,6 +136,7 @@ private final class ComposerEditorHandle: ObservableObject {
 private struct NativeComposer: NSViewRepresentable {
     @Binding var text: String
     @Binding var height: CGFloat
+    @Binding var viewportWidth: CGFloat
     let focusToken: UUID
     let handle: ComposerEditorHandle
     let dark: Bool
@@ -187,12 +182,14 @@ private struct NativeComposer: NSViewRepresentable {
         editor.placeholder = placeholder
         editor.placeholderColor = T.colorFaint(dark: dark).nsColor
         editor.textContainerInset = NSSize(width: 0, height: textVerticalInset)
+        editor.minSize = NSSize(width:0,height:height)
         if editor.string != text && !editor.hasMarkedText() {
             let selection = editor.selectedRange()
             editor.string = text
             editor.setSelectedRange(NSRange(location: min(selection.location, text.utf16.count), length: 0))
         }
         editor.needsDisplay = true
+        editor.sizeToFit()
         context.coordinator.measure()
         if context.coordinator.lastFocus != focusToken {
             context.coordinator.lastFocus = focusToken
@@ -210,9 +207,20 @@ private struct NativeComposer: NSViewRepresentable {
         init(_ parent: NativeComposer) { self.parent = parent }
         func measure() {
             guard let editor, editor.bounds.width > 0, let container = editor.textContainer, let manager = editor.layoutManager else { return }
+            if let viewport = editor.window?.contentView?.bounds.width, abs(parent.viewportWidth - viewport) > 0.5 {
+                DispatchQueue.main.async { [weak self, weak editor] in
+                    guard let self, let viewport = editor?.window?.contentView?.bounds.width else { return }
+                    if abs(self.parent.viewportWidth - viewport) > 0.5 { self.parent.viewportWidth = viewport }
+                }
+            }
             manager.ensureLayout(for: container)
             let used = max(manager.usedRect(for: container).maxY, manager.extraLineFragmentRect.maxY)
-            let measured = editor.string.isEmpty ? 36 : min(240, max(36, ceil(used) + parent.textVerticalInset * 2))
+            let contentHeight: CGFloat
+            if editor.string.isEmpty {
+                let attributes: [NSAttributedString.Key:Any] = [.font:editor.font ?? TypeStyle.nativeUI(T.textBody),.paragraphStyle:editor.defaultParagraphStyle ?? NSParagraphStyle.default]
+                contentHeight = (parent.placeholder as NSString).boundingRect(with:NSSize(width:editor.bounds.width,height:CGFloat.greatestFiniteMagnitude),options:[.usesLineFragmentOrigin,.usesFontLeading],attributes:attributes).height
+            } else { contentHeight = used }
+            let measured = min(240,max(36,ceil(contentHeight) + parent.textVerticalInset * 2))
             measurement += 1
             let revision = measurement
             guard abs(parent.height - measured) > 0.5 else { return }
@@ -245,6 +253,7 @@ private final class ComposerTextView: NSTextView {
     var placeholderColor = NSColor.placeholderTextColor
     var keyBeganInComposition = false
     var onWidthChange: (() -> Void)?
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); onWidthChange?() }
     override func keyDown(with event: NSEvent) {
         keyBeganInComposition = hasMarkedText()
         defer { keyBeganInComposition = false }
@@ -261,7 +270,7 @@ private final class ComposerTextView: NSTextView {
             let attrs: [NSAttributedString.Key: Any] = [.font: font ?? TypeStyle.nativeUI(T.textBody), .foregroundColor: placeholderColor,
                                                        .paragraphStyle: defaultParagraphStyle ?? NSParagraphStyle.default]
             (placeholder as NSString).draw(in: CGRect(x: textContainerInset.width, y: textContainerInset.height,
-                                                     width: max(0, bounds.width - textContainerInset.width * 2), height: 26), withAttributes: attrs)
+                                                     width: max(0, bounds.width - textContainerInset.width * 2), height: max(26,bounds.height - textContainerInset.height * 2)), withAttributes: attrs)
         }
     }
 }

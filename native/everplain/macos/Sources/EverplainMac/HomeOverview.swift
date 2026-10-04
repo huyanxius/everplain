@@ -44,7 +44,7 @@ private struct HomeOverviewContent: View {
         VStack(alignment: .leading, spacing: T.space3) {
             HStack { EPText("接着研究"); Spacer(); if open == "hand" { EPButton("收起") { toggle(nil) } }; Button { Task { await store.navigate(.research) } } label: { HStack(spacing:T.space1) { EPText("全部"); WebIcon(name:.arrowRight,size:14) } } }
                 .font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.muted).buttonStyle(.plain)
-            if research.loading { Card { EPText("正在读取最近研究").font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.muted) } }
+            if research.loading { homeLoading("正在读取最近研究") }
             else if let message = research.error { Card { VStack(alignment: .leading) { Text(message); EPButton("重新加载研究") { Task { await research.load() } }.buttonStyle(EPGhostButtonStyle()) } } }
             else if research.projects.isEmpty {
                 Button { research.openWorkspace(nil) } label: {
@@ -62,7 +62,7 @@ private struct HomeOverviewContent: View {
                 if open == "deck" { Button("\(knowledge.personalGraph?.pendingCount ?? 0) 份待整理") { store.openLibraryImport() }; EPButton("收起") { toggle(nil) } }
                 Button { Task { await store.navigate(.library) } } label: { HStack(spacing:T.space1) { EPText("知识库"); WebIcon(name:.arrowRight,size:14) } }
             }.font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.muted).buttonStyle(.plain).padding(.top, T.space6)
-            if knowledge.graphLoading || (knowledge.personalGraph == nil && knowledge.graphError == nil) { Card { EPText("正在读取资料").font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.muted) } }
+            if knowledge.graphLoading || (knowledge.personalGraph == nil && knowledge.graphError == nil) { homeLoading("正在读取资料") }
             else if let message = knowledge.graphError { Card { VStack(alignment: .leading) { Text(message); EPButton("重试") { Task { await knowledge.loadGraph() } }.buttonStyle(EPGhostButtonStyle()) } } }
             else if let graph = knowledge.personalGraph, graph.documentCount > 0 { documentPile(graph) }
             else {
@@ -132,5 +132,12 @@ private struct HomeOverviewContent: View {
         }
     }
     private func toggle(_ value: String?) { withAnimation(reduceMotion ? nil : .timingCurve(0.22, 1.28, 0.36, 1, duration: 0.6)) { open = value } }
+    private func homeLoading(_ label: String) -> some View {
+        EPText(label).font(TypeStyle.ui(T.textMeta)).foregroundStyle(Palette(dark:scheme == .dark).muted)
+            .padding(T.space5).frame(maxWidth:.infinity,minHeight:152,alignment:.leading)
+            .background(Palette(dark:scheme == .dark).mutedSurface,in:RoundedRectangle(cornerRadius:T.radiusCard))
+            .overlay(RoundedRectangle(cornerRadius:T.radiusCard).stroke(T.shadowCard(dark:scheme == .dark)[0].color.color,lineWidth:1))
+            .shadow(color:T.shadowCard(dark:scheme == .dark)[1].color.color,radius:4,y:2)
+    }
 }
 #endif

@@ -24,8 +24,8 @@ struct SidebarAccountView: View {
                 HStack(spacing: T.space2) {
                     AgentAvatar(id: store.profile?.avatarId ?? "cheng", color: store.profile?.color ?? AgentAvatar.presets[0].color, size: 32)
                     if !collapsed {
-                        Text(store.agentName).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                        NavigationIcon(kind: .chevron).rotationEffect(.degrees(90))
+                        Text(store.agentName).font(TypeStyle.ui(T.textControl)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        NavigationIcon(kind: .chevron)
                     }
                 }.padding(.horizontal, T.space1).frame(minHeight: T.actionHeight)
             }.buttonStyle(WebRowStyle(radius: T.radiusItem)).focused($trigger, equals: .account)
