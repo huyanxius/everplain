@@ -45,8 +45,3 @@ if [[ "${1:-inspect}" == inspect ]]; then
     'sudo -n python3 - inspect' < "$root/ops/cd/release_identity.py"
   echo 'EVERPLAIN_RUNTIME_FINGERPRINT_END'
 fi
-
-echo 'EVERPLAIN_LAYOUT_DIAGNOSTIC_BEGIN'
-ssh "${opts[@]}" -p "$port" "$EVERPLAIN_DEPLOY_USER@$EVERPLAIN_DEPLOY_HOST" \
-  'sudo -n python3 -' < "$root/ops/cd/inspect-layout.py"
-echo 'EVERPLAIN_LAYOUT_DIAGNOSTIC_END'

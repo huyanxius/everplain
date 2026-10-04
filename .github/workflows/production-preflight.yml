@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   inspect:
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/105-layout-inspection'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     environment: everplain-production
     timeout-minutes: 5
