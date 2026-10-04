@@ -30,6 +30,17 @@ final class NativeHomeVisualTests: XCTestCase {
         for child in view.subviews { if let text = composerEditor(in:child) { return text } }
         return nil
     }
+    @MainActor private func accessibleElements(in root: Any) -> [NSAccessibilityProtocol] {
+        var result: [NSAccessibilityProtocol] = [], visited = Set<ObjectIdentifier>()
+        func visit(_ value: Any) {
+            guard let element = value as? NSAccessibilityProtocol,
+                  visited.insert(ObjectIdentifier(element as AnyObject)).inserted else { return }
+            result.append(element)
+            for child in element.accessibilityChildren() ?? [] { visit(child) }
+        }
+        visit(root)
+        return result
+    }
     @MainActor @discardableResult private func capture(_ host: NSView, name: String) throws -> Data {
         host.layoutSubtreeIfNeeded(); host.window?.displayIfNeeded()
         let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in:host.bounds))
@@ -142,6 +153,13 @@ final class NativeHomeVisualTests: XCTestCase {
         let panel = try XCTUnwrap(window.childWindows?.compactMap { $0 as? ModelPanel }.first)
         XCTAssertEqual(panel.frame.width,300,accuracy:0.5)
         XCTAssertGreaterThan(panel.frame.height,170,"The model and six effort controls were clipped")
+        let controls = accessibleElements(in:try XCTUnwrap(panel.contentView))
+        for label in ["无","低","中","高","很高","最高"] {
+            let button = try XCTUnwrap(controls.first { $0.accessibilityRole() == .button && ($0.accessibilityLabel() ?? $0.accessibilityTitle()) == label },"Missing effort button: \(label)")
+            let frame = button.accessibilityFrame()
+            XCTAssertGreaterThan(frame.width,0,"Invisible effort button: \(label)")
+            XCTAssertTrue(panel.frame.insetBy(dx:-1,dy:-1).contains(frame),"Clipped effort button: \(label), \(frame)")
+        }
         _ = try capture(try XCTUnwrap(panel.contentView),name:"model-settings-native-synthetic")
         controller.presented = false; try await settle(0.04)
         controller.presented = true; try await settle(0.5)

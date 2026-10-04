@@ -92,14 +92,14 @@ private struct HomeOverviewContent: View {
         let p = Palette(dark:scheme == .dark)
         return VStack(alignment:.leading,spacing:T.space2) {
             Text(project.stageLabel).font(TypeStyle.ui(T.textMeta)).padding(.horizontal,T.space2).padding(.vertical,T.space1).background(p.strong,in:Capsule())
-            Text(ResearchStore.title(project)).font(TypeStyle.reading(T.textTitle).weight(.medium)).lineLimit(2)
+            Text(ResearchStore.title(project)).font(TypeStyle.reading(T.textTitle).weight(.medium)).fixedSize(horizontal:false,vertical:true)
             if let phenomenon = project.phenomenonSummary?.phenomenon, phenomenon != ResearchStore.title(project) { Text(phenomenon).font(TypeStyle.ui(T.textControl)).foregroundStyle(p.muted).lineLimit(open == "hand" ? 1 : 2) }
             if let blocker = project.blocker { Text(blocker.message).font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.danger) }
             Spacer(minLength:0)
             HStack {
                 Text(Self.updatedAt(project.updatedAt)).foregroundStyle(p.faint)
                 Spacer(minLength:0)
-                HStack(spacing:T.space1) { Text(project.nextActionLabel.isEmpty ? "继续研究" : project.nextActionLabel); WebIcon(name:.arrowRight,size:14) }
+                HStack(spacing:T.space1) { Text(project.nextActionLabel.isEmpty ? "继续研究" : project.nextActionLabel); WebIcon(name:.arrowRight,size:14) }.foregroundStyle(T.colorInkSoft(dark:scheme == .dark).color)
             }.font(TypeStyle.ui(T.textMeta))
         }.foregroundStyle(p.ink).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
     }
@@ -111,14 +111,14 @@ private struct HomeOverviewContent: View {
                 Text("\(graph.documentCount)").font(TypeStyle.reading(T.textTitle).weight(.medium)).foregroundStyle(p.ink)
                 Text(" 份资料 · \(graph.topicCount) 个主题").font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.muted)
             }
-            VStack(alignment:.leading,spacing:2) { ForEach(documents.prefix(2),id:\.id) { Text($0.label).font(TypeStyle.ui(T.textControl)).lineLimit(1) } }
-            if graph.pendingCount > 0 { Text("\(graph.pendingCount) 份待整理").font(TypeStyle.ui(T.textMeta)).underline() }
+            VStack(alignment:.leading,spacing:2) { ForEach(documents.prefix(2),id:\.id) { Text($0.label).font(TypeStyle.ui(T.textControl)).lineLimit(1) } }.foregroundStyle(T.colorInkSoft(dark:scheme == .dark).color)
+            if graph.pendingCount > 0 { Text("\(graph.pendingCount) 份待整理").font(TypeStyle.ui(T.textMeta)).underline().foregroundStyle(T.colorInkSoft(dark:scheme == .dark).color) }
         }.frame(maxWidth:.infinity,alignment:.leading))
         let items = documents.compactMap { node -> HomePileItem? in
             guard let source = graph.sources[node.id] else { return nil }
             let card = AnyView(VStack(alignment:.leading,spacing:T.space2) {
                 HStack(spacing:T.space1) { WebIcon(name:source.sourceUrl == nil ? .fileText : .globe,size:14); EPText(source.sourceUrl == nil ? "我的笔记" : "网页收藏") }.font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.muted)
-                Text(node.label).font(TypeStyle.ui(T.textControl,weight:.medium)).lineLimit(1)
+                Text(node.label).font(TypeStyle.reading(T.textControl).weight(.medium)).lineLimit(1)
                 if let raw = source.sourceUrl { Text(URL(string:raw)?.host ?? raw).font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.faint).lineLimit(1) }
             }.frame(maxWidth:.infinity,alignment:.leading))
             return HomePileItem(id:node.id,label:node.label,action:{ Task { await store.navigate(.library); if store.route == .library { await knowledge.openDocument(libraryId:source.libraryId,documentId:source.documentId) } } },content:card)

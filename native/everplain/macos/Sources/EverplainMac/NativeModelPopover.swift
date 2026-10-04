@@ -190,7 +190,10 @@ private struct ModelSelectionPanel: View {
         }.frame(width: 300).fixedSize(horizontal: false, vertical: true)
             .background(p.raised, in: RoundedRectangle(cornerRadius: T.radiusCard))
             .overlay(RoundedRectangle(cornerRadius: T.radiusCard).stroke(p.ring, lineWidth: 1))
-            .onAppear { focusedModel = displayedModelId }
+            .onAppear {
+                // The panel must be attached and key before SwiftUI resolves focus.
+                DispatchQueue.main.async { focusedModel = displayedModelId }
+            }
     }
     private func choose(_ id: String) { guard !disabled else { return }; store.modelId = id; store.modelChanged() }
     private func move(from id: String, direction: MoveCommandDirection) {
@@ -277,24 +280,34 @@ private struct ModelEffortSlider: View {
                     .accessibilityElement(children: .ignore).accessibilityLabel("思考强度")
                     .accessibilityValue(Composer.effortName(selection))
                     .accessibilityAdjustableAction { direction in choose(index + (direction == .increment ? 1 : -1)) }
-                ZStack(alignment: .topLeading) {
+                EffortLabelsLayout {
                     ForEach(Array(steps.enumerated()), id: \.offset) { item in
                         Button(Composer.effortName(item.element)) { choose(item.offset) }
                             .buttonStyle(.plain).font(TypeStyle.ui(T.textMeta, weight: item.offset == previewIndex ? .semibold : .regular))
                             .foregroundStyle(item.offset == previewIndex ? p.ink : p.faint)
-                            .frame(width: 40).offset(x: labelOffset(item.offset, width: trackWidth))
+                            .padding(.vertical,2).fixedSize()
                             .disabled(disabled)
                     }
-                }.frame(height: 22)
+                }.frame(width:trackWidth,height:22)
             }.padding(.horizontal, 10).padding(.top, 34)
-                .animation(reducedMotion || dragRatio != nil ? nil : .interpolatingSpring(stiffness: 180, damping: 18), value: ratio)
+                .animation(reducedMotion || dragRatio != nil ? nil : .timingCurve(0.34,1.56,0.64,1,duration:T.motionSlow / 1000), value: ratio)
         }.frame(height: 86).opacity(disabled ? 0.5 : 1)
     }
     private func choose(_ index: Int) { guard !disabled, !steps.isEmpty else { return }; selection = steps[min(lastStep, max(0, index))] }
-    private func labelOffset(_ index: Int, width: CGFloat) -> CGFloat {
-        if index == 0 { return -20 }
-        if index == lastStep { return width - 20 }
-        return width * Double(index) / Double(lastStep) - 20
+}
+
+/// Source percentage positions with first/last edge alignment. Offsetting labels
+/// inside an intrinsically narrow ZStack centers the stack and clips later steps.
+private struct EffortLabelsLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        CGSize(width:proposal.width ?? 0,height:22)
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for index in subviews.indices {
+            let ratio = subviews.count > 1 ? CGFloat(index) / CGFloat(subviews.count - 1) : 0
+            let anchor: UnitPoint = index == 0 ? .topLeading : index == subviews.count - 1 ? .topTrailing : .top
+            subviews[index].place(at:CGPoint(x:bounds.minX + ratio * bounds.width,y:bounds.minY),anchor:anchor,proposal:.unspecified)
+        }
     }
 }
 
