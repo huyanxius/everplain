@@ -48,7 +48,7 @@ describe('Everplain product website', () => {
   it('provides the official repository and Gmail contact in the footer', () => {
     render(<MemoryRouter><FoundationPage /></MemoryRouter>)
     const footer = screen.getByRole('contentinfo')
-    const repository = within(footer).getByRole('navigation', { name: '代码仓库' })
+    const repository = within(footer).getByRole('navigation', { name: '下载与代码' })
     const github = within(repository).getByRole('link', { name: 'Everplain · GitHub（在新窗口打开）' })
     expect(github).toHaveAttribute('href', 'https://github.com/huyanxius/everplain')
     expect(github).toHaveAttribute('target', '_blank')
@@ -57,7 +57,17 @@ describe('Everplain product website', () => {
     expect(within(contact).getByRole('link', { name: 'huyanxius@gmail.com' })).toHaveAttribute('href', 'mailto:huyanxius@gmail.com')
     expect(within(footer).getByRole('link', { name: 'Everplain' })).toHaveAttribute('href', '/welcome')
     expect(within(footer).getByText('© 2026 Everplain')).toBeVisible()
-    expect(within(footer).getAllByRole('link')).toHaveLength(3)
+    expect(within(footer).getAllByRole('link')).toHaveLength(6)
+  })
+
+  it('offers fixed Android test APK mirrors and keeps the release boundary visible', () => {
+    render(<MemoryRouter><FoundationPage /></MemoryRouter>)
+    const downloads = screen.getByRole('navigation', { name: '下载与代码' })
+    expect(within(downloads).getByRole('link', { name: '安卓测试版 · Cloudflare 主下载' })).toHaveAttribute('href', 'https://huyan-android-downloads.pages.dev/downloads/everplain-0.1.0-debug-cd1fd15.apk')
+    expect(within(downloads).getByRole('link', { name: 'GitHub 备用下载' })).toHaveAttribute('href', 'https://github.com/huyanxius/everplain/releases/download/android-v0.1.0-test-cd1fd15/everplain-0.1.0-debug-cd1fd15.apk')
+    expect(within(downloads).getByRole('link', { name: '安装说明' })).toHaveAttribute('href', 'https://github.com/huyanxius/everplain/releases/tag/android-v0.1.0-test-cd1fd15')
+    expect(within(downloads).getByText(/Android 原生测试版 0.1.0 · debug 签名，研究工作区仍在完善。/)).toBeVisible()
+    expect(within(downloads).getAllByRole('link').every(link => !link.getAttribute('href')?.includes('/latest/'))).toBe(true)
   })
 
   it('opens the conversation directly for a signed-in visitor, from the closing composer too', () => {
