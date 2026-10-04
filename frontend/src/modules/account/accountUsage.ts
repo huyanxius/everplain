@@ -1,7 +1,7 @@
 import { accountManagementApi } from './accountManagementApi'
 import type { CreditSummary } from './accountManagementModels'
 
-export type AccountUsageBucket = { id: string; kind: 'subscription' | 'top_up' | 'welcome'; remainingPercent: number | null; expiresAt: string | null }
+export type AccountUsageBucket = { id: string; kind: 'subscription' | 'top_up' | 'welcome'; remainingPercent: number | null; remainingPoints?: number | null; usedPoints?: number | null; limitPoints?: number | null; expiresAt: string | null }
 export type AccountUsage = { isUnlimited: boolean; remainingPercent: number | null; buckets: AccountUsageBucket[] }
 
 /** The server supplies only currently valid pools. Never divide by lifetime grants or combine purchases. */
@@ -17,7 +17,7 @@ export function accountUsageFromCredits(credits: CreditSummary): AccountUsage {
       ), limit = bucket.limitPoints
       const valid = typeof available === 'number' && Number.isFinite(available) && available >= 0
         && typeof limit === 'number' && Number.isFinite(limit) && limit > 0 && available <= limit
-      return { id: bucket.id, kind: bucket.kind, remainingPercent: valid ? Math.round(available / limit * 10_000) / 100 : null, expiresAt: bucket.expiresAt }
+      return { id: bucket.id, kind: bucket.kind, remainingPoints: valid ? available : null, usedPoints: valid ? limit - available : null, limitPoints: valid ? limit : null, remainingPercent: valid ? Math.round(available / limit * 10_000) / 100 : null, expiresAt: bucket.expiresAt }
     })
   return { isUnlimited: credits.isUnlimited, remainingPercent: buckets.length === 1 ? buckets[0].remainingPercent : null, buckets }
 }

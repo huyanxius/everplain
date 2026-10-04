@@ -158,6 +158,7 @@ function CreditsPanel({ controller: c }: PanelProps) {
         return <div key={bucket.id}>
           <p className="ep-settings-inline"><span>{label}</span><strong>{bucket.remainingPercent === null ? c.text('暂不可用', 'Unavailable') : `${bucket.remainingPercent}%`}</strong></p>
           {bucket.remainingPercent !== null ? <div className="ep-settings-meter" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={bucket.remainingPercent}><span style={{ width: `${bucket.remainingPercent}%` }} /></div> : null}
+          {bucket.remainingPoints != null && bucket.usedPoints != null && bucket.limitPoints != null ? <small className="qx-meta">{c.text('剩余', 'Remaining')} {bucket.remainingPoints.toLocaleString(c.locale, { maximumFractionDigits: 4 })} / {bucket.limitPoints.toLocaleString(c.locale)} · {c.text('已用', 'Used')} {bucket.usedPoints.toLocaleString(c.locale, { maximumFractionDigits: 4 })}</small> : null}
           {bucket.expiresAt ? <small className="qx-meta">{c.text('有效至', 'Valid until')} {dateLabel(bucket.expiresAt, c.locale)}</small> : null}
         </div>
       })}</div>}
