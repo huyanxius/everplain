@@ -265,7 +265,9 @@ def test_injection_stays_data():
         uuid4(),
     )
     assert all("IGNORE ALL" not in instructions for instructions, _ in calls)
-    assert calls[0][1]["reference_samples"][0]["text"] == injected[:600]
+    reference = calls[0][1]["reference_samples"][0]["text"]
+    assert reference in injected and len(reference) <= 600
+    assert reference.endswith(".")
     assert "不可信数据" in WRITING_INSTRUCTIONS
 
 

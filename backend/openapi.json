@@ -2811,6 +2811,20 @@
         "title": "Body_import_literature_entries",
         "type": "object"
       },
+      "Body_preview_writing_samples": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_preview_writing_samples",
+        "type": "object"
+      },
       "Body_upload_research_material": {
         "properties": {
           "defer_processing": {
@@ -17102,6 +17116,65 @@
         "title": "WritingSampleList",
         "type": "object"
       },
+      "WritingSamplePreview": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WritingSamplePreviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "warnings"
+        ],
+        "title": "WritingSamplePreview",
+        "type": "object"
+      },
+      "WritingSamplePreviewItem": {
+        "properties": {
+          "character_count": {
+            "title": "Character Count",
+            "type": "integer"
+          },
+          "excluded_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded Reason"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "text",
+          "character_count",
+          "excluded_reason"
+        ],
+        "title": "WritingSamplePreviewItem",
+        "type": "object"
+      },
       "WritingSampleResponse": {
         "properties": {
           "character_count": {
@@ -31022,6 +31095,47 @@
           }
         },
         "summary": "Create Sample",
+        "tags": [
+          "writing"
+        ]
+      }
+    },
+    "/api/writing/samples/preview": {
+      "post": {
+        "operationId": "preview_writing_samples",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_preview_writing_samples"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingSamplePreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Samples",
         "tags": [
           "writing"
         ]

@@ -74,6 +74,8 @@ tests/test_channel_gateway.py
 tests/test_channel_gateway_migration.py
 # Private writing workspace
 tests/test_writing.py
+tests/test_writing_evidence.py
+tests/test_writing_import_preview.py
 tests/test_writing_account_data.py
 tests/test_writing_grounding.py
 tests/test_writing_errors.py

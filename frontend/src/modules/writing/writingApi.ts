@@ -1,7 +1,7 @@
 import { apiClient } from '../../api/client'
 import { ApiRequestError } from '../../api/error'
-import { createWritingDocument, createWritingRevision, deleteWritingSample, getWritingDocument, getWritingSummary, listWritingRevisions, listWritingSamples, resolveWritingRevision, updateWritingDocument, uploadWritingSample } from '../../api/generated'
-import type { WritingDocumentCreate, WritingDocumentUpdate, WritingRevisionCreate, WritingRevisionResolve } from '../../api/generated'
+import { createWritingDocument, createWritingRevision, createWritingSample, deleteWritingSample, getWritingDocument, getWritingSummary, listWritingRevisions, listWritingSamples, previewWritingSamples, resolveWritingRevision, updateWritingDocument, uploadWritingSample } from '../../api/generated'
+import type { WritingDocumentCreate, WritingDocumentUpdate, WritingRevisionCreate, WritingRevisionResolve, WritingSampleCreate } from '../../api/generated'
 
 function data<T>(result: { data?: T; error?: unknown; response?: Response }): T {
   if (result.error || result.data === undefined) {
@@ -22,6 +22,8 @@ export const writingApi = {
   propose: async (documentId: string, body: WritingRevisionCreate, key: string) => data(await createWritingRevision({ ...options(key), path: { document_id: documentId }, body })),
   resolve: async (documentId: string, revisionId: string, body: WritingRevisionResolve, key: string) => data(await resolveWritingRevision({ ...options(key), path: { document_id: documentId, revision_id: revisionId }, body })),
   upload: async (file: File, genre: Genre, key: string) => data(await uploadWritingSample({ ...options(key), body: { file, genre } })),
+  previewSamples: async (file: File, signal?: AbortSignal) => data(await previewWritingSamples({ client: apiClient, body: { file }, signal })),
+  createSample: async (body: WritingSampleCreate, key: string) => data(await createWritingSample({ ...options(key), body })),
   async deleteSample(sampleId: string) { const result = await deleteWritingSample({ client: apiClient, path: { sample_id: sampleId } }); if (result.error || !result.response.ok) throw new ApiRequestError('样文删除未完成。', result.response.status) },
 }
 type Genre = Parameters<typeof uploadWritingSample>[0]["body"]["genre"]
