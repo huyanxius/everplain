@@ -2405,7 +2405,7 @@ it('isolates unsent writing chat drafts by document', async () => {
   expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('甲文稿的未发送要求')
 })
 
-it('executes a writing shortcut through the same conversation without sending or replacing a free-chat draft', async () => {
+it.each([true, false])('executes a writing shortcut without a second send and preserves chat draft (existing=%s)', async existing => {
   const completed = conversationFixture({ id: 'writing-existing', prompt: '直接优化', answer: '已提出待定修订。' })
   const requests: Record<string, unknown>[] = []
   const finished = vi.fn()
@@ -2418,7 +2418,7 @@ it('executes a writing shortcut through the same conversation without sending or
   }))
   const action = { id: 'writing-click-once', text: '直接优化' }
   const prepare = vi.fn(async () => ({ document_id: 'writing-doc', document_version: 4 }))
-  const page = (value: typeof action | null) => <MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" conversationId="writing-existing" writingDocumentId="writing-doc" prepareWritingContext={prepare} writingAction={value} onWritingActionFinished={finished} /></MemoryRouter>
+  const page = (value: typeof action | null) => <MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" conversationId={existing ? "writing-existing" : null} writingDocumentId="writing-doc" prepareWritingContext={prepare} writingAction={value} onWritingActionFinished={finished} /></MemoryRouter>
   const view = render(page(null))
   const input = await screen.findByRole('textbox', { name: '问 Everplain' })
   await waitFor(() => expect(input).not.toBeDisabled())
@@ -2426,8 +2426,9 @@ it('executes a writing shortcut through the same conversation without sending or
   view.rerender(page(action))
   await waitFor(() => expect(requests).toHaveLength(1))
   await waitFor(() => expect(finished).toHaveBeenCalledWith('writing-click-once'))
-  expect(requests[0]).toMatchObject({ conversation_id: 'writing-existing', mode: 'standard', message: '直接优化', writing_context: { document_id: 'writing-doc', document_version: 4 } })
+  expect(requests[0]).toMatchObject({ conversation_id: existing ? 'writing-existing' : null, mode: 'standard', message: '直接优化', writing_context: { document_id: 'writing-doc', document_version: 4 } })
   expect(input).toHaveValue('尚未发送的自由聊天草稿')
+  expect(localStorage.getItem('everplain.agent.composer-draft.v2.writing-owner.conversation.writing-existing')).toBe('尚未发送的自由聊天草稿')
   view.rerender(page({ ...action }))
   await act(async () => {})
   expect(requests).toHaveLength(1)

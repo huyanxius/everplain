@@ -2008,6 +2008,7 @@ export function ResearchAgentConversationPage({
               persistInterruptedTurn(storageScope.current, null)
               persistDraft(storageScope.current, '')
               storageScope.current = nextScope
+              if (writingShortcut) persistDraft(nextScope, draft)
             }
             setStreamingTurn((current) => current ? { ...current, runId: event.run_id } : current)
             persistPendingTurnAttempt(storageScope.current, startedAttempt)
@@ -2118,7 +2119,7 @@ export function ResearchAgentConversationPage({
             activeTurnAttempt.current = null
             persistPendingTurnAttempt(storageScope.current, null)
             persistInterruptedTurn(storageScope.current, null)
-            persistDraft(storageScope.current, '')
+            persistDraft(storageScope.current, writingShortcut ? draft : '')
             const localToolSteps = pendingToolSteps.current
             const completedConversation = [...locallyDeletedMaterialIds.current].reduce(
               (conversation, materialId) => tombstoneConversationMaterial(conversation, materialId),
