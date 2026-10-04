@@ -11,6 +11,8 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from qunxue_api.adapters.model.streaming import collect_chat_completion
+
 from .types import ImportError, ImportItem, ImportResult
 
 
@@ -61,8 +63,8 @@ class OpenAICompatibleVisionProvider:
             follow_redirects=False,
             trust_env=False,
         ) as client:
-            response = client.post(
-                self._endpoint,
+            with client.stream(
+                "POST", self._endpoint,
                 headers=headers,
                 json={
                     "model": self._model,
@@ -90,12 +92,13 @@ class OpenAICompatibleVisionProvider:
                     ],
                     "response_format": {"type": "json_object"},
                     "max_tokens": 4096,
+                    "stream": True,
+                    "stream_options": {"include_usage": True},
                 },
-            )
-            response.raise_for_status()
-            if len(response.content) > 1_000_000:
-                raise ValueError("oversized vision output")
-            raw = response.json()["choices"][0]["message"]["content"]
+            ) as response:
+                response.raise_for_status()
+                completion = collect_chat_completion(response.iter_bytes())
+            raw = completion["choices"][0]["message"]["content"]
         output = json.loads(raw)
         if (
             not isinstance(output, dict)

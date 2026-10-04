@@ -14,6 +14,10 @@ from uuid import UUID
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from qunxue_api.adapters.model.streaming import (
+    collect_chat_completion,
+    collect_chat_completion_async,
+)
 from qunxue_api.adapters.model.types import (
     ModelCapabilityName,
     ModelProviderDescriptor,
@@ -21,7 +25,7 @@ from qunxue_api.adapters.model.types import (
     ModelProviderResult,
     ModelScenario,
 )
-from qunxue_api.modules.billing import BillingFailure
+from qunxue_api.modules.billing import BillingFailure, ModelDeliveryRejected
 from qunxue_api.modules.research_framework import (
     AuditFindingDraft,
     AuditFindingSeverity,
@@ -233,6 +237,8 @@ class OpenAICompatibleModelProvider:
             "model": self._model,
             "messages": [{"role": "user", "content": "Reply with OK."}],
             "max_tokens": 1,
+            "stream": True,
+            "stream_options": {"include_usage": True},
         }
         attempt = (
             scope.before_attempt_payload(payload, provider_host=urlsplit(self._endpoint).hostname)
@@ -242,14 +248,11 @@ class OpenAICompatibleModelProvider:
         try:
             async with httpx.AsyncClient(
                 timeout=self._timeout_seconds, transport=self._probe_transport
-            ) as client:
-                response = await client.post(
-                    self._endpoint, headers=self._request_headers(), json=payload
-                )
-            try:
-                completion = response.json()
-            except (TypeError, ValueError):
-                raise self._probe_failure() from None
+            ) as client, client.stream(
+                "POST", self._endpoint, headers=self._request_headers(), json=payload,
+            ) as response:
+                response.raise_for_status()
+                completion = await collect_chat_completion_async(response.aiter_bytes())
             if scope:
                 scope.complete(
                     attempt, completion, outcome="success" if response.is_success else "error"
@@ -259,7 +262,7 @@ class OpenAICompatibleModelProvider:
         except BaseException as error:
             if scope:
                 scope.complete(attempt, outcome="error", failure_code="probe_failed")
-            if isinstance(error, httpx.HTTPError):
+            if isinstance(error, (httpx.HTTPError, ValueError, BillingFailure)):
                 raise self._probe_failure() from None
             raise
         choices = completion.get("choices")
@@ -574,6 +577,8 @@ class OpenAICompatibleModelProvider:
                     },
                 ],
                 "response_format": {"type": "json_object"},
+                "stream": True,
+                "stream_options": {"include_usage": True},
                 "max_tokens": 5000,
                 **({"max_tokens": self._max_output_tokens} if self._max_output_tokens else {}),
             },
@@ -647,19 +652,24 @@ class OpenAICompatibleModelProvider:
         completion_called = False
         try:
             with urlopen(request, timeout=self._timeout_seconds) as response:
-                raw_response = response.read(_MAX_RESPONSE_BYTES + 1)
+                received = 0
+
+                def chunks():
+                    nonlocal received
+                    while chunk := response.read(65536):
+                        received += len(chunk)
+                        yield chunk
+                    declared = response.headers.get("Content-Length")
+                    if declared is not None and int(declared) > received:
+                        raise HTTPException("incomplete model response")
+
+                completion = collect_chat_completion(
+                    chunks(), max_bytes=_MAX_RESPONSE_BYTES,
+                )
+                raw_response = json.dumps(completion).encode()
                 if scope:
-                    completion = json.loads(raw_response)
                     completion_called = True
                     scope.complete(attempt, completion, outcome="success")
-                declared_length = response.headers.get("Content-Length")
-                if declared_length is not None and int(declared_length) > len(raw_response):
-                    raise ModelProviderFailure(
-                        code="model_unavailable",
-                        message=("The model provider closed the response before it completed."),
-                        knowledge_release_id=knowledge_release_id,
-                        scenario=ModelScenario.PROVIDER_UNAVAILABLE,
-                    )
         except HTTPError as error:
             if error.code == 429:
                 raise ModelProviderFailure(
@@ -695,9 +705,17 @@ class OpenAICompatibleModelProvider:
                 knowledge_release_id=knowledge_release_id,
                 scenario=ModelScenario.PROVIDER_UNAVAILABLE,
             ) from error
+        except ModelDeliveryRejected as error:
+            raise ModelProviderFailure(
+                code="model_unavailable", message="The model stream did not complete.",
+                knowledge_release_id=knowledge_release_id,
+                scenario=ModelScenario.PROVIDER_UNAVAILABLE,
+            ) from error
         except (ModelProviderFailure, BillingFailure):
             raise
-        except (HTTPException, ConnectionError, OSError, ValueError) as error:
+        except ValueError:
+            self._raise_invalid_output(knowledge_release_id=knowledge_release_id)
+        except (HTTPException, ConnectionError, OSError) as error:
             raise ModelProviderFailure(
                 code="model_unavailable",
                 message="The model provider connection ended unexpectedly.",
@@ -715,7 +733,7 @@ class OpenAICompatibleModelProvider:
 
     def _request_headers(self) -> dict[str, str]:
         headers = {
-            "Accept": "application/json",
+            "Accept": "text/event-stream",
             "Content-Type": "application/json",
             **self._extra_headers,
         }
