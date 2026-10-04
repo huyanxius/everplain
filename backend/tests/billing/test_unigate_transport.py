@@ -11,6 +11,7 @@ from openai import AsyncOpenAI
 from pydantic_ai import Agent
 from pydantic_ai.providers.openai import OpenAIProvider
 from sqlalchemy import text
+from streaming_test_support import chat_http_response
 from test_configured_tariffs import book, config
 from test_durable_billing import wallet  # noqa: F401
 
@@ -68,7 +69,7 @@ def test_selected_gemini_transport_is_strict_metered_and_has_no_reasoning(wallet
             body = "".join("data: " + json.dumps(event) + "\n\n" for event in events)
             return httpx.Response(200, content=body + "data: [DONE]\n\n",
                                   headers={"Content-Type": "text/event-stream"})
-        return httpx.Response(200, json={
+        return chat_http_response({
             **completion(tool=mode == "tool" and len(calls) == 1),
             "id": f"synthetic-{len(calls)}",
         })

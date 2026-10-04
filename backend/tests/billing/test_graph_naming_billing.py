@@ -1,9 +1,11 @@
 # ruff: noqa: F811
+from contextlib import contextmanager
 from uuid import uuid4
 
 import httpx
 import pytest
 from sqlalchemy import text
+from streaming_test_support import chat_http_response
 from test_durable_billing import wallet  # noqa: F401
 
 from qunxue_api.adapters.model.billing_operations import SqliteBillingOperations
@@ -29,7 +31,7 @@ def router():
 
 def test_unconfigured_optional_naming_preserves_source_labels_without_http(monkeypatch):
     calls = []
-    monkeypatch.setattr(httpx, "post", lambda *a, **k: calls.append(k))
+    monkeypatch.setattr(httpx, "stream", lambda *a, **k: calls.append(k))
 
     class Repository:
         state = {}
@@ -88,15 +90,18 @@ def test_operator_naming_records_receipt_and_validation_failure(
         "usage": {
             "prompt_tokens": 1000,
             "completion_tokens": 100,
+                        "total_tokens": 1100,
             "prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
         },
     }
 
+    @contextmanager
     def response(*args, **kwargs):
         assert kwargs["json"]["max_tokens"] == 1200
-        return httpx.Response(200, json=body, request=httpx.Request("POST", args[0]))
+        assert kwargs["json"]["stream"] is True
+        yield chat_http_response(body, request=httpx.Request("POST", args[1]))
 
-    monkeypatch.setattr(httpx, "post", response)
+    monkeypatch.setattr(httpx, "stream", response)
     namer = GraphTopicNamer(router(), billing=Billing())
     if expected_status == "error":
         with pytest.raises(RuntimeError):

@@ -8,6 +8,7 @@ import pytest
 from openai import AsyncOpenAI
 from pydantic_ai import Agent
 from pydantic_ai.providers.openai import OpenAIProvider
+from streaming_test_support import chat_http_response
 from test_durable_billing import wallet  # noqa: F401
 
 from qunxue_api.adapters.model import metering
@@ -24,9 +25,7 @@ def test_actual_http_attempts_include_failed_primary_and_real_fallback_cost(wall
         calls.append(body["model"])
         if body["model"] == "gpt-6.1-sol":
             return httpx.Response(503, json={"error": {"message": "synthetic unavailable"}})
-        return httpx.Response(
-            200,
-            json={
+        return chat_http_response({
                 "id": "synthetic",
                 "object": "chat.completion",
                 "created": 1,
@@ -44,8 +43,7 @@ def test_actual_http_attempts_include_failed_primary_and_real_fallback_cost(wall
                     "total_tokens": 1100,
                     "prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
                 },
-            },
-        )
+            })
 
     async def run():
         async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as http:

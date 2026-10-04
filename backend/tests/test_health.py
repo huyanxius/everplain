@@ -10,6 +10,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from streaming_test_support import chat_http_response
 
 from qunxue_api.adapters.model import (
     InMemoryModelAttemptRecorder,
@@ -31,13 +32,14 @@ from qunxue_api.settings import SILICONFLOW_EMBEDDING_MODEL, Settings
 
 
 def _probe_completion() -> dict[str, object]:
-    return {"choices": [{"message": {}}]}
+    return {"choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6}}
 
 
 @pytest.fixture
 def healthy_probe_transport() -> httpx.MockTransport:
     return httpx.MockTransport(
-        lambda request: httpx.Response(200, json=_probe_completion(), request=request)
+        lambda request: chat_http_response(_probe_completion(), request=request)
     )
 
 
@@ -205,7 +207,7 @@ def test_routed_probe_uses_audited_shared_route_without_request_identity() -> No
 
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        return httpx.Response(200, json=_probe_completion(), request=request)
+        return chat_http_response(_probe_completion(), request=request)
 
     endpoint = ModelEndpoint(
         endpoint_id="primary",
@@ -310,7 +312,7 @@ def test_probe_falls_back_and_reports_degraded_when_backup_is_healthy() -> None:
 
     def backup(request: httpx.Request) -> httpx.Response:
         backup_calls.append(request)
-        return httpx.Response(200, json=_probe_completion(), request=request)
+        return chat_http_response(_probe_completion(), request=request)
 
     endpoints = (
         ModelEndpoint("primary", "https://primary.test/v1", "m1", "secret", 1),
@@ -354,7 +356,7 @@ def test_cancelled_probe_does_not_fall_back_or_mark_a_successful_check() -> None
 
     def backup(request: httpx.Request) -> httpx.Response:
         backup_calls.append(request)
-        return httpx.Response(200, json=_probe_completion(), request=request)
+        return chat_http_response(_probe_completion(), request=request)
 
     endpoints = (
         ModelEndpoint("primary", "https://primary.test/v1", "m1", None, 1),
@@ -419,7 +421,7 @@ def test_real_model_probe_starts_immediately_repeats_and_is_joined_on_shutdown(
                 second_probe.set()
         if current_count == 1:
             raise httpx.ConnectError("private transport failure", request=request)
-        return httpx.Response(200, json=_probe_completion(), request=request)
+        return chat_http_response(_probe_completion(), request=request)
 
     transport = httpx.MockTransport(handle)
     app = create_app(

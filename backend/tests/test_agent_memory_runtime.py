@@ -8,6 +8,7 @@ from billing_test_support import configure_synthetic_billing
 from openai import AsyncOpenAI
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
+from streaming_test_support import chat_http_response
 from test_agent_memory import register, save, seed_learning_source
 
 from qunxue_api.adapters.research_agent.memory_tools import AgentMemoryTools
@@ -131,9 +132,8 @@ def test_extractor_uses_one_bounded_model_request_with_source_provenance(
         body = json.loads(request.content)
         requests.append(body)
         name = body["tools"][0]["function"]["name"]
-        return httpx.Response(
-            200,
-            json={
+        return chat_http_response(
+            {
                 "id": "memory-output",
                 "object": "chat.completion",
                 "created": 1,
@@ -193,6 +193,7 @@ def test_extractor_uses_one_bounded_model_request_with_source_provenance(
     entries = client.get("/api/memories").json()["items"]
     assert len(entries) == 1 and entries[0]["source_message_id"] == str(source_id)
     assert len(requests) == 1
+    assert requests[0]["stream"] is True
     assert str(source_id) in json.dumps(requests[0]["messages"])
     assert requests[0]["max_completion_tokens"] == 1500
     if model_name == "deepseek-v4-flash":
