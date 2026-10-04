@@ -146,7 +146,7 @@ private struct NativeComposer: NSViewRepresentable {
     let onSubmit: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView()
+        let scroll = ComposerScrollView(frame:CGRect(x:0,y:0,width:100,height:36))
         let editor = ComposerTextView(frame: CGRect(x: 0, y: 0, width: 100, height: 36))
         editor.isRichText = false; editor.importsGraphics = false
         editor.drawsBackground = false; editor.isVerticallyResizable = true; editor.isHorizontallyResizable = false
@@ -173,7 +173,7 @@ private struct NativeComposer: NSViewRepresentable {
         guard let editor = scroll.documentView as? ComposerTextView else { return }
         context.coordinator.parent = self
         handle.editor = editor
-        let paragraph = NSMutableParagraphStyle(); paragraph.minimumLineHeight = 26; paragraph.maximumLineHeight = 26
+        let paragraph = NSMutableParagraphStyle(); paragraph.minimumLineHeight = 26; paragraph.maximumLineHeight = 26; paragraph.lineBreakMode = .byWordWrapping
         editor.font = TypeStyle.nativeUI(T.textBody)
         editor.defaultParagraphStyle = paragraph
         editor.typingAttributes = [.font: TypeStyle.nativeUI(T.textBody), .paragraphStyle: paragraph, .foregroundColor: T.colorInk(dark: dark).nsColor]
@@ -218,7 +218,8 @@ private struct NativeComposer: NSViewRepresentable {
             let contentHeight: CGFloat
             if editor.string.isEmpty {
                 let attributes: [NSAttributedString.Key:Any] = [.font:editor.font ?? TypeStyle.nativeUI(T.textBody),.paragraphStyle:editor.defaultParagraphStyle ?? NSParagraphStyle.default]
-                contentHeight = (parent.placeholder as NSString).boundingRect(with:NSSize(width:editor.bounds.width,height:CGFloat.greatestFiniteMagnitude),options:[.usesLineFragmentOrigin,.usesFontLeading],attributes:attributes).height
+                let visibleWidth = editor.enclosingScrollView?.contentSize.width ?? editor.bounds.width
+                contentHeight = (parent.placeholder as NSString).boundingRect(with:NSSize(width:visibleWidth,height:CGFloat.greatestFiniteMagnitude),options:[.usesLineFragmentOrigin,.usesFontLeading],attributes:attributes).height
             } else { contentHeight = used }
             let measured = min(240,max(36,ceil(contentHeight) + parent.textVerticalInset * 2))
             measurement += 1
@@ -248,6 +249,16 @@ private struct NativeComposer: NSViewRepresentable {
     }
 }
 
+private final class ComposerScrollView: NSScrollView {
+    override func layout() {
+        super.layout()
+        guard let editor = documentView as? NSTextView, contentSize.width > 0 else { return }
+        if abs(editor.frame.width - contentSize.width) > 0.5 {
+            editor.setFrameSize(NSSize(width:contentSize.width,height:editor.frame.height))
+        }
+    }
+}
+
 private final class ComposerTextView: NSTextView {
     var placeholder = ""
     var placeholderColor = NSColor.placeholderTextColor
@@ -269,8 +280,9 @@ private final class ComposerTextView: NSTextView {
         if string.isEmpty {
             let attrs: [NSAttributedString.Key: Any] = [.font: font ?? TypeStyle.nativeUI(T.textBody), .foregroundColor: placeholderColor,
                                                        .paragraphStyle: defaultParagraphStyle ?? NSParagraphStyle.default]
+            let visibleWidth = enclosingScrollView?.contentSize.width ?? bounds.width
             (placeholder as NSString).draw(in: CGRect(x: textContainerInset.width, y: textContainerInset.height,
-                                                     width: max(0, bounds.width - textContainerInset.width * 2), height: max(26,bounds.height - textContainerInset.height * 2)), withAttributes: attrs)
+                                                     width: max(0, visibleWidth - textContainerInset.width * 2), height: max(26,bounds.height - textContainerInset.height * 2)), withAttributes: attrs)
         }
     }
 }

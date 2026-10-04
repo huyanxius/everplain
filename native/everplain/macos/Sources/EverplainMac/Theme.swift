@@ -26,10 +26,19 @@ struct Palette {
 }
 enum TypeStyle {
     static func reading(_ size: Double) -> Font {
-        for name in T.fontReading {
-            if let font = NSFont(name: name, size: size) ?? NSFontManager.shared.font(withFamily: name, traits: [], weight: 5, size: size) { return Font(font) }
-        }
+        if let font = nativeReading(size) { return Font(font) }
         return .system(size: size, design: .serif)
+    }
+    static func nativeReading(_ size: Double) -> NSFont? {
+        let available: [NSFont] = T.fontReading.compactMap { name in
+            NSFont(name:name,size:size) ?? NSFontManager.shared.font(withFamily:name,traits:[],weight:5,size:size)
+        }
+        guard let first = available.first else { return nil }
+        // CSS applies its entire family stack to missing glyphs. Choosing only
+        // the first Latin font leaves CJK to an unrelated system fallback.
+        let fallback = available.dropFirst().map(\.fontDescriptor)
+        let descriptor = first.fontDescriptor.addingAttributes([.cascadeList:fallback])
+        return NSFont(descriptor:descriptor,size:size) ?? first
     }
     static func nativeUI(_ size: Double) -> NSFont {
         for name in T.fontUi {

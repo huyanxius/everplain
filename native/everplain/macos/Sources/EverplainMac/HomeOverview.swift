@@ -8,6 +8,7 @@ struct HomeStatusSummary: View {
 }
 private struct HomeStatusContent: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.colorScheme) private var scheme
     @ObservedObject var research: ResearchStore
     @ObservedObject var knowledge: KnowledgeStore
     var body: some View {
@@ -24,8 +25,11 @@ private struct HomeStatusContent: View {
             } else if let graph = knowledge.personalGraph, graph.pendingCount > 0 {
                 Button("\(graph.pendingCount) 份资料没整理。") { store.openLibraryImport() }.buttonStyle(.plain)
             } else { EPText("这里还空着。丢一份资料，或者问一个你想弄清楚的问题。") }
-        }.font(TypeStyle.ui(T.textBody)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+        }.font(TypeStyle.ui(T.textBody))
+            .lineSpacing(statusLeading).padding(.vertical,statusLeading / 2)
+            .foregroundStyle(Palette(dark:scheme == .dark).muted).frame(maxWidth: .infinity, alignment: .leading)
     }
+    private var statusLeading: CGFloat { max(0,CGFloat(T.textBody * 1.7) - NSLayoutManager().defaultLineHeight(for:TypeStyle.nativeUI(T.textBody))) }
 }
 
 struct HomeOverview: View {

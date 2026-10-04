@@ -3,10 +3,11 @@ import XCTest
 
 final class ComposerGeometryTests: XCTestCase {
     func testDesktopHomeColumnDoesNotTriggerMobileGrid() {
-        let value = ComposerGeometry.make(width:398,originX:280,originY:320,editorHeight:62,idealModelWidth:140,viewportWidth:1180,research:false,multiline:false)
+        // Actual cloud Web DOM, 2026-10-04: form x280 / width398 / padding12+10.
+        let value = ComposerGeometry.make(width:376,originX:292,originY:328.546875,editorHeight:62,idealModelWidth:134.9375,viewportWidth:1180,research:false,multiline:false)
         XCTAssertEqual(value.height,62)
-        XCTAssertEqual(value.tools.y,333); XCTAssertEqual(value.model.y,333)
-        XCTAssertEqual(value.input.width,162)
+        XCTAssertEqual(value.tools.y,341.546875); XCTAssertEqual(value.model.y,341.546875)
+        XCTAssertEqual(value.input.x,336); XCTAssertEqual(value.input.width,145.0625)
     }
     func testNarrowGridKeepsToolsInsideNonzeroLayoutOrigin() {
         let value = ComposerGeometry.make(width:330,originX:28,originY:300,editorHeight:62,idealModelWidth:140,viewportWidth:400,research:false,multiline:true)

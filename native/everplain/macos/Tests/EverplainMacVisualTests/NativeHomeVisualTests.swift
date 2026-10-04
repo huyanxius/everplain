@@ -25,6 +25,11 @@ final class NativeHomeVisualTests: XCTestCase {
         return (window,host)
     }
     @MainActor private func settle(_ seconds: Double) async throws { try await Task.sleep(nanoseconds:UInt64(seconds*1_000_000_000)) }
+    @MainActor private func composerEditor(in view: NSView) -> NSTextView? {
+        if let text = view as? NSTextView { return text }
+        for child in view.subviews { if let text = composerEditor(in:child) { return text } }
+        return nil
+    }
     @MainActor @discardableResult private func capture(_ host: NSView, name: String) throws -> Data {
         host.layoutSubtreeIfNeeded(); host.window?.displayIfNeeded()
         let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in:host.bounds))
@@ -74,16 +79,29 @@ final class NativeHomeVisualTests: XCTestCase {
         store.catalog = AgentModelCatalogResponse(items:[AgentModelChoiceResponse(defaultReasoningEffort:"none",label:"GPT 6 Luna",modelId:"synthetic-model",reasoningEfforts:["none","low","medium","high"])],runtimeMode:"mock")
         store.modelId = "synthetic-model"; store.effort = "none"; store.modelCatalogStatus = "ready"
         let content = RootView().environmentObject(store).environment(\.colorScheme,.light)
-        let (window,host) = window(content,size:CGSize(width:1340,height:840))
+        let (window,host) = window(content,size:CGSize(width:1180,height:757))
         defer { window.close(); store.client?.close() }
         try await settle(1.6)
+        let originalEditor = try XCTUnwrap(composerEditor(in:host))
+        let editorIdentity = ObjectIdentifier(originalEditor)
+        let viewport = try XCTUnwrap(originalEditor.enclosingScrollView)
+        XCTAssertEqual(originalEditor.bounds.width,viewport.contentSize.width,accuracy:1,"Native text extends behind the model control")
+        XCTAssertGreaterThan(viewport.contentSize.height,36,"The wrapped Home placeholder was clipped to one line")
+        let readingFont = try XCTUnwrap(TypeStyle.nativeReading(36))
+        let cascade = readingFont.fontDescriptor.object(forKey:.cascadeList) as? [NSFontDescriptor]
+        XCTAssertFalse(cascade?.isEmpty ?? true,"The Web reading fallback stack was discarded")
+        print("Native reading font: \(readingFont.fontName); cascade: \(cascade?.map(\.postscriptName) ?? [])")
         _ = try capture(host,name:"home-native-synthetic-loading")
         await store.navigate(.chat,newChat:true,composerDraft:"Offline visual test draft")
         try await settle(0.6)
         XCTAssertEqual(store.composer,"Offline visual test draft"); XCTAssertNil(store.pending); XCTAssertFalse(store.running)
+        let chatEditor = try XCTUnwrap(composerEditor(in:host))
+        XCTAssertEqual(ObjectIdentifier(chatEditor),editorIdentity,"Home→Chat recreated the native editor")
+        XCTAssertEqual(chatEditor.string,"Offline visual test draft")
         _ = try capture(host,name:"chat-native-synthetic-unsent")
         await store.navigate(.home); try await settle(1.4)
         XCTAssertEqual(store.route,.home)
+        XCTAssertEqual(composerEditor(in:host).map(ObjectIdentifier.init),editorIdentity,"Returning Home recreated the native editor")
         _ = try capture(host,name:"home-native-synthetic-return")
     }
 }
