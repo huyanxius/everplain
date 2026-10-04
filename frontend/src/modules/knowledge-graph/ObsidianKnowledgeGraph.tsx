@@ -5,8 +5,12 @@ import { CornersOutIcon, ShuffleIcon } from '@phosphor-icons/react'
 
 import './ObsidianKnowledgeGraph.css'
 import type { KnowledgeGraphProjection } from './types'
+import { layoutCacheKey, positionedElements, readLayout, saveLayout } from './graphLayoutCache'
+import { layoutOptions, fitView } from './graphLayout'
+import { useGraphFullscreen } from './useGraphFullscreen'
 
 interface ObsidianKnowledgeGraphProps {
+  readonly layoutScope?: string
   readonly projection: KnowledgeGraphProjection
   readonly focusNodeId?: string
   readonly onExpandNode?: (nodeId: string) => void
@@ -14,7 +18,7 @@ interface ObsidianKnowledgeGraphProps {
   readonly onSelectKnowledge: (knowledgeId: string) => void
   readonly variant?: 'workspace' | 'preview'
   readonly personal?: boolean
-  readonly renderControls?: (controls: { zoomIn: () => void; zoomOut: () => void; fit: () => void; relayout: () => void }) => ReactNode
+  readonly renderControls?: (controls: { zoomIn: () => void; zoomOut: () => void; fit: () => void; relayout: () => void; enterFullscreen: () => void }) => ReactNode
 }
 
 function graphElements(
@@ -74,104 +78,6 @@ function graphElements(
       },
     })),
   ]
-}
-
-function layoutOptions(
-  hasFocus: boolean,
-  hasEdges: boolean,
-  animate = false,
-  animationDuration = 560,
-  personal = false,
-) {
-  if (personal) return { name: 'concentric', animate: false, fit: true, padding: 80,
-    minNodeSpacing: 38, avoidOverlap: true, equidistant: true,
-    concentric: (node: cytoscape.NodeSingular) => 4 - (node.data('level') ?? 2),
-    levelWidth: () => 1,
-  }
-  if (!hasFocus && !hasEdges) {
-    return {
-      name: 'circle',
-      animate,
-      animationDuration: animate ? animationDuration : 1200,
-      animationEasing: 'ease-out-cubic',
-      fit: true,
-      padding: 96,
-      spacingFactor: 1.35,
-    }
-  }
-  return {
-    name: 'cose',
-    animate: animate ? 'end' : false,
-    animationDuration: animate ? animationDuration : 1200,
-    animationEasing: 'ease-out-cubic',
-    componentSpacing: 56,
-    edgeElasticity: 120,
-    fit: true,
-    gravity: 0.34,
-    idealEdgeLength: 54,
-    nestingFactor: 1.15,
-    nodeOverlap: 14,
-    nodeRepulsion: 90000,
-    numIter: 800,
-    padding: 72,
-    randomize: true,
-  }
-}
-
-function fitView(graph: Core, focusNodeId?: string, preview = false) {
-  if (!focusNodeId) {
-    const container = graph.container?.()
-    const nodes = graph.nodes?.()
-    const bounds = nodes?.boundingBox?.({ includeLabels: false })
-    if (!bounds) return
-    if (!container || bounds.w <= 0 || bounds.h <= 0) return
-    const padding = preview
-      ? 34
-      : Math.min(container.clientWidth, container.clientHeight) * 0.22
-    const zoom = Math.max(
-      graph.minZoom(),
-      Math.min(
-        graph.maxZoom(),
-        (container.clientWidth - padding * 2) / bounds.w,
-        (container.clientHeight - padding * 2) / bounds.h,
-      ) * (preview ? 0.9 : 1),
-    )
-    graph.viewport({
-      zoom,
-      pan: {
-        x: container.clientWidth / 2 - (bounds.x1 + bounds.w / 2) * zoom,
-        y: container.clientHeight / 2 - (bounds.y1 + bounds.h / 2) * zoom,
-      },
-    })
-    return
-  }
-  const focus = graph.getElementById(focusNodeId)
-  const container = graph.container()
-  if (focus.empty() || !container) {
-    graph.fit(graph.elements(), 72)
-    return
-  }
-  const bounds = graph.elements().boundingBox({ includeLabels: false })
-  const position = focus.position()
-  const padding = 72
-  const halfWidth = Math.max(position.x - bounds.x1, bounds.x2 - position.x, 1)
-  const halfHeight = Math.max(position.y - bounds.y1, bounds.y2 - position.y, 1)
-  const zoom = Math.max(
-    graph.minZoom(),
-    0.8,
-    Math.min(
-      graph.maxZoom(),
-      (container.clientWidth - padding * 2) / (halfWidth * 2),
-      (container.clientHeight - padding * 2) / (halfHeight * 2),
-    ),
-  )
-  graph.viewport({
-    zoom,
-    pan: {
-      x: container.clientWidth / 2 - position.x * zoom,
-      y: container.clientHeight / 2 - position.y * zoom,
-    },
-  })
 }
 
 function shuffled<T>(values: readonly T[]): T[] {
@@ -450,6 +356,7 @@ const workspaceGraphStyle = (): cytoscape.StylesheetJson => [
       'text-background-color': graphColor('surface'),
       'text-outline-color': graphColor('surface'),
       'font-family': '"Songti SC", "Noto Serif CJK SC", Georgia, serif',
+      'min-zoomed-font-size': 0,
     },
   },
   {
@@ -597,6 +504,7 @@ const previewGraphStyle = (): cytoscape.StylesheetJson => [
 
 export function ObsidianKnowledgeGraph({
   projection,
+  layoutScope = '',
   focusNodeId,
   onExpandNode,
   onSelectEdge,
@@ -605,6 +513,7 @@ export function ObsidianKnowledgeGraph({
   personal = false,
   renderControls,
 }: ObsidianKnowledgeGraphProps) {
+  const { fullscreenRef, isFullscreen, mode, notice, enterFullscreen, exitFullscreen } = useGraphFullscreen<HTMLElement>()
   const canvasRef = useRef<HTMLDivElement>(null)
   const graphRef = useRef<Core | undefined>(undefined)
   const onExpandNodeRef = useRef(onExpandNode)
@@ -626,6 +535,7 @@ export function ObsidianKnowledgeGraph({
     () => graphElements(projection, focusNodeId),
     [focusNodeId, projection],
   )
+  const cacheKey = useMemo(() => layoutCacheKey(projection, `${layoutScope}:${personal ? 'personal' : variant}`), [projection, layoutScope, personal, variant])
   const hasEdges = projection.edges.length > 0
   const reduceMotion = typeof window.matchMedia === 'function'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -643,7 +553,7 @@ export function ObsidianKnowledgeGraph({
   const relayout = useCallback(() => {
     const graph = graphRef.current
     if (!graph) return
-    graph.one('layoutstop', () => fitView(graph, focusNodeId, variant === 'preview'))
+    graph.one('layoutstop', () => { saveLayout(cacheKey, graph); fitView(graph, focusNodeId, variant === 'preview') })
     graph.layout(layoutOptions(
       Boolean(focusNodeId),
       hasEdges,
@@ -651,7 +561,7 @@ export function ObsidianKnowledgeGraph({
       layoutDuration,
       personal,
     )).run()
-  }, [focusNodeId, hasEdges, layoutDuration, reduceMotion, variant, personal])
+  }, [focusNodeId, hasEdges, layoutDuration, reduceMotion, variant, personal, cacheKey])
 
   useEffect(() => {
     if (!canvasRef.current || elements.length === 0) return
@@ -804,25 +714,24 @@ export function ObsidianKnowledgeGraph({
 
     const handleVisibilityChange = () => {
       documentVisible = document.visibilityState !== 'hidden'
-      if (documentVisible) scheduleTour(1000)
+      if (documentVisible) {
+        graph?.resize()
+        if (graph) fitView(graph, focusNodeId, variant === 'preview')
+        scheduleTour(1000)
+      }
       else clearTourSchedule()
     }
 
     try {
+      const saved = variant === 'workspace' ? readLayout(cacheKey, projection.nodes.map(n => n.id)) : undefined
       graph = cytoscape({
         autoungrabify: false,
         boxSelectionEnabled: false,
         container: canvas,
-        elements,
-        layout: layoutOptions(
-          Boolean(focusNodeId),
-          hasEdges,
-          animateLayout,
-          layoutDuration,
-          personal,
-        ),
+        elements: positionedElements(elements, saved),
+        layout: { name: 'preset', fit: false },
         maxZoom: 3.2,
-        minZoom: 0.16,
+        minZoom: 0.01,
         style: personal ? [...workspaceGraphStyle(),
           { selector: 'node.node--self', style: { width: 70, height: 70, 'background-opacity': 0, 'border-width': 0, 'background-image': 'data(image)', 'background-fit': 'contain', 'text-margin-y': -5 } },
           { selector: 'node.node--topic', style: { width: 18, height: 18, 'background-color': graphColor('faint'), 'font-size': 12 } },
@@ -832,6 +741,15 @@ export function ObsidianKnowledgeGraph({
         userZoomingEnabled: variant === 'workspace',
       })
       graphRef.current = graph
+      const activeGraph = graph
+      // Register before run: non-animated layouts emit layoutstop synchronously.
+      activeGraph.one('layoutstop', () => {
+        if (variant === 'workspace') saveLayout(cacheKey, activeGraph)
+        fitView(activeGraph, focusNodeId, variant === 'preview')
+      })
+      activeGraph.on('dragfree', 'node', () => saveLayout(cacheKey, activeGraph))
+      if (!saved) activeGraph.layout(layoutOptions(Boolean(focusNodeId), hasEdges, animateLayout, layoutDuration, personal)).run()
+      else fitView(activeGraph, focusNodeId, variant === 'preview')
       if (variant === 'preview') {
         if (!reduceMotion) graph.elements().addClass?.('is-awaiting-reveal')
         graph.one('layoutstop', () => fitView(graph!, focusNodeId, true))
@@ -882,7 +800,11 @@ export function ObsidianKnowledgeGraph({
         if (graph) fitView(graph, focusNodeId, variant === 'preview')
       }) ?? 0
       if (typeof ResizeObserver !== 'undefined') {
-        resizeObserver = new ResizeObserver(() => graph?.resize())
+        resizeObserver = new ResizeObserver(() => {
+          if (!graph || canvas.clientWidth <= 0 || canvas.clientHeight <= 0) return
+          graph.resize()
+          fitView(graph, focusNodeId, variant === 'preview')
+        })
         resizeObserver.observe(canvas)
       }
       if (variant === 'preview' && typeof IntersectionObserver !== 'undefined') {
@@ -919,6 +841,7 @@ export function ObsidianKnowledgeGraph({
     }
   }, [
     animateLayout,
+    cacheKey,
     personal,
     elements,
     focusNodeId,
@@ -937,12 +860,14 @@ export function ObsidianKnowledgeGraph({
   const visibleLabel = hoveredLabel || tourLabel
 
   return (
-    <section className={`obsidian-knowledge-graph obsidian-knowledge-graph--${variant}`} aria-label="节点式知识图谱">
-      {renderControls ? renderControls({ zoomIn: () => zoomBy(1.2), zoomOut: () => zoomBy(1 / 1.2), fit, relayout }) : <div className="obsidian-knowledge-graph__controls">
+    <section ref={fullscreenRef} className={`obsidian-knowledge-graph obsidian-knowledge-graph--${variant}${isFullscreen ? ' obsidian-knowledge-graph--fullscreen' : ''}`} data-fullscreen-mode={mode} aria-label="节点式知识图谱">
+      {isFullscreen && <button className="qx-btn qx-btn--secondary obsidian-knowledge-graph__fullscreen-exit" type="button" data-graph-fullscreen-exit aria-label="退出全屏" title={notice || "退出全屏"} onClick={() => void exitFullscreen()}>退出全屏</button>}
+      {notice && <p className="obsidian-knowledge-graph__fullscreen-notice" role="status">{notice}</p>}
+      {!isFullscreen && (renderControls ? renderControls({ zoomIn: () => zoomBy(1.2), zoomOut: () => zoomBy(1 / 1.2), fit, relayout, enterFullscreen: () => void enterFullscreen() }) : <div className="obsidian-knowledge-graph__controls">
         <span>{projection.nodes.length} 节点 · {projection.edges.length} 关系</span>
         {variant === 'workspace' ? (
           <div>
-            <button className="qx-btn qx-btn--ghost" type="button" aria-label="适应画布" title="适应画布" onClick={fit}>
+            <button className="qx-btn qx-btn--ghost" type="button" data-graph-fullscreen-enter aria-label="全屏" title="全屏" onClick={() => void enterFullscreen()}>
               <CornersOutIcon size={15} aria-hidden="true" />
             </button>
             <button className="qx-btn qx-btn--ghost" type="button" aria-label="重新布局" title="重新布局" onClick={relayout}>
@@ -955,14 +880,14 @@ export function ObsidianKnowledgeGraph({
             {reduceMotion ? '拖动节点探索' : '自动巡游 · 移入接管'}
           </span>
         )}
-      </div>}
-      {visibleLabel ? (
+      </div>)}
+      {!isFullscreen && visibleLabel ? (
         <p className="obsidian-knowledge-graph__hover">
           <span>{hoveredLabel ? '当前节点' : '正在巡游'}</span>
           {visibleLabel}
         </p>
       ) : null}
-      {variant === 'workspace' && activationPoint ? (
+      {!isFullscreen && variant === 'workspace' && activationPoint ? (
         <i
           key={activationPoint.key}
           className="obsidian-knowledge-graph__activation"
@@ -977,12 +902,12 @@ export function ObsidianKnowledgeGraph({
             : '节点画布暂时不可用；右侧搜索、详情与证据仍可继续使用。'}
         </p>
       ) : null}
-      {variant === 'preview' && !focusNodeId && !hasEdges ? (
+      {!isFullscreen && variant === 'preview' && !focusNodeId && !hasEdges ? (
         <p className="obsidian-knowledge-graph__notice" role="status">
           七维入口已就绪。搜索条目，或选择维度节点开始探索。
         </p>
       ) : null}
-      {variant === 'workspace' && !personal && !focusNodeId && !hasEdges ? (
+      {!isFullscreen && variant === 'workspace' && !personal && !focusNodeId && !hasEdges ? (
         <div className="obsidian-knowledge-graph__start" role="status">
           <strong>选择一个维度开始</strong>
           <span>或在右侧搜索具体概念</span>
