@@ -47,7 +47,9 @@ class WebRepairTests(unittest.TestCase):
     def test_only_explicit_repair_workflow_can_invoke_repair_mode(self):
         workflow = (ROOT / ".github/workflows/repair-existing-web.yml").read_text()
         self.assertIn("preflight-ssh.sh repair-web", workflow)
-        self.assertIn("group: everplain-checked-candidate", workflow)
+        self.assertIn("group: everplain-production", workflow)
+        self.assertNotIn("  push:", workflow)
+        self.assertIn("  workflow_dispatch:", workflow)
         self.assertNotIn("deploy-existing-ssh.sh", workflow)
         inspection = (ROOT / ".github/workflows/production-preflight.yml").read_text()
         self.assertNotIn("repair-web", inspection)

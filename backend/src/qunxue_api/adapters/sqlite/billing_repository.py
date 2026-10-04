@@ -13,6 +13,7 @@ from qunxue_api.adapters.sqlite.billing_model import (
     CreditRedemptionCodeRow,
 )
 from qunxue_api.modules.billing import (
+    SIGNUP_GRANT,
     WELCOME_GRANT,
     CreditCodeBatchConflict,
     CreditCodeSpec,
@@ -124,12 +125,27 @@ class SqliteCreditRepository:
             len(grants) == 1 and grants[0].kind == "signup_grant"
             and 0 <= account.balance <= grants[0].points
         )
+        # Read the integer balance and fractional carry in one SQL snapshot.
+        # A hold is authorization capacity, not settled consumption.
+        precision_exists = self._session.scalar(text(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='billing_precision'"
+        ))
+        projection_sql = (
+            "SELECT a.balance, p.total_credit_pico FROM credit_accounts a "
+            "LEFT JOIN billing_precision p ON p.user_id=a.user_id WHERE a.user_id=:user"
+            if precision_exists else
+            "SELECT balance, NULL AS total_credit_pico FROM credit_accounts WHERE user_id=:user"
+        )
+        projection = self._session.execute(text(projection_sql), {"user": str(user_id)}).one()
+        exact = Fraction(projection.total_credit_pico or "0") / 10**12
+        settled_remaining = max(Fraction(0), Fraction(projection.balance) - (exact % 1))
         # Historic redemption resets and subscriptions do not establish paid
         # bucket attribution. Only an unmixed welcome balance is provable here.
         buckets = ({
             "bucket_id": grants[0].entry_id, "kind": "welcome",
             "available_points": max(0, account.balance - frozen),
             "limit_points": grants[0].points, "expires_at": None,
+            "settled_remaining_points": float(settled_remaining),
         },) if welcome_only else ()
         return CreditSummary(
             balance=account.balance,
@@ -295,7 +311,7 @@ class SqliteCreditRepository:
             if account is None:
                 self.ensure_welcome_grant(
                     user_id=user_id,
-                    points=WELCOME_GRANT,
+                    points=SIGNUP_GRANT,
                     now=now,
                 )
                 continue
@@ -421,7 +437,8 @@ class SqliteCreditRepository:
                         "nish_reason,"
                         "reference_cost_pico,procurement_cost_pico,procurement_status,overrun_c"
                         "ost_pico,"
-                        "failure_code,price_json,created_at,updated_at FROM billing_attempts WHERE "
+                        "failure_code,price_json,raw_usage_json,created_at,updated_at "
+                        "FROM billing_attempts WHERE "
                         "run_id=:run "
                         "ORDER BY created_at,attempt_id"
                     ),
@@ -457,8 +474,11 @@ class SqliteCreditRepository:
                     "created_at": row["created_at"],
                     "attempts": [
                         {
-                            **{key: value for key, value in a.items() if key != "price_json"},
+                            **{key: value for key, value in a.items()
+                               if key not in {"price_json", "raw_usage_json"}},
                             "price_snapshot": json.loads(a["price_json"]),
+                            **({"search_usage": json.loads(a["raw_usage_json"] or "{}")}
+                               if a["api_type"] == "tavily_search" else {}),
                         }
                         for a in attempts
                     ],

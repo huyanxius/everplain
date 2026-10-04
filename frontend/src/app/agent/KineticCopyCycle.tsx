@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ElementType } from 'react'
 
+import { useReducedMotion } from '../../ui/useReducedMotion'
 import './kinetic-copy-cycle.css'
 
 export type KineticCopyMessage =
@@ -49,6 +50,7 @@ export function KineticCopyCycle({
   motionMode = 'line',
   onMessageChange,
 }: KineticCopyCycleProps) {
+  const reduceMotion = useReducedMotion()
   const [renderedMessages, setRenderedMessages] = useState(messages)
   const [copyIndex, setCopyIndex] = useState(0)
   const [phase, setPhase] = useState<CopyPhase>('entering')
@@ -58,7 +60,6 @@ export function KineticCopyCycle({
   }, [copyIndex, onMessageChange])
 
   useEffect(() => {
-    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
     if (messages === renderedMessages) return
 
     if (!active || reduceMotion) {
@@ -76,19 +77,21 @@ export function KineticCopyCycle({
     }, EXIT_DURATION_MS)
 
     return () => window.clearTimeout(replacementTimer)
-  }, [active, messages, renderedMessages])
+  }, [active, messages, renderedMessages, reduceMotion, motionMode])
 
   useEffect(() => {
-    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
     if (messages !== renderedMessages) return
 
     setCopyIndex(0)
     setPhase(active && !reduceMotion ? 'entering' : 'resting')
-    if (!active || reduceMotion || renderedMessages.length < 2) return
+    if (!active || reduceMotion) return
 
+    const enterDuration = (index: number) => motionMode === 'characters'
+      ? 100 + Math.min(Math.max(...messageParts(renderedMessages[index] ?? []).lines.map(line => Array.from(line).length), 0) * 24, 340) + 520
+      : ENTER_DURATION_MS
     let exitTimer: number | null = null
     let swapTimer: number | null = null
-    let restTimer: number | null = window.setTimeout(() => setPhase('resting'), ENTER_DURATION_MS)
+    let restTimer: number | null = window.setTimeout(() => setPhase('resting'), enterDuration(0))
 
     const scheduleExit = (delay: number) => {
       exitTimer = window.setTimeout(() => {
@@ -98,20 +101,20 @@ export function KineticCopyCycle({
             current + 1 < renderedMessages.length ? current + 1 : loopStartIndex,
           )
           setPhase('entering')
-          restTimer = window.setTimeout(() => setPhase('resting'), ENTER_DURATION_MS)
+          restTimer = window.setTimeout(() => setPhase('resting'), motionMode === 'characters' ? 960 : ENTER_DURATION_MS)
           scheduleExit(Math.max(0, cycleMs - EXIT_DURATION_MS))
         }, EXIT_DURATION_MS)
       }, delay)
     }
 
-    scheduleExit(firstCycleMs)
+    if (renderedMessages.length > 1) scheduleExit(firstCycleMs)
 
     return () => {
       if (exitTimer !== null) window.clearTimeout(exitTimer)
       if (swapTimer !== null) window.clearTimeout(swapTimer)
       if (restTimer !== null) window.clearTimeout(restTimer)
     }
-  }, [active, cycleMs, firstCycleMs, loopStartIndex, messages, renderedMessages])
+  }, [active, cycleMs, firstCycleMs, loopStartIndex, messages, renderedMessages, reduceMotion, motionMode])
 
   if (renderedMessages.length === 0) return null
 
@@ -142,7 +145,7 @@ export function KineticCopyCycle({
                 {message.prefix}
               </span>
             ) : null}
-            {motionMode === 'characters'
+            {motionMode === 'characters' && phase !== 'resting' && !reduceMotion
               ? Array.from(line).map((character, characterIndex, characters) => (
                   <span
                     key={`${character}-${characterIndex}`}

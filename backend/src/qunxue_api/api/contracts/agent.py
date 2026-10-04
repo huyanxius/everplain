@@ -187,6 +187,23 @@ class AgentRunStopResponse(BaseModel):
     cancel_requested: bool
 
 
+class AgentRunLookupResponse(BaseModel):
+    """Owner-scoped observation only; looking up a run never resumes it."""
+
+    run_id: UUID
+    conversation_id: UUID
+    idempotency_key: str
+    status: Literal[
+        "running", "completed", "failed", "interrupted",
+        "awaiting_clarification", "awaiting_plan_confirmation",
+    ]
+    cancel_requested: bool
+    partial_answer: str
+    request: AgentTurnRequest | None
+    updated_at: datetime
+    turn_id: UUID | None
+
+
 class ResearchStartProposalResponse(BaseModel):
     proposal_id: UUID
     conversation_id: UUID

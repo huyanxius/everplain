@@ -1,3 +1,5 @@
+import { usePresence } from '../../ui/usePresence'
+import { PageLoading } from '../../ui/PageLoading'
 import { Select } from '../ui/Select'
 import { ArrowLeftIcon, ArrowUpRightIcon, MagnifyingGlassIcon, CheckCircleIcon, FileDocIcon, FilePdfIcon, FileTextIcon, MarkdownLogoIcon, PlusIcon, TrashIcon, VideoCameraIcon, WaveformIcon } from '@phosphor-icons/react'
 import { useEffect, useRef, useState } from 'react'
@@ -53,6 +55,7 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
   const emptyUploadInputRef = useRef<HTMLInputElement>(null)
   const uploadInputRef = useRef<HTMLInputElement>(null)
   const uploadPopoverRef = useRef<HTMLDivElement>(null)
+  const uploadSurfaceRef = useRef<HTMLDivElement>(null)
   const [searchParams] = useSearchParams()
   const selectedTaskId = searchParams.get('task_id')
   const selectedMaterialId = searchParams.get('material_id')
@@ -73,6 +76,7 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
   const [error, setError] = useState<string | null>(null)
   const [researchReload, setResearchReload] = useState(0)
   const [uploadOpen, setUploadOpen] = useState(false)
+  const uploadMotion = usePresence(uploadOpen, uploadSurfaceRef)
   const [uploadTaskId, setUploadTaskId] = useState(selectedTaskId ?? '')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -281,7 +285,7 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
       {!loading && !error && selectedTaskId && !selectedResearch ? <div className="ep-research__notice" role="alert"><p>找不到这个研究项目。</p><Link className="qx-btn qx-btn--secondary" to="/research/materials">返回研究</Link></div> : null}
 
       {!selectedResearch ? <section className="ep-research__panel" role="tabpanel" id="research-panel-projects" aria-labelledby="research-tab-projects" hidden={activeTab !== 'projects'}>
-        {loading ? <p className="ep-research__notice qx-meta" role="status">正在读取研究项目…</p> : <>
+        {loading ? <PageLoading message="正在读取研究项目…" /> : <>
           {!visibleProjects.length && !error ? <div className="ep-research__empty ep-research__empty--projects">
             <h2 className="qx-card__title">{projectQuery ? '没有找到这个项目' : '开始你的第一项研究'}</h2>
             <p>{projectQuery ? '换一个项目名称试试。' : '从一个问题或一份材料开始。'}</p>
@@ -303,7 +307,7 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
           <label className="qx-search ep-research__file-search"><MagnifyingGlassIcon size={18} aria-hidden="true" /><input type="search" aria-label="搜索研究材料" placeholder={selectedResearch ? '搜索项目内的材料' : '搜索文件或研究名称'} value={query} onChange={event => setQuery(event.target.value)} /></label>
           <div className="ep-research__upload-anchor" ref={uploadPopoverRef}>
             <button type="button" className="qx-btn qx-btn--primary" aria-expanded={uploadOpen} aria-controls="research-materials-upload-popover" disabled={loading || !!error || previewFiles || uploading || emptyUploading} onClick={() => research.length ? setUploadOpen(open => !open) : emptyUploadInputRef.current?.click()}><PlusIcon size={17} aria-hidden="true" />{uploading || emptyUploading ? '正在导入…' : '添加材料'}</button>
-            {uploadOpen && research.length ? <div id="research-materials-upload-popover" className="qx-popover-surface ep-research__upload" role="dialog" aria-label="添加材料">
+            {uploadMotion.present && research.length ? <div ref={uploadSurfaceRef} data-motion-surface="popover" {...uploadMotion.props} id="research-materials-upload-popover" className="qx-popover-surface ep-research__upload" role="dialog" aria-label="添加材料">
               {!selectedResearch ? <label>保存到研究<Select className="qx-input" aria-label="材料所属研究" value={uploadTaskId} onChange={nextValue => setUploadTaskId(nextValue)} options={research.map(item => ({ value: item.taskId, label: researchTitle(item) }))} /></label> : <span>添加到「{researchTitle(selectedResearch)}」</span>}
               <button type="button" className="qx-btn qx-btn--primary" disabled={uploading} onClick={() => uploadInputRef.current?.click()}>选择文件</button>
               <input ref={uploadInputRef} hidden type="file" accept={RESEARCH_MATERIAL_ACCEPT} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void addMaterial(file) }} />
@@ -318,7 +322,7 @@ export function ResearchMaterialsPage({ userId: _userId = null }: { userId?: str
             <span className="qx-meta">{currentLibraryLoading ? `已读取 ${visibleMaterials.length} 份材料` : `${visibleMaterials.length} 份材料`}</span>
             <Select className="qx-input ep-research__sort" aria-label="材料排序" value={sortBy} onChange={nextValue => setSortBy(nextValue as typeof sortBy)} options={[{ value: "updated", label: "最近修改" }, { value: "name", label: "文件名称" }]} />
           </div>
-          {loading || currentLibraryLoading ? <p className="ep-research__notice qx-meta" role="status">正在读取研究材料…</p> : null}
+          {loading || currentLibraryLoading ? <PageLoading message="正在读取研究材料…" /> : null}
           {failedProjects.length ? <div className="ep-research__notice" role="alert"><p>{selectedTaskId ? '当前项目的文件暂时无法读取。' : `${failedProjects.length} 个项目的文件暂时无法读取。`}</p><button className="qx-btn qx-btn--secondary" type="button" onClick={() => setMaterialReload(value => value + 1)}>重试</button></div> : null}
           {materialActionError ? <p className="ep-research__notice" role="alert">{materialActionError}</p> : null}
           {emptyUploadError ? <p className="ep-research__notice" role="alert">{emptyUploadError}</p> : null}

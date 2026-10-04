@@ -10,7 +10,7 @@ import stat
 import sys
 from pathlib import Path
 
-EXPECTED = "85f2b033ed68e94d9d0563800d3d5b078c4b4e2d7b6ad868c4a3fa2e0cf3ec03"
+EXPECTED = None  # Validated current-run checksum, supplied at the CLI boundary.
 LOCK = Path("/run/lock/everplain-release.lock")
 
 
@@ -47,6 +47,20 @@ def discover(size, uid, parent=Path("/tmp")):
     for directory in parent.glob("everplain-candidate.*"):
         if not eligible(directory, uid, parent):
             continue
+        parts = directory / "parts"
+        plan = parts / "plan.json"
+        if parts.is_symlink() or plan.is_symlink():
+            continue
+        if plan.exists():
+            info = plan.stat()
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_uid not in {uid, os.getuid()} or info.st_size > 65536):
+                continue
+            try:
+                if json.loads(plan.read_text()).get("archive_sha256") != EXPECTED:
+                    continue
+            except (ValueError, OSError):
+                continue
         path = directory / "release.tar.gz"
         if path.is_symlink() or not path.is_file():
             continue
@@ -76,13 +90,15 @@ def verify(directory, size, uid, parent=Path("/tmp")):
 
 if __name__ == "__main__":
     try:
-        mode, size = sys.argv[1], int(sys.argv[2])
+        mode, size, EXPECTED = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+        if not re.fullmatch(r"[0-9a-f]{64}", EXPECTED) or not 0 < size <= 2 * 1024**3:
+            raise RuntimeError("invalid transfer identity")
         uid = int(os.environ.get("SUDO_UID", str(os.getuid())))
         idle()
         if mode == "find":
             print(json.dumps(discover(size, uid)))
         else:
-            directory = Path(sys.argv[3])
+            directory = Path(sys.argv[4])
             if not eligible(directory, uid):
                 raise RuntimeError("upload target unavailable")
             if mode == "space":

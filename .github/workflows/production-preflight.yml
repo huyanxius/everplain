@@ -8,12 +8,13 @@ on:
       - .github/workflows/production-preflight.yml
       - ops/cd/preflight-ssh.sh
       - ops/cd/inspect-production.py
+      - ops/cd/release_identity.py
 
 permissions:
   contents: read
 
 concurrency:
-  group: everplain-production-inspection
+  group: everplain-production
   cancel-in-progress: false
 
 jobs:

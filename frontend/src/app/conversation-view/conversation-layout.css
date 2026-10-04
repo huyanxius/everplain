@@ -92,3 +92,14 @@
 @media (max-width: 760px) {
   .cv-mode-intro { position: fixed; left: var(--qx-space-4); right: var(--qx-space-4); top: calc(var(--app-viewport-offset-top, 0px) + var(--qx-mobile-header-height) + env(safe-area-inset-top) + var(--qx-space-2)); width: auto; max-height: calc(var(--app-viewport-height, 100dvh) - var(--qx-mobile-header-height) - env(safe-area-inset-top) - var(--qx-space-6)); overflow-y: auto; transform: none; }
 }
+
+/* The composer remains one live form while it docks after the first Send. */
+.cv-layout__compose[data-docking='true'] { overflow: visible; z-index: 20; }
+@media (max-width: 760px) {
+  .cv-layout[data-empty='true'] .cv-layout__body { justify-content: safe center; padding-bottom: var(--qx-space-8); }
+  .cv-layout[data-empty='true'] .cv-layout__scroll { flex: none; overflow: visible; }
+  .cv-layout[data-empty='true'] .cv-layout__greeting { min-height: 0; }
+  @container conversation-body (max-height: 420px) {
+    .cv-layout[data-empty='true'] .cv-layout__scroll { flex: 1; min-height: 0; overflow-y: auto; }
+  }
+}

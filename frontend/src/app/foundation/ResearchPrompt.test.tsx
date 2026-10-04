@@ -9,7 +9,7 @@ it('starts research with the entered question and preserves multiline content', 
   render(<MemoryRouter><ResearchPrompt /><Location /></MemoryRouter>)
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'first\nsecond' } })
   fireEvent.click(screen.getByRole('button', { name: '开始研究' }))
-  expect(screen.getByRole('status', { name: 'Address' })).toHaveTextContent('/agent?prompt=first%0Asecond')
+  expect(screen.getByRole('status', { name: 'Address' })).toHaveTextContent('/agent?prompt=first%0Asecond&prompt_source=user')
 })
 it('opens a blank research workspace without creating an invented question', () => {
   render(<MemoryRouter><ResearchPrompt /><Location /></MemoryRouter>)

@@ -69,7 +69,7 @@ export function FoundationModelDemo() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const content = draft.trim()
-    if (content) navigate(`/agent?prompt=${encodeURIComponent(content)}`)
+    if (content) navigate(`/agent?prompt=${encodeURIComponent(content)}&prompt_source=user`)
   }
 
   function submitOnEnter(event: KeyboardEvent<HTMLTextAreaElement>) {

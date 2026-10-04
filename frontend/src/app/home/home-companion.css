@@ -1,0 +1,10 @@
+/* 小平：照官网 .ep-companion，趴在内容区右下角探头，不随内容滚动 */
+.hm-companion { position: fixed; right: var(--qx-space-6); bottom: -14px; z-index: 5; line-height: 0; pointer-events: none; animation: hm-peek .9s .4s cubic-bezier(.34, 1.4, .64, 1) both; }
+.hm-companion .companion { pointer-events: auto; filter: drop-shadow(0 6px 14px color-mix(in srgb, var(--qx-color-ink) 10%, transparent)); }
+@keyframes hm-peek { from { transform: translateY(70%); } }
+.hm-companion[data-away='true'] { animation: hm-leave .45s cubic-bezier(.4, 0, .7, .2) both; }
+@keyframes hm-leave { to { transform: translateY(105%); } }
+
+
+@media (prefers-reduced-motion: reduce) { .hm-companion, .hm-companion[data-away='true'] { animation: none; } }
+@media (max-width: 640px) { .hm-companion { right: var(--qx-space-2); scale: .62; transform-origin: 100% 100%; } }

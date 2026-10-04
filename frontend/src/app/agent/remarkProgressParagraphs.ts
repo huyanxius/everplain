@@ -7,9 +7,9 @@ export function remarkProgressParagraphs() {
     tree.children = tree.children.flatMap((node): RootContent[] => {
       if (node.type !== 'paragraph' || node.children.some((child) => child.type !== 'text')) return [node]
       const value = node.children.map((child) => child.type === 'text' ? child.value : '').join('')
-      return Array.from(segmenter.segment(value), ({ segment }) => ({
+      return Array.from(segmenter.segment(value), ({ segment, index }) => ({
         type: 'paragraph',
-        children: [{ type: 'text', value: segment.trim() }],
+        children: [{ type: 'text', value: segment.trim(), position: node.position ? { start: { ...node.position.start, offset: (node.position.start.offset ?? 0) + index + segment.indexOf(segment.trim()) }, end: { ...node.position.end, offset: (node.position.start.offset ?? 0) + index + segment.trimEnd().length } } : undefined }],
       }))
     })
   }

@@ -76,14 +76,14 @@ function RotatingHeadline() {
  * 四、价格与模型：标题在环绕的模型卡中间。
  * 七个角色先在定位句下面整排亮相，之后每幕标题旁各站一个，左右交替。
  */
-export function FoundationPage({ authenticated = false }: { authenticated?: boolean }) {
+export function FoundationPage({ authenticated = false, checkingSession = false }: { authenticated?: boolean; checkingSession?: boolean }) {
   const recall = useRecall()
   return <div className="ep-site">
     <a className="ep-skip" href="#main">跳到正文</a>
     <header className="ep-header">
       <Link className="ep-brand" to="/welcome" aria-label="Everplain 首页"><span className="ep-brand-mark" aria-hidden="true" /><span>Everplain</span></Link>
       <nav aria-label="官网导航"><a href="#gather">收集</a><a href="#library">知识库</a><a href="#your-ai">你的 AI</a><a href="#models">模型与价格</a></nav>
-      <Link className="ep-login" to={authenticated ? '/app' : '/login'}>{authenticated ? '工作台' : '登录'}<ArrowUpRightIcon size={15} aria-hidden="true" /></Link>
+      {checkingSession ? <span className="ep-login" role="status">确认登录中…</span> : <Link className="ep-login" to={authenticated ? '/app' : '/login'}>{authenticated ? '继续' : '登录'}<ArrowUpRightIcon size={15} aria-hidden="true" /></Link>}
     </header>
 
     <main id="main">

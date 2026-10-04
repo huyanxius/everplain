@@ -1,3 +1,4 @@
+import { PageLoading } from '../../ui/PageLoading'
 import { Select } from '../../ui/Select'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -152,7 +153,7 @@ export function MethodPlanWorkspace({ taskId }: { taskId: string }) {
   const isLocked = plan?.status === 'confirmed' || plan?.status === 'stale' || busy
   const pathOptions = (Object.keys(METHOD_LABELS) as MethodKind[]).map(value => ({ value, label: METHOD_LABELS[value] }))
 
-  if (loading) return <section className="ep-method" aria-label="研究方法计划"><p className="qx-meta" role="status">正在恢复方法计划…</p></section>
+  if (loading) return <section className="ep-method" aria-label="研究方法计划"><PageLoading message="正在恢复方法计划…" /></section>
   if (!plan && error) return <section className="ep-method" aria-label="研究方法计划"><p className="ep-method__error" role="alert">{error}</p><button className="qx-btn qx-btn--secondary" type="button" onClick={() => void load()}>重新加载</button></section>
 
   return <section className="ep-method" aria-label="研究方法计划">

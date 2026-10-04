@@ -11,6 +11,8 @@ import tempfile
 from html.parser import HTMLParser
 from pathlib import Path
 
+from release_identity import fingerprint, validate_api
+
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 FORMAT = 1
 MAX_BYTES = 2 * 1024**3
@@ -172,6 +174,17 @@ def build(root, prepared, output, revision, images, bases):
             "base_images": bases,
             "web_checks": web_checks(prepared / "web"),
             "migration_tree": tree_hash(stage / "backend"),
+            "runtime_identity": {
+                "api": validate_api(json.loads((prepared / "api-identity.json").read_text())),
+                "web_tree": fingerprint({
+                    p.relative_to(prepared / "web").as_posix(): digest(p)
+                    for p in sorted((prepared / "web").rglob("*")) if p.is_file()
+                }),
+            },
+            "initial_live_fingerprint": (
+                json.loads((root / "ops/cd/live-baseline.json").read_text())
+                if (root / "ops/cd/live-baseline.json").is_file() else None
+            ),
             "provenance": {
                 "run_id": os.environ.get("GITHUB_RUN_ID"),
                 "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),

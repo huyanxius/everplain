@@ -1,0 +1,5 @@
+.ep-library-scope { position: relative; display: inline-flex; min-width: 0; }
+.ep-library-scope__menu { position: absolute; top: calc(100% + var(--qx-space-2)); left: 0; z-index: 25; width: min(320px, calc(100vw - var(--qx-space-8))); max-height: 70dvh; overflow-y: auto; }
+.ep-library-scope__menu .qx-item > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ep-library-scope__hint { padding: var(--qx-space-2) var(--qx-space-3); }
+.ep-library-scope__storage { display: block; margin: var(--qx-space-2); padding-top: var(--qx-space-3); border-top: 1px solid var(--qx-color-rule); }

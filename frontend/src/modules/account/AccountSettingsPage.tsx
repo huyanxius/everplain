@@ -1,7 +1,9 @@
-import { ChartBarIcon, GearSixIcon, LockSimpleIcon, ShieldIcon, SignOutIcon, SmileyIcon, UserGearIcon, UserIcon } from '@phosphor-icons/react'
+import { PageLoading } from '../../ui/PageLoading'
+import { ChartBarIcon, ChatsCircleIcon, GearSixIcon, LockSimpleIcon, ShieldIcon, SignOutIcon, SmileyIcon, UserGearIcon, UserIcon } from '@phosphor-icons/react'
 import { useId, useRef, useState, type ReactNode } from 'react'
 import { AccountConfirmationDialog } from './SettingsConfirmation'
 import { AgentSettingsPanel } from './AgentSettingsPanel'
+import { ChannelBindingsPanel } from '../channel-gateway'
 import { Select } from '../../ui/Select'
 import { accountUsageFromCredits } from './accountUsage'
 import { creditPageSize, useAccountSettingsController, type AccountSettingsOptions, type ReadySettingsController, type SettingsSection } from './useAccountSettingsController'
@@ -15,6 +17,7 @@ type PanelProps = { controller: ReadySettingsController }
 
 const sections = [
   ['agent', '我的 Agent', 'My Agent', SmileyIcon],
+  ['channels', '聊天平台', 'Chat platforms', ChatsCircleIcon],
   ['profile', '个人资料', 'Profile', UserIcon],
   ['credits', '使用情况', 'Usage', ChartBarIcon],
   ['preferences', '使用偏好', 'Preferences', GearSixIcon],
@@ -43,8 +46,8 @@ export function AccountSettingsPage({ adminHref = '/admin/users', onLogout, onRe
   const [agentOpened, setAgentOpened] = useState(false)
 
   if (state.status !== 'ready') return (
-    <div className="ep-settings-load" role={state.status === 'loading' ? 'status' : 'alert'}>
-      {state.status === 'loading' ? <p>{text('正在读取账户设置', 'Loading account settings')}</p> : <>
+    <div className="ep-settings-load" role={state.status === 'loading' ? undefined : 'alert'}>
+      {state.status === 'loading' ? <PageLoading message={text('正在读取账户设置', 'Loading account settings')} /> : <>
         <h2 className="qx-heading">{text('暂时无法读取账户设置', 'Account settings are unavailable')}</h2>
         <p className="qx-meta">{text('你的账户与研究数据没有改变。请检查网络后重试。', 'Your account and research data are unchanged. Check your connection and try again.')}</p>
         <button className="qx-btn qx-btn--secondary" type="button" onClick={controller.retry}>{text('重试', 'Try again')}</button>
@@ -85,6 +88,7 @@ export function AccountSettingsPage({ adminHref = '/admin/users', onLogout, onRe
           {controller.feedback ? <p className="qx-notice" role="status" aria-live="polite">{controller.feedback}</p> : null}
           {controller.error && !controller.confirmation ? <p className="qx-notice qx-notice--danger" role="alert">{controller.error}</p> : null}
           {agentOpened ? <AgentSettingsPanel key={state.account.userId} userId={state.account.userId} active={controller.section === 'agent'} text={text} onResetAgent={onResetAgent} /> : null}
+          {controller.section === 'channels' ? <ChannelBindingsPanel key={state.account.userId} userId={state.account.userId} text={text} /> : null}
           {controller.section === 'profile' ? <ProfilePanel controller={ready} /> : null}
           {controller.section === 'credits' ? <CreditsPanel controller={ready} /> : null}
           {controller.section === 'preferences' ? <PreferencesPanel controller={ready} /> : null}

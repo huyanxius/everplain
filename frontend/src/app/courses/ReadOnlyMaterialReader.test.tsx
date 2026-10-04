@@ -45,3 +45,18 @@ it('keeps search, zoom and source provenance in the new article layout', () => {
   expect(screen.getByText('第 2 / 2 页')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '复制原文与定位' })).toBeInTheDocument()
 })
+
+
+it('uses knowledge and question tabs without unmounting drafts or hiding selected source evidence', () => {
+  render(<ReadOnlyMaterialReader source={source} onBack={() => {}} agentPanel={<textarea aria-label="研究草稿" />} />)
+  expect(screen.getByRole('tab', { name: '知识点' })).toHaveAttribute('aria-selected', 'true')
+  fireEvent.click(screen.getByRole('tab', { name: '结合本库提问' }))
+  fireEvent.change(screen.getByRole('textbox', { name: '研究草稿' }), { target: { value: '保留这段草稿' } })
+  fireEvent.click(screen.getByText('课堂原文 0'))
+  expect(screen.getByRole('region', { name: '原文依据' })).toBeVisible()
+  fireEvent.click(screen.getByRole('tab', { name: '知识点' }))
+  expect(screen.queryByRole('textbox', { name: '研究草稿' })).not.toBeInTheDocument()
+  fireEvent.keyDown(screen.getByRole('tab', { name: '知识点' }), { key: 'ArrowRight' })
+  expect(screen.getByRole('tab', { name: '结合本库提问' })).toHaveFocus()
+  expect(screen.getByRole('textbox', { name: '研究草稿' })).toHaveValue('保留这段草稿')
+})

@@ -1,3 +1,4 @@
+import { PageLoading } from '../../ui/PageLoading'
 import { CircleNotchIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import { useEffect, useRef, useState } from 'react'
 
@@ -142,7 +143,7 @@ export function ResearchAnalysisPanel({ taskId, refreshKey = 0, embedded = false
     {error ? <div className="ep-analysis-notice" role="alert"><WarningCircleIcon size={16} /><span>{error}</span><button className="qx-btn qx-btn--secondary" type="button" onClick={() => void loadAnalysis()}>重试读取分析</button></div> : null}
     {cycleError ? <p className="ep-analysis-notice" role="alert">{cycleError}</p> : null}
     {cycleLoading && !cycle ? <p className="qx-meta" role="status"><CircleNotchIcon size={16} />正在整理证据缺口</p> : null}
-    {loading && !snapshot ? <p className="qx-meta" role="status">正在加载分析记录</p> : snapshot ? <>
+    {loading && !snapshot ? <PageLoading message="正在加载分析记录" /> : snapshot ? <>
       <ResearchAnalysisWorkspace snapshot={snapshot} selectedMaterialId={null} materialNames={Object.fromEntries(materials.map(material => [material.materialId, material.filename]))} onCreateMemo={saveMemo} onDecideMemo={decideMemo} onCreateComparison={saveComparison} onDecideComparison={decideComparison} />
       {cycle?.gaps.length ? <details className="ep-analysis-page__cycle"><summary>研究检查 · {cycle.gaps.length} 项待完善</summary><ResearchCyclePanel snapshot={cycle} /></details> : null}
     </> : !error ? <p className="qx-meta">研究分析记录暂时无法加载。</p> : null}

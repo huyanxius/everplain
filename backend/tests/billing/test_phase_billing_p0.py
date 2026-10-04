@@ -23,6 +23,19 @@ from qunxue_api.modules.agent_conversation import AgentResearchEvent, Conversati
 from qunxue_api.modules.billing import BillingBudgetExceeded, BillingReplayBlocked
 
 
+def register_with_phase_budget(client):
+    # Lifecycle tests use a deliberately high synthetic USD-to-point rate.
+    # Give this fixture enough balance for the full multi-phase reservation;
+    # signup policy is covered separately, not by these crash/replay tests.
+    user = register(client)
+    with client.app.state.database.engine.begin() as connection:
+        connection.execute(text("UPDATE credit_accounts SET balance=3000 WHERE user_id=:u"),
+                           {"u": user})
+        connection.execute(text("UPDATE credit_ledger SET points=3000,balance_after=3000 "
+                                "WHERE user_id=:u AND kind='signup_grant'"), {"u": user})
+    return user
+
+
 def record(runtime, run):
     attempt = runtime.before_attempt(
         run_id=run,
@@ -163,7 +176,7 @@ def build_application(database, session, *, runner=None, **application_options):
 
 
 def test_real_sqlite_planning_confirmation_research_and_replay(plain_client):
-    user = UUID(register(plain_client))
+    user = UUID(register_with_phase_budget(plain_client))
     database = plain_client.app.state.database
     with database.session() as session:
         app, runtime, _ = build_application(database, session)
@@ -226,7 +239,7 @@ def crash_delivery(database_url, user_id, stage):
 
 @pytest.mark.parametrize("stage", ["before_settlement", "after_settlement", "after_commit"])
 def test_process_exit_cannot_save_success_without_financial_settlement(plain_client, stage):
-    user = register(plain_client)
+    user = register_with_phase_budget(plain_client)
     database = plain_client.app.state.database
     process = subprocess.run(
         [
@@ -260,7 +273,7 @@ def test_process_exit_cannot_save_success_without_financial_settlement(plain_cli
 def test_selected_model_effort_survives_billable_pause_confirmation_and_replay(plain_client):
     from qunxue_api.modules.agent_conversation import MOCK_AGENT_MODEL_CHOICES
 
-    user = UUID(register(plain_client))
+    user = UUID(register_with_phase_budget(plain_client))
     database = plain_client.app.state.database
     selections = []
 
@@ -305,7 +318,7 @@ def test_selected_model_effort_survives_billable_pause_confirmation_and_replay(p
 
 
 def test_repeated_business_commit_failure_still_refunds_and_releases_hold(plain_client):
-    user = UUID(register(plain_client))
+    user = UUID(register_with_phase_budget(plain_client))
     database = plain_client.app.state.database
     with database.session() as session:
         app, runtime, repository = build_application(database, session, runner=Runner())

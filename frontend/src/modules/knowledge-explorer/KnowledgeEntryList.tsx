@@ -1,3 +1,4 @@
+import { PageLoading } from '../../ui/PageLoading'
 import type { CSSProperties } from 'react'
 import { ArrowSquareOutIcon } from '@phosphor-icons/react'
 
@@ -47,9 +48,7 @@ export function KnowledgeEntryList({
       </header>
 
       {state === 'loading' ? (
-        <div className="knowledge-explorer__result-skeleton" role="status" aria-label="正在读取条目">
-          {[0, 1, 2, 3].map((index) => <span key={index} />)}
-        </div>
+        <PageLoading message="正在读取条目" />
       ) : null}
       {state === 'error' ? (
         <div className="knowledge-explorer__state" role="alert">

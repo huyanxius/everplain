@@ -1,5 +1,9 @@
 # Everplain production releases
 
+Current Actions releases use the existing-account route documented in
+[CURRENT_RUN.md](CURRENT_RUN.md). The dedicated-controller design below remains
+reference material; it is not required for that route.
+
 Scope: `huyanxius/everplain` only. Issue [#31](https://github.com/huyanxius/everplain/issues/31).
 
 This is a versioned release mechanism, not evidence that production is configured.

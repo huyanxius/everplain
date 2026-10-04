@@ -1,3 +1,4 @@
+import { PageLoading } from '../../ui/PageLoading'
 import { ArrowsClockwiseIcon } from '@phosphor-icons/react'
 import { AgentSoulEditor } from './AgentSoulEditor'
 import { AgentAvatar, agentAvatarPresets } from '../agent-avatar'
@@ -16,7 +17,7 @@ export function AgentSettingsPanel({ userId, active, text, onResetAgent }: {
     {flow.profile.isError ? <div className="qx-notice qx-notice--danger" role="alert">
       <p>{text('暂时无法读取 Agent 设置。', 'Could not load Agent settings.')}</p>
       <button className="qx-btn qx-btn--secondary" type="button" onClick={() => void flow.profile.refetch()}>{text('重试', 'Try again')}</button>
-    </div> : <p className="qx-meta" role="status">{text('正在读取 Agent 设置…', 'Loading Agent settings…')}</p>}
+    </div> : <PageLoading message={text('正在读取 Agent 设置…', 'Loading Agent settings…')} />}
   </div>
 
   return <div hidden={!active}>

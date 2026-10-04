@@ -284,7 +284,7 @@ def test_default_client_uses_public_search_provider_without_searxng() -> None:
     assert client.search_provider_name == "tavily"
 
 
-def test_tavily_provider_uses_sdk_search_and_preserves_raw_content(monkeypatch) -> None:
+def test_tavily_provider_uses_bounded_search_extracts_not_raw_pages(monkeypatch) -> None:
     calls = []
 
     class FakeTavilyClient:
@@ -320,7 +320,7 @@ def test_tavily_provider_uses_sdk_search_and_preserves_raw_content(monkeypatch) 
         {
             "title": "社会调查报告",
             "url": "https://example.edu.cn/report",
-            "snippet": "正文",
+            "snippet": "摘要",
         }
     ]
     assert calls == [
@@ -328,8 +328,11 @@ def test_tavily_provider_uses_sdk_search_and_preserves_raw_content(monkeypatch) 
             "社会调查",
             {
                 "max_results": 8,
-                "include_raw_content": True,
+                "include_raw_content": False,
+                "search_depth": "basic",
                 "topic": "general",
+                "auto_parameters": False,
+                "include_usage": True,
                 "language": "zh",
                 "timeout": 12,
             },
@@ -347,3 +350,14 @@ def test_user_url_is_readable_and_citable_without_search_or_review():
     assert tools.evidence[page["citation_id"]].excerpt == page["content"]
     assert tools.web_read_enabled
     assert not tools.web_search_enabled
+
+
+@pytest.mark.parametrize("text", ["text " * 20000, "网页正文含有中文。" * 20000])
+def test_search_provider_extracts_have_a_utf8_budget(text):
+    client = OpenWebResearchClient(search=lambda *_: [{
+        "title": "Research source", "url": "https://example.org/source", "content": text,
+    }])
+    result = client.search("bounded query")[0]
+    assert len(result["snippet"].encode("utf-8")) <= 800
+    assert result["snippet"].endswith("…")
+    assert result["url"] == "https://example.org/source"

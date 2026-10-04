@@ -173,7 +173,7 @@ function pausableStream() {
   return { close: () => close(), response }
 }
 
-function renderPage(path = '/research/new', strict = false, userId = 'user-a') {
+function renderPage(path = '/research/new', strict = false, userId: string | null = 'user-a') {
   function LocationProbe() {
     const location = useLocation()
     return <output aria-label="当前测试路径">{location.pathname}{location.search}</output>
@@ -183,6 +183,25 @@ function renderPage(path = '/research/new', strict = false, userId = 'user-a') {
 }
 
 describe('NewResearchWorkspacePage', () => {
+  it('keeps an accessible page name and navigation without the redundant title bar', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ items: [] })))
+    const { container } = renderPage()
+    expect(screen.getByRole('heading', { name: '新建研究', level: 1 })).toHaveClass('cv-visually-hidden')
+    expect(container.querySelector('.research-launch__bar')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '返回研究' })).toHaveAttribute('href', '/research/materials')
+    expect(screen.getByRole('navigation', { name: '研究工作区视图' })).toBeInTheDocument()
+    await waitFor(() => expect(container.querySelector('.ep-map__idle-content .agent-avatar')).toHaveAttribute('data-avatar', 'cheng'))
+    expect(container.querySelector('.ep-map__idle-content .agent-avatar')).toHaveStyle({ '--aa-color': '#b8c5b0' })
+    expect(container.querySelector('[data-research-agent-bot]')).not.toBeInTheDocument()
+  })
+
+  it('uses the existing default Agent avatar while no user profile is known', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ items: [] })))
+    const { container } = renderPage('/research/new', false, null)
+    await screen.findByLabelText('画布说明')
+    expect(container.querySelector('.ep-map__idle-content .agent-avatar')).toHaveAttribute('data-avatar', 'shi')
+  })
+
   it('keeps the draft when switching between mobile Agent and map panes', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [] })))
     renderPage()
@@ -718,7 +737,7 @@ describe('NewResearchWorkspacePage', () => {
       fireEvent.click(resume)
     })
 
-    expect(await screen.findByText(conversation.turns[0].assistant.content)).toBeVisible()
+    expect(await screen.findByText((_text, element) => element?.classList.contains('cv-turn__prose') === true && element.textContent === conversation.turns[0].assistant.content)).toBeVisible()
     expect(turnRequests).toBe(2)
   })
 
@@ -798,7 +817,7 @@ describe('NewResearchWorkspacePage', () => {
     }))
     renderPage(`/research/new?conversation_id=${conversation.conversation_id}`)
 
-    expect(await screen.findByText(conversation.turns[0].assistant.content)).toBeVisible()
+    expect(await screen.findByText((_text, element) => element?.classList.contains('cv-turn__prose') === true && element.textContent === conversation.turns[0].assistant.content)).toBeVisible()
     const recovery = await screen.findByRole('alert', { name: '研究状态恢复失败' })
     expect(recovery).toHaveTextContent('对话已保留')
     expect(within(recovery).getByRole('button', { name: '继续对话' })).toBeEnabled()
@@ -865,7 +884,7 @@ describe('NewResearchWorkspacePage', () => {
     expect(within(workspace).queryByText('预览 Agent')).not.toBeInTheDocument()
   })
 
-  it('marks an uncited answer as a working hypothesis instead of implying sourced evidence', async () => {
+  it('omits the unsourced warning while preserving the uncited answer', async () => {
     const conversation = conversationFixture(
       '请先不用检索，解释社区互助为什么会减少。',
       '可以先从信任、资源压力与互动机会三个层面提出解释。',
@@ -883,8 +902,9 @@ describe('NewResearchWorkspacePage', () => {
     fireEvent.change(textbox, { target: { value: conversation.title } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
-    expect(await within(workspace).findByText(/未调用知识库/)).toBeVisible()
-    expect(within(workspace).getByText(/工作假设/)).toBeVisible()
+    await waitFor(() => expect(workspace).toHaveTextContent('可以先从信任、资源压力与互动机会三个层面提出解释。'))
+    expect(within(workspace).queryByText(/未调用知识库/)).not.toBeInTheDocument()
+    expect(within(workspace).queryByText(/工作假设/)).not.toBeInTheDocument()
   })
 
   it('renders a real GFM table in the Agent answer', async () => {
@@ -907,7 +927,7 @@ describe('NewResearchWorkspacePage', () => {
 
     const table = await within(workspace).findByRole('table')
     expect(within(table).getByRole('columnheader', { name: '机制' })).toBeVisible()
-    expect(within(table).getByRole('cell', { name: '职业可见性变化' })).toBeVisible()
+    expect(await within(table).findByRole('cell', { name: '职业可见性变化' })).toBeVisible()
   })
 
   it('regenerates by starting a real follow-up Agent turn and exposes no dead feedback controls', async () => {
@@ -931,14 +951,14 @@ describe('NewResearchWorkspacePage', () => {
     fireEvent.change(textbox, { target: { value: first.title } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
-    expect(await within(region).findByText('第一版回答。', { exact: true })).toBeVisible()
+    expect(await within(region).findByText((_text, element) => element?.classList.contains('cv-turn__prose') === true && element.textContent === '第一版回答。')).toBeVisible()
     expect(within(region).queryByRole('button', { name: '有帮助' })).not.toBeInTheDocument()
     expect(within(region).queryByRole('button', { name: '没帮助' })).not.toBeInTheDocument()
 
     fireEvent.click(within(region).getByRole('button', { name: '重新生成' }))
 
     await waitFor(() => expect(turnCalls).toBe(2))
-    expect(await within(region).findByText('重新生成后的回答。', { exact: true })).toBeVisible()
+    expect(await within(region).findByText((_text, element) => element?.classList.contains('cv-turn__prose') === true && element.textContent === '重新生成后的回答。')).toBeVisible()
   })
 
   it('does not claim a copy succeeded when the browser clipboard rejects it', async () => {
@@ -1143,7 +1163,7 @@ describe('NewResearchWorkspacePage', () => {
     const firstTextbox = within(firstWorkspace).getByRole('textbox', { name: '和 Agent 讨论你的研究' })
     fireEvent.change(firstTextbox, { target: { value: conversation.title } })
     fireEvent.submit(firstTextbox.closest('form') as HTMLFormElement)
-    await within(firstWorkspace).findByText(conversation.turns[0].assistant.content, { exact: true })
+    await within(firstWorkspace).findByText((_text, element) => element?.classList.contains('cv-turn__prose') === true && element.textContent === conversation.turns[0].assistant.content)
     firstPage.unmount()
     window.sessionStorage.clear()
 
@@ -1173,7 +1193,7 @@ describe('NewResearchWorkspacePage', () => {
     renderPage()
     const history = await screen.findByRole('region', { name: 'Agent 对话记录' })
     fireEvent.click(await within(history).findByRole('button', { name: conversation.title }))
-    expect(await screen.findByText(conversation.turns[0].assistant.content)).toBeVisible()
+    expect(await screen.findByText((_text, element) => element?.classList.contains('cv-turn__prose') === true && element.textContent === conversation.turns[0].assistant.content)).toBeVisible()
     expect(screen.getByLabelText('当前测试路径')).toHaveTextContent(`conversation_id=${conversation.conversation_id}`)
   })
 

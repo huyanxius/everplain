@@ -394,3 +394,45 @@
 @layer components {
   .qx-btn--ghost[aria-current='page'] { color: var(--qx-color-ink); background: var(--qx-color-surface-strong); }
 }
+
+/* Explicitly opted-in lifecycle surfaces. Unlayered so page shorthands cannot
+   silently override dismissal. Reversible opacity/transform only; no snapshots.
+   Older browsers without @starting-style retain a natural static entry. */
+[data-motion-surface][data-presence] {
+  --qx-surface-x: 0px;
+  --qx-surface-y: 6px;
+  --qx-surface-scale: .985;
+  opacity: 1;
+  transform: none;
+  transition: opacity var(--qx-motion-base) var(--qx-ease), transform var(--qx-motion-base) var(--qx-ease);
+}
+[data-motion-surface='popover'][data-presence] { --qx-surface-y: 4px; --qx-surface-scale: .99; transform-origin: center; }
+[data-motion-surface='drawer'][data-presence] { --qx-surface-x: 18px; --qx-surface-y: 0px; --qx-surface-scale: 1; }
+[data-motion-surface='sheet'][data-presence] { --qx-surface-y: 14px; --qx-surface-scale: 1; }
+[data-motion-surface='backdrop'][data-presence] { --qx-surface-y: 0px; --qx-surface-scale: 1; }
+[data-motion-surface][data-presence='closing'] {
+  opacity: 0;
+  transform: translate(var(--qx-surface-x), var(--qx-surface-y)) scale(var(--qx-surface-scale));
+  transition-duration: var(--qx-motion-fast);
+  pointer-events: none;
+}
+dialog[data-motion-surface][data-presence]::backdrop { opacity: 1; transition: opacity var(--qx-motion-base) ease; }
+dialog[data-motion-surface][data-presence='closing']::backdrop { opacity: 0; transition-duration: var(--qx-motion-fast); }
+@starting-style {
+  [data-motion-surface][data-presence='open'] { opacity: 0; transform: translate(var(--qx-surface-x), var(--qx-surface-y)) scale(var(--qx-surface-scale)); }
+  dialog[data-motion-surface][data-presence='open']::backdrop { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-motion-surface][data-presence], dialog[data-motion-surface][data-presence]::backdrop { transition: none; }
+}
+
+/* Shared title controls keep heading typography without redrawing buttons per page. */
+@layer components {
+  .qx-title-control { min-width: 0; max-width: 100%; padding-inline: var(--qx-space-3); margin-left: calc(-1 * var(--qx-space-3)); border-radius: var(--qx-radius-item); font-family: var(--qx-text-section--font-family); font-size: var(--qx-text-section); font-weight: var(--qx-text-section--font-weight); line-height: var(--qx-text-section--line-height); letter-spacing: var(--qx-text-section--letter-spacing); white-space: normal; text-align: left; }
+  .qx-title-control > svg { width: var(--qx-space-4); height: var(--qx-space-4); }
+  .qx-skeleton { display: block; height: 1em; border-radius: var(--qx-radius-mark); background: var(--qx-color-surface-strong); animation: qx-skeleton-pulse var(--qx-motion-breathe) var(--qx-ease) infinite alternate; }
+  .qx-media-preview { display: grid; place-items: center; overflow: hidden; aspect-ratio: 16 / 7; border-radius: var(--qx-radius-item); background: var(--qx-color-surface-muted); color: var(--qx-color-faint); }
+  .qx-media-preview img { width: 100%; height: 100%; object-fit: cover; }
+  @keyframes qx-skeleton-pulse { to { opacity: .45; } }
+  @media (prefers-reduced-motion: reduce) { .qx-skeleton { animation: none; } }
+}

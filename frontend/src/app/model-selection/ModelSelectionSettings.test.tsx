@@ -1,9 +1,9 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ModelSelectionSettings } from './ModelSelectionSettings'
 import type { AgentModelSelectionState } from './useAgentModelSelection'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers() })
 const state = (): AgentModelSelectionState => ({
   owner: 'owner', status: 'ready', runtimeMode: 'base',
   catalog: [{ id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoningEfforts: ['low', 'medium', 'high'], defaultReasoningEffort: 'medium' }],
@@ -46,6 +46,24 @@ it('dismisses on an outside pointer and can be reopened and toggled repeatedly',
   expect(screen.getByRole('radio')).toHaveAttribute('aria-checked', 'true')
   fireEvent.click(summary)
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+it('keeps the model popover inside a narrow conversation pane on a wide viewport and follows resizing', () => {
+  let paneWidth = 320
+  const original = HTMLElement.prototype.getBoundingClientRect
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    if (this.classList.contains('cv-layout__main')) return { x: 700, y: 0, left: 700, right: 700 + paneWidth, top: 0, bottom: 768, width: paneWidth, height: 768, toJSON: () => ({}) }
+    if (this.classList.contains('model-selection-settings__summary')) return { x: 800, y: 400, left: 800, right: 980, top: 400, bottom: 432, width: 180, height: 32, toJSON: () => ({}) }
+    return original.call(this)
+  })
+  render(<div className="cv-layout__main"><ModelSelectionSettings state={state()} disabled={false} /></div>)
+  fireEvent.click(screen.getByRole('button', { name: /GPT 6 Luna · 中/ }))
+  expect(screen.getByRole('dialog')).toHaveStyle({ width: '296px', left: '712px' })
+  paneWidth = 240
+  fireEvent.resize(window)
+  expect(screen.getByRole('dialog')).toHaveStyle({ width: '216px', left: '712px' })
+  fireEvent.keyDown(document, { key: 'Escape' })
+  expect(screen.getByRole('button', { name: /GPT 6 Luna · 中/ })).toHaveFocus()
 })
 
 it('shows a failed lookup and retry without inventing model controls', () => {
@@ -97,4 +115,34 @@ it('does not substitute a catalog model when a resumed request uses an unavailab
   expect(screen.getByRole('status')).toHaveTextContent('恢复中的回合沿用原模型和强度')
   expect(screen.queryByRole('radio')).not.toBeInTheDocument()
   expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+})
+
+it('retains the native popover through exit and cancels removal when reopened', () => {
+  vi.useFakeTimers()
+  const hide = vi.spyOn(HTMLElement.prototype, 'hidePopover')
+  render(<ModelSelectionSettings state={state()} disabled={false} />)
+  const trigger = screen.getByRole('button', { name: /GPT 6 Luna · 中/ })
+  fireEvent.click(trigger)
+  const panel = screen.getByRole('dialog')
+  panel.style.transitionProperty = 'opacity, transform'
+  panel.style.transitionDuration = '0.14s'
+  panel.style.transitionDelay = '0s'
+  fireEvent.click(trigger)
+  expect(panel).toBeInTheDocument()
+  expect(panel).toHaveAttribute('data-presence', 'closing')
+  expect(panel).toHaveAttribute('inert')
+  expect(panel).toHaveAttribute('aria-hidden', 'true')
+  expect(hide).not.toHaveBeenCalled()
+  fireEvent.click(trigger)
+  expect(screen.getByRole('dialog')).toBe(panel)
+  expect(panel).toHaveAttribute('data-presence', 'open')
+  expect(panel).not.toHaveAttribute('inert')
+  act(() => vi.advanceTimersByTime(500))
+  expect(panel).toBeInTheDocument()
+  expect(hide).not.toHaveBeenCalled()
+  fireEvent.keyDown(document, { key: 'Escape' })
+  act(() => vi.advanceTimersByTime(200))
+  expect(panel).not.toBeInTheDocument()
+  expect(hide).toHaveBeenCalledOnce()
+  expect(trigger).toHaveFocus()
 })

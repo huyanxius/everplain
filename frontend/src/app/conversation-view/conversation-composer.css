@@ -35,9 +35,13 @@
 .cv-project-selector__options { display: grid; gap: var(--qx-space-1); max-height: 200px; overflow: auto; }
 .cv-project-selector__options > button { justify-content: flex-start; }
 .cv-project-selector__options > button > span { flex: 1; text-align: left; }
-.cv-suggestions > summary { font-size: var(--qx-text-control); cursor: pointer; }
-.cv-suggestions > div { display: grid; gap: var(--qx-space-1); padding: var(--qx-space-2); }
-.cv-suggestions > div > button { justify-content: flex-start; text-align: left; white-space: normal; }
+.cv-suggestions { container: conversation-suggestions / inline-size; min-width: 0; }
+.cv-suggestions__label { margin: 0 0 var(--qx-space-2); color: var(--qx-color-muted); }
+.cv-suggestions__cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--qx-space-2); }
+.cv-suggestions__card { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: var(--qx-space-2); min-width: 0; height: 100%; padding: var(--qx-space-3); border-radius: var(--qx-radius-item); background: var(--qx-color-surface-muted); text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.cv-suggestions__card > strong { font-size: var(--qx-text-control); font-weight: 500; }
+.cv-suggestions__card > span { color: var(--qx-color-muted); font-size: var(--qx-text-meta); font-weight: 400; line-height: var(--qx-text-meta--line-height); }
+@container conversation-suggestions (max-width: 560px) { .cv-suggestions__cards { grid-template-columns: minmax(0, 1fr); } }
 
 .cv-library-selector, .cv-library-selector > label { display: grid; gap: var(--qx-space-2); min-width: 0; }
 .cv-library-selector > label > select { width: 100%; min-width: 0; }
@@ -80,8 +84,6 @@
 .cv-research-base .qx-btn { background: transparent; box-shadow: none; font-size: var(--qx-text-meta); font-weight: 400; }
 .cv-research-base .qx-btn:hover { background: var(--qx-color-surface-strong); }
 .cv-research-suggestions { margin: var(--qx-space-3) var(--qx-space-3) 0; }
-.cv-research-suggestions .cv-suggestions > div { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
-.cv-research-suggestions .cv-suggestions > div > button { align-items: flex-start; padding: var(--qx-space-3); border-radius: var(--qx-radius-item); background: var(--qx-color-surface-muted); }
 .cv-conversation-settings { display: grid; gap: var(--qx-space-2); min-width: 0; padding: var(--qx-space-2); }
 .cv-conversation-settings > h3 { margin: 0; font-weight: 400; }
 .cv-conversation-settings > button { justify-content: flex-start; }

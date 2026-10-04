@@ -3,7 +3,7 @@ from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, cast
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -87,6 +87,21 @@ class ModelFallbackSettings(BaseModel):
         return _normalize_model_name(value)
 
 
+class TavilyPriceSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    usd_micro_per_credit: int = Field(gt=0, le=1_000_000)
+    retail_rate_ppm: int = Field(gt=0, le=100_000_000)
+    source: str = Field(min_length=1, max_length=500)
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Tavily price source must not be blank")
+        return value.strip()
+
+
 def is_sqlite_memory_url(database_url: str) -> bool:
     url = make_url(database_url)
     if url.get_backend_name() != "sqlite":
@@ -103,6 +118,43 @@ def is_sqlite_memory_url(database_url: str) -> bool:
     )
 
 
+class ChannelGatewayDisplay(BaseModel):
+    """Public operator-verified bot metadata; never contains an authentication secret."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    name: str = Field(min_length=1, max_length=80)
+    bot_url: str | None = Field(default=None, max_length=500)
+
+    @field_validator("bot_url")
+    @classmethod
+    def validate_bot_url(cls, value):
+        if value is None:
+            return None
+        url = urlsplit(value)
+        if (
+            url.scheme != "https"
+            or url.username
+            or url.password
+            or url.fragment
+            or url.port not in {None, 443}
+            or url.hostname not in {"t.me", "applink.feishu.cn", "applink.larksuite.com"}
+        ):
+            raise ValueError("bot_url must be an official HTTPS Telegram or Feishu bot link")
+        if url.hostname == "t.me":
+            handle = url.path.removeprefix("/")
+            if (
+                url.query
+                or not 5 <= len(handle) <= 32
+                or not handle[:1].isalpha()
+                or not handle.lower().endswith("bot")
+                or not all(char.isascii() and (char.isalnum() or char == "_") for char in handle)
+            ):
+                raise ValueError("Telegram bot_url must be a plain bot username link")
+        elif url.path != "/client/bot/open" or set(parse_qs(url.query)) != {"appId"}:
+            raise ValueError("Feishu bot_url must be a bot-open app link")
+        return value
+
+
 class Settings(BaseSettings):
     app_name: str = "Everplain API"
     contract_version: str = "2026-07-foundation"
@@ -115,6 +167,39 @@ class Settings(BaseSettings):
     runtime_mode: Literal["mock", "base", "sft"] = "mock"
     allow_model_fallback: bool = False
     database_url: str = DEFAULT_DATABASE_URL
+    channel_gateway_credentials: dict[str, SecretStr] = Field(default_factory=dict)
+    channel_gateway_display: dict[str, ChannelGatewayDisplay] = Field(default_factory=dict)
+
+    @field_validator("channel_gateway_credentials")
+    @classmethod
+    def validate_channel_gateway_credentials(cls, value):
+        for identity, secret in value.items():
+            parts = identity.split(":")
+            valid = (parts[0] == "telegram" and len(parts) == 2) or (
+                parts[0] == "feishu" and len(parts) == 3
+            )
+            if not valid or not all(parts) or len(identity) > 200:
+                raise ValueError("gateway identity must be telegram:bot or feishu:app:tenant")
+            if len(secret.get_secret_value().strip()) < 32:
+                raise ValueError("gateway credentials require at least 32 characters")
+        return value
+
+    @model_validator(mode="after")
+    def validate_channel_display(self):
+        for identity, display in self.channel_gateway_display.items():
+            if identity not in self.channel_gateway_credentials:
+                raise ValueError("channel display needs matching configured gateway credentials")
+            if display.bot_url:
+                url = urlsplit(display.bot_url)
+                platform, bot_id, *_ = identity.split(":")
+                if platform == "telegram" and url.hostname != "t.me":
+                    raise ValueError("Telegram gateway needs a Telegram bot link")
+                if platform == "feishu" and (
+                    url.hostname == "t.me" or parse_qs(url.query).get("appId") != [bot_id]
+                ):
+                    raise ValueError("Feishu bot link must match the configured app ID")
+        return self
+
     memory_learning_enabled: bool = True
     memory_learning_idle_seconds: int = Field(default=600, ge=60)
     memory_learning_daily_calls: int = Field(default=8, ge=0, le=32)
@@ -133,6 +218,7 @@ class Settings(BaseSettings):
     )
     billing_credits_per_usd: int | None = Field(default=None, gt=0)
     billing_price_version: str | None = None
+    billing_tavily_price: TavilyPriceSettings | None = None
     billing_fx_cny_per_usd_micro: int | None = Field(default=None, gt=0)
     billing_fx_snapshot_id: str | None = None
     billing_fx_as_of: str | None = None

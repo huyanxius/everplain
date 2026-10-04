@@ -1,3 +1,4 @@
+import { PageLoading } from '../../ui/PageLoading'
 import {
   ClockCounterClockwiseIcon,
   MagnifyingGlassIcon,
@@ -227,7 +228,7 @@ export function AdminUsersPage({
   }
 
   if (directory.status === 'loading') {
-    return <section className="ep-admin-load" role="status" aria-live="polite"><p className="qx-meta">正在读取用户目录</p></section>
+    return <PageLoading message="正在读取用户目录" />
   }
 
   if (directory.status === 'error') {

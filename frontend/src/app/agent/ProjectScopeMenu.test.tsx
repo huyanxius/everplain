@@ -1,9 +1,9 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { AppLocaleProvider } from '../../i18n/AppLocaleProvider'
 import { ProjectScopeMenu } from './ProjectScopeMenu'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers() })
 
 it('searches all fifty projects and selects a result beyond the initial visible list', () => {
   const onChange = vi.fn()
@@ -38,4 +38,42 @@ it('shows empty search results and dismisses without changing project', () => {
   fireEvent.keyDown(search, { key: 'Escape' })
   expect(trigger).toHaveFocus()
   expect(onChange).not.toHaveBeenCalled()
+})
+
+it('closes when disabled and requires an explicit new open after re-enabling', () => {
+  const show = vi.spyOn(HTMLElement.prototype, 'showPopover')
+  const onChange = vi.fn()
+  const view = render(<AppLocaleProvider><ProjectScopeMenu projects={[]} taskId={null} disabled={false} onChange={onChange} /></AppLocaleProvider>)
+  const trigger = screen.getByRole('button', { name: '对话所属项目' })
+  fireEvent.click(trigger)
+  expect(show).toHaveBeenCalledOnce()
+  view.rerender(<AppLocaleProvider><ProjectScopeMenu projects={[]} taskId={null} disabled onChange={onChange} /></AppLocaleProvider>)
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  view.rerender(<AppLocaleProvider><ProjectScopeMenu projects={[]} taskId={null} disabled={false} onChange={onChange} /></AppLocaleProvider>)
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  fireEvent.click(trigger)
+  expect(show).toHaveBeenCalledTimes(2)
+  expect(screen.getByRole('searchbox')).toHaveFocus()
+})
+
+it('keeps the closing native popover present but inert until its exit completes', () => {
+  vi.useFakeTimers()
+  const hide = vi.spyOn(HTMLElement.prototype, 'hidePopover')
+  render(<AppLocaleProvider><ProjectScopeMenu projects={[]} taskId={null} disabled={false} onChange={vi.fn()} /></AppLocaleProvider>)
+  const trigger = screen.getByRole('button', { name: '对话所属项目' })
+  fireEvent.click(trigger)
+  const panel = screen.getByRole('dialog')
+  panel.style.transitionProperty = 'opacity'
+  panel.style.transitionDuration = '0.14s'
+  panel.style.transitionDelay = '0s'
+  fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Escape' })
+  expect(panel).toHaveAttribute('inert')
+  expect(panel).toHaveAttribute('aria-hidden', 'true')
+  expect(panel).toHaveAttribute('data-presence', 'closing')
+  expect(hide).not.toHaveBeenCalled()
+  expect(trigger).toHaveFocus()
+  act(() => vi.advanceTimersByTime(200))
+  expect(panel).not.toBeInTheDocument()
+  expect(hide).toHaveBeenCalledOnce()
 })

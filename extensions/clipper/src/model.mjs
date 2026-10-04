@@ -1,3 +1,5 @@
+export const DEFAULT_SERVICE_ORIGIN = 'https://e.qunxue.xyz'
+
 export function serviceOrigin(value) {
   const url = new URL(value)
   if (url.username || url.password) throw new Error('服务地址不能包含账号或密码')

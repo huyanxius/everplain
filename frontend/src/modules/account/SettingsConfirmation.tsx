@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type MutableRefObject, type ReactNode } from 'react'
+import { useAnimatedDismiss } from '../../ui/usePresence'
 
 type ConfirmationProps = {
   title: string
@@ -26,9 +27,11 @@ export function AccountConfirmationDialog({
   const descriptionId = useId()
   const surface = useRef<HTMLElement>(null)
   const cancelButton = useRef<HTMLButtonElement>(null)
-  const interaction = useRef({ pending, onCancel })
+  const motion = useAnimatedDismiss(surface, onCancel)
+  const closing = motion.props.inert
+  const interaction = useRef({ pending, onCancel: motion.dismiss, closing })
 
-  useEffect(() => { interaction.current = { pending, onCancel } }, [pending, onCancel])
+  useEffect(() => { interaction.current = { pending, onCancel: motion.dismiss, closing } }, [pending, motion.dismiss, closing])
   useEffect(() => {
     const trigger = triggerRef.current
     cancelButton.current?.focus()
@@ -40,6 +43,7 @@ export function AccountConfirmationDialog({
         return
       }
       if (event.key !== 'Tab') return
+      if (interaction.current.closing) { event.preventDefault(); return }
       const focusable = Array.from(surface.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]') ?? [])
       const first = focusable[0]
       const last = focusable.at(-1)
@@ -55,8 +59,8 @@ export function AccountConfirmationDialog({
   }, [triggerRef])
 
   return (
-    <div className="ep-account-confirmation">
-      <section className="qx-modal ep-account-confirmation__surface" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId} ref={surface} tabIndex={-1}>
+    <div className="ep-account-confirmation" data-motion-surface="backdrop" {...motion.props}>
+      <section className="qx-modal ep-account-confirmation__surface" data-motion-surface="modal" {...motion.props} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId} ref={surface} tabIndex={-1}>
         <header><h2 className="qx-section-title" id={titleId}>{title}</h2></header>
         <div className="ep-account-confirmation__body">
           <p className="qx-meta" id={descriptionId}>{description}</p>
@@ -64,8 +68,8 @@ export function AccountConfirmationDialog({
           {error ? <p className="qx-notice qx-notice--danger" role="alert">{error}</p> : null}
         </div>
         <footer className="ep-settings-actions">
-          <button className="qx-btn qx-btn--secondary" type="button" disabled={pending} ref={cancelButton} onClick={onCancel}>{cancelLabel}</button>
-          <button className={`qx-btn ${tone === 'danger' ? 'qx-btn--danger' : 'qx-btn--primary'}`} type="button" disabled={pending || confirmDisabled} onClick={onConfirm}>{pending ? pendingLabel : confirmLabel}</button>
+          <button className="qx-btn qx-btn--secondary" type="button" disabled={pending || closing} ref={cancelButton} onClick={motion.dismiss}>{cancelLabel}</button>
+          <button className={`qx-btn ${tone === 'danger' ? 'qx-btn--danger' : 'qx-btn--primary'}`} type="button" disabled={pending || closing || confirmDisabled} onClick={onConfirm}>{pending ? pendingLabel : confirmLabel}</button>
         </footer>
       </section>
     </div>

@@ -1,3 +1,4 @@
+import { PageLoading } from '../../ui/PageLoading'
 import { Select } from '../ui/Select'
 import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
@@ -970,7 +971,7 @@ export function ResearchDocumentWorkbench({
         {!focusDocument ? sectionNavigation : null}
         {navigation?.phenomenon_summary?.phenomenon ? <p className="ep-document__question">{navigation.phenomenon_summary.phenomenon}</p> : null}
         {error ? <p className="ep-document__notice" role="alert">{error}</p> : null}
-        {loadState === 'loading' ? <div className="ep-document__loading" role="status"><CircleNotchIcon className="spin" />正在恢复文档版本…</div> : <>
+        {loadState === 'loading' ? <PageLoading message="正在恢复文档版本…" /> : <>
           <h2 id="research-document-heading" aria-label="研究文档正文" className="ep-document__heading">{wholeDocument ? document?.title ?? '研究文稿' : activeSection?.title ?? '研究文稿'}</h2>
           {runtimeBoundary && !error ? <p className="ep-document__notice"><WarningCircleIcon />当前 Agent 运行环境未连接；不会把静态示例当作真实研究结果。</p> : null}
             {mode === 'match' && activeSection?.section_id === 'candidate_theories' && navigation?.allowed_actions?.includes('start_matching') && (!matchRun || matchRun.status === 'no_reliable_candidate') ? (

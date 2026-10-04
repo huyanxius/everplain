@@ -1,0 +1,37 @@
+/* Original writing reference layout, integrated inside the existing application shell. */
+.writing-home.wh-page, .writing-document.wr-page { grid-template-columns: minmax(0, 1fr); height: 100%; min-height: 0; flex: 1; width: 100%; }
+.writing-home .wh-dock { left: 50%; width: min(720px, calc(100% - 32px)); }
+.writing-home .wh-main { width: 100%; }
+.writing-home .wh-mimic { flex-wrap: wrap; }
+.writing-upload-controls, .writing-actions, .writing-sample { display: flex; flex-wrap: wrap; align-items: center; gap: var(--qx-space-2); }
+.writing-upload-controls label { display: flex; align-items: center; gap: var(--qx-space-2); }
+.writing-samples { display: grid; gap: var(--qx-space-2); }
+.writing-sample > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.writing-home .wh-card { text-decoration: none; }
+.writing-document .wr-top { grid-template-columns: minmax(0, 1fr) auto auto; border-bottom: 1px solid var(--qx-color-rule); }
+.writing-document .wr-body { flex: 1; min-height: 0; }
+.writing-document .wr-editor { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
+.writing-document .wr-side { width: clamp(320px, 30vw, 430px); display: flex; min-height: 0; flex-direction: column; }
+.writing-document-title { padding: var(--qx-space-4) var(--qx-space-6); }
+.writing-document-title > label { display: flex; gap: var(--qx-space-2); align-items: center; }
+.writing-title { width: 100%; border: 0; outline: 0; padding: var(--qx-space-3) 0; background: transparent; color: var(--qx-color-ink); font-family: var(--qx-font-reading); font-size: var(--qx-text-display); }
+.writing-document .se { overflow: hidden; }
+.writing-assist { display: grid; align-content: start; gap: var(--qx-space-4); padding: var(--qx-space-4); min-height: 0; overflow-y: auto; }
+.writing-agent { min-height: 0; flex: 1; display: flex; }
+.writing-agent > * { min-height: 0; flex: 1; }
+.writing-raw { font-family: var(--qx-font-reading); font-size: var(--qx-text-body); line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; margin: var(--qx-space-2) 0; }
+.writing-notice { margin: 0 var(--qx-space-4) var(--qx-space-2); }
+.writing-notice p { margin: 0; }
+.writing-load { padding: var(--qx-space-6); }
+.writing-document .wr-revs { overflow-y: auto; }
+.writing-document .wr-tabs { flex-shrink: 0; }
+.writing-document .wr-tabs > button { flex: 1; }
+.writing-document .wr-rev footer { display: flex; gap: var(--qx-space-2); }
+@media (max-width: 980px) { .writing-document .wr-body { display: flex; flex-direction: column; overflow-y: auto; } .writing-document .wr-editor { flex: none; min-height: 65vh; } .writing-document .wr-side { width: 100%; min-height: 360px; max-height: 65vh; border-top: 1px solid var(--qx-color-rule); border-left: 0; } .writing-document .wr-top { grid-template-columns: minmax(0, 1fr) auto; padding: var(--qx-space-2); gap: var(--qx-space-1); } .writing-document .wr-top > .qx-meta { display: none; } .writing-document .wr-top__right { flex-wrap: wrap; } }
+@media (prefers-reduced-motion: reduce) { .writing-home *, .writing-document * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+
+.writing-inline-revision { max-height: 38vh; overflow-y: auto; padding: var(--qx-space-4) var(--qx-space-6); border-bottom: 1px solid var(--qx-color-rule); }
+.writing-inline-revision header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--qx-space-2); }
+.writing-inline-revision header > span { flex: 1; }
+.writing-inline-revision .wr-del { color: var(--qx-color-muted); }
+.writing-inline-revision .wr-ins { text-decoration: none; background: color-mix(in srgb, var(--qx-color-highlight) 20%, transparent); }

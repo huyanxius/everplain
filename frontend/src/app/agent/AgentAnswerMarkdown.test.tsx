@@ -119,3 +119,34 @@ it('leaves a citation-shaped shortcut reference as an authored Markdown link', (
   expect(screen.getByRole('link', { name: 'source:known' })).toHaveAttribute('href', 'https://example.invalid/reference')
   expect(screen.queryByRole('button')).not.toBeInTheDocument()
 })
+
+it('maps stream color to source offsets through Markdown, escapes, entities and a whole citation', () => {
+  const source = '**粗体** 后文 &amp; 结论【source:known】。'
+  const citation: AgentCitation = { citation_id: 'source:known', label: '真实资料', kind: 'source' }
+  const times = Array.from({ length: source.length }, (_, i) => 100 + i * 10)
+  const { container, rerender } = render(<AgentAnswerMarkdown citations={[citation]} onSelectCitation={vi.fn()} reveal={{ revealedAt: times, now: 700 }}>{source}</AgentAnswerMarkdown>)
+  expect(container.querySelector('strong')).toHaveTextContent('粗体')
+  expect(container.querySelector('strong span')!.getAttribute('style')).toBe('--age: -580.0ms;')
+  const chip = screen.getByRole('button', { name: '查看来源 1：真实资料' })
+  expect(chip).toHaveClass('stream-fresh-cite'); expect(chip.querySelector('span')).toBeNull()
+  expect(chip.getAttribute('style')).toContain(`--age: -${(700 - times[source.indexOf('】')]).toFixed(1)}ms`)
+  expect(container).toHaveTextContent('粗体 后文 & 结论1。')
+  chip.focus()
+  rerender(<AgentAnswerMarkdown citations={[citation]} onSelectCitation={vi.fn()} reveal={{ revealedAt: times, now: 1000 }}>{source}</AgentAnswerMarkdown>)
+  expect(screen.getByRole('button', { name: '查看来源 1：真实资料' })).toBe(chip)
+  expect(chip).toHaveFocus()
+  rerender(<AgentAnswerMarkdown citations={[citation]} onSelectCitation={vi.fn()} reveal={{ revealedAt: times, now: 2200 }}>{source}</AgentAnswerMarkdown>)
+  expect(container.querySelectorAll('.stream-fresh, .stream-fresh-cite')).toHaveLength(0)
+  expect(container).toHaveTextContent('粗体 后文 & 结论1。')
+})
+
+it('keeps progress sentence offsets and does not restart characters when Markdown closes', () => {
+  const source = '第一句。  第二句。'
+  const times = Array.from({ length: source.length }, (_, i) => i * 10)
+  const { container, rerender } = render(<AgentAnswerMarkdown progress citations={[]} onSelectCitation={vi.fn()} reveal={{ revealedAt: times, now: 500 }}>{source}</AgentAnswerMarkdown>)
+  expect(container.querySelectorAll('p')).toHaveLength(2)
+  expect(container.querySelectorAll('p')[1].querySelector('span')!.getAttribute('style')).toBe('--age: -440.0ms;')
+  rerender(<AgentAnswerMarkdown citations={[]} onSelectCitation={vi.fn()} reveal={{ revealedAt: times, now: 600 }}>{'**粗'}</AgentAnswerMarkdown>)
+  rerender(<AgentAnswerMarkdown citations={[]} onSelectCitation={vi.fn()} reveal={{ revealedAt: times, now: 800 }}>{'**粗**'}</AgentAnswerMarkdown>)
+  expect(container.querySelector('strong span')!.getAttribute('style')).toBe('--age: -780.0ms;')
+})

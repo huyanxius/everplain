@@ -1,3 +1,4 @@
+import { PageLoading } from '../../ui/PageLoading'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { ArrowLeftIcon, ArrowUpRightIcon, MagnifyingGlassIcon, SquaresFourIcon, TreeStructureIcon, XIcon } from '@phosphor-icons/react'
@@ -50,7 +51,7 @@ function sourceLink(courseId: string, documentId: string, segmentId: string) {
   return `/library?${new URLSearchParams({ kb_id: courseId, document_id: documentId, segment_id: segmentId })}`
 }
 
-export function CourseKnowledgePage() {
+export function CourseKnowledgePage({ libraryChrome = false }: { libraryChrome?: boolean }) {
   const [params, setParams] = useSearchParams()
   const id = params.get('kb_id')
   const [courses, setCourses] = useState<SharedCourse[]>([])
@@ -101,9 +102,9 @@ export function CourseKnowledgePage() {
   </>
   return <KnowledgePage graph>
     <KnowledgePageHead title="知识与关系" actions={<><Link className="qx-btn qx-btn--ghost" to="/library"><ArrowLeftIcon size={17} />知识库</Link>{course && <><button className="qx-btn qx-btn--secondary" type="button" aria-pressed={graphOpen} onClick={() => setGraphOpen(!graphOpen)}>{graphOpen ? <SquaresFourIcon size={17} /> : <TreeStructureIcon size={17} />}{graphOpen ? '收起知识导图' : '展开知识导图'}</button><Link className="qx-btn qx-btn--primary" to={`/library?kb_id=${encodeURIComponent(course.id)}`}>阅读资料</Link></>}</>} />
-    <div className="ep-course-graph__filters"><label className="qx-search"><MagnifyingGlassIcon size={18} /><input type="search" aria-label="搜索知识" value={query} onChange={event => { setQuery(event.target.value); setFocus(undefined); setEdgeId(undefined) }} placeholder="知识点、概念或方法" /></label><nav className="ep-knowledge-filters" aria-label="知识库目录">{courses.map(item => <button className="qx-tag" type="button" key={item.id} aria-pressed={item.id === id} onClick={() => { setParams({ kb_id: item.id }); setQuery('') }}>{item.name}</button>)}</nav></div>
+    <div className="ep-course-graph__filters"><label className="qx-search"><MagnifyingGlassIcon size={18} /><input type="search" aria-label="搜索知识" value={query} onChange={event => { setQuery(event.target.value); setFocus(undefined); setEdgeId(undefined) }} placeholder="知识点、概念或方法" /></label>{!libraryChrome && <nav className="ep-knowledge-filters" aria-label="知识库目录">{courses.map(item => <button className="qx-tag" type="button" key={item.id} aria-pressed={item.id === id} onClick={() => { setParams({ kb_id: item.id }); setQuery('') }}>{item.name}</button>)}</nav>}</div>
     {error && <p className="qx-notice qx-notice--danger" role="alert">{error}<button type="button" className="qx-btn qx-btn--ghost" onClick={() => setRetry(n => n + 1)}>重试</button></p>}
-    {loading ? <p className="qx-meta" role="status">正在读取知识…</p> : !course && !error ? <div className="ep-knowledge-empty"><h2 className="qx-card__title">选择一个知识库</h2><p className="qx-meta">选择上方知识库，查看知识点、关系与原文出处。</p><Link className="qx-btn qx-btn--secondary" to="/library">管理知识库</Link></div> : null}
+    {loading ? <PageLoading message="正在读取知识…" /> : !course && !error ? <div className="ep-knowledge-empty"><h2 className="qx-card__title">选择一个知识库</h2><p className="qx-meta">选择上方知识库，查看知识点、关系与原文出处。</p><Link className="qx-btn qx-btn--secondary" to="/library">管理知识库</Link></div> : null}
     {course && <>
       <div className="ep-course-graph__caption"><span>{course.name}</span><span className="qx-meta">{topics.size} 个知识点 · {course.documents.length} 份资料</span></div>
       {topics.size ? <>

@@ -25,8 +25,8 @@ describe('Everplain product website', () => {
     for (const name of ['Claude Opus 5.5', 'GPT-6 Sol', 'Gemini 3.1 Pro']) expect(within(models).getByText(name)).toBeInTheDocument()
     for (const provider of ['Anthropic', 'OpenAI', 'Google']) expect(within(models).getAllByText(provider)).toHaveLength(2)
     expect(screen.getByRole('link', { name: '登录' })).toHaveAttribute('href', '/login')
-    expect(screen.getByRole('link', { name: '深入了解' })).toHaveAttribute('href', '#intro')
-    expect(screen.getByRole('link', { name: '领取你的 Everplain' })).toHaveAttribute('href', '/login')
+    expect(screen.queryByRole('link', { name: '免登录查看静态演示' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/下方演示使用预设示例/)).not.toBeInTheDocument()
     expect(screen.getByText('1/10')).toBeVisible()
     expect(screen.getByText(/当前提供 GPT 6 Luna/)).toBeVisible()
     expect(requests).toEqual([])
@@ -62,7 +62,7 @@ describe('Everplain product website', () => {
 
   it('opens the conversation directly for a signed-in visitor, from the closing composer too', () => {
     render(<MemoryRouter><FoundationPage authenticated /><Location /></MemoryRouter>)
-    expect(screen.getByRole('link', { name: '工作台' })).toHaveAttribute('href', '/app')
+    expect(screen.getByRole('link', { name: '继续' })).toHaveAttribute('href', '/app')
     const inputs = screen.getAllByRole('textbox', { name: '你的想法' })
     expect(inputs).toHaveLength(2)
     fireEvent.change(inputs[1], { target: { value: '接着聊聊上次的想法' } })
@@ -70,6 +70,18 @@ describe('Everplain product website', () => {
     const address = new URL(screen.getByLabelText('当前地址').textContent!, 'https://everplain.local')
     expect(address.pathname).toBe('/agent')
     expect(address.searchParams.get('prompt')).toBe('接着聊聊上次的想法')
+  })
+
+  it('waits for session resolution before showing the account CTA', () => {
+    const { rerender } = render(<MemoryRouter><FoundationPage checkingSession /></MemoryRouter>)
+    expect(screen.getByText('确认登录中…')).toHaveAttribute('role', 'status')
+    expect(screen.queryByRole('link', { name: '登录' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '继续' })).not.toBeInTheDocument()
+    rerender(<MemoryRouter><FoundationPage authenticated /></MemoryRouter>)
+    expect(screen.getByRole('link', { name: '继续' })).toHaveAttribute('href', '/app')
+    expect(screen.queryByRole('link', { name: '登录' })).not.toBeInTheDocument()
+    rerender(<MemoryRouter><FoundationPage /></MemoryRouter>)
+    expect(screen.getByRole('link', { name: '登录' })).toHaveAttribute('href', '/login')
   })
 
   it('lists the platforms that can be imported', () => {

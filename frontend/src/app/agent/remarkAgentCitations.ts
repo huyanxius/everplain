@@ -1,4 +1,5 @@
 import type { Literal, Nodes, PhrasingContent, Root } from 'mdast'
+import type { Position } from 'unist'
 import type { Extension as FromMarkdownExtension } from 'mdast-util-from-markdown'
 import type { Extension as MicromarkExtension, Tokenizer } from 'micromark-util-types'
 import type { Processor } from 'unified'
@@ -75,9 +76,21 @@ export function remarkAgentCitations(this: Processor<Root>, { citations }: { cit
   ;(data.micromarkExtensions ??= []).push(citationSyntax)
   ;(data.fromMarkdownExtensions ??= []).push(citationFromMarkdown)
 
-  const citationNodes = (value: string): PhrasingContent[] => parseCitationText(value, citations).map((part) => part.type === 'text'
-    ? { type: 'text', value: part.value }
-    : { type: 'link', url: `#everplain-source-${part.index + 1}`, children: [{ type: 'text', value: `[${part.index + 1}]` }] })
+  const citationNodes = (value: string, position?: Position): PhrasingContent[] => {
+    let cursor = 0
+    const parts = parseCitationText(value, citations)
+    if (parts.length === 1 && parts[0].type === 'text' && parts[0].value === value) return [{ type: 'text', value, position }]
+    return parts.map(part => {
+      if (part.type !== 'text') return { type: 'link', position, url: `#everplain-source-${part.index + 1}`, children: [{ type: 'text', value: `[${part.index + 1}]` }] }
+      const start = Math.max(cursor, value.indexOf(part.value, cursor))
+      cursor = start + part.value.length
+      const point = (relative: number) => {
+        const prefix = value.slice(0, relative), lines = prefix.split('\n')
+        return { line: position!.start.line + lines.length - 1, column: lines.length > 1 ? lines.at(-1)!.length + 1 : position!.start.column + relative, offset: position!.start.offset === undefined ? undefined : position!.start.offset + relative }
+      }
+      return { type: 'text', value: part.value, position: position ? { start: point(start), end: point(cursor) } : undefined }
+    })
+  }
 
   return (tree: Root) => {
     function visit(node: Nodes, inLink = false) {
@@ -85,9 +98,9 @@ export function remarkAgentCitations(this: Processor<Root>, { citations }: { cit
       const protectedLabel = inLink || node.type === 'link' || node.type === 'linkReference'
       node.children = node.children.flatMap((child) => {
         if (child.type === 'agentCitationMarker') {
-          return protectedLabel ? [{ type: 'text', value: child.value } as const] : citationNodes(child.value)
+          return protectedLabel ? [{ type: 'text', value: child.value, position: child.position } as const] : citationNodes(child.value, child.position)
         }
-        if (child.type === 'text') return protectedLabel ? [child] : citationNodes(child.value)
+        if (child.type === 'text') return protectedLabel ? [child] : citationNodes(child.value, child.position)
         visit(child, protectedLabel)
         return [child]
       }) as typeof node.children

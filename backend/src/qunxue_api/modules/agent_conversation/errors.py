@@ -24,3 +24,9 @@ class RunAlreadyActive(AgentConversationError):
 
 class AgentInterrupted(AgentConversationError):
     """The client stopped a run before an assistant turn was persisted."""
+
+
+class AgentModelRouteFailure(AgentConversationError):
+    """Content-free route failure exposed to API consumers by a stable code."""
+
+    code = "agent_model_unavailable"

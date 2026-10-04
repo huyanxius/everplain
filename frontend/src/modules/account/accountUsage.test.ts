@@ -29,3 +29,12 @@ describe('account usage projection', () => {
     expect(accountUsageFromCredits({ ...credits, isUnlimited: true })).toEqual({ isUnlimited: true, remainingPercent: null, buckets: [] })
   })
 })
+
+
+it('uses settled fractions, not authorization holds, with a fixed grant denominator', () => {
+  const welcome = { ...current, id: 'gift', kind: 'welcome' as const, limitPoints: 134 }
+  for (const availablePoints of [134, 120, 134]) {
+    expect(accountUsageFromCredits({ ...credits, balance: 134, activeUsageBuckets: [{ ...welcome, availablePoints, settledRemainingPoints: 133.978 }] }).remainingPercent).toBe(99.98)
+  }
+  expect(accountUsageFromCredits({ ...credits, balance: 134, activeUsageBuckets: [{ ...welcome, availablePoints: 120 }] }).remainingPercent).toBe(100)
+})

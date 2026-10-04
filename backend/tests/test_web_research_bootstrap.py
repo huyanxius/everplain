@@ -28,6 +28,7 @@ def test_bootstrap_passes_web_search_settings_to_the_search_adapter(
     settings = client.app.state.settings.model_copy(
         update={
             "web_search_provider": "tavily",
+            "web_search_profile": "sociology",
             "web_search_allowed_domains": (),
             "web_search_timeout_seconds": 4.5,
         }
@@ -45,6 +46,7 @@ def test_bootstrap_passes_web_search_settings_to_the_search_adapter(
     assert len(captured_search_options) == 1
     options = captured_search_options[0]
     assert options["search_provider"] == "tavily"
+    assert options["require_search_billing"] is True
     assert options["profile"] == "sociology"
     assert options["allowed_domains"] == ()
     assert options["search_timeout_seconds"] == 4.5

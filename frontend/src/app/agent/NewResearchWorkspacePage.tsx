@@ -2,11 +2,13 @@ import { ArrowLeftIcon, ArrowRightIcon, ChatCircleDotsIcon, CheckCircleIcon, Cir
 import { useRef, type CSSProperties } from 'react'
 import { Link } from 'react-router'
 
+import { AgentAvatar } from '../../modules/agent-avatar'
 import type { ResearchStartJourney, ResearchStartProposal } from '../../modules/research-agent'
 import { RESEARCH_MATERIAL_ACCEPT } from '../../modules/research-materials'
 import { ResearchMapCanvas } from '../research-workspace/ResearchMapCanvas'
 import { PageContent, PageShell } from '../ui/PageShell'
 import { ResearchAgentConversationPage } from './ResearchAgentConversationPage'
+import { PersonalCompanion } from './PersonalCompanion'
 import { useNewResearchWorkspace } from './useNewResearchWorkspace'
 import './new-research-workspace.css'
 
@@ -89,20 +91,19 @@ export function NewResearchWorkspacePage({ userId }: { userId: string | null }) 
   return <PageShell workspace wide railContentRef={state.setHistoryRailTarget}>
     <PageContent>
       <section className="research-launch" aria-label="新建研究工作区">
-        <header className="research-launch__bar">
-          <Link className="qx-btn qx-btn--ghost qx-btn--icon" to="/research/materials" aria-label="返回研究"><ArrowLeftIcon /></Link>
-          <h1 className="qx-heading">{state.conversation?.title || '新建研究'}</h1>
-          <nav className="qx-segmented research-launch__views" aria-label="研究工作区视图">
-            <button type="button" aria-pressed={state.mobilePane === 'agent'} onClick={() => state.setMobilePane('agent')}><ChatCircleDotsIcon aria-hidden="true" />Agent</button>
-            <button type="button" aria-pressed={state.mobilePane === 'map'} onClick={() => state.setMobilePane('map')}><GraphIcon aria-hidden="true" />研究地图</button>
-          </nav>
-        </header>
+        <h1 className="cv-visually-hidden">{state.conversation?.title || '新建研究'}</h1>
+        <Link className="qx-btn qx-btn--ghost qx-btn--icon research-launch__back" to="/research/materials" aria-label="返回研究"><ArrowLeftIcon /></Link>
+        <nav className="qx-segmented research-launch__views" aria-label="研究工作区视图">
+          <button type="button" aria-pressed={state.mobilePane === 'agent'} onClick={() => state.setMobilePane('agent')}><ChatCircleDotsIcon aria-hidden="true" />Agent</button>
+          <button type="button" aria-pressed={state.mobilePane === 'map'} onClick={() => state.setMobilePane('map')}><GraphIcon aria-hidden="true" />研究地图</button>
+        </nav>
         <div ref={state.workspaceRef} className="research-launch__body" data-mobile-pane={state.mobilePane} data-resizing={state.resizingAgentPanel} style={{ '--qx-research-agent-width': `${state.agentPanelWidth}px` } as CSSProperties}>
           <div className="research-launch__canvas">
             <ResearchMapCanvas
               projection={state.projection}
               conversation={state.conversation}
               onConversationChange={state.syncConversation}
+              idleCompanion={<PersonalCompanion userId={userId} fallback={<AgentAvatar avatar="shi" size={96} state="greet" />} />}
               idleActions={!state.activeTaskId ? <div className="research-launch__entry" role="group" aria-label="研究起点">
                 <p>直接提问，或先放入一批材料</p>
                 <div className="research-launch__entry-options">

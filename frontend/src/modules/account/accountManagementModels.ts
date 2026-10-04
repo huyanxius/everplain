@@ -51,6 +51,7 @@ export type ActiveUsageBucket = {
   id: string
   kind: 'subscription' | 'top_up' | 'welcome'
   availablePoints: number
+  settledRemainingPoints?: number | null
   limitPoints: number
   expiresAt: string | null
 }
@@ -152,7 +153,7 @@ export type MutationIntent = {
 
 export type AccountManagementApi = {
   getAccount(): Promise<AccountProfile>
-  getCreditSummary(input?: { cursor?: string; limit?: number }): Promise<CreditSummary>
+  getCreditSummary(input?: { cursor?: string; limit?: number; signal?: AbortSignal }): Promise<CreditSummary>
   redeemCredits(input: MutationIntent & { code: string }): Promise<CreditRedemption>
   createCreditRedemptionCodes(input: MutationIntent & {
     count: number

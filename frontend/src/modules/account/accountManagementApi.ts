@@ -56,7 +56,7 @@ type RawSession = {
 
 type RawCreditSummary = {
   balance: number
-  active_usage_buckets?: Array<{ bucket_id: string; kind: 'subscription' | 'top_up' | 'welcome'; available_points: number; limit_points: number; expires_at: string | null }> | null
+  active_usage_buckets?: Array<{ bucket_id: string; kind: 'subscription' | 'top_up' | 'welcome'; available_points: number; settled_remaining_points?: number | null; limit_points: number; expires_at: string | null }> | null
   credit_limit: number
   grant_amount: number
   is_unlimited: boolean
@@ -101,7 +101,7 @@ function absoluteApiHref(href: string) {
 async function requestJson<T>(
   method: 'GET' | 'POST' | 'PATCH',
   url: string,
-  options: { body?: unknown; idempotencyKey?: string } = {},
+  options: { body?: unknown; idempotencyKey?: string; signal?: AbortSignal } = {},
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (options.body !== undefined) headers['Content-Type'] = 'application/json'
@@ -111,6 +111,7 @@ async function requestJson<T>(
     method,
     url,
     headers,
+    signal: options.signal,
     body: options.body,
     bodySerializer: options.body === undefined
       ? undefined
@@ -167,7 +168,7 @@ function toSession(value: RawSession): AccountSession {
 function toCreditSummary(value: RawCreditSummary): CreditSummary {
   return {
     balance: value.balance,
-    activeUsageBuckets: value.active_usage_buckets?.map(bucket => ({ id: bucket.bucket_id, kind: bucket.kind, availablePoints: bucket.available_points, limitPoints: bucket.limit_points, expiresAt: bucket.expires_at })) ?? null,
+    activeUsageBuckets: value.active_usage_buckets?.map(bucket => ({ id: bucket.bucket_id, kind: bucket.kind, availablePoints: bucket.available_points, settledRemainingPoints: bucket.settled_remaining_points, limitPoints: bucket.limit_points, expiresAt: bucket.expires_at })) ?? null,
     creditLimit: value.credit_limit,
     grantAmount: value.grant_amount,
     isUnlimited: value.is_unlimited,
@@ -228,7 +229,7 @@ export const accountManagementApi: AccountManagementApi = {
     if (input.limit) search.set('limit', String(input.limit))
     const suffix = search.size ? `?${search.toString()}` : ''
     return toCreditSummary(
-      await requestJson<RawCreditSummary>('GET', `/api/account/credits${suffix}`),
+      await requestJson<RawCreditSummary>('GET', `/api/account/credits${suffix}`, { signal: input.signal }),
     )
   },
 

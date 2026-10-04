@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-time checked candidate update of the existing Everplain containers.
+"""Current-run checked artifact update of the existing Everplain containers.
 
 No installed controller, new account or new network. All host details stay local.
 """
@@ -23,21 +23,31 @@ import urllib.request
 from pathlib import Path
 
 from artifact import MAX_BYTES, digest, tree_hash, unpack, validate_manifest
-from deploy import Controller, atomic_bytes, copy_index, expected_runtime_mode
+from deploy import Controller, atomic_bytes, check_compatible, copy_index, expected_runtime_mode
+from release_identity import (
+    SHA,
+    load_request,
+    read_state,
+    snapshot,
+    validate_provenance,
+    verify_baseline,
+)
 from repair_existing_web import repair as repair_web
 
-REVISION = "0dae10baff6a78cb0e12f67cc6f5ad153336a8a4"
-ARCHIVE_SHA256 = "85f2b033ed68e94d9d0563800d3d5b078c4b4e2d7b6ad868c4a3fa2e0cf3ec03"
-API_IMAGE = "sha256:e3101bab572ab3f795a13a4c7ccd70198d4908b7ab949fefc3e05afcd19b14a0"
-WEB_IMAGE = "sha256:d7fa4418995958435e783f23d627be4542bf4aa6ba0c9b0d805f56c3338ff8d3"
-PREVIOUS_REVISION = "c226d64523dd6d1c30606aad4730856c0cbbb80e"
+# Set only from the checksum- and current-run-verified manifest in main().
+REVISION = None
+ARCHIVE_SHA256 = None
+API_IMAGE = None
+WEB_IMAGE = None
+RUN_ID = None
+RUN_ATTEMPT = None
 BASE = Path("/srv/everplain-updates")
 NAMES = {"api": "everplain-api", "web": "everplain-web"}
 
 
-def require(condition):
+def require(condition, message="checked release precondition failed"):
     if not condition:
-        raise RuntimeError("checked release precondition failed")
+        raise RuntimeError(message)
 
 
 def run(args, timeout=180, report=None, prefix=""):
@@ -324,6 +334,46 @@ def environment(container):
     return result
 
 
+
+def configure_billing_policy(current, policy, report):
+    """Apply only an explicit, checksum-bound additive writing billing policy."""
+    requested = policy.get("add_user_billing_phases", [])
+    require(requested == [] or requested == ["writing"], "unsupported billing policy update")
+    report["billing_policy_update_requested"] = bool(requested)
+    report["billing_policy_changed"] = False
+    result = dict(current)
+    if not requested:
+        return result
+
+    def unique_mapping(pairs):
+        value = {}
+        for key, item in pairs:
+            require(key not in value, "duplicate billing policy entry")
+            value[key] = item
+        return value
+
+    try:
+        phases = json.loads(
+            current.get("EVERPLAIN_BILLING_PHASE_POLICIES", "{}"),
+            object_pairs_hook=unique_mapping,
+        )
+    except (ValueError, TypeError):
+        raise RuntimeError("existing billing policy requires review") from None
+    require(isinstance(phases, dict), "existing billing policy requires review")
+    require(
+        all(isinstance(k, str) and v in ("user", "operator") for k, v in phases.items()),
+        "existing billing policy requires review",
+    )
+    require(phases.get("writing") in (None, "user"), "existing writing policy requires review")
+    if "writing" not in phases:
+        phases["writing"] = "user"
+        result["EVERPLAIN_BILLING_PHASE_POLICIES"] = json.dumps(
+            phases, sort_keys=True, separators=(",", ":")
+        )
+        report["billing_policy_changed"] = True
+    return result
+
+
 def existing_layout(api, web):
     for role, value, port, inside in (
         ("api", api, "8297", "8297/tcp"),
@@ -452,6 +502,26 @@ class ExistingRelease:
             },
         )
 
+    def complete(self, manifest):
+        actual = snapshot(run, metadata)
+        if self.report.get("billing_policy_update_requested"):
+            active_env = environment(metadata(NAMES["api"]))
+            require(
+                active_env.get("EVERPLAIN_BILLING_PHASE_POLICIES") == self.expected_billing_policy,
+                "activated billing policy differs from reviewed update",
+            )
+            self.report["writing_user_policy_verified"] = True
+        require(actual["api"] == manifest["runtime_identity"]["api"])
+        require(actual["web_tree"] == manifest["runtime_identity"]["web_tree"])
+        require(actual["api_image"] in {API_IMAGE, self.images["api"]})
+        require(actual["web_image"] in {WEB_IMAGE, self.images["web"]})
+        save_json(self.state_path, {
+            "format": 1, "application": "everplain", "revision": REVISION,
+            "run_id": int(RUN_ID), "run_attempt": int(RUN_ATTEMPT),
+            "archive_sha256": ARCHIVE_SHA256, "runtime": actual,
+        })
+        self.report["runtime_identity_verified"] = True
+
     def recover(self):
         # After API start, even background writes belong to the new database/schema.
         if self.started:
@@ -493,7 +563,7 @@ class ExistingRelease:
         api, web = metadata(NAMES["api"]), metadata(NAMES["web"])
         source, network = existing_layout(api, web)
         old_env = environment(api)
-        require(old_env.get("EVERPLAIN_RELEASE_REVISION") in {PREVIOUS_REVISION, REVISION})
+        require(bool(SHA.fullmatch(old_env.get("EVERPLAIN_RELEASE_REVISION", ""))))
         self.old_revision = old_env["EVERPLAIN_RELEASE_REVISION"]
         self.report["live_layout_verified"] = True
         self.base.mkdir(mode=0o700, exist_ok=True)
@@ -536,6 +606,24 @@ class ExistingRelease:
                 manifest = unpack(frozen, release, REVISION, ARCHIVE_SHA256)
         self.old_names = {role: NAMES[role] + "-before-" + self.stage.name for role in NAMES}
         require(manifest["images"] == {"api": API_IMAGE, "web": WEB_IMAGE})
+        validate_provenance(manifest, REVISION, RUN_ID, RUN_ATTEMPT)
+        self.state_path = self.base / "pipeline-state.json"
+        self.previous_state = read_state(self.state_path, os.geteuid())
+        self.report["baseline_available"] = (
+            self.previous_state is not None or manifest.get("initial_live_fingerprint") is not None
+        )
+        self.baseline = snapshot(run, metadata)
+        verify_baseline(
+            self.baseline, self.previous_state, manifest.get("initial_live_fingerprint"),
+            REVISION, RUN_ID, ARCHIVE_SHA256,
+        )
+        policy = json.loads((release / "ops/cd/policy.json").read_text())
+        env = configure_billing_policy(old_env, policy, self.report)
+        self.expected_billing_policy = env.get("EVERPLAIN_BILLING_PHASE_POLICIES")
+        check_compatible(
+            {"migration_tree": self.baseline["api"]["migration_tree"]}, manifest, policy,
+        )
+        self.report["live_overlay_guard_verified"] = True
         self.report["artifact_verified"] = True
         image_bytes = sum(
             (release / "images" / (role + ".tar")).stat().st_size for role in ("api", "web")
@@ -562,7 +650,6 @@ class ExistingRelease:
             require(info["Architecture"] == "amd64" and info["Os"] == "linux")
             require(info["Config"]["Labels"].get("org.opencontainers.image.revision") == REVISION)
             self.report[role + "_image_verified"] = True
-        env = environment(api)
         env.update(EVERPLAIN_RELEASE_REVISION=REVISION, EVERPLAIN_MIGRATIONS_MANAGED="1")
         atomic_bytes(
             release / "runtime.env", "".join(k + "=" + v + "\n" for k, v in env.items()).encode()
@@ -609,11 +696,13 @@ class ExistingRelease:
         self.record()
         if (
             self.old_revision == REVISION
+            and not self.report.get("billing_policy_changed")
             and api.get("Image") == self.images["api"]
             and web.get("Image") == self.images["web"]
         ):
             Controller(self.stage).health(REVISION)
             public_health(manifest, mode)
+            self.complete(manifest)
             self.report.update(
                 api_health_ok=True,
                 web_health_ok=True,
@@ -624,6 +713,9 @@ class ExistingRelease:
             return self.report
         require(metadata(NAMES["api"])["Id"] == api["Id"])
         require(metadata(NAMES["web"])["Id"] == web["Id"])
+        # Catch a manual overlay or another writer between inspection and cutover.
+        require(snapshot(run, metadata) == self.baseline)
+        require(read_state(self.state_path, os.geteuid()) == self.previous_state)
         try:
             # Only these exact Everplain containers are stopped; old containers/config stay intact.
             self.stopped = True
@@ -762,6 +854,7 @@ class ExistingRelease:
             self.report["web_health_ok"] = True
             public_health(manifest, mode)
             self.report["public_health_ok"] = True
+            self.complete(manifest)
             self.report["deployment_succeeded"] = True
             self.record()
         except BaseException:
@@ -777,7 +870,10 @@ def interrupted(_signum, _frame):
 if __name__ == "__main__":
     updater = None
     try:
-        require(os.geteuid() == 0 and len(sys.argv) == 2)
+        require(os.geteuid() == 0 and len(sys.argv) == 6)
+        archive, REVISION, ARCHIVE_SHA256, RUN_ID, RUN_ATTEMPT = sys.argv[1:]
+        request = load_request(Path(archive), REVISION, ARCHIVE_SHA256, RUN_ID, RUN_ATTEMPT)
+        API_IMAGE, WEB_IMAGE = request["images"]["api"], request["images"]["web"]
         with Path("/run/lock/everplain-release.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):

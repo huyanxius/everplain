@@ -29,7 +29,7 @@ class SSHPreflightTests(unittest.TestCase):
             scripts = {
                 "ssh-keyscan": "echo fixture-public-key\nexit " + ("0" if scan_ok else "1"),
                 "ssh-keygen": f"echo '256 {observed} fixture ED25519'",
-                "ssh": 'printf "%s\\n" "$@" > "$CALLS"; cat >/dev/null; echo inspection-stub',
+                "ssh": 'printf "%s\\n" "$@" >> "$CALLS"; cat >/dev/null; echo inspection-stub',
             }
             for name, script in scripts.items():
                 path = root / name
@@ -61,6 +61,10 @@ class SSHPreflightTests(unittest.TestCase):
         self.assertIn("ubuntu@host.invalid", calls)
         self.assertIn("StrictHostKeyChecking=yes", calls)
         self.assertIn("sudo -n python3 -", calls)
+        self.assertEqual(calls.count("sudo -n python3 -"), 2)
+        self.assertIn("sudo -n python3 - inspect", calls)
+        self.assertIn("EVERPLAIN_RUNTIME_FINGERPRINT_BEGIN", result.stdout)
+        self.assertIn("EVERPLAIN_RUNTIME_FINGERPRINT_END", result.stdout)
         self.assertNotIn("synthetic-not-a-real-credential", result.stdout + result.stderr + calls)
         key = Path(calls.splitlines()[1])
         self.assertFalse(key.exists())
@@ -140,6 +144,8 @@ class InspectionTests(unittest.TestCase):
         self.assertIn("secrets.EVERPLAIN_SSH_PRIVATE_KEY", text)
         self.assertIn("SHA256:2QamxRsk36HjNhAek1+zT6Db1PtPKuuDoplLOCdTTmA", text)
         self.assertNotIn("transport.sh", text)
+        self.assertIn("group: everplain-production", text)
+        self.assertIn("ops/cd/release_identity.py", text)
 
 
 class UploadInspectionTests(unittest.TestCase):

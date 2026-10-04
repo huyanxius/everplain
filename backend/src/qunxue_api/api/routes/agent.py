@@ -6,10 +6,11 @@ import threading
 import time
 from collections.abc import AsyncIterator, Iterator
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import ValidationError
 
 from qunxue_api.api.billing_errors import billing_error
 from qunxue_api.api.contracts.agent import (
@@ -25,6 +26,7 @@ from qunxue_api.api.contracts.agent import (
     AgentModelCatalogResponse,
     AgentModelChoiceResponse,
     AgentResearchJourneyResponse,
+    AgentRunLookupResponse,
     AgentRunRecoveryResponse,
     AgentRunStopResponse,
     AgentTurnRequest,
@@ -33,7 +35,7 @@ from qunxue_api.api.contracts.agent import (
     ConfirmResearchStartResponse,
     ResearchStartProposalResponse,
 )
-from qunxue_api.api.contracts.common import ErrorResponse
+from qunxue_api.api.contracts.common import ErrorCode, ErrorDetail, ErrorResponse
 from qunxue_api.api.contracts.research_materials import AgentMaterialListResponse
 from qunxue_api.api.dependencies import (
     CurrentSessionDependency,
@@ -44,6 +46,7 @@ from qunxue_api.api.routes.research_tasks import _match_status, _navigation_resp
 from qunxue_api.api.routes.stubs import IdempotencyKey
 from qunxue_api.modules.agent_conversation import (
     AgentInterrupted,
+    AgentModelRouteFailure,
     AgentModelSelectionUnavailable,
     AgentResearchEvent,
     AgentToolEvent,
@@ -664,6 +667,16 @@ def stream_agent_turn(
             yield _event(
                 "turn_failed", {"code": "model_selection_unavailable", "message": str(error)}
             )
+        except AgentModelRouteFailure as error:
+            messages = {
+                "agent_input_limit": "本轮资料超出模型上下文上限，请缩小研究范围或新建对话后重试。",
+                "agent_model_request_rejected": "模型服务拒绝了本轮请求，请稍后重试。",
+                "agent_model_unavailable": "模型服务暂时不可用，请稍后重试。",
+            }
+            yield _event("turn_failed", {
+                "code": error.code,
+                "message": messages.get(error.code, messages["agent_model_unavailable"]),
+            })
         except BillingFailure as error:
             _, code, message = billing_error(error)
             yield _event("turn_failed", {"code": code, "message": message})
@@ -697,6 +710,59 @@ def stream_agent_turn(
         events(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get(
+    "/runs/by-idempotency-key",
+    response_model=AgentRunLookupResponse,
+    operation_id="lookup_agent_run",
+)
+def lookup_agent_run(
+    request: Request,
+    response: Response,
+    current: CurrentSessionDependency,
+    idempotency_key: IdempotencyKey,
+) -> AgentRunLookupResponse | JSONResponse:
+    """Observe the owner's original intent without replay, renewal or billing.
+
+    A missing record is provisional: a disconnected request could still be
+    entering the server. It must not be interpreted as proof no work occurred.
+    """
+    headers = {"Cache-Control": "no-store", "Vary": "Cookie, Idempotency-Key"}
+    with request.app.state.disciplinary_agent_scope() as app:
+        run = app.find_run(
+            user_id=current.user.user_id,
+            idempotency_key=idempotency_key,
+        )
+    if run is None or run.user_id != current.user.user_id:
+        body = ErrorResponse(error=ErrorDetail(
+            code=ErrorCode.NOT_FOUND,
+            message="回答记录不存在或无权访问。",
+            trace_id=str(uuid4()),
+        ))
+        return JSONResponse(status_code=404, content=body.model_dump(mode="json"), headers=headers)
+    response.headers.update(headers)
+    snapshot = {
+        key: value for key, value in run.request_snapshot.items()
+        if key in AgentTurnRequest.model_fields
+    }
+    # Legacy/changed snapshots must not block read-only identity reconciliation.
+    # Return no resumable request rather than inventing or leaking internal data.
+    try:
+        original_request = AgentTurnRequest.model_validate(snapshot) if snapshot else None
+    except ValidationError:
+        original_request = None
+    return AgentRunLookupResponse(
+        run_id=run.run_id,
+        conversation_id=run.conversation_id,
+        idempotency_key=run.idempotency_key,
+        status=run.status,
+        cancel_requested=run.cancel_requested,
+        partial_answer=run.partial_answer,
+        request=original_request,
+        updated_at=run.updated_at,
+        turn_id=run.turn_id,
     )
 
 

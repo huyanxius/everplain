@@ -28,6 +28,12 @@ from qunxue_api.adapters.sqlite.billing_model import (
     CreditLedgerRow,
     CreditRedemptionCodeRow,
 )
+from qunxue_api.adapters.sqlite.channel_gateway import (
+    ChannelBindingRow,
+    ChannelEventRow,
+    ChannelLinkCodeRow,
+    ChannelScopeRow,
+)
 from qunxue_api.adapters.sqlite.external_agents import ExternalAgentConnectionRow
 from qunxue_api.adapters.sqlite.identity_model import (
     RegistrationVerificationRow,
@@ -140,8 +146,16 @@ from qunxue_api.adapters.sqlite.theory_matching_model import (
     TheoryDecisionSetRow,
     TheoryMatchingRequestRow,
 )
+from qunxue_api.adapters.sqlite.writing import (
+    WritingDocumentRow,
+    WritingOperationRow,
+    WritingRevisionRow,
+    WritingSampleRow,
+)
 
 __all__ = [
+    "ChannelBindingRow", "ChannelEventRow", "ChannelLinkCodeRow", "ChannelScopeRow",
+    "WritingDocumentRow", "WritingOperationRow", "WritingRevisionRow", "WritingSampleRow",
     "ExternalAgentConnectionRow",
     "SharedKnowledgePublicationRow",
     "SharedKnowledgePublicationRequestRow",

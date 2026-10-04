@@ -109,7 +109,12 @@ def test_real_auth_library_storage_survive_application_restart(plain_client):
         doc = upload(client, kb["id"], "Persisted real private source", "private.txt")
         with app.state.personal_graph_scope() as graph:
             assert not graph.repository.mock
-        assert not getattr(app.state, "account_management_installed", False)
+        # Model fallback does not disable real member-account management.
+        assert app.state.account_management_installed is True
+        assert app.state.credit_exempt_user_ids == frozenset()
+        account = client.get("/api/account")
+        assert account.status_code == 200
+        assert account.json()["role"] == "member"
         with app.state.disciplinary_agent_scope() as agent:
             turn = agent.run_turn(
                 user_id=UUID(registered.json()["user"]["user_id"]),

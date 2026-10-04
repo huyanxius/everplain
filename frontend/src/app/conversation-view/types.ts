@@ -70,6 +70,7 @@ export type ConversationSourceDetail = {
   actions?: readonly ConversationAction[]
 }
 export type ConversationSourcePanelProps = {
+  closing?: boolean
   detail?: ConversationSourceDetail | null
   activity?: ConversationToolStep | null
   citations?: readonly AgentCitation[]

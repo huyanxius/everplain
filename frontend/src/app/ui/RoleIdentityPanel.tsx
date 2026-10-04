@@ -4,6 +4,7 @@ import { useAppLocale } from '../../i18n/AppLocaleProvider'
 import { AgentSoulEditor, settingsAgentColors, settingsSpeakingStyles, useAgentSettingsController } from '../../modules/account'
 import { AgentAvatar, agentAvatarPresets } from '../../modules/agent-avatar'
 import { ResearchMemoryPanel } from '../research/ResearchMemoryPanel'
+import { usePresence } from '../../ui/usePresence'
 import './role-identity-panel.css'
 
 export type RoleIdentityTab = 'identity' | 'memory'
@@ -29,12 +30,17 @@ function RoleIdentityPanelContent({ open, onClose, userId, accountName, initialT
   const [tab, setTab] = useState<RoleIdentityTab>(initialTab)
   const [memoryVisited, setMemoryVisited] = useState(initialTab === 'memory')
   const boundary = useRef<HTMLDialogElement>(null)
+  const motion = usePresence(open, boundary)
   const id = useId()
 
   useEffect(() => {
     if (!open) return
     setTab(initialTab)
     if (initialTab === 'memory') setMemoryVisited(true)
+  }, [open, initialTab])
+
+  useEffect(() => {
+    if (!motion.present) return
     const dialog = boundary.current
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const overflow = document.body.style.overflow
@@ -46,7 +52,7 @@ function RoleIdentityPanelContent({ open, onClose, userId, accountName, initialT
       document.body.style.overflow = overflow
       if (trigger?.isConnected) trigger.focus({ preventScroll: true })
     }
-  }, [open, initialTab])
+  }, [motion.present])
 
   function selectTab(next: RoleIdentityTab) {
     setTab(next)
@@ -62,7 +68,7 @@ function RoleIdentityPanelContent({ open, onClose, userId, accountName, initialT
 
   const avatar = draft?.avatar ?? agentAvatarPresets.find(preset => preset.id === flow.profile.data?.avatar_id)?.id ?? 'cheng'
   const displayName = draft?.name.trim() || flow.profile.data?.name || text('我的 AI 伙伴', 'My AI companion')
-  return <dialog ref={boundary} className="ep-role-panel" aria-label={text('AI 伙伴', 'AI companion')} tabIndex={-1}
+  return <dialog ref={boundary} className="ep-role-panel" data-motion-surface="drawer" {...motion.props} aria-label={text('AI 伙伴', 'AI companion')} tabIndex={-1}
     onCancel={event => { event.preventDefault(); onClose() }}
     onClick={event => {
       if (event.target !== event.currentTarget) return

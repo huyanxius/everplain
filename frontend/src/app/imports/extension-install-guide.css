@@ -1,0 +1,13 @@
+.ep-import__extension-guide { display: grid; gap: var(--qx-space-4); padding: var(--qx-space-5); border: 1px solid var(--qx-color-rule); border-radius: var(--qx-radius-panel); background: var(--qx-color-surface-muted); line-height: var(--qx-text-body--line-height); overflow-wrap: anywhere; }
+.ep-import__extension-guide > header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--qx-space-2); }
+.ep-import__extension-guide h3 { margin: 0; font-size: var(--qx-text-control); font-weight: var(--qx-text-heading--font-weight); }
+.ep-import__extension-guide p { margin: 0; }
+.ep-import__extension-guide code { font-size: var(--qx-text-control); user-select: text; }
+.ep-import__extension-guide a { color: inherit; text-decoration: underline; text-underline-offset: .2em; }
+.ep-import__extension-steps { display: grid; gap: var(--qx-space-4); margin: 0; padding-left: var(--qx-space-5); }
+.ep-import__extension-steps li > p { margin-top: var(--qx-space-2); }
+.ep-import__extension-origin { padding: var(--qx-space-2) var(--qx-space-3); border-radius: var(--qx-radius-item); background: var(--qx-color-surface); }
+.ep-import__extension-help { display: grid; gap: var(--qx-space-3); margin: 0; }
+.ep-import__extension-help dt { font-weight: var(--qx-text-heading--font-weight); }
+.ep-import__extension-help dd { margin: var(--qx-space-1) 0 0; color: var(--qx-color-ink-soft); }
+@media (max-width: 600px) { .ep-import__extension-guide { padding: var(--qx-space-3); } }

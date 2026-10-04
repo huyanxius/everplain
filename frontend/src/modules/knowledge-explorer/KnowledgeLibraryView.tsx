@@ -1,3 +1,4 @@
+import { PageLoading } from '../../ui/PageLoading'
 import { useState, type FormEvent } from 'react'
 import {
   ArrowLeftIcon,
@@ -219,7 +220,7 @@ export function KnowledgeLibraryView({
           ) : null}
 
           {releaseState === 'loading' ? (
-            <div className="knowledge-ui__loading" role="status"><span />正在读取知识目录</div>
+            <PageLoading message="正在读取知识目录" />
           ) : null}
           {releaseState === 'unavailable' ? (
             <div className="knowledge-ui__state" role="alert">

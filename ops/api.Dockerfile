@@ -2,12 +2,14 @@ ARG PYTHON_IMAGE=python:3.12-slim-bookworm
 FROM ${PYTHON_IMAGE}
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
-    PATH=/app/backend/.venv/bin:$PATH
+    PATH=/app/backend/.venv/bin:$PATH TIKTOKEN_CACHE_DIR=/opt/tiktoken-cache
 WORKDIR /app/backend
 RUN pip install --no-cache-dir uv==0.11.29
 COPY backend/pyproject.toml backend/uv.lock backend/README.md ./
 COPY backend/src ./src
-RUN uv sync --frozen --no-dev --no-editable
+RUN uv sync --frozen --no-dev --no-editable \
+    && python -c "import tiktoken; tiktoken.get_encoding('o200k_base')" \
+    && chmod -R a+rX /opt/tiktoken-cache
 COPY backend/alembic.ini ./
 COPY backend/migrations ./migrations
 COPY ops /app/ops

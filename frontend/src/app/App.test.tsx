@@ -5,6 +5,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { AppRoutes } from './App'
+import { conversationGreeting } from './conversation-view/researchPrompts'
 import { AccountProvider } from '../modules/account'
 
 const cytoscapeMock = vi.hoisted(() => vi.fn(() => {
@@ -254,7 +255,7 @@ describe('App routes', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
     renderRoute('/app', { status: 'authenticated' })
     const nav = await screen.findByRole('navigation', { name: '桌面主导航' })
-    for (const [label, href] of [['首页', '/app'], ['研究 Agent', '/agent'], ['知识库', '/library'], ['图谱', '/my/graph'], ['研究', '/research/materials']]) {
+    for (const [label, href] of [['首页', '/app'], ['写作', '/writing'], ['知识库', '/library'], ['图谱', '/my/graph'], ['研究', '/research/materials']]) {
       expect(within(nav).getByRole('link', { name: label })).toHaveAttribute('href', href)
     }
     const rail = screen.getByRole('complementary', { name: 'Everplain 功能栏' })
@@ -267,7 +268,7 @@ describe('App routes', () => {
   it('retires the sociology research tools route and navigation', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
     renderRoute('/research/tools', { status: 'authenticated' })
-    expect(await screen.findByRole('heading', { level: 1, name: /今天想弄清楚什么？/ })).toBeVisible()
+    expect(await screen.findByRole('heading', { level: 1, name: conversationGreeting('zh-CN', new Date()) })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/app')
     expect(screen.queryByRole('link', { name: '研究工具' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: '研究工具列表' })).not.toBeInTheDocument()
@@ -280,33 +281,34 @@ describe('App routes', () => {
     fireEvent.click(await screen.findByRole('button', { name: '收起侧栏' }))
     expect(screen.getByRole('button', { name: '展开侧栏' })).toBeVisible()
 
-    fireEvent.click(screen.getByRole('link', { name: '研究 Agent' }))
+    fireEvent.click(within(screen.getByRole('complementary', { name: 'Everplain 功能栏' })).getByRole('link', { name: '新对话' }))
 
     expect(await screen.findByRole('button', { name: '展开侧栏' })).toBeVisible()
   })
 
   it('renders the personal home with source cards and private-library actions', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
     renderRoute('/app', { status: 'authenticated' })
-    expect(await screen.findByRole('heading', { level: 1, name: /今天想弄清楚什么？/ })).toBeVisible()
-    expect(screen.getByRole('navigation', { name: '知识空间视图' })).toBeVisible()
+    expect(await screen.findByRole('heading', { level: 1, name: conversationGreeting('zh-CN', new Date()) })).toBeVisible()
+    expect(screen.getByRole('region', { name: '接着研究' })).toBeVisible()
     expect(await screen.findByRole('heading', { name: '把第一份资料，放进来。' })).toBeVisible()
-    expect(within(screen.getByRole('navigation', { name: '知识空间视图' })).getByRole('link', { name: '新建研究' })).toHaveAttribute('href', '/research/new')
-    expect(screen.getByText(/默认仅你可见/)).toBeVisible()
+    expect(screen.getByRole('link', { name: /开始第一项研究/ })).toHaveAttribute('href', '/research/new')
+    expect(screen.getByRole('link', { name: '开始导入' })).toHaveAttribute('href', '/imports')
   })
 
-  it('filters the personal library without leaving the home route', async () => {
+  it('opens the library from home without the retired title filter', async () => {
     renderRoute('/app', { status: 'authenticated' })
     await screen.findByRole('heading', { name: '把第一份资料，放进来。' })
-    fireEvent.change(screen.getByRole('textbox', { name: '搜索资料标题' }), { target: { value: '不存在' } })
-    expect(await screen.findByRole('heading', { name: '还没找到这份资料。' })).toBeVisible()
-    expect(screen.getByTestId('route-location')).toHaveTextContent('/app')
+    expect(screen.queryByRole('textbox', { name: '搜索资料标题' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: '打开知识库' }))
+    await waitFor(() => expect(screen.getByTestId('route-location')).toHaveTextContent('/library'))
   })
 
   it('links the personal home to its four-level knowledge graph', async () => {
     renderRoute('/app', { status: 'authenticated' })
-    await screen.findByRole('heading', { level: 1, name: /今天想弄清楚什么？/ })
-    expect(screen.getByRole('link', { name: '知识图谱' })).toHaveAttribute('href', '/my/graph')
-    expect(screen.getByRole('link', { name: /管理知识库/ })).toHaveAttribute('href', '/library')
+    await screen.findByRole('heading', { level: 1, name: conversationGreeting('zh-CN', new Date()) })
+    expect(screen.getByRole('link', { name: '图谱' })).toHaveAttribute('href', '/my/graph')
+    expect(screen.getByRole('link', { name: '打开知识库' })).toHaveAttribute('href', '/library')
   })
 
   it('resumes a task-only research entry inside the unified project workspace', async () => {
@@ -406,13 +408,13 @@ describe('App routes', () => {
 
   it('preserves the legacy my redirect into the personal home', async () => {
     renderRoute('/my', { status: 'authenticated' })
-    expect(await screen.findByRole('heading', { level: 1, name: /今天想弄清楚什么？/ })).toBeVisible()
+    expect(await screen.findByRole('heading', { level: 1, name: conversationGreeting('zh-CN', new Date()) })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/app?research=all')
   })
 
   it.each([
-    ['/app', /今天想弄清楚什么？/],
-    ['/agent', '今天想聊什么？'],
+    ['/app', conversationGreeting('zh-CN', new Date())],
+    ['/agent', conversationGreeting('zh-CN', new Date())],
     ['/research/new', '从一个问题开始'],
     ['/research/task-1/phenomenon', '社区互助研究'],
     ['/research/task-1/match', '社区互助研究'],
@@ -504,16 +506,13 @@ describe('App routes', () => {
     }))
     renderRoute('/agent', { status: 'authenticated' })
 
-    const desktopNavigation = await screen.findByRole('navigation', { name: '桌面主导航' })
-    expect(within(desktopNavigation).getByRole('link', { name: '研究 Agent' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    )
+    const rail = await screen.findByRole('complementary', { name: 'Everplain 功能栏' })
+    expect(within(rail).getByRole('link', { name: '新对话' })).toHaveAttribute('href', '/agent')
     expect(screen.getByRole('button', { name: '收起侧栏' })).toBeVisible()
 
     const agentConversation = screen.getByRole('region', { name: 'Everplain Agent 对话' })
     expect(within(agentConversation).queryByText('从知识库出发，和你的学科 Agent 直接聊。')).not.toBeInTheDocument()
-    expect(within(agentConversation).getByRole('heading', { name: '今天想聊什么？' })).toBeVisible()
+    expect(within(agentConversation).getByRole('heading', { name: conversationGreeting('zh-CN', new Date()) })).toBeVisible()
     const textbox = within(agentConversation).getByRole('textbox', { name: '问 Everplain' })
     const sendButton = within(agentConversation).getByRole('button', {
       name: '发送给 Everplain',
@@ -661,7 +660,7 @@ describe('App routes', () => {
     const failedTranscript = within(agentConversation).getByRole('log', { name: '对话内容' })
     fireEvent.click(within(failedTranscript).getByRole('button', { name: '查看完整工具返回' }))
     expect(within(failedTranscript).getByText('知识库暂时不可用')).toBeVisible()
-    expect(within(agentConversation).getByText(conversation.turns[0].assistant.content)).toBeVisible()
+    expect(await within(agentConversation).findByText((_text, element) => element?.classList.contains('cv-turn__prose') === true && element.textContent === conversation.turns[0].assistant.content)).toBeVisible()
   })
 
   it('keeps repeated tool calls separate while replayed events with the same call id stay idempotent', async () => {
@@ -898,16 +897,17 @@ describe('App routes', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], next_cursor: null })))
     renderRoute('/', { status: 'authenticated' })
 
-    expect(await screen.findByRole('heading', { name: /今天想弄清楚什么？/ })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: conversationGreeting('zh-CN', new Date()) })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/app')
   })
 
   it('opens each personal document card at its original library source', async () => {
     vi.mocked(readPersonalGraph).mockResolvedValueOnce({ nodes: [{ id: 'n1', label: '读书笔记', nodeType: 'document' }], edges: [], sources: { n1: { library_id: 'kb-1', document_id: 'doc-1', source_url: null } }, document_count: 1, pending_count: 0, mode: 'mock' } as unknown as Awaited<ReturnType<typeof readPersonalGraph>>)
     renderRoute('/app', { status: 'authenticated' })
+    fireEvent.click(await screen.findByRole('button', { name: '展开资料' }))
     const card = await screen.findByRole('link', { name: /我的笔记.*读书笔记/ })
     expect(card).toHaveAttribute('href', '/library?kb_id=kb-1&document_id=doc-1')
-    expect(screen.getByText('1 份资料')).toBeVisible()
+    expect(screen.getByText((_, node) => node?.tagName === 'SPAN' && node.textContent === '1 份资料')).toBeInTheDocument()
   })
 
   it('offers a real import path when the personal library is empty', async () => {
@@ -941,7 +941,7 @@ describe('App routes', () => {
 
   it.each([
     ['anonymous' as const, '登录'],
-    ['authenticated' as const, '工作台'],
+    ['authenticated' as const, '继续'],
   ])('keeps /welcome public for a %s visitor', async (status, action) => {
     renderRoute('/welcome', { status })
 
@@ -952,6 +952,14 @@ describe('App routes', () => {
     ).toBeVisible()
     expect(screen.getByRole('link', { name: action })).toBeVisible()
     expect(screen.getByTestId('route-location')).toHaveTextContent('/welcome')
+  })
+
+  it('does not flash login while the public website restores the session', async () => {
+    renderRoute('/welcome', { status: 'loading' })
+    expect(await screen.findByRole('heading', { level: 1, name: /^Everplain，帮你/ })).toBeVisible()
+    expect(screen.getByText('确认登录中…')).toHaveAttribute('role', 'status')
+    expect(screen.queryByRole('link', { name: '登录' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '继续' })).not.toBeInTheDocument()
   })
 
   it.each([
@@ -1177,10 +1185,10 @@ it('opens private knowledge in the library and links each topic to its original 
     return json({ items: [] })
   })
   renderRoute('/library/knowledge?kb_id=kb-course', { status: 'authenticated' })
-  fireEvent.click(await screen.findByRole('button', { name: '收起知识导图' }))
-  fireEvent.click(await screen.findByRole('button', { name: '查看知识点 追问' }))
-  expect(screen.getByRole('link', { name: /阅读原文.*访谈.pptx/ }).closest('article')).toHaveTextContent('追问具体经历。')
-  expect(screen.getByRole('link', { name: /阅读原文.*访谈.pptx/ })).toHaveAttribute('href', '/library?kb_id=kb-course&document_id=doc-course&segment_id=segment-course')
+  const source = await screen.findByRole('link', { name: '阅读原文' })
+  expect(source.closest('article')).toHaveTextContent('追问具体经历。')
+  expect(screen.getByTestId('route-location')).toHaveTextContent('/my/graph?kb_id=kb-course&view=points')
+  expect(source).toHaveAttribute('href', '/library?kb_id=kb-course&document_id=doc-course&segment_id=segment-course')
 })
 
 vi.mock('../modules/agent-profile', () => ({ readAgentProfile: vi.fn(async () => ({ name: 'Everplain', avatar_id: 'cheng', color: '#b8c5b0', greeting: '你想研究什么？', speaking_style: 'clear', setup_step: 4, setup_completed: true, questionnaire: { occupation: '', industry: '', goals: [], interests: [], additional: '' }, version: 1 })) }))

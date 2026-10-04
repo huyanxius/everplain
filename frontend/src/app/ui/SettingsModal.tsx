@@ -4,6 +4,7 @@ import { AgentAvatar, agentAvatarPresets } from '../../modules/agent-avatar'
 import { readAgentProfile } from '../../modules/agent-profile'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { useAppLocale } from '../../i18n/AppLocaleProvider'
+import { useAnimatedDismiss } from '../../ui/usePresence'
 import './settings-modal.css'
 
 /** Native focus boundary around the Mock's header-and-content dialog surface. */
@@ -14,6 +15,7 @@ export function SettingsModal({ children, onClose, userId, accountName }: {
   accountName?: string
 }) {
   const boundary = useRef<HTMLDialogElement>(null)
+  const motion = useAnimatedDismiss(boundary, onClose)
   const { text } = useAppLocale()
   useEffect(() => {
     const dialog = boundary.current
@@ -30,11 +32,11 @@ export function SettingsModal({ children, onClose, userId, accountName }: {
   }, [])
 
   function dismiss() {
-    if (!boundary.current?.querySelector('[role="dialog"][aria-modal="true"]')) onClose()
+    if (!boundary.current?.querySelector('[role="dialog"][aria-modal="true"]')) motion.dismiss()
   }
 
   return <dialog
-    className="ep-settings-dialog"
+    className="ep-settings-dialog" data-motion-surface="modal" {...motion.props}
     ref={boundary}
     tabIndex={-1}
     aria-label={text('账户设置', 'Account settings')}

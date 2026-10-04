@@ -39,6 +39,7 @@ docker rm "$web_container" >/dev/null
 web_container=""
 api_id="$(docker image inspect "everplain-api:$GITHUB_SHA" --format '{{.Id}}')"
 web_id="$(docker image inspect "everplain-web:$GITHUB_SHA" --format '{{.Id}}')"
+python ops/cd/release_identity.py probe-image "$api_id" > "$prepared/api-identity.json"
 python ops/cd/artifact.py "$GITHUB_SHA" --prepared "$prepared" --output dist/release \
   --api-image "$api_id" --web-image "$web_id" \
   --python-base "$python_image" --node-base "$node_image" --nginx-base "$nginx_image"

@@ -171,6 +171,12 @@ class ArtifactTests(unittest.TestCase):
             )
             (root / "prepared/web/assets/index-a1b2.js").write_text("console.log('fixture')")
             images = {"api": "sha256:" + "1" * 64, "web": "sha256:" + "2" * 64}
+            (root / "prepared/api-identity.json").write_text(json.dumps({
+                k: "e" * 64
+                for k in (
+                    "source_tree", "dependency_tree", "migration_tree", "ops_tree", "tokenizer_tree"
+                )
+            }))
             manifest = artifact.build(root, root / "prepared", root / "output", NEW, images, {})
             archive = root / "output/everplain.tar.gz"
             restored = artifact.unpack(archive, root / "release", NEW, artifact.digest(archive))
@@ -599,7 +605,8 @@ class WorkflowSafetyTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/deploy.yml").read_text()
         self.assertIn("needs: [checks, build]", workflow)
         self.assertIn("cancel-in-progress: false", workflow)
-        self.assertIn("options: [rollback-previous]", workflow)
+        self.assertNotIn("rollback-previous", workflow)
+        self.assertIn("deploy-existing-ssh.sh all", workflow)
         self.assertNotIn("pull_request", workflow)
         for line in workflow.splitlines():
             if "uses:" in line and "uses: ./" not in line:

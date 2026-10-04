@@ -12,7 +12,6 @@
 .ep-map__document-focus > .research-document-map-node { height: 100%; width: 100%; }
 .ep-map__idle-state { position: absolute; inset: 0; display: grid; place-items: center; padding: var(--qx-space-8); pointer-events: none; }
 .ep-map__idle-content { display: grid; justify-items: center; width: min(360px, 100%); gap: var(--qx-space-5); }
-.ep-map__idle-content > .research-agent-bot { width: 38px; }
 .ep-map__idle-note { text-align: center; }
 .ep-map__idle-note h2 { margin: 0 0 var(--qx-space-3); }
 .ep-map__idle-note p { color: var(--qx-color-muted); font-size: var(--qx-text-control); line-height: var(--qx-text-body--line-height); }

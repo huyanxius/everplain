@@ -1,3 +1,4 @@
+import { PageLoading } from '../../ui/PageLoading'
 import { Select } from '../../ui/Select'
 import {
   ArrowClockwiseIcon,
@@ -148,7 +149,7 @@ export function MaterialLibraryView({
     </div>
     {error ? <div className="ep-material-notice" role="alert"><WarningCircleIcon size={17} aria-hidden="true" /><span>{error}</span><button className="qx-btn qx-btn--secondary" type="button" onClick={onReload}>重新加载材料</button></div> : null}
     {notice ? <p className="ep-material-notice" role="status"><CheckCircleIcon size={17} aria-hidden="true" />{notice}</p> : null}
-    {loading ? <p className="ep-material-notice" role="status"><CircleNotchIcon className="ep-material-library__spin" size={17} aria-hidden="true" />正在加载材料</p> : null}
+    {loading ? <PageLoading message="正在加载材料" /> : null}
     {searchError ? <p className="ep-material-notice" role="alert">{searchError}</p> : null}
     {searchQuery.trim() && !searchLoading && !searchError ? <section className="ep-material-library__results" aria-label="材料检索结果">
       <p className="qx-meta">{searchResults.length ? `${searchResults.length} 处命中` : '没有找到匹配原文'}</p>
