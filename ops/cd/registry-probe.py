@@ -8,7 +8,7 @@ try:
     with urllib.request.urlopen(request,timeout=20) as r: bearer=json.load(r)['token']
     report['scope_token_http_ok']=True
     headers={'Authorization':'Bearer '+bearer,'Accept':'application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json'}
-    request=urllib.request.Request(BASE+'/v2/huyanxius/everplain-api/manifests/sha256:324a4c9460b911a5de7894ca5fb5876116383e7dafeeec54f39aa4057ea6b134',headers=headers)
+    request=urllib.request.Request(BASE+'/v2/huyanxius/everplain-api/manifests/sha256:2003dde7e2be27059e0a9bbb9c183c69f5bfb16feabbc05e09d5715f88fda0af',headers=headers)
     with urllib.request.urlopen(request,timeout=20) as r: manifest=json.load(r)
     report['manifest_http_ok']=True
     layer=max(manifest['layers'],key=lambda p:p['size'])

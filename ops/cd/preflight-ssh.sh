@@ -48,10 +48,10 @@ fi
 
 ssh "${opts[@]}" -p "$port" "$EVERPLAIN_DEPLOY_USER@$EVERPLAIN_DEPLOY_HOST" 'sudo -n python3 -' <<'PYDIAG'
 import subprocess,json,urllib.request,urllib.error,socket
-r=subprocess.run(['journalctl','-u','docker','--since','20 minutes ago','--no-pager','-n','500'],capture_output=True,text=True,timeout=15)
+r=subprocess.run(['journalctl','-u','docker','--since','2026-10-04 15:26:10 UTC','--until','2026-10-04 15:27:45 UTC','--no-pager','-n','500'],capture_output=True,text=True,timeout=15)
 # Only classifications leave the host; daemon messages may contain signed URLs.
 logs=r.stdout.lower()
-report={'docker_journal_readable':r.returncode==0}
+report={'docker_journal_readable':r.returncode==0, 'failed_run':37212500349, 'journal_nonempty':bool(logs.strip())}
 for key,terms in {
  'tls_handshake_timeout':['tls handshake timeout'],
  'connection_timeout':['i/o timeout','context deadline exceeded','client.timeout exceeded'],
@@ -59,6 +59,10 @@ for key,terms in {
  'dns_failure':['no such host','temporary failure in name resolution'],
  'registry_unauthorized':['unauthorized','authentication required'],
  'manifest_missing':['manifest unknown','manifest not found'],
+ 'registry_rate_limited':['toomanyrequests','too many requests','429 too many'],
+ 'registry_denied':['denied','403 forbidden'],
+ 'registry_server_error':['500 internal','502 bad gateway','503 service'],
+ 'certificate_verification_failed':['certificate signed by unknown authority','certificate has expired','x509:'],
  'platform_mismatch':['no matching manifest'],
  'ghcr_log_present':['ghcr.io'],
  'github_blob_log_present':['pkg-containers.githubusercontent.com'],
