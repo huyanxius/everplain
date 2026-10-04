@@ -327,7 +327,7 @@ def metadata(name):
     return json.loads(run(["docker", "inspect", name]))[0]
 
 
-def pull_registry_images(manifest, stage, report):
+def pull_registry_images(manifest, stage, report, roles=("api", "web")):
     """Use the job's temporary read token; Docker reuses local content-addressed layers."""
     token = sys.stdin.readline(8193).strip()
     require(0 < len(token) <= 8192 and not any(c.isspace() for c in token))
@@ -341,6 +341,8 @@ def pull_registry_images(manifest, stage, report):
         report["registry_authentication_succeeded"] = login.returncode == 0
         require(login.returncode == 0, "registry authentication failed")
         for role, reference in manifest["registry_images"].items():
+            if role not in roles:
+                continue
             output = run(["docker", "--config", private, "pull", "--platform", "linux/amd64",
                           reference], timeout=600, report=report, prefix=role + "_pull_")
             report[role + "_reused_layer_count"] = len(set(re.findall(
@@ -500,11 +502,12 @@ def http(url):
         return response.read(16 * 1024**2 + 1)
 
 
-def public_health(manifest, mode):
+def public_health(manifest, mode, api_revision=None):
     for _attempt in range(12):
         try:
             health = json.loads(http("https://e.qunxue.xyz/api/health?revision=" + REVISION))
-            require(health.get("status") == "ok" and health.get("release_revision") == REVISION)
+            require(health.get("status") == "ok"
+                    and health.get("release_revision") == (api_revision or REVISION))
             require(health.get("runtime_mode") == mode)
             require(
                 json.loads(http("https://e.qunxue.xyz/revision.json?revision=" + REVISION))[
@@ -635,6 +638,47 @@ class ExistingRelease:
                     time.sleep(2)
         self.record()
 
+    def activate_web_only(self, manifest, api, web, network):
+        """Replace Web while API, its configuration and its live data mount keep running."""
+        require(len(web["Mounts"]) == 1
+                and web["Mounts"][0]["Destination"] == "/etc/nginx/conf.d/default.conf")
+        require(snapshot(run, metadata) == self.baseline)
+        require(read_state(self.state_path, os.geteuid()) == self.previous_state)
+        run(["docker", "run", "--rm", "--network", network,
+             "--volumes-from", web["Id"] + ":ro", "--entrypoint", "nginx",
+             self.images["web"], "-t"])
+        stopped, renamed = False, False
+        self.report["web_only_release"] = True
+        try:
+            stopped = True
+            run(["docker", "stop", "--time", "45", NAMES["web"]])
+            run(["docker", "rename", NAMES["web"], self.old_names["web"]])
+            renamed = True
+            run(["docker", "run", "-d", "--name", NAMES["web"], "--restart", "unless-stopped",
+                 "--network", network, "--security-opt", "no-new-privileges:true",
+                 "-p", "127.0.0.1:5196:8080", "--volumes-from", self.old_names["web"] + ":ro",
+                 self.images["web"]])
+            public_health(manifest, environment(api)["EVERPLAIN_RUNTIME_MODE"], self.old_revision)
+            active_api = metadata(NAMES["api"])
+            require(active_api["Id"] == api["Id"] and active_api["State"]["Running"])
+            require(active_api["Config"] == api["Config"] and active_api["Mounts"] == api["Mounts"])
+            self.report["api_unchanged_verified"] = True
+            self.complete(manifest)
+            self.report.update(api_health_ok=True, web_health_ok=True, public_health_ok=True,
+                               deployment_succeeded=True)
+            self.record()
+            return self.report
+        except BaseException:
+            if renamed:
+                with contextlib.suppress(Exception):
+                    run(["docker", "rm", "-f", NAMES["web"]])
+                run(["docker", "rename", self.old_names["web"], NAMES["web"]])
+            if stopped:
+                run(["docker", "start", NAMES["web"]])
+                self.report["old_service_restored"] = True
+            self.record()
+            raise
+
     def execute(self):
         api, web = metadata(NAMES["api"]), metadata(NAMES["web"])
         source, network = existing_layout(api, web)
@@ -702,6 +746,8 @@ class ExistingRelease:
         self.report["live_overlay_guard_verified"] = True
         self.report["artifact_verified"] = True
         registry = "registry_images" in manifest
+        web_only = (registry and manifest["runtime_identity"]["api"] == self.baseline["api"]
+                    and env == old_env)
         image_bytes = (sum(manifest["image_sizes"].values()) if registry else sum(
             (release / "images" / (role + ".tar")).stat().st_size for role in ("api", "web")
         ))
@@ -714,7 +760,10 @@ class ExistingRelease:
         require(shutil.disk_usage(docker_root).free > remaining_budget)
         self.report["docker_load_budget_verified"] = True
         if registry:
-            self.images = pull_registry_images(manifest, self.stage, self.report)
+            self.images = pull_registry_images(manifest, self.stage, self.report,
+                                               ("web",) if web_only else ("api", "web"))
+            if web_only:
+                self.images["api"] = api["Image"]
         for role, image in (() if registry else (("api", API_IMAGE), ("web", WEB_IMAGE))):
             archive_path = release / "images" / (role + ".tar")
             archive_config = inspect_image_archive(archive_path, image, self.report, role)
@@ -729,6 +778,8 @@ class ExistingRelease:
             require(info["Architecture"] == "amd64" and info["Os"] == "linux")
             require(info["Config"]["Labels"].get("org.opencontainers.image.revision") == REVISION)
             self.report[role + "_image_verified"] = True
+        if web_only:
+            return self.activate_web_only(manifest, api, web, network)
         env.update(EVERPLAIN_RELEASE_REVISION=REVISION, EVERPLAIN_MIGRATIONS_MANAGED="1")
         atomic_bytes(
             release / "runtime.env", "".join(k + "=" + v + "\n" for k, v in env.items()).encode()
