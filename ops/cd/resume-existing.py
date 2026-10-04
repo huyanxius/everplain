@@ -100,7 +100,9 @@ with Path("/run/lock/everplain-release.lock").open("a") as lock:
     policy = json.loads((release / 'ops/cd/policy.json').read_text())
     expected = helper.configure_billing_policy(old, policy, {})
     expected.update(EVERPLAIN_RELEASE_REVISION=REVISION, EVERPLAIN_MIGRATIONS_MANAGED='1')
-    assert all(env.get(key) == value for key, value in expected.items())
+    mismatches = sorted(key for key, value in expected.items() if env.get(key) != value)
+    print(json.dumps({'configuration_mismatch_keys': mismatches}))
+    assert not mismatches
     image = json.loads(run(['docker', 'image', 'inspect', api['Image']]))[0]
     image_env = dict(item.split('=', 1) for item in image['Config']['Env'])
     added = set(env) - set(expected)
