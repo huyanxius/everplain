@@ -20,6 +20,7 @@ def index_error_message(error):
     messages = {
         "not_configured": "语义索引服务尚未配置，请联系站点维护者。",
         "authentication": "语义索引服务拒绝授权，请联系站点维护者检查服务凭据与权限。",
+        "access_denied": "语义索引请求被服务拒绝（HTTP 403），请联系站点维护者检查访问策略。",
         "endpoint_unavailable": "语义索引接口或模型不可用，请联系站点维护者检查配置。",
         "rate_limited": "语义索引服务限流，请稍后重试。",
         "request_rejected": "语义索引请求被服务拒绝，请联系站点维护者检查模型与请求配置。",
@@ -79,7 +80,9 @@ class OpenAICompatibleEmbeddingProvider:
         except HTTPError as error:
             code = (
                 "authentication"
-                if error.code in (401, 403)
+                if error.code == 401
+                else "access_denied"
+                if error.code == 403
                 else "endpoint_unavailable"
                 if error.code == 404
                 else "rate_limited"

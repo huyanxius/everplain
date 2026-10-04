@@ -158,7 +158,7 @@ def test_embedding_provider_rejects_unusable_provider_payloads(
     "status,code",
     [
         (401, "authentication"),
-        (403, "authentication"),
+        (403, "access_denied"),
         (404, "endpoint_unavailable"),
         (429, "rate_limited"),
         (400, "request_rejected"),
