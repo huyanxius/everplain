@@ -26,6 +26,17 @@ spec.loader.exec_module(release)
 
 
 class RegistryReleaseTests(unittest.TestCase):
+    def test_public_http_identifies_the_release_client(self):
+        url = "https://e.qunxue.xyz/api/health"
+        with patch.object(release.urllib.request, "build_opener") as factory:
+            response = factory.return_value.open.return_value.__enter__.return_value
+            response.url, response.status = url, 200
+            response.read.return_value = b"{}"
+            self.assertEqual(release.http(url), b"{}")
+            request = factory.return_value.open.call_args.args[0]
+            self.assertEqual(request.full_url, url)
+            self.assertEqual(request.get_header("User-agent"), "Everplain-Release/1.0")
+
     def test_registry_identity_accepts_config_or_pinned_manifest_and_rejects_unbound_images(self):
         expected = "sha256:" + "b" * 64
         digest = "sha256:" + "a" * 64
@@ -396,7 +407,16 @@ class ExistingReleaseTests(unittest.TestCase):
                 self.updater = release.ExistingRelease(self.archive, self.root / "updates")
                 with self.assertRaises(RuntimeError):
                     self.execute()
-                self.assertTrue(self.updater.report["forward_stop_required"])
+                if failure == "public-health":
+                    self.assertTrue(self.updater.report["candidate_kept_running"])
+                    self.assertFalse(self.updater.report["forward_stop_required"])
+                    api_start = next(i for i, call in enumerate(self.calls)
+                                     if call[:2] == ["docker", "run"]
+                                     and "everplain-api" in call)
+                    self.assertFalse(any(call[:2] == ["docker", "stop"]
+                                         for call in self.calls[api_start + 1:]))
+                else:
+                    self.assertTrue(self.updater.report["forward_stop_required"])
                 self.assertFalse(self.updater.report["old_service_restored"])
                 self.assertFalse(any(call[:2] == ["docker", "start"] for call in self.calls))
                 self.assertEqual(
