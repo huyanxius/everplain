@@ -17,6 +17,7 @@ if [[ "$publish" == true ]]; then
   for role in api web; do
     docker pull "ghcr.io/huyanxius/everplain-$role:build-cache" >/dev/null 2>&1 || true
   done
+  docker pull ghcr.io/huyanxius/everplain-web:builder-cache >/dev/null 2>&1 || true
 fi
 web_container=""
 cleanup() {
@@ -37,10 +38,20 @@ docker build --platform linux/amd64 -f ops/api.Dockerfile \
   --build-arg "PYTHON_IMAGE=$python_image" \
   --label "org.opencontainers.image.revision=$GITHUB_SHA" \
   -t "everplain-api:$GITHUB_SHA" .
-docker build --platform linux/amd64 -f ops/web.Dockerfile \
-  --cache-from ghcr.io/huyanxius/everplain-web:build-cache --build-arg BUILDKIT_INLINE_CACHE=1 \
-  --build-arg "NODE_IMAGE=$node_image" --build-arg "NGINX_IMAGE=$nginx_image" \
-  --build-arg "RELEASE_REVISION=$GITHUB_SHA" \
+web_build=(--platform linux/amd64 -f ops/web.Dockerfile
+  --cache-from ghcr.io/huyanxius/everplain-web:build-cache
+  --cache-from ghcr.io/huyanxius/everplain-web:builder-cache
+  --build-arg BUILDKIT_INLINE_CACHE=1
+  --build-arg "NODE_IMAGE=$node_image" --build-arg "NGINX_IMAGE=$nginx_image"
+  --build-arg "RELEASE_REVISION=$GITHUB_SHA")
+if [[ "$publish" == true ]]; then
+  # Export the builder as its own image: final-stage inline cache does not retain
+  # the npm/asset layers. This trusted main-only cache is never a release artifact.
+  docker build "${web_build[@]}" --target build -t everplain-web-builder:cache .
+  docker tag everplain-web-builder:cache ghcr.io/huyanxius/everplain-web:builder-cache
+  docker push ghcr.io/huyanxius/everplain-web:builder-cache || echo 'Builder cache unavailable; release continues.' >&2
+fi
+docker build "${web_build[@]}" \
   --label "org.opencontainers.image.revision=$GITHUB_SHA" \
   -t "everplain-web:$GITHUB_SHA" .
 if [[ "$publish" == true ]]; then
@@ -79,3 +90,4 @@ python ops/cd/release_identity.py probe-image "$api_id" > "$prepared/api-identit
 python ops/cd/artifact.py "$GITHUB_SHA" --prepared "$prepared" --output dist/release \
   --api-image "$api_id" --web-image "$web_id" \
   --python-base "$python_image" --node-base "$node_image" --nginx-base "$nginx_image"
+
