@@ -117,6 +117,40 @@ class FilesystemSafetyTests(unittest.TestCase):
         deploy.check_compatible(old, new, {"rollback_compatible_migration_trees": ["a" * 64]})
         deploy.check_compatible(old, old, {})
 
+    def test_reviewed_migration_transition_is_exact_and_not_a_source_wildcard(self):
+        old, new = {"migration_tree": "a" * 64}, {"migration_tree": "b" * 64}
+        policy = {"reviewed_migration_transitions": [{"from": "a" * 64, "to": "b" * 64}]}
+        deploy.check_compatible(old, new, policy)
+        for previous, candidate in ((new, old), (old, {"migration_tree": "c" * 64}),
+                                    ({"migration_tree": "c" * 64}, new)):
+            with (
+                self.subTest(previous=previous, candidate=candidate),
+                self.assertRaisesRegex(ValueError, "rollback compatibility"),
+            ):
+                deploy.check_compatible(previous, candidate, policy)
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            deploy.check_compatible(old, new, {
+                "reviewed_migration_transitions": [{"from": "a" * 64, "to": "*"}],
+            })
+
+    def test_shipped_review_is_bound_to_current_cache_migration_tree(self):
+        policy = json.loads((ROOT / "ops/cd/policy.json").read_text())
+        storage = {
+            "migrations/" + p.relative_to(ROOT / "backend/migrations").as_posix():
+            hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted((ROOT / "backend/migrations").rglob("*.py"))
+        }
+        storage["schema/sqlite_index.py"] = hashlib.sha256(
+            (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
+        ).hexdigest()
+        new_hash = hashlib.sha256(json.dumps(storage, sort_keys=True).encode()).hexdigest()
+        old_storage = {k: v for k, v in storage.items()
+                       if k != "migrations/versions/20261004_0550_conversation_context.py"}
+        old_hash = hashlib.sha256(json.dumps(old_storage, sort_keys=True).encode()).hexdigest()
+        self.assertEqual(policy["rollback_compatible_migration_trees"], [])
+        self.assertIn({"from": old_hash, "to": new_hash}, policy["reviewed_migration_transitions"])
+        deploy.check_compatible({"migration_tree": old_hash}, {"migration_tree": new_hash}, policy)
+
 
 class ArtifactTests(unittest.TestCase):
     def test_hash_mismatch_never_creates_destination(self):

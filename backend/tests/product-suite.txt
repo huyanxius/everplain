@@ -103,3 +103,5 @@ tests/test_agent_time_context.py
 tests/test_model_streaming.py
 tests/billing/test_buffered_streaming.py
 tests/test_conversation_context.py
+
+tests/test_conversation_context_migration.py
