@@ -610,7 +610,7 @@ export type AgentModelChoiceResponse = {
     /**
      * Default Reasoning Effort
      */
-    default_reasoning_effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+    default_reasoning_effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
     /**
      * Label
      */

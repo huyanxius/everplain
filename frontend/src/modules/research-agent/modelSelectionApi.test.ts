@@ -59,3 +59,14 @@ describe('per-turn model selection API', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 })
+
+
+it('projects no-effort catalog entries and preserves explicit null on the wire', async () => {
+  listModels.mockResolvedValue({ data: { runtime_mode: 'base', items: [{ model_id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', reasoning_efforts: [], default_reasoning_effort: null }] } })
+  expect((await getAgentModelCatalog()).models[0]).toEqual({ id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', reasoningEfforts: [], defaultReasoningEffort: null })
+  const fetch = vi.fn(async () => terminal())
+  vi.stubGlobal('fetch', fetch)
+  await streamAgentTurn({ message: 'synthetic', model_id: 'gemini-3.5-flash', reasoning_effort: null, idempotencyKey: 'no-effort' }, () => undefined)
+  const body = JSON.parse((fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
+  expect(body).toMatchObject({ model_id: 'gemini-3.5-flash', reasoning_effort: null })
+})

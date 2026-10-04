@@ -55,3 +55,17 @@ describe('model selection contract', () => {
     expect(selectModel('bad', DEFAULT_MODEL_SELECTION, [{ id: 'bad', label: 'Bad', reasoningEfforts: ['low'], defaultReasoningEffort: 'high' }])).toBeNull()
   })
 })
+
+
+it('switches between reasoning and no-effort models without inventing an effort', () => {
+  const gemini: ModelDefinition = { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', reasoningEfforts: [], defaultReasoningEffort: null }
+  const catalog = [...MODEL_CATALOG, gemini]
+  const selected: ModelSelection = { modelId: gemini.id, reasoningEffort: null }
+  expect(selectModel(gemini.id, DEFAULT_MODEL_SELECTION, catalog)).toEqual(selected)
+  expect(isModelSelectionValid(selected, catalog)).toBe(true)
+  expect(toModelSelectionRequest(selected, catalog)).toEqual({ model_id: gemini.id, reasoning_effort: null })
+  expect(selectEffortStep(0, selected, catalog)).toBeNull()
+  expect(isModelSelectionValid({ ...selected, reasoningEffort: 'none' }, catalog)).toBe(false)
+  expect(selectModel('gpt-6-luna', selected, catalog)).toEqual(DEFAULT_MODEL_SELECTION)
+  expect(selectModel(gemini.id, selected, [{ ...gemini, defaultReasoningEffort: 'medium' }])).toBeNull()
+})

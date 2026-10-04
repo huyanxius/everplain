@@ -96,7 +96,7 @@ export type AgentModelCatalog = {
     id: string
     label: string
     reasoningEfforts: readonly AgentReasoningEffort[]
-    defaultReasoningEffort: AgentReasoningEffort
+    defaultReasoningEffort: AgentReasoningEffort | null
   }[]
 }
 

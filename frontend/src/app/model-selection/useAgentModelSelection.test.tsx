@@ -105,3 +105,31 @@ describe('owner-scoped live model catalog', () => {
     expect(loadCatalog).toHaveBeenCalledTimes(2)
   })
 })
+
+
+it('persists no-effort choices per owner against the live two-model catalog', async () => {
+  const gemini = { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', reasoningEfforts: [], defaultReasoningEffort: null }
+  loadCatalog.mockResolvedValue({ ...catalog, models: [...catalog.models, gemini] })
+  const first = renderHook(() => useAgentModelSelection('owner'))
+  await waitFor(() => expect(first.result.current.status).toBe('ready'))
+  expect(first.result.current.selection?.modelId).toBe('gpt-6-luna')
+  act(() => first.result.current.onChange({ modelId: gemini.id, reasoningEffort: null }))
+  expect(first.result.current.requestFields()).toEqual({ model_id: gemini.id, reasoning_effort: null })
+  first.unmount()
+  const next = renderHook(({ owner }) => useAgentModelSelection(owner), { initialProps: { owner: 'owner' } })
+  await waitFor(() => expect(next.result.current.status).toBe('ready'))
+  expect(next.result.current.selection).toEqual({ modelId: gemini.id, reasoningEffort: null })
+  next.rerender({ owner: 'other-owner' })
+  await waitFor(() => expect(next.result.current.status).toBe('ready'))
+  expect(next.result.current.selection?.modelId).toBe('gpt-6-luna')
+})
+
+it.each([
+  { reasoningEfforts: [], defaultReasoningEffort: 'medium' },
+  { reasoningEfforts: ['medium'], defaultReasoningEffort: null },
+])('rejects incompatible no-effort defaults: %j', async incompatible => {
+  loadCatalog.mockResolvedValue({ ...catalog, models: [{ ...catalog.models[0], ...incompatible }] })
+  const { result } = renderHook(() => useAgentModelSelection('owner'))
+  await waitFor(() => expect(result.current.status).toBe('error'))
+  expect(result.current.requestFields()).toEqual({})
+})

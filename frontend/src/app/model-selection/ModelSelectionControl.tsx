@@ -125,9 +125,9 @@ export function ModelSelectionControl({ value, onChange, disabled = false, catal
   const model = findSelectedModel(value, catalog)
   const valid = isModelSelectionValid(value, catalog)
   const steps = model?.reasoningEfforts ?? []
-  const step = Math.max(steps.indexOf(value.reasoningEffort), 0)
+  const step = value.reasoningEffort === null ? 0 : Math.max(steps.indexOf(value.reasoningEffort), 0)
   const labelFor = (effort: ReasoningEffort) => text(...effortLabels[effort])
-  const currentLabel = valid ? labelFor(value.reasoningEffort) : text('不可用', 'Unavailable')
+  const currentLabel = valid && value.reasoningEffort !== null ? labelFor(value.reasoningEffort) : text('不可用', 'Unavailable')
   const chooseModel = (modelId: string) => {
     if (disabled) return
     const next = selectModel(modelId, value, catalog)
@@ -159,7 +159,7 @@ export function ModelSelectionControl({ value, onChange, disabled = false, catal
         </button>)}
       </div>
     </div>
-    <div className="model-selection__effort">
+    {(!model || steps.length > 0) && <div className="model-selection__effort">
       <div className="model-selection__effort-heading">
         <p id={`${id}-label`} className="model-selection__title">{text('思考强度', 'Reasoning effort')}</p>
         <output htmlFor={`${id}-effort`}>{currentLabel}</output>
@@ -179,7 +179,7 @@ export function ModelSelectionControl({ value, onChange, disabled = false, catal
         }}
       />
       <p id={`${id}-hint`} className="model-selection__hint">{text('越高想得越久，适合需要推理的问题', 'Higher effort takes longer and suits questions that need reasoning.')}</p>
-    </div>
+    </div>}
     {!valid && <p id={`${id}-error`} className="model-selection__error" role="alert">{text('请选择可用的模型和强度。', 'Choose an available model and reasoning effort.')}</p>}
   </div>
 }

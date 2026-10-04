@@ -332,7 +332,7 @@ async function streamAgentTurnOnce(
     },
     body: JSON.stringify({
       ...(payload.model_id == null ? {} : { model_id: payload.model_id }),
-      ...(payload.reasoning_effort == null ? {} : { reasoning_effort: payload.reasoning_effort }),
+      ...(payload.reasoning_effort === undefined ? {} : { reasoning_effort: payload.reasoning_effort }),
       conversation_id: payload.conversation_id,
       message: payload.message,
       mode: payload.mode ?? 'standard',

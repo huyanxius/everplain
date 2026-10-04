@@ -87,6 +87,42 @@ class ModelFallbackSettings(BaseModel):
         return _normalize_model_name(value)
 
 
+class AgentProviderSettings(BaseModel):
+    """Server-only provider registry. Credentials are referenced, never serialized to clients."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    base_url: str
+    protocol: Literal["chat_completions", "responses"]
+    api_key_env: str = Field(pattern=r"^EVERPLAIN_[A-Z0-9_]+_API_KEY$")
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, value: str) -> str:
+        return _normalize_model_base_url(value)
+
+
+class AgentSelectableModelSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    model_id: str = Field(min_length=1, max_length=120)
+    label: str = Field(min_length=1, max_length=120)
+    provider: str = Field(min_length=1, max_length=80)
+    model: str = Field(min_length=1, max_length=120)
+    reasoning_efforts: tuple[
+        Literal["none", "low", "medium", "high", "xhigh", "max"], ...
+    ] = ()
+    default_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] | None = None
+    capabilities: tuple[Literal["chat", "tools", "vision", "reasoning"], ...] = ("chat",)
+
+    @model_validator(mode="after")
+    def validate_reasoning(self):
+        if self.reasoning_efforts:
+            if self.default_reasoning_effort not in self.reasoning_efforts:
+                raise ValueError("reasoning default must be an explicitly supported effort")
+        elif self.default_reasoning_effort is not None:
+            raise ValueError("models without reasoning controls must omit the reasoning default")
+        return self
+
+
 class TavilyPriceSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -246,6 +282,10 @@ class Settings(BaseSettings):
     agent_model_supported_efforts: tuple[
         Literal["none", "low", "medium", "high", "xhigh", "max"], ...
     ] = ()
+    # Additional opt-in routes never replace the legacy/default model endpoint.
+    agent_providers: dict[str, AgentProviderSettings] = Field(default_factory=dict)
+    agent_selectable_models: list[AgentSelectableModelSettings] = Field(default_factory=list)
+    unigate_api_key: SecretStr | None = None
     model_timeout_seconds: float = Field(default=30, gt=0)
     model_max_input_tokens: int = Field(default=32000, gt=0)
     model_max_output_tokens: int = Field(default=3000, gt=0)

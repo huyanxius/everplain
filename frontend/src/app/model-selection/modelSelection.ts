@@ -5,12 +5,12 @@ export type ModelDefinition = {
   readonly id: string
   readonly label: string
   readonly reasoningEfforts: readonly ReasoningEffort[]
-  readonly defaultReasoningEffort: ReasoningEffort
+  readonly defaultReasoningEffort: ReasoningEffort | null
 }
 
 export type ModelSelection = {
   readonly modelId: string
-  readonly reasoningEffort: ReasoningEffort
+  readonly reasoningEffort: ReasoningEffort | null
 }
 
 /**
@@ -45,7 +45,11 @@ export function isModelSelectionValid(
   selection: ModelSelection,
   catalog: readonly ModelDefinition[] = MODEL_CATALOG,
 ): boolean {
-  return findSelectedModel(selection, catalog)?.reasoningEfforts.includes(selection.reasoningEffort) ?? false
+  const model = findSelectedModel(selection, catalog)
+  if (!model) return false
+  return model.reasoningEfforts.length === 0
+    ? model.defaultReasoningEffort === null && selection.reasoningEffort === null
+    : selection.reasoningEffort !== null && model.reasoningEfforts.includes(selection.reasoningEffort)
 }
 
 /** Preserve a valid effort across model changes; otherwise use that model's default. */
@@ -55,10 +59,10 @@ export function selectModel(
   catalog: readonly ModelDefinition[] = MODEL_CATALOG,
 ): ModelSelection | null {
   const model = catalog.find(candidate => candidate.id === modelId)
-  if (!model || !model.reasoningEfforts.includes(model.defaultReasoningEffort)) return null
+  if (!model || !isModelSelectionValid({ modelId, reasoningEffort: model.defaultReasoningEffort }, catalog)) return null
   return {
     modelId: model.id,
-    reasoningEffort: model.reasoningEfforts.includes(previous.reasoningEffort)
+    reasoningEffort: previous.reasoningEffort !== null && model.reasoningEfforts.includes(previous.reasoningEffort)
       ? previous.reasoningEffort
       : model.defaultReasoningEffort,
   }

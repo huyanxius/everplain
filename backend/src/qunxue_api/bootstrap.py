@@ -471,7 +471,10 @@ def create_app(
     app.state.model_endpoints = model_endpoints
     app.state.model_router = model_router
     app.state.model_attempt_recorder = model_attempt_recorder
-    from qunxue_api.adapters.research_agent.model_selection import selectable_agent_model
+    from qunxue_api.adapters.research_agent.model_selection import (
+        registered_agent_models,
+        selectable_agent_model,
+    )
     from qunxue_api.modules.agent_conversation import MOCK_AGENT_MODEL_CHOICES
 
     selected_choices, selected_endpoint = selectable_agent_model(
@@ -480,10 +483,11 @@ def create_app(
         supported_efforts=resolved_settings.agent_model_supported_efforts,
         default_effort=resolved_settings.model_reasoning_effort,
     )
+    additional_choices, additional_routes = registered_agent_models(resolved_settings)
     app.state.agent_model_choices = (
         MOCK_AGENT_MODEL_CHOICES
         if _effective_model_runtime_mode(resolved_settings) == "mock"
-        else selected_choices
+        else selected_choices + additional_choices
     )
     selected_agent_router = (
         ModelRouteExecutor(
@@ -1172,20 +1176,31 @@ def create_app(
             def runner_for_selection(selection):
                 if not use_real_agent:
                     return runner
-                if selected_endpoint is None or selected_agent_router is None:
+                route_endpoint, route_protocol = additional_routes.get(
+                    selection.model_id, (selected_endpoint, "responses"),
+                )
+                route_executor = (
+                    ModelRouteExecutor(
+                        endpoints=(route_endpoint,), recorder=model_attempt_recorder,
+                        max_retries=resolved_settings.model_max_retries,
+                        max_input_tokens=resolved_settings.model_max_input_tokens,
+                        max_output_tokens=resolved_settings.model_max_output_tokens,
+                    ) if selection.model_id in additional_routes else selected_agent_router
+                )
+                if route_endpoint is None or route_executor is None:
                     from qunxue_api.modules.agent_conversation import (
                         AgentModelSelectionUnavailable,
                     )
                     raise AgentModelSelectionUnavailable("当前服务尚未接通所选模型路由。")
                 return PydanticAIKnowledgeRunner(
-                    base_url=selected_endpoint.base_url,
-                    api_key=selected_endpoint.api_key,
-                    model=selected_endpoint.model,
-                    timeout_seconds=selected_endpoint.timeout_seconds,
-                    extra_headers=selected_endpoint.extra_headers,
+                    base_url=route_endpoint.base_url,
+                    api_key=route_endpoint.api_key,
+                    model=route_endpoint.model,
+                    timeout_seconds=route_endpoint.timeout_seconds,
+                    extra_headers=route_endpoint.extra_headers,
                     reasoning_effort=selection.reasoning_effort,
-                    protocol="responses",
-                    route_executor=selected_agent_router,
+                    protocol=route_protocol,
+                    route_executor=route_executor,
                     require_billing=True,
                 )
 

@@ -20,7 +20,7 @@ const preferenceKey = (owner: string) => `everplain.agent-model-selection.v1.${e
 function savedSelection(owner: string, catalog: readonly ModelDefinition[]): ModelSelection | null {
   try {
     const value = JSON.parse(localStorage.getItem(preferenceKey(owner)) ?? 'null')
-    return value && typeof value.modelId === 'string' && typeof value.reasoningEffort === 'string'
+    return value && typeof value.modelId === 'string' && (typeof value.reasoningEffort === 'string' || value.reasoningEffort === null)
       && isModelSelectionValid(value, catalog)
       ? { modelId: value.modelId, reasoningEffort: value.reasoningEffort } : null
   } catch { return null }
@@ -31,9 +31,9 @@ function validateCatalog(value: AgentModelCatalog) {
   const ids = new Set<string>()
   for (const model of value.models) {
     if (!model.id || !model.label || ids.has(model.id) || !Array.isArray(model.reasoningEfforts)
-      || model.reasoningEfforts.length === 0 || new Set(model.reasoningEfforts).size !== model.reasoningEfforts.length
+      || new Set(model.reasoningEfforts).size !== model.reasoningEfforts.length
       || !model.reasoningEfforts.every(effort => knownEfforts.has(effort))
-      || !model.reasoningEfforts.includes(model.defaultReasoningEffort)) throw new Error('Invalid model catalog')
+      || !isModelSelectionValid({ modelId: model.id, reasoningEffort: model.defaultReasoningEffort }, [model])) throw new Error('Invalid model catalog')
     ids.add(model.id)
   }
   return value

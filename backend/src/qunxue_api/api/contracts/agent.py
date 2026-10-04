@@ -153,7 +153,7 @@ class AgentModelChoiceResponse(BaseModel):
     model_id: str
     label: str
     reasoning_efforts: list[Literal["none", "low", "medium", "high", "xhigh", "max"]]
-    default_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"]
+    default_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] | None
 
 
 class AgentModelCatalogResponse(BaseModel):
