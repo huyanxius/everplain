@@ -71,3 +71,6 @@ for name,host in [('registry','ghcr.io'),('blob','pkg-containers.githubuserconte
  except Exception: report[name+'_https_reachable']=False
 print(json.dumps(report))
 PYDIAG
+
+payload="$(base64 -w0 "$root/ops/cd/registry-probe.py")"
+printf '%s\n' "$EVERPLAIN_REGISTRY_TOKEN" | ssh "${opts[@]}" -p "$port" "$EVERPLAIN_DEPLOY_USER@$EVERPLAIN_DEPLOY_HOST" "sudo -n python3 -c 'import base64;exec(base64.b64decode(\"$payload\"))'"
