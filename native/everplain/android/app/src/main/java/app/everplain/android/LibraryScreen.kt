@@ -336,6 +336,7 @@ internal fun LibraryScreen(controller: LibraryController, origin: String, openGr
                 LibraryMaterialCard(
                     material,
                     controller,
+                    librarySourceLabel(s, material),
                     s.selected == null,
                     s.busy || s.unresolved,
                     open = {
@@ -399,6 +400,7 @@ internal fun LibraryScreen(controller: LibraryController, origin: String, openGr
 private fun LibraryMaterialCard(
     material: LibraryMaterial,
     controller: LibraryController,
+    sourceLabel: String,
     showLibrary: Boolean,
     busy: Boolean,
     open: () -> Unit,
@@ -526,8 +528,7 @@ private fun LibraryMaterialCard(
                 Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         Text(
-            librarySourceLabel(controller.state.value, material) +
-                (d.knowledge?.let { " · ${it.topics.size} 个知识点" } ?: ""),
+            sourceLabel + (d.knowledge?.let { " · ${it.topics.size} 个知识点" } ?: ""),
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
