@@ -20,6 +20,7 @@ def index_error_message(error):
     messages = {
         "not_configured": "语义索引服务尚未配置，请联系站点维护者。",
         "authentication": "语义索引服务拒绝授权，请联系站点维护者检查服务凭据与权限。",
+        "quota_exhausted": "上游向量服务额度不足，语义索引暂不可用，请联系站点维护者处理。",
         "access_denied": "语义索引请求被服务拒绝（HTTP 403），请联系站点维护者检查访问策略。",
         "endpoint_unavailable": "语义索引接口或模型不可用，请联系站点维护者检查配置。",
         "rate_limited": "语义索引服务限流，请稍后重试。",
@@ -81,6 +82,8 @@ class OpenAICompatibleEmbeddingProvider:
             code = (
                 "authentication"
                 if error.code == 401
+                else "quota_exhausted"
+                if error.code == 402
                 else "access_denied"
                 if error.code == 403
                 else "endpoint_unavailable"

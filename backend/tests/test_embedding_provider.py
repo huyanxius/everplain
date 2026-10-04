@@ -158,6 +158,7 @@ def test_embedding_provider_rejects_unusable_provider_payloads(
     "status,code",
     [
         (401, "authentication"),
+        (402, "quota_exhausted"),
         (403, "access_denied"),
         (404, "endpoint_unavailable"),
         (429, "rate_limited"),
@@ -169,7 +170,10 @@ def test_embedding_provider_rejects_unusable_provider_payloads(
 def test_embedding_http_errors_have_safe_codes(monkeypatch, status, code):
     from urllib.error import HTTPError
 
+    calls = []
+
     def fail(*args, **kwargs):
+        calls.append(1)
         raise HTTPError("https://private.invalid/secret", status, "private-provider-key", {}, None)
 
     monkeypatch.setattr(embedding, "urlopen", fail)
@@ -180,6 +184,7 @@ def test_embedding_http_errors_have_safe_codes(monkeypatch, status, code):
         provider.embed_documents(["synthetic fixture"])
     assert caught.value.code == code
     assert caught.value.status_code == status
+    assert len(calls) == 1  # In particular, billing failures are never retried automatically.
     assert "private" not in str(caught.value)
     assert "secret" not in embedding.index_error_message(caught.value)
 

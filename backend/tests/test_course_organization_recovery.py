@@ -288,6 +288,7 @@ def test_bounded_parallel_batches_save_out_of_order_and_merge_in_source_order():
     "code,expected",
     [
         ("authentication", "拒绝授权"),
+        ("quota_exhausted", "上游向量服务额度不足"),
         ("timeout", "响应超时"),
         ("invalid_response", "无效向量"),
         ("not_configured", "尚未配置"),
@@ -335,3 +336,4 @@ def test_index_failure_preserves_body_and_reports_only_safe_reason(
         assert row.job_token is None
     assert any(f"code={code}" in record for record in records)
     assert all("private-provider-secret" not in record for record in records)
+    assert worker.run_once() is False  # A failed stage requires an explicit retry.

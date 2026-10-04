@@ -40,6 +40,20 @@ def test_article_preserves_main_body_and_links_without_navigation():
     assert "Pricing" not in text
 
 
+def test_short_chinese_definition_is_preserved_without_a_length_gate():
+    definition = (
+        "兼收并蓄：把不同内容、不同性质的东西都吸收进来。"
+        "形容能包容不同意见和学术观点，取其所长，互相补充。"
+        "例句：学术研究应当兼收并蓄。"
+    )
+    assert len(definition) == 63
+    text = fetcher.extract_bookmark(
+        "<html><head><title>兼收并蓄</title></head><body><article>"
+        f"<h1>兼收并蓄</h1><p>{definition}</p></article></body></html>"
+    )
+    assert definition in text
+
+
 def fake_web(monkeypatch, handler):
     client = httpx.Client
     monkeypatch.setattr(
