@@ -102,6 +102,28 @@ class ResearchDocumentControllerTest {
     }
 
     @Test
+    fun `empty or excessive sections stay local without autosave writes`() = runTest {
+        val api = DocumentApi()
+        val c =
+            ResearchDocumentController(api, this, MemoryStore(), "owner", "task", "framework") {}
+        c.load()
+        advanceUntilIdle()
+        for (content in listOf("", "文".repeat(100001))) {
+            c.edit("question", content)
+            advanceUntilIdle()
+            assertTrue(api.writes.isEmpty())
+            assertEquals(content, c.state.value.draft!!.sections.single().content)
+            assertTrue(c.state.value.dirty)
+            assertNotNull(c.state.value.error)
+        }
+        c.edit("question", "恢复为有效正文")
+        advanceUntilIdle()
+        assertEquals(1, api.writes.size)
+        assertFalse(c.state.value.dirty)
+        c.close()
+    }
+
+    @Test
     fun `version conflict keeps exact draft and requires explicit rebase`() = runTest {
         val api = DocumentApi()
         val c =

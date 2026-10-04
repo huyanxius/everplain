@@ -435,6 +435,14 @@ internal class ResearchDocumentController(
         val s = state.value
         val d = s.draft ?: return
         if (!s.dirty || s.unknown || s.conflict || s.document?.documentId != d.documentId) return
+        if (
+            d.sections.any {
+                it.content.isEmpty() || it.content.codePointCount(0, it.content.length) > 100000
+            }
+        ) {
+            update { it.copy(error = "每节正文需要 1–100000 个字符。当前草稿仍然保留。") }
+            return
+        }
         execute(
             DocumentIntent(
                 "save",
@@ -496,14 +504,6 @@ internal class ResearchDocumentController(
                 s.versions.none { it.documentId == p.documentId && it.version == version }
         )
             return
-        if (
-            d.sections.any {
-                it.content.isEmpty() || it.content.codePointCount(0, it.content.length) > 100000
-            }
-        ) {
-            update { it.copy(error = "每节正文需要 1–100000 个字符。当前草稿仍然保留。") }
-            return
-        }
         execute(
             DocumentIntent(
                 "restore",
