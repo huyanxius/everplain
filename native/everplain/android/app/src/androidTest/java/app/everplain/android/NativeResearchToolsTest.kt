@@ -130,6 +130,12 @@ class NativeResearchToolsTest {
                 }
                 bitmap.recycle()
             }
+            fun scrollToText(label: String): SemanticsNodeInteraction {
+                // Lazy rows outside the viewport have no semantics node until the list composes
+                // them.
+                compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(label))
+                return compose.onNodeWithText(label).performScrollTo()
+            }
             compose.waitUntil(30000) { !method.state.value.loading }
             assertNull(method.state.value.error)
             compose.onNodeWithText("方法设计").assertIsDisplayed()
@@ -137,10 +143,10 @@ class NativeResearchToolsTest {
                 .onNodeWithContentDescription("方法理由")
                 .performScrollTo()
                 .performTextReplacement("合成研究方法理由")
-            compose.onNodeWithText("保存新版本").performScrollTo().performClick()
+            scrollToText("保存新版本").performClick()
             compose.waitUntil(30000) { api.methodWrites == 1 && !method.state.value.busy }
             assertEquals("合成研究方法理由", method.state.value.plan!!.rationale)
-            compose.onNodeWithText("方法设计").performScrollTo()
+            scrollToText("方法设计")
             capture("method")
 
             compose.onNodeWithText("分析", useUnmergedTree = true).performClick()
@@ -152,10 +158,10 @@ class NativeResearchToolsTest {
                 .onNodeWithContentDescription("备忘内容")
                 .performScrollTo()
                 .performTextInput("这是一份合成分析备忘，仅用于原生输入和保存验收。")
-            compose.onNodeWithText("保存备忘").performScrollTo().performClick()
+            scrollToText("保存备忘").performClick()
             compose.waitUntil(30000) { api.memoWrites == 1 && !analysis.state.value.busy }
             assertEquals("观察与判断", analysis.state.value.snapshot!!.memos.single().title)
-            compose.onNodeWithText("研究分析").performScrollTo()
+            scrollToText("研究分析")
             capture("analysis")
 
             compose.onNodeWithText("理论", useUnmergedTree = true).performClick()
@@ -170,7 +176,7 @@ class NativeResearchToolsTest {
             compose.waitUntil(30000) { !archive.state.value.loading }
             assertNull(archive.state.value.error)
             compose.onNodeWithText("导出研究归档").assertIsDisplayed()
-            compose.onNodeWithText("还没有项目交换记录。").performScrollTo().assertIsDisplayed()
+            scrollToText("还没有项目交换记录。").assertIsDisplayed()
             capture("archive")
             compose.onNodeWithText("编辑", useUnmergedTree = true).performClick()
             compose.onNodeWithContentDescription("研究文档正文").performClick().performTextInput("补充判断")
