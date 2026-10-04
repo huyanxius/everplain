@@ -65,7 +65,7 @@ import { Callout, Highlight, Image, Search, Table, TableCell, TableHeader, Table
  */
 
 export type Property = { key: string; value: string }
-export type SelectionAction = { id: string; label: string; icon?: ReactNode; run: (editor: Editor, text: string) => void }
+export type SelectionAction = { id: string; label: string; icon?: ReactNode; disabled?: boolean; run: (editor: Editor, text: string) => void }
 
 type Menu = { kind: 'slash' | 'wiki'; query: string; from: number; x: number; y: number; index: number } | null
 
@@ -504,7 +504,7 @@ export function SharedEditor({
           <button type="button" aria-label="链接" aria-pressed={editor.isActive('link')} onClick={openLink}><LinkIcon /></button>
           {selectionActions.length ? <span className="se-bubble__sep" /> : null}
           {selectionActions.map((a) => (
-            <button key={a.id} type="button" className="se-bubble__text" onClick={() => { const { from, to } = editor.state.selection; a.run(editor, editor.state.doc.textBetween(from, to, ' ')) }}>{a.icon}{a.label}</button>
+            <button key={a.id} type="button" className="qx-btn qx-btn--ghost se-bubble__text" disabled={a.disabled} onClick={() => { const { from, to } = editor.state.selection; a.run(editor, editor.state.doc.textBetween(from, to, ' ')) }}>{a.icon}{a.label}</button>
           ))}
         </div>
       </BubbleMenu>

@@ -1011,6 +1011,9 @@ type ResearchAgentConversationPageProps = {
   documentVersion?: number | null
   writingDocumentId?: string | null
   initialWritingMessage?: { id: string; text: string } | null
+  writingAction?: { id: string; text: string } | null
+  onWritingActionFinished?: (id: string) => void
+  onBusyChange?: (busy: boolean) => void
   prepareWritingContext?: () => Promise<AgentTurnRequest['writing_context']>
   theoryPlanId?: string | null
   onTurnCompleted?: () => void
@@ -1048,6 +1051,9 @@ export function ResearchAgentConversationPage({
   documentVersion = null,
   writingDocumentId = null,
   initialWritingMessage = null,
+  writingAction = null,
+  onWritingActionFinished,
+  onBusyChange,
   prepareWritingContext,
   theoryPlanId = null,
   onTurnCompleted,
@@ -1130,6 +1136,9 @@ export function ResearchAgentConversationPage({
   ))
   const [status, setStatus] = useState<AgentPageStatus>('idle')
   const writingIntentStarted = useRef<string | null>(null)
+  const writingActionStarted = useRef<string | null>(null)
+  const quickWritingAttempt = useRef<string | null>(null)
+  const writingCallbacks = useRef({ onWritingActionFinished, onBusyChange }); writingCallbacks.current = { onWritingActionFinished, onBusyChange }
   const writingPreparation = useRef(false)
   const [preparingWriting, setPreparingWriting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1358,6 +1367,7 @@ export function ResearchAgentConversationPage({
 
   const canStopGeneration = status === 'thinking' || status === 'retrieving' || status === 'answering'
   const isBusy = preparingWriting || status === 'loading' || status === 'pausing' || status === 'pause-failed' || canStopGeneration
+  useEffect(() => { writingCallbacks.current.onBusyChange?.(isBusy) }, [isBusy])
   const canSubmit = draft.trim().length > 0
     && !isBusy
     && (!homeSubmission || modelSelection.status === 'ready')
@@ -1889,7 +1899,7 @@ export function ResearchAgentConversationPage({
     }
   }
 
-  async function submitQuestion(rawQuestion: string, retryIdempotencyKey?: string, deepAction?: { action: 'clarify' | 'confirm' | 'skip'; selection?: string }, researchEntry = false, entrySelection?: ModelSelection): Promise<AgentConversation | null> {
+  async function submitQuestion(rawQuestion: string, retryIdempotencyKey?: string, deepAction?: { action: 'clarify' | 'confirm' | 'skip'; selection?: string }, researchEntry = false, entrySelection?: ModelSelection, writingShortcut = false): Promise<AgentConversation | null> {
     const question = retryIdempotencyKey || deepAction || researchEntry ? rawQuestion.trim() : composeResearchDiscussion(rawQuestion.trim(), discussion)
     if (!rawQuestion.trim()) return null
     if (question.length > MAX_AGENT_MESSAGE_LENGTH) {
@@ -1897,11 +1907,12 @@ export function ResearchAgentConversationPage({
       return null
     }
     if (!question || writingPreparation.current || isBusy || streamAbortController.current || (!researchEntry && researchEntryAbortController.current)) return null
-    const turnMode = researchEntry ? 'standard' : (failedTurnAttempt.current?.idempotencyKey === retryIdempotencyKey && failedTurnAttempt.current?.request ? failedTurnAttempt.current.request.mode === 'deep_research' ? 'deep-research' : 'standard' : composerMode)
+    const turnMode = (researchEntry || writingShortcut) ? 'standard' : (failedTurnAttempt.current?.idempotencyKey === retryIdempotencyKey && failedTurnAttempt.current?.request ? failedTurnAttempt.current.request.mode === 'deep_research' ? 'deep-research' : 'standard' : composerMode)
     let resultConversation: AgentConversation | null = null
     const idempotencyKey = retryIdempotencyKey
       ?? globalThis.crypto?.randomUUID?.()
       ?? `agent-${Date.now()}`
+    quickWritingAttempt.current = writingShortcut ? idempotencyKey : null
     const resumableAttempt = failedTurnAttempt.current?.idempotencyKey === idempotencyKey
       ? failedTurnAttempt.current
       : activeTurnAttempt.current?.idempotencyKey === idempotencyKey
@@ -1960,7 +1971,7 @@ export function ResearchAgentConversationPage({
     failedTurnAttempt.current = null
     persistInterruptedTurn(storageScope.current, null)
     persistPendingTurnAttempt(storageScope.current, attempt)
-    updateDraft('')
+    if (!writingShortcut) updateDraft('')
     setError(null)
     setStatus('thinking')
     pendingToolSteps.current = []
@@ -2161,7 +2172,7 @@ export function ResearchAgentConversationPage({
             failedTurnAttempt.current = failedAttempt
             activeTurnAttempt.current = null
             persistPendingTurnAttempt(storageScope.current, failedAttempt)
-            updateDraft(question)
+            if (!writingShortcut) updateDraft(question)
             const failureMessage = localizedTurnFailure(event.code, event.message, locale)
             setStreamingTurn((current) => {
               if (!current) return current
@@ -2191,7 +2202,7 @@ export function ResearchAgentConversationPage({
         failedTurnAttempt.current = failedAttempt
         activeTurnAttempt.current = null
         persistPendingTurnAttempt(storageScope.current, failedAttempt)
-        updateDraft(question)
+        if (!writingShortcut) updateDraft(question)
         setStreamingTurn((current) => {
           if (!current) return current
           const failed = { ...current, failure: message }
@@ -2235,6 +2246,22 @@ export function ResearchAgentConversationPage({
     modelSelection.onChange(intent.selection)
     void submitQuestion(intent.question, intent.id, undefined, false, intent.selection)
   })
+  useEffect(() => {
+    if (!writingAction || writingActionStarted.current === writingAction.id || isBusy) return
+    if (initialWritingMessage && !requestedConversationId && writingIntentStarted.current !== initialWritingMessage.id) return
+    if (modelSelection.status === 'loading' || modelSelection.owner !== userId) return
+    writingActionStarted.current = writingAction.id
+    if (modelSelection.status !== 'ready') {
+      setError('模型设置暂不可用，优化尚未开始。请检查后重试。')
+      writingCallbacks.current.onWritingActionFinished?.(writingAction.id)
+      return
+    }
+    setComposerMode('standard')
+    void submitQuestion(writingAction.text, writingAction.id, undefined, false, undefined, true)
+      .catch(cause => setError(cause instanceof Error ? cause.message : '优化未完成，请检查后重试。'))
+      .finally(() => writingCallbacks.current.onWritingActionFinished?.(writingAction.id))
+  }, [writingAction, isBusy, modelSelection.status, modelSelection.owner, userId, initialWritingMessage, requestedConversationId])
+
   useEffect(() => {
     if (!initialWritingMessage || requestedConversationId || modelSelection.owner !== userId || modelSelection.status !== 'ready' || isBusy || writingIntentStarted.current === initialWritingMessage.id) return
     writingIntentStarted.current = initialWritingMessage.id
@@ -2319,12 +2346,12 @@ export function ResearchAgentConversationPage({
       failedTurnAttempt.current = attempt
       activeTurnAttempt.current = null
       persistPendingTurnAttempt(storageScope.current, attempt)
-      updateDraft(attempt.question)
+      if (quickWritingAttempt.current !== attempt.idempotencyKey) updateDraft(attempt.question)
     } else if (attempt) {
       failedTurnAttempt.current = null
       activeTurnAttempt.current = null
       persistPendingTurnAttempt(storageScope.current, null)
-      updateDraft(attempt.question)
+      if (quickWritingAttempt.current !== attempt.idempotencyKey) updateDraft(attempt.question)
     }
     const next = interruptedSteps(pendingToolSteps.current, locale)
     pendingToolSteps.current = next
