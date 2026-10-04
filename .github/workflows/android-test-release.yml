@@ -1,0 +1,74 @@
+name: Android Verified Test Release
+on:
+  pull_request:
+    paths: ['.github/workflows/android-test-release.yml']
+  push:
+    branches: [main]
+    paths: ['.github/workflows/android-test-release.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: android-verified-test-release
+  cancel-in-progress: false
+env:
+  APK: everplain-0.1.0-debug-cd1fd15.apk
+  APK_SHA256: fede64431af7c1a33c50335d8854f63af6372c8757d35c9f5abfe019ded85cdd
+  APK_BYTES: '13040730'
+  RELEASE_TAG: android-v0.1.0-test-cd1fd15
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Retrieve immutable verified APK without rebuilding
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/huyanxius/everplain/actions/artifacts/11307020311/zip > source.zip
+          printf '%s  source.zip\n' '698f7783a150ea5ea6c8ee018f96441dad8968d3edee8699b8bb6accd4ad2693' | sha256sum --check
+          unzip -p source.zip app/build/outputs/apk/debug/app-debug.apk > "$APK"
+          printf '%s  %s\n' "$APK_SHA256" "$APK" > SHA256SUMS
+          sha256sum --check SHA256SUMS
+          test "$(stat -c %s "$APK")" = "$APK_BYTES"
+          mkdir release
+          mv "$APK" SHA256SUMS release/
+          cat > release/RELEASE-NOTES.txt <<'EOF'
+          Everplain 0.1.0 / versionCode 1 Android 功能检查点测试版，applicationId app.everplain.android，Android 8.0/API 26 起。原包 CI 37210274374：31 core + 27 app + 11 instrumentation tests 通过。研究项目工作区仍为 WIP，此发布不代表完整全模块迁移或研究全功能完成。只镜像已验 APK，不重编译或换签名。
+          来源提交：cd1fd15be197898a82375c93637cdb6c4ea71c44
+          这是临时 CI debug 签名测试包，不是正式商店版本。签名可能与旧测试安装不同，无法保证覆盖升级；如系统拒绝安装，先确认并备份本地数据，再决定卸载重装（卸载可能删除本地数据）。
+          SHA-256: fede64431af7c1a33c50335d8854f63af6372c8757d35c9f5abfe019ded85cdd
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-test-release
+          path: release/
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    needs: verify
+    if: github.repository == 'huyanxius/everplain' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-test-release
+          path: release
+      - name: Publish test prerelease and verify downloaded release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum --check SHA256SUMS
+          gh release create "$RELEASE_TAG" "$APK" SHA256SUMS RELEASE-NOTES.txt --repo 'huyanxius/everplain' --target 'cd1fd15be197898a82375c93637cdb6c4ea71c44' --title 'Everplain Android 测试版 android-v0.1.0-test-cd1fd15' --notes-file RELEASE-NOTES.txt --prerelease --latest=false
+          mkdir downloaded
+          gh release download "$RELEASE_TAG" --repo 'huyanxius/everplain' --pattern "$APK" --pattern SHA256SUMS --dir downloaded
+          (cd downloaded && sha256sum --check SHA256SUMS)
+          printf 'Verified release: https://github.com/huyanxius/everplain/releases/tag/%s\nSHA-256: %s\n' "$RELEASE_TAG" "$APK_SHA256" >> "$GITHUB_STEP_SUMMARY"
