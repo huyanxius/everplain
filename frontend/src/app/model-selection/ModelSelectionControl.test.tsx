@@ -200,3 +200,20 @@ describe('ModelSelectionControl', () => {
     expect(submit).not.toHaveBeenCalled()
   })
 })
+
+
+it('keeps one model list and hides effort controls for a no-effort model', () => {
+  const onChange = vi.fn()
+  const catalog: readonly ModelDefinition[] = [...MODEL_CATALOG, { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', reasoningEfforts: [], defaultReasoningEffort: null }]
+  render(<ControlledSelection catalog={catalog} onChange={onChange} />)
+  fireEvent.click(screen.getByRole('radio', { name: 'Gemini 3.5 Flash' }))
+  expect(screen.getByRole('radio', { name: 'Gemini 3.5 Flash' })).toHaveAttribute('aria-checked', 'true')
+  expect(screen.getAllByRole('radiogroup')).toHaveLength(1)
+  expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+  expect(screen.queryByText('思考强度')).not.toBeInTheDocument()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(onChange).toHaveBeenLastCalledWith({ modelId: 'gemini-3.5-flash', reasoningEffort: null })
+  fireEvent.keyDown(screen.getByRole('radio', { name: 'Gemini 3.5 Flash' }), { key: 'Home' })
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '中')
+  expect(onChange).toHaveBeenLastCalledWith(DEFAULT_MODEL_SELECTION)
+})

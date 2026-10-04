@@ -23,13 +23,13 @@ class AgentModelChoice:
     model_id: str
     label: str
     reasoning_efforts: tuple[AgentReasoningEffort, ...]
-    default_reasoning_effort: AgentReasoningEffort
+    default_reasoning_effort: AgentReasoningEffort | None
 
 
 @dataclass(frozen=True, slots=True)
 class AgentModelSelection:
     model_id: str
-    reasoning_effort: AgentReasoningEffort
+    reasoning_effort: AgentReasoningEffort | None
 
 
 def resolve_agent_model_selection(
@@ -43,7 +43,9 @@ def resolve_agent_model_selection(
     if choice is None:
         raise AgentModelSelectionUnavailable("所选模型尚未接通可用路由，请重新选择模型。")
     effort = reasoning_effort if reasoning_effort is not None else choice.default_reasoning_effort
-    if effort not in choice.reasoning_efforts:
+    if (effort is None and choice.reasoning_efforts) or (
+        effort is not None and effort not in choice.reasoning_efforts
+    ):
         raise AgentModelSelectionUnavailable("当前模型路由不支持所选思考强度，请重新选择。")
     return AgentModelSelection(choice.model_id, effort)
 

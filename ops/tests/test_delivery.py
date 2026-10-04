@@ -203,5 +203,59 @@ class ExplicitModelFallbackTests(ProductionPreflightTests):
         self.assertIn("EVERPLAIN_RESEND_API_KEY", json.loads(result.stdout)["invalid_fields"])
 
 
+
+
+class AdditionalModelPreflightTests(unittest.TestCase):
+    run_preflight = ProductionPreflightTests.run_preflight
+
+    def additional_model_env(self):
+        env = production_env()
+        env["EVERPLAIN_AGENT_PROVIDERS"] = json.dumps({"unigate": {
+            "base_url": "https://synthetic.invalid/exact-api", "protocol": "chat_completions",
+            "api_key_env": "EVERPLAIN_UNIGATE_API_KEY",
+        }})
+        env["EVERPLAIN_AGENT_SELECTABLE_MODELS"] = json.dumps([{
+            "model_id": "gemini-3.5-flash", "model": "gemini-3.5-flash",
+            "label": "Gemini 3.5 Flash", "provider": "unigate",
+        }])
+        return env
+
+    def test_missing_additional_credentials_and_prices_fail_closed(self):
+        result = self.run_preflight(self.additional_model_env())
+        self.assertEqual(result.returncode, 1)
+        report = json.loads(result.stdout)
+        self.assertIn("EVERPLAIN_AGENT_PROVIDER_CREDENTIALS", report["invalid_fields"])
+        self.assertIn("EVERPLAIN_BILLING_MODEL_TARIFFS", report["invalid_fields"])
+        self.assertEqual(report["provider_connectivity"], "not_checked")
+
+    def test_complete_synthetic_registration_is_configuration_only_and_redacted(self):
+        env = self.additional_model_env()
+        env.update({
+            "EVERPLAIN_UNIGATE_API_KEY": "synthetic-provider-key-never-real",
+            "EVERPLAIN_BILLING_PRICE_VERSION": "synthetic-v2",
+            "EVERPLAIN_BILLING_CREDITS_PER_USD": "10000",
+            "EVERPLAIN_BILLING_MAX_ATTEMPT_USD_MICRO": "100000",
+            "EVERPLAIN_BILLING_MAX_OPERATION_USD_MICRO": "100000",
+            "EVERPLAIN_BILLING_DAILY_BUDGET_USD_MICRO": "1000000",
+            "EVERPLAIN_BILLING_MODEL_TARIFFS": json.dumps({"gemini-3.5-flash": {
+                "version": "synthetic-v2", "source": "synthetic-fixture",
+                "currency": "USD", "unit": "usd_micro_per_million_tokens",
+                "service_tier": "standard", "input": 200, "cache_read": 20,
+                "cache_write": 100, "output": 600, "long_threshold": None,
+            }}),
+        })
+        result = self.run_preflight(env)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(json.loads(result.stdout)["provider_connectivity"], "not_checked")
+        self.assertNotIn(env["EVERPLAIN_UNIGATE_API_KEY"], result.stdout + result.stderr)
+        rates = json.loads(env["EVERPLAIN_BILLING_MODEL_TARIFFS"])
+        rates["gemini-3.5-flash"]["version"] = "stale"
+        env["EVERPLAIN_BILLING_MODEL_TARIFFS"] = json.dumps(rates)
+        result = self.run_preflight(env)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("EVERPLAIN_BILLING_MODEL_TARIFFS",
+                      json.loads(result.stdout)["invalid_fields"])
+
+
 if __name__ == "__main__":
     unittest.main()

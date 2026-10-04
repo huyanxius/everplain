@@ -209,3 +209,18 @@ describe('conversation model selection integration', () => {
   })
 
 })
+
+it.each(['Chat', 'Research'])('sends a no-effort model from the existing %s selector', async mode => {
+  const { requests } = setup({ catalog: { ...catalog, items: [...catalog.items, { model_id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', reasoning_efforts: [], default_reasoning_effort: null }] } })
+  mount()
+  if (mode === 'Research') fireEvent.click(screen.getByRole('tab', { name: 'Research' }))
+  await screen.findByRole('button', { name: /GPT 6 Luna · 中/ })
+  await openSettings()
+  fireEvent.click(screen.getByRole('radio', { name: 'Gemini 3.5 Flash' }))
+  expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '模型与思考强度：Gemini 3.5 Flash' })).toBeVisible()
+  closeTools()
+  submit('使用当前模型回答')
+  await waitFor(() => expect(requests).toHaveLength(1))
+  expect(JSON.parse(String(requests[0].body))).toMatchObject({ model_id: 'gemini-3.5-flash', reasoning_effort: null, mode: mode === 'Research' ? 'deep_research' : 'standard' })
+})

@@ -146,3 +146,20 @@ it('retains the native popover through exit and cancels removal when reopened', 
   expect(hide).toHaveBeenCalledOnce()
   expect(trigger).toHaveFocus()
 })
+
+
+it.each([null, undefined])('locks a resumed no-effort model with %s effort to the original turn', reasoning_effort => {
+  const selection = state()
+  selection.catalog = [...selection.catalog, { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', reasoningEfforts: [], defaultReasoningEffort: null }]
+  const view = render(<ModelSelectionSettings state={selection} disabled activeRequest={{ message: '继续', model_id: 'gemini-3.5-flash', reasoning_effort }} />)
+  const summary = screen.getByRole('button', { name: '模型与思考强度：Gemini 3.5 Flash' })
+  expect(summary.querySelector('.model-selection-settings__summary-effort')).toBeNull()
+  fireEvent.click(summary)
+  expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+  expect(screen.getByRole('radio', { name: 'Gemini 3.5 Flash' })).toHaveAttribute('aria-checked', 'true')
+  expect(screen.getByRole('radio', { name: 'Gemini 3.5 Flash' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('radio', { name: 'GPT 6 Luna' }))
+  expect(selection.onChange).not.toHaveBeenCalled()
+  view.rerender(<ModelSelectionSettings state={selection} disabled={false} />)
+  expect(screen.getByRole('button', { name: /GPT 6 Luna · 中/ })).toBeVisible()
+})

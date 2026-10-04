@@ -1057,16 +1057,23 @@
       "AgentModelChoiceResponse": {
         "properties": {
           "default_reasoning_effort": {
-            "enum": [
-              "none",
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Default Reasoning Effort",
-            "type": "string"
+            "title": "Default Reasoning Effort"
           },
           "label": {
             "title": "Label",
