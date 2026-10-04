@@ -76,9 +76,16 @@ ssh "${opts[@]}" -p "$port" "$target" "sudo -n python3 - space $size $EXPECTED_S
 if [[ "$complete" != true ]]; then
   duration=1800
   [[ "$mode" != trial ]] || duration=120
-  status=0
-  python3 "$root/ops/cd/upload_parts.py" local "$archive" "$upload" "$private" \
-    "$port" "$target" "$prefix_size" "$prefix_hash" "$duration" "${opts[@]}" || status=$?
+  attempts=2
+  [[ "$mode" != trial ]] || attempts=1
+  # Resume only a bounded timeout of these exact bytes; integrity/SSH errors stop.
+  for ((attempt=1; attempt<=attempts; attempt++)); do
+    status=0
+    python3 "$root/ops/cd/upload_parts.py" local "$archive" "$upload" "$private" \
+      "$port" "$target" "$prefix_size" "$prefix_hash" "$duration" "${opts[@]}" || status=$?
+    [[ "$status" == 3 && "$attempt" -lt "$attempts" ]] || break
+    echo '{"upload_timeout_resume":true}'
+  done
   if [[ "$status" == 3 && "$mode" == trial ]]; then
     echo '{"parallel_trial_finished":true,"upload_completed":false}'
     exit 0
