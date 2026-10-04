@@ -105,6 +105,48 @@ final class NativeHomeVisualTests: XCTestCase {
         XCTAssertEqual(composerEditor(in:host).map(ObjectIdentifier.init),editorIdentity,"Returning Home recreated the native editor")
         _ = try capture(host,name:"home-native-synthetic-return")
     }
+
+    @MainActor func testHomePileNativeRenderingKeepsCardsAcrossInterruptedToggles() async throws {
+        try enabled()
+        let model = HomePileVisualController()
+        let (window,host) = window(HomePileVisualHost(model:model),size:CGSize(width:460,height:460))
+        defer { window.close() }
+        try await settle(0.2)
+        XCTAssertEqual(model.appearances,[0:1,1:1,2:1])
+        let closed = try capture(host,name:"home-material-pile-native-closed")
+        model.expanded = true; try await settle(0.15)
+        model.expanded = false; try await settle(0.1)
+        model.expanded = true; try await settle(1)
+        XCTAssertEqual(model.appearances,[0:1,1:1,2:1],"Pile expansion replaced its source cards")
+        XCTAssertEqual(model.navigations,0,"Opening the pile navigated into a document")
+        let opened = try capture(host,name:"home-material-pile-native-expanded")
+        XCTAssertNotEqual(opened,closed)
+        model.expanded = false; try await settle(0.9)
+        XCTAssertEqual(model.appearances,[0:1,1:1,2:1])
+        _ = try capture(host,name:"home-material-pile-native-return")
+    }
+}
+
+@MainActor private final class HomePileVisualController: ObservableObject {
+    @Published var expanded = false
+    var appearances: [Int:Int] = [:]
+    var navigations = 0
+}
+@MainActor private struct HomePileVisualHost: View {
+    @ObservedObject var model: HomePileVisualController
+    var body: some View {
+        HomePile(kind:.deck,expanded:$model.expanded,cover:AnyView(VStack(alignment:.leading,spacing:8) {
+            Text("3 份合成资料 · 2 个主题")
+            Text("离线几何与动画测试").font(.system(size:14))
+            Text("1 份待整理").font(.system(size:13)).underline()
+        }),items:(0..<3).map { index in
+            HomePileItem(id:"synthetic-\(index)",label:"合成资料 \(index+1)",action:{ model.navigations += 1 },content:AnyView(VStack(alignment:.leading,spacing:8) {
+                Text("我的笔记").font(.system(size:13))
+                Text("合成资料 \(index+1)").font(.system(size:14))
+            }.onAppear { model.appearances[index,default:0] += 1 }))
+        }).padding(30).frame(maxHeight:.infinity,alignment:.top)
+            .background(Color(red:0.96,green:0.96,blue:0.96)).environment(\.colorScheme,.light)
+    }
 }
 
 @MainActor private final class CompanionVisualController: ObservableObject {
