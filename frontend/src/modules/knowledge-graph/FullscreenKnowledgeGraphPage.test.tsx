@@ -256,7 +256,7 @@ it('searches a real entry and builds a bounded structural and reviewed neighborh
       style: expect.objectContaining({ width: 16, height: 16 }),
     }),
   ]))
-  expect(screen.getByRole('button', { name: '适应画布' })).toBeVisible()
+  expect(screen.getByRole('button', { name: '全屏' })).toBeVisible()
   expect(screen.getByRole('button', { name: '重新布局' })).toBeVisible()
   expect(readIncidentCandidatePage).not.toHaveBeenCalled()
   expect(readStructuralConnectionPage).not.toHaveBeenCalledWith({
@@ -287,7 +287,8 @@ it('searches a real entry and builds a bounded structural and reviewed neighborh
     )
   })
   const focusedOptions = cytoscapeMock.mock.calls.at(-1)?.[0]
-  expect(focusedOptions.layout).toEqual(expect.objectContaining({ name: 'cose' }))
+  expect(focusedOptions.layout).toEqual(expect.objectContaining({ name: 'preset', animate: false }))
+  expect(cores.at(-1)?.layout).toHaveBeenCalledWith(expect.objectContaining({ name: 'cose', randomize: false }))
   expect(focusedOptions.style).toEqual(expect.arrayContaining([
     expect.objectContaining({
       selector: 'node.node--focus',

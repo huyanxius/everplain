@@ -729,7 +729,7 @@ export function ObsidianKnowledgeGraph({
         boxSelectionEnabled: false,
         container: canvas,
         elements: positionedElements(elements, saved),
-        layout: { name: 'preset', fit: false },
+        layout: { name: 'preset', fit: false, animate: false },
         maxZoom: 3.2,
         minZoom: 0.01,
         style: personal ? [...workspaceGraphStyle(),
