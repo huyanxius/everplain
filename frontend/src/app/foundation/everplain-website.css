@@ -110,7 +110,7 @@
 .ep-companion { position: fixed; right: var(--qx-space-4); bottom: -14px; z-index: 20; line-height: 0; pointer-events: none; animation: ep-peek .9s .6s var(--ep-spring) both; }
 .ep-companion .companion { pointer-events: auto; filter: drop-shadow(0 6px 14px color-mix(in srgb, var(--qx-color-ink) 10%, transparent)); }
 @keyframes ep-peek { from { transform: translateY(70%); } }
-.ep-hero-copy .ep-composer { margin-top: 44px; animation: ep-rise 1.1s .24s var(--ep-ease) both; }
+.ep-hero-copy .ep-composer { margin-top: 36px; animation: ep-rise 1.1s .24s var(--ep-ease) both; }
 @keyframes ep-rise { from { opacity: 0; transform: translateY(14px); } }
 
 /* 输入框 */
@@ -123,12 +123,12 @@
 .ep-composer button:disabled { background: var(--qx-color-surface-strong); color: var(--qx-color-faint); cursor: default; }
 
 /* 一句话定位：「你的知识，」退后，「你的 AI」站前面 */
-.ep-statement { padding: clamp(120px,14vw,200px) 24px clamp(72px,9vw,128px); text-align: center; }
+.ep-statement { padding: clamp(72px,8vw,112px) 24px clamp(40px,5vw,72px); text-align: center; }
 .ep-statement h2 { font-size: var(--qx-text-hero); line-height: 1.15; letter-spacing: -.03em; }
 .ep-statement h2 span { color: var(--ep-muted); }
 
 /* 幕的共同骨架 */
-.ep-act { max-width: 1240px; margin: 0 auto; padding: clamp(56px,7vw,96px) clamp(20px,4vw,48px); }
+.ep-act { max-width: 1120px; margin: 0 auto; padding: clamp(40px,5vw,72px) clamp(20px,4vw,48px); }
 .ep-act h2 { font-size: var(--qx-text-statement); line-height: 1.3; }
 .ep-act-head p, .ep-act-library > p { color: var(--ep-ink-2); font-size: var(--qx-text-reading); line-height: 1.9; }
 
@@ -152,7 +152,7 @@
 
 
 /* 四：模型与价格 */
-.ep-models { position: relative; max-width: 1240px; margin: clamp(40px,6vw,88px) auto 0; padding: 0 24px; min-height: clamp(560px,56vw,720px); display: grid; place-items: center; }
+.ep-models { position: relative; max-width: 1240px; margin: clamp(24px,3vw,48px) auto 0; padding: 0 24px; min-height: clamp(440px,42vw,560px); display: grid; place-items: center; }
 .ep-orbit { position: absolute; inset: 0 24px; }
 .ep-orbit-ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .ep-orbit-ring ellipse { fill: none; stroke: var(--ep-line); stroke-width: 1; }
@@ -168,7 +168,7 @@
 .ep-models small { display: block; margin-top: 14px; color: var(--ep-muted); font-size: var(--qx-text-meta); }
 
 /* 结尾 */
-.ep-closing { display: flex; flex-direction: column; align-items: center; padding: clamp(96px,12vw,168px) 20px clamp(88px,10vw,136px); text-align: center; }
+.ep-closing { display: flex; flex-direction: column; align-items: center; padding: clamp(64px,8vw,112px) 20px clamp(56px,7vw,96px); text-align: center; }
 .ep-closing h2 { font-family: var(--ep-serif); font-size: var(--qx-text-act); font-weight: 500; line-height: 1.15; letter-spacing: -.01em; }
 .ep-closing .ep-composer { margin-top: 40px; }
 .ep-text-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 20px; font-size: var(--qx-text-control); color: var(--ep-ink-2); }
@@ -195,17 +195,16 @@
   .ep-brand { font-size: var(--qx-text-workspace-title); }
   .ep-hero-copy { padding-top: 96px; }
   .ep-headline { font-size: var(--qx-text-section); }
-  .ep-companion { right: var(--qx-space-2); scale: .62; transform-origin: 100% 100%; }
   .ep-composer { padding: var(--qx-space-1) var(--qx-space-1) var(--qx-space-1) var(--qx-space-5); }
   .ep-statement h2 span { display: block; }
   .ep-act-head h2 br { display: none; }
   .ep-act-head p, .ep-act-library > p { font-size: var(--qx-text-body); }
   .ep-models { display: flex; flex-direction: column; min-height: 0; padding-top: 24px; }
-  .ep-orbit { position: static; order: 2; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; margin-top: 36px; }
-  .ep-orbit-ring { display: none; }
-  .ep-orbit-tile { position: static; padding: 10px 12px; gap: 10px; white-space: normal; box-shadow: none; }
-  .ep-orbit-tile img { width: 22px; height: 22px; }
+  .ep-orbit { position: relative; inset: auto; order: 2; width: 100%; height: 320px; margin-top: var(--qx-space-6); }
+  .ep-orbit-tile { padding: 8px 14px 8px 10px; gap: 8px; }
+  .ep-orbit-tile img { width: 20px; height: 20px; }
   .ep-orbit-tile strong { font-size: var(--qx-text-meta); }
+  .ep-orbit-tile small { display: none; }
   .ep-models h2 br { display: none; }
   .ep-footer { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-block: 32px; }
   .ep-footer__column h2 { margin-bottom: 4px; }
@@ -219,13 +218,12 @@
  * 角色：定位句下面七个一排，高低交错；之后每幕标题旁各站一个。
  * 角色本身的动作在 modules/agent-avatar 里，这里只管站位和入场。
  */
-.ep-crew { margin: clamp(48px,6vw,80px) auto 0; max-width: 1080px; }
+.ep-cast { margin: clamp(28px,3vw,48px) auto 0; max-width: 860px; }
 .ep-crew-row { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: clamp(4px,1.6vw,24px); align-items: end; }
 .ep-crew-member { display: flex; flex-direction: column; align-items: center; gap: 6px; opacity: 0; transform: translateY(18px); }
 .ep-crew-member[data-shown="true"] { animation: ep-crew-in .9s var(--ep-spring) both; }
-.ep-crew-member:nth-child(even) { margin-bottom: clamp(28px,4vw,56px); }
-.ep-crew-member .agent-avatar { width: min(100%, 132px); height: auto; aspect-ratio: 1; }
-.ep-crew-caption { margin-top: clamp(28px,3vw,40px); font-size: var(--qx-text-body); color: var(--ep-ink-2); }
+.ep-crew-member:nth-child(even) { margin-bottom: clamp(14px,2vw,28px); }
+.ep-crew-member .agent-avatar { width: min(100%, 100px); height: auto; aspect-ratio: 1; }
 @keyframes ep-crew-in { to { opacity: 1; transform: none; } }
 
 .ep-act { position: relative; }
@@ -249,14 +247,32 @@
   .ep-crew-member, .ep-act-agent { opacity: 1 !important; transform: none !important; }
 }
 
-.ep-demo-disclosure { max-width: 480px; margin: 12px auto 0 !important; color: var(--ep-ink-2); font-size: var(--qx-text-meta); line-height: 1.7; }
+/* 首屏两个去处：「深入了解」滚到下面四幕，「领取」去注册登录。做成文字链接不做按钮，免得和输入框抢第一眼；主次只靠字重和深浅 */
+.ep-hero-actions { display: flex; gap: var(--qx-space-8); margin-top: var(--qx-space-6); animation: ep-rise 1.1s .4s var(--ep-ease) both; }
+.ep-hero-action { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--ep-ink-2); font-size: var(--qx-text-control); transition: color var(--qx-motion-fast); }
+.ep-hero-action:hover { color: var(--ep-ink); }
+.ep-hero-action--primary { color: var(--ep-ink); font-weight: 600; }
+
+/* 收到一处：平台墙四个一行，整块不超过两行高 */
+.ep-platforms { max-width: 960px; margin: var(--qx-space-8) auto 0; }
+.ep-platforms ul { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--qx-space-3); margin: 0; padding: 0; list-style: none; }
+.ep-platforms li { display: flex; align-items: center; gap: var(--qx-space-3); min-height: 64px; padding: 0 var(--qx-space-5); border-radius: var(--qx-radius-card); background: var(--qx-color-surface); box-shadow: var(--qx-shadow-ring); color: var(--ep-ink); font-size: var(--qx-text-control); font-weight: 500; }
+.ep-platforms li { opacity: 0; transform: var(--from); transition: opacity .5s var(--ep-ease), transform .9s var(--ep-spring); }
+.ep-platforms ul[data-shown="true"] li { opacity: 1; transform: none; }
+.ep-platforms img { flex: none; width: 28px; height: 28px; object-fit: contain; }
+.ep-platforms p { margin-top: var(--qx-space-4); color: var(--ep-muted); font-size: var(--qx-text-meta); }
+@media (max-width: 640px) { .ep-platforms ul { grid-template-columns: repeat(2, minmax(0,1fr)); } .ep-hero-actions { flex-wrap: wrap; justify-content: center; } }
+
 
 /* ===================== 产品演示 =====================
  * 每段演示是一个 Everplain 窗口：窗口栏、迷你侧栏、内容区，长得和真实应用一样。
  * 规矩和应用内相同：不画线框，层级靠表面色与投影；卡片大圆角；用户灰气泡、Agent 衬线正文。
  */
-.ep-act-gather .ep-demo, .ep-act-library .ep-demo { margin-top: var(--qx-space-12); text-align: left; }
-.ep-ai-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); gap: var(--qx-space-5); align-items: stretch; margin-top: var(--qx-space-12); }
+.ep-act-library .ep-demo { margin-top: var(--qx-space-8); text-align: left; }
+/* 演示窗口封顶 960 宽，缩略图压成一条色带：整个窗口要在一屏里和标题同时看得见，不能自己占满一屏 */
+.ep-act-library .ep-demo, .ep-ai-grid { max-width: 960px; margin-inline: auto; }
+.ep-mcard > * { margin: 0; }
+.ep-ai-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); gap: var(--qx-space-5); align-items: stretch; margin-top: var(--qx-space-8); }
 .ep-demo-stage { height: 100%; transition: opacity .52s ease, transform .52s ease, filter .52s ease; }
 .ep-demo-stage[data-fading="true"] { opacity: 0; transform: translateY(6px); filter: blur(3px); }
 
@@ -285,7 +301,7 @@
 .ep-gather-canvas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--qx-space-3); }
 .ep-mcard { display: flex; min-width: 0; flex-direction: column; gap: 4px; padding: var(--qx-space-2) var(--qx-space-2) var(--qx-space-3); border-radius: var(--qx-radius-card); background: var(--qx-color-surface); box-shadow: var(--qx-shadow-card); opacity: 0; transform: translateY(-14px) scale(.96); transition: opacity .45s var(--ep-ease), transform .6s var(--ep-spring), box-shadow .4s; }
 .ep-mcard[data-shown="true"] { opacity: 1; transform: none; }
-.ep-mcard__thumb { display: grid; aspect-ratio: 16 / 9; place-items: center; margin-bottom: var(--qx-space-1); border-radius: var(--qx-radius-item); color: var(--qx-color-faint); background: linear-gradient(100deg, var(--qx-color-surface-strong) 30%, var(--qx-color-surface-muted) 50%, var(--qx-color-surface-strong) 70%) 0 0 / 300% 100%; animation: ep-shimmer 1.4s linear infinite; }
+.ep-mcard__thumb { display: grid; height: 48px; place-items: center; margin-bottom: var(--qx-space-1); border-radius: var(--qx-radius-item); color: var(--qx-color-faint); background: linear-gradient(100deg, var(--qx-color-surface-strong) 30%, var(--qx-color-surface-muted) 50%, var(--qx-color-surface-strong) 70%) 0 0 / 300% 100%; animation: ep-shimmer 1.4s linear infinite; }
 .ep-mcard[data-read="true"] .ep-mcard__thumb { animation: none; color: var(--ep-thumb-ink); background: var(--ep-thumb); }
 .ep-mcard[data-kind="web"] { --ep-thumb: color-mix(in srgb, var(--qx-color-data-blue) 14%, var(--qx-color-surface)); --ep-thumb-ink: var(--qx-color-data-blue); }
 .ep-mcard[data-kind="image"] { --ep-thumb: color-mix(in srgb, var(--qx-color-data-amber) 16%, var(--qx-color-surface)); --ep-thumb-ink: var(--qx-color-data-amber); }
@@ -300,7 +316,7 @@
 @keyframes ep-shimmer { to { background-position: -150% 0; } }
 
 /* 二、一键建成：左边收藏列表 + 整理按钮，右边长出概念板 */
-.ep-library-grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.4fr); gap: var(--qx-space-5); min-height: 380px; }
+.ep-library-grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.4fr); gap: var(--qx-space-5); min-height: 320px; }
 .ep-inbox-pane, .ep-board-pane { display: flex; min-width: 0; flex-direction: column; }
 .ep-inbox-pane > header, .ep-board-pane > header { display: flex; align-items: center; justify-content: space-between; min-height: var(--qx-icon-control-size); margin-bottom: var(--qx-space-3); color: var(--qx-color-muted); font-size: var(--qx-text-meta); }
 .ep-inbox-pane > header span:first-child, .ep-board-pane > header span:first-child { color: var(--qx-color-ink); font-family: var(--qx-font-reading); font-size: var(--qx-text-body); font-weight: 500; }
@@ -319,7 +335,7 @@
 .ep-view-switch { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--qx-radius-pill); background: var(--qx-color-surface-strong); }
 .ep-view-switch i { padding: 2px var(--qx-space-3); border-radius: var(--qx-radius-pill); color: var(--qx-color-muted); font-size: var(--qx-text-meta); font-style: normal; transition: background .45s, color .45s, box-shadow .45s; }
 .ep-view-switch i[data-on="true"] { color: var(--qx-color-ink); background: var(--qx-color-surface); box-shadow: var(--qx-shadow-card); }
-.ep-result-views { position: relative; display: grid; flex: 1; min-height: 300px; border-radius: var(--qx-radius-card); background: var(--qx-color-surface-muted); }
+.ep-result-views { position: relative; display: grid; flex: 1; min-height: 260px; border-radius: var(--qx-radius-card); background: var(--qx-color-surface-muted); }
 .ep-result-views > * { grid-area: 1 / 1; transition: opacity .6s var(--ep-ease), transform .6s var(--ep-ease); }
 /* 概念板：主题在正中，四个概念在四角，用类别色的曲线连起来 */
 .ep-outline { position: relative; opacity: 0; }
@@ -402,7 +418,6 @@
 @media (max-width: 900px) {
   .ep-window__side { display: none; }
   .ep-ai-grid { grid-template-columns: minmax(0, 1fr); }
-  .ep-gather-canvas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ep-library-grid { grid-template-columns: minmax(0, 1fr); }
   .ep-search { display: none; }
 }
@@ -413,4 +428,64 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .ep-mcard__thumb { animation: none; }
+}
+
+/*
+ * 手机端收口。小人在手机上缩到 .84（约 160px 高）：再小就只剩一撮头发，读者认不出是个角色；
+ * 它会压住右下角一点正文，所以价格行改成上下排，避开右下角。
+ */
+@media (max-width: 640px) {
+  .ep-header, .ep-footer { padding-inline: 24px; }
+  .ep-companion { right: 0; bottom: -18px; scale: .84; transform-origin: 100% 100%; }
+  .ep-hero { min-height: 100svh; }
+  .ep-hero-copy { padding: 88px 24px 48px; }
+  .ep-headline { font-size: clamp(30px, 8.6vw, 38px); }
+  .ep-hero-copy .ep-composer { margin-top: var(--qx-space-6); }
+  .ep-statement { padding: var(--qx-space-16) 24px var(--qx-space-10); }
+  .ep-cast { margin-top: var(--qx-space-6); }
+  .ep-crew-row { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 4px; row-gap: 0; }
+  .ep-crew-member, .ep-crew-member:nth-child(-n+4):nth-child(even), .ep-crew-member:nth-child(n+5):nth-child(odd) { width: auto; padding-top: 0; }
+  .ep-crew-member:nth-child(even) { margin-bottom: 10px; }
+  .ep-act { padding: var(--qx-space-12) 24px; }
+  .ep-act h2 { font-size: var(--qx-text-section); line-height: 1.35; }
+  .ep-act-head { gap: var(--qx-space-4); }
+  .ep-act-head p, .ep-act-library > p { line-height: 1.95; letter-spacing: .01em; }
+  .ep-act-library > p { margin-top: var(--qx-space-4); text-align: left; }
+  .ep-platforms { margin-top: var(--qx-space-8); }
+  .ep-platforms ul { gap: 10px; }
+  .ep-platforms li { min-height: 48px; padding: 0 var(--qx-space-3); gap: var(--qx-space-2); font-size: var(--qx-text-meta); }
+  .ep-platforms img { width: 22px; height: 22px; }
+  /* 知识库演示在手机上收掉收藏列表，只留条数和整理按钮，把高度让给整理结果；整扇窗口要短于一屏 */
+  .ep-library-grid { min-height: 0; gap: var(--qx-space-3); }
+  .ep-inbox { display: none; }
+  .ep-inbox-pane { flex-direction: row; align-items: center; justify-content: space-between; }
+  .ep-inbox-pane > header { flex: 1; margin: 0 var(--qx-space-3) 0 0; }
+  .ep-organize-button { margin-top: 0; }
+  .ep-result-views { min-height: 0; height: 236px; }
+  .ep-act-library .ep-window__bar { display: none; }
+  .ep-act-library .ep-window__main { padding: var(--qx-space-3); }
+  .ep-act-library .ep-board-pane > header { margin-bottom: var(--qx-space-2); }
+  .ep-outline ul { inset: var(--qx-space-2); }
+  .ep-outline li { width: 47%; padding: 6px var(--qx-space-2); }
+  .ep-outline li small { display: none; }
+  .ep-outline li strong { overflow: hidden; font-size: var(--qx-text-meta); text-overflow: ellipsis; white-space: nowrap; }
+  .ep-outline h3 { padding: 4px var(--qx-space-3); font-size: var(--qx-text-meta); }
+  /* 对话演示：去窗口栏、来源抽屉和追问框，回答字号降一档；来源只留编号小圆点那一行 */
+  .ep-chat .ep-window__bar, .ep-source-drawer, .ep-ask { display: none !important; }
+  .ep-chat .ep-window__main { padding: var(--qx-space-4); }
+  .ep-thread { gap: var(--qx-space-3); }
+  .ep-bubble { max-width: 92%; padding: var(--qx-space-2) var(--qx-space-4); font-size: var(--qx-text-meta); }
+  .ep-reply > p { min-height: 0; font-size: var(--qx-text-control); line-height: 1.75; }
+  .ep-sources li { font-size: var(--qx-text-meta); }
+  .ep-sources li:nth-child(n+3) { display: none; }
+  /* 记忆演示：头部压成一行，只留两条 */
+  .ep-memory { padding: var(--qx-space-4); }
+  .ep-memory__head { flex-direction: row; justify-content: flex-start; gap: var(--qx-space-2); margin-bottom: var(--qx-space-3); text-align: left; }
+  .ep-memory__head .agent-avatar { width: 28px; height: 28px; }
+  .ep-memory li { min-height: 40px; font-size: var(--qx-text-meta); }
+  .ep-memory li:nth-child(n+3) { display: none; }
+  .ep-ai-grid { gap: var(--qx-space-3); margin-top: var(--qx-space-6); }
+  .ep-price { flex-direction: column; align-items: center; gap: 4px; }
+  .ep-closing { padding: var(--qx-space-16) 24px; }
+  .ep-models { padding-inline: 24px; }
 }
