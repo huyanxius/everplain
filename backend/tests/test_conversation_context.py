@@ -46,6 +46,7 @@ def test_recent_cache_persisted_incrementally_source_linked_and_no_model(plain_c
     item = response.json()["items"][0]
     assert item["conversation_id"] == str(conversation.conversation_id)
     assert item["kind"] == "user_excerpt"
+    assert item["updated_at"].endswith("Z")
     assert item["excerpt"] == "真实话题4"
     assert [i["sequence"] for i in item["recent_excerpts"]] == [4, 6, 8]
     with plain_client.app.state.database.session() as session:

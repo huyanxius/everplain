@@ -14,6 +14,7 @@ from qunxue_api.adapters.sqlite.agent_conversation_repository import (
     _DELETED_MATERIAL_ANSWER,
     _restore_citation,
     _unavailable_trace_material_ids,
+    _utc,
 )
 from qunxue_api.modules.agent_conversation import ConversationNotFound
 from qunxue_api.modules.agent_conversation.context import excerpt
@@ -45,7 +46,7 @@ class SqliteConversationContextRepository:
         return {
             "conversation_id": row.conversation_id,
             "title": excerpt(row.title, 120),
-            "updated_at": row.updated_at.isoformat(),
+            "updated_at": _utc(row.updated_at).isoformat(),
             "kind": "user_excerpt",
             "excerpt": items[-1]["excerpt"] if items else "",
             "source_message_id": items[-1]["message_id"] if items else None,
