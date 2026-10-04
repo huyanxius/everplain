@@ -64,7 +64,7 @@ def projection(application, user_id, kb, *, detail=False):
     except SharedKnowledgeUnavailable:
         return SharedKnowledgeResponse(id=kb.id, viewer_access="unavailable")
     owner = kb.owner_user_id == user_id
-    docs = application.documents(user_id, kb.id)
+    docs = application.documents(user_id, kb.id, include_segments=False)
     return SharedKnowledgeResponse(
         id=kb.id,
         name=kb.name,

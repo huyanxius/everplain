@@ -80,34 +80,44 @@ function LibraryContent({ userId }: { userId: string | null }) {
   useEffect(() => {
     let active = true
     setLoading(true); setError(null); setCatalogError(null); setDetail(null); setSource(null)
-    void (async () => {
-      const list = await listCourses()
+    const controller = new AbortController()
+    // A document deep link must not wait for the unrelated library selector.
+    const catalog = listCourses(controller.signal).then(async list => {
       if (!active) return
       const owned = list.filter(item => item.access === 'owner')
       setLibraryChoices(list.filter(item => item.access === 'owner' || item.access === 'reader'))
       setCourses(owned)
-      if (id) {
-        const value = await getCourse(id)
+      if (id || showLibraries) return
+      await Promise.allSettled(owned.map(async item => {
+        try {
+          const value = await getCourse(item.id, controller.signal)
+          if (!active) return
+          if (value.access !== 'owner') throw new Error('此知识库不可访问。')
+          setCourses(current => current.map(course => course.id === value.id ? value : course))
+          setLibraryChoices(current => current.map(course => course.id === value.id ? value : course))
+          // Show available cards immediately; another slow library cannot hide them.
+          setLoading(false)
+        } catch {
+          if (active) setCatalogError('部分资料暂时无法读取。已保留可访问的资料，你可以重试或打开对应知识库。')
+        }
+      }))
+    })
+    if (id) {
+      void catalog.catch(() => { if (active) setCatalogError('知识库列表暂时无法读取。') })
+      void Promise.all([
+        getCourse(id, controller.signal),
+        documentId ? readCourseDocument(id, documentId, undefined, controller.signal) : Promise.resolve(null),
+      ]).then(([value, result]) => {
         if (!active) return
         if (value.access !== 'owner') throw new Error('此知识库不可访问。')
         setDetail(value)
-        setCourses(owned.map(item => item.id === value.id ? value : item))
-        if (documentId) {
-          const result = await readCourseDocument(id, documentId)
-          if (active) setSource(result)
-        }
-      } else {
-        const results = await Promise.allSettled(owned.map(item => getCourse(item.id)))
-        if (!active) return
-        const values = owned.map((item, index) => {
-          const result = results[index]
-          return result.status === 'fulfilled' && result.value.access === 'owner' ? result.value : { ...item, documents: [] }
-        })
-        setCourses(values)
-        setLibraryChoices([...values, ...list.filter(item => item.access === 'reader')])
-        if (results.some(result => result.status === 'rejected' || result.value.access !== 'owner')) setCatalogError('部分资料暂时无法读取。已保留可访问的资料，你可以重试或打开对应知识库。')
-      }
-    })().catch((failure: Error) => { if (active) setError(failure.message) }).finally(() => { if (active) setLoading(false) })
+        setSource(result)
+      }).catch((failure: Error) => { if (active) setError(failure.message) })
+        .finally(() => { if (active) setLoading(false) })
+    } else {
+      void catalog.catch((failure: Error) => { if (active) setError(failure.message) })
+        .finally(() => { if (active) setLoading(false) })
+    }
     void readKnowledgeStorage().then(value => { if (active) setStorage(value) }).catch(() => {})
     void readImportBatches().then(batches => {
       if (!active || !Array.isArray(batches)) return
@@ -116,8 +126,8 @@ function LibraryContent({ userId }: { userId: string | null }) {
       for (const batch of batches) for (const item of batch.items ?? []) if (item.document_id) metadata[`${batch.library_id}:${item.document_id}`] = { source: sourceNames[batch.source_type], url: item.source_url }
       setMaterialSources(metadata)
     }).catch(() => {})
-    return () => { active = false }
-  }, [id, documentId, reload])
+    return () => { active = false; controller.abort() }
+  }, [id, documentId, reload, showLibraries])
   const materials = (detail ? [detail] : courses).flatMap(course => course.documents.map(document => ({ course, document })))
   const hasImages = materials.some(({ document }) => documentKind(document) === '图片')
   useEffect(() => {
