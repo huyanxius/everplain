@@ -26,10 +26,11 @@ from qunxue_api.modules.agent_conversation import (
     RunAlreadyActive,
     aggregate_research_map,
     apply_canvas_edits,
+    merge_digest,
     patches_from_tool_summary,
     prepare_canvas_edit,
 )
-from qunxue_api.modules.agent_conversation.context import merge_digest
+from qunxue_api.modules.agent_memory import redact_sensitive
 
 _MATERIAL_TOOL_NAMES = frozenset({"search_research_materials", "read_research_material_context"})
 _DELETED_MATERIAL_ANSWER = "该回答引用的个人研究材料已删除，原回答内容已隐藏。"
@@ -373,7 +374,8 @@ class SqliteConversationRepository:
             raise ConversationNotFound(str(conversation.conversation_id))
         row.context_digest = merge_digest(
             row.context_digest or {}, message_id=str(turn.user_message.message_id),
-            sequence=turn.user_message.sequence, content=turn.user_message.content,
+            sequence=turn.user_message.sequence,
+            content=redact_sensitive(turn.user_message.content),
         )
         row.updated_at = max(_utc(row.updated_at), turn.assistant_message.created_at)
         row.version += 1

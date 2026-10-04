@@ -17,7 +17,7 @@ def test_writing_then_gateway_is_one_head_and_preserves_existing_data(tmp_path, 
     backend = Path(__file__).parents[1]
     config = Config(str(backend / "alembic.ini"))
     config.set_main_option("script_location", str(backend / "migrations"))
-    assert ScriptDirectory.from_config(config).get_heads() == ["20261003_0540"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["20261004_0550"]
     url = f"sqlite:///{tmp_path / 'migration.db'}"
     monkeypatch.setenv("EVERPLAIN_DATABASE_URL", url)
     command.upgrade(config, "20261003_0530")
@@ -57,7 +57,7 @@ def test_writing_then_gateway_is_one_head_and_preserves_existing_data(tmp_path, 
             )
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20261003_0540"
+                == "20261004_0550"
             )
         command.downgrade(config, "20261003_0530")
         assert "channel_bindings" not in inspect(database.engine).get_table_names()

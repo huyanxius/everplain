@@ -6,11 +6,9 @@ call is needed to provide a recent-activity card or a retrieval starting point.
 
 import json
 
-from qunxue_api.modules.agent_memory import redact_sensitive
-
 
 def excerpt(text: str, limit: int = 360) -> str:
-    value = " ".join(redact_sensitive(text).split())
+    value = " ".join(text.split())
     return value if len(value) <= limit else value[: limit - 1] + "…"
 
 

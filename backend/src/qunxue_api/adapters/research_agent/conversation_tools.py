@@ -3,8 +3,7 @@
 import json
 from uuid import UUID
 
-from qunxue_api.modules.agent_conversation import ConversationNotFound
-from qunxue_api.modules.agent_conversation.context import render_recent_context
+from qunxue_api.modules.agent_conversation import ConversationNotFound, render_recent_context
 
 
 class AgentConversationTools:

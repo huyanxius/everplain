@@ -8,8 +8,13 @@ from test_agent_memory import register
 from qunxue_api.adapters.research_agent.conversation_tools import AgentConversationTools
 from qunxue_api.adapters.sqlite.agent_conversation_model import AgentConversationRow
 from qunxue_api.adapters.sqlite.agent_conversation_repository import SqliteConversationRepository
-from qunxue_api.modules.agent_conversation import AgentTurn, Conversation, ConversationNotFound
-from qunxue_api.modules.agent_conversation.context import merge_digest, render_recent_context
+from qunxue_api.modules.agent_conversation import (
+    AgentTurn,
+    Conversation,
+    ConversationNotFound,
+    merge_digest,
+    render_recent_context,
+)
 
 
 def seed(client, owner, texts=("整理西湖旅行计划",), answer="先确认日期，再比较交通。"):

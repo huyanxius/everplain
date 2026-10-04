@@ -16,8 +16,7 @@ from qunxue_api.adapters.sqlite.agent_conversation_repository import (
     _unavailable_trace_material_ids,
     _utc,
 )
-from qunxue_api.modules.agent_conversation import ConversationNotFound
-from qunxue_api.modules.agent_conversation.context import excerpt
+from qunxue_api.modules.agent_conversation import ConversationNotFound, excerpt
 from qunxue_api.modules.agent_memory import redact_sensitive
 
 
@@ -45,7 +44,7 @@ class SqliteConversationContextRepository:
         items = row.context_digest.get("items", [])
         return {
             "conversation_id": row.conversation_id,
-            "title": excerpt(row.title, 120),
+            "title": excerpt(redact_sensitive(row.title), 120),
             "updated_at": _utc(row.updated_at).isoformat(),
             "kind": "user_excerpt",
             "excerpt": items[-1]["excerpt"] if items else "",
@@ -85,10 +84,10 @@ class SqliteConversationContextRepository:
             "items": [
                 {
                     "conversation_id": row.conversation_id,
-                    "title": excerpt(row.title, 120),
+                    "title": excerpt(redact_sensitive(row.title), 120),
                     "message_id": message.message_id,
                     "sequence": message.sequence,
-                    "excerpt": excerpt(message.content, 200),
+                    "excerpt": excerpt(redact_sensitive(message.content), 200),
                 }
                 for row, message in rows[:5]
             ],
@@ -178,7 +177,7 @@ class SqliteConversationContextRepository:
         )
         return {
             "conversation_id": row.conversation_id,
-            "title": excerpt(row.title, 120),
+            "title": excerpt(redact_sensitive(row.title), 120),
             "messages": [
                 {
                     "message_id": message.message_id,
