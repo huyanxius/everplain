@@ -126,10 +126,46 @@ class UploadStateTests(unittest.TestCase):
         deploy = workflow.split("\n  deploy:\n", 1)[1]
         job_minutes = int(re.search(r"timeout-minutes: (\d+)", deploy).group(1))
         upload_seconds = int(re.search(r"duration=(\d+)", script).group(1))
+        attempts = int(re.search(r"attempts=(\d+)", script).group(1))
         # Upload must finish before the runner can cancel verification and cutover.
-        self.assertGreaterEqual(job_minutes * 60, upload_seconds + 5 * 60)
+        self.assertGreaterEqual(job_minutes * 60, upload_seconds * attempts + 5 * 60)
         self.assertIn("deploy-existing-ssh.sh all", workflow)
         self.assertIn("EXPECTED_SHA256: ${{ needs.build.outputs.digest }}", workflow)
+
+    def test_upload_timeout_resumes_same_request_once_but_errors_stop(self):
+        script = (ROOT / "ops/cd/deploy-existing-ssh.sh").read_text()
+        block = script.split("  attempts=2\n", 1)[1].split('  if [[ "$status" == 3', 1)[0]
+        block = "  attempts=2\n" + block
+        for mode, outcomes, count, expected in (
+            ("all", "3 0", 2, 0),
+            ("all", "2 0", 1, 2),
+            ("all", "3 3", 2, 3),
+            ("trial", "3 0", 1, 3),
+        ):
+            with self.subTest(mode=mode, outcomes=outcomes):
+                harness = '''set -euo pipefail
+root=/repo
+archive=/artifact
+upload=/candidate
+private=/scratch
+port=22
+target=server
+prefix_size=0
+prefix_hash=known
+duration=1800
+opts=(-o strict)
+calls=0
+python3() {
+  calls=$((calls + 1))
+  [[ "$*" == '/repo/ops/cd/upload_parts.py local /artifact /candidate /scratch 22 server 0 known 1800 -o strict' ]]
+  return "${results[calls-1]}"
+}
+'''
+                harness += f"mode={mode}\nresults=({outcomes})\n" + block
+                harness += 'printf "%s %s\\n" "$calls" "$status"\n'
+                result = subprocess.run(["bash"], input=harness, capture_output=True,
+                                        text=True, check=True)
+                self.assertEqual(result.stdout.splitlines()[-1], f"{count} {expected}")
 
 
 if __name__ == "__main__":
