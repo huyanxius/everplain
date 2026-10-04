@@ -14,12 +14,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: everplain-production
+  group: everplain-production-inspection
   cancel-in-progress: false
 
 jobs:
   inspect:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/105-readonly-upload-stage'
     runs-on: ubuntu-22.04
     environment: everplain-production
     timeout-minutes: 5
