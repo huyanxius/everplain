@@ -26,6 +26,26 @@ spec.loader.exec_module(release)
 
 
 class RegistryReleaseTests(unittest.TestCase):
+    def test_registry_identity_accepts_config_or_pinned_manifest_and_rejects_unbound_images(self):
+        expected = "sha256:" + "b" * 64
+        digest = "sha256:" + "a" * 64
+        reference = "ghcr.io/huyanxius/everplain-api@" + digest
+        for identity, references, valid in (
+            (expected, [reference], True), (digest, [reference], True),
+            (expected, [], False), ("sha256:" + "d" * 64, [reference], False),
+            (digest, ["ghcr.io/huyanxius/everplain-api@" + expected], False),
+        ):
+            with self.subTest(identity=identity, references=references):
+                value = {"Id": identity, "RepoDigests": references}
+                with patch.object(release, "run", return_value=json.dumps([value])) as inspect:
+                    if valid:
+                        self.assertEqual(
+                            release.registry_image(expected, reference, "api", {}), value)
+                    else:
+                        with self.assertRaises(RuntimeError):
+                            release.registry_image(expected, reference, "api", {})
+                    inspect.assert_called_once_with(["docker", "image", "inspect", reference])
+
     def test_web_only_release_never_stops_api_or_copies_data_and_restores_web_on_failure(self):
         for failed in (False, True):
             with self.subTest(failed=failed), tempfile.TemporaryDirectory() as d:
@@ -77,7 +97,7 @@ class RegistryReleaseTests(unittest.TestCase):
                      patch.object(release.subprocess, "run", return_value=login) as auth, \
                      patch.object(release, "run", side_effect=RuntimeError("pull failed") if failed
                                   else None, return_value="aaa: Already exists\nbbb: Pull complete\n") as run, \
-                     patch.object(release, "loaded_image", return_value=info):
+                     patch.object(release, "registry_image", return_value=info):
                     if failed:
                         with self.assertRaises(RuntimeError):
                             release.pull_registry_images(manifest, Path(d), report)
