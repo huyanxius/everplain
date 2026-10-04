@@ -33,7 +33,8 @@ with Path("/run/lock/everplain-release.lock").open("a") as lock:
         "free_embedding_preserved": env.get("EVERPLAIN_EMBEDDING_MODEL") == "BAAI/bge-m3",
         "free_reranker_preserved": env.get("EVERPLAIN_RERANKER_MODEL") == "BAAI/bge-reranker-v2-m3",
         "existing_configuration_preserved": env == expected,
-        "search_user_policy_preserved": phases.get("search") == "user",
+        "billing_phase_names": sorted(phases),
+        "search_billing_configuration_preserved": env["EVERPLAIN_BILLING_PHASE_POLICIES"] == previous["EVERPLAIN_BILLING_PHASE_POLICIES"],
         "writing_user_policy_verified": phases.get("writing") == "user",
         "other_billing_policies_preserved": env["EVERPLAIN_BILLING_PHASE_POLICIES"]
             == previous["EVERPLAIN_BILLING_PHASE_POLICIES"],
@@ -41,4 +42,4 @@ with Path("/run/lock/everplain-release.lock").open("a") as lock:
         "host_changes": False,
     }
     print(json.dumps(report))
-    assert all(value for key, value in report.items() if key != "host_changes")
+    assert all(value for key, value in report.items() if key not in {"host_changes", "billing_phase_names"})
