@@ -510,7 +510,8 @@ def save_json(path, value):
 
 def http(url):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(url, timeout=5) as response:
+    request = urllib.request.Request(url, headers={"User-Agent": "Everplain-Release/1.0"})
+    with opener.open(request, timeout=5) as response:
         require(response.url == url and response.status == 200)
         return response.read(16 * 1024**2 + 1)
 
@@ -616,7 +617,10 @@ class ExistingRelease:
 
     def recover(self):
         # After API start, even background writes belong to the new database/schema.
-        if self.started:
+        if self.started and self.report.get("candidate_local_acceptance_verified"):
+            # A remote edge rejection must not take a locally verified service down.
+            self.report["candidate_kept_running"] = True
+        elif self.started:
             for role in ("web", "api"):
                 with contextlib.suppress(Exception):
                     run(["docker", "stop", "--time", "45", NAMES[role]])
@@ -997,9 +1001,10 @@ class ExistingRelease:
             self.report["web_runtime_image_reference_verified"] = True
             checker.health(REVISION)
             self.report["web_health_ok"] = True
+            self.complete(manifest)
+            self.report["candidate_local_acceptance_verified"] = True
             public_health(manifest, mode)
             self.report["public_health_ok"] = True
-            self.complete(manifest)
             self.report["deployment_succeeded"] = True
             self.record()
         except BaseException:
