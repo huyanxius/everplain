@@ -121,6 +121,23 @@ class AgentConversationUpdateRequest(BaseModel):
     ]
 
 
+class AgentWritingContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: UUID
+    document_version: int = Field(ge=1, strict=True)
+    selection_start: int | None = Field(default=None, ge=0, strict=True)
+    selection_end: int | None = Field(default=None, ge=0, strict=True)
+
+    @model_validator(mode="after")
+    def validate_selection(self):
+        if (self.selection_start is None) != (self.selection_end is None):
+            raise ValueError("selection_start and selection_end must be supplied together")
+        if self.selection_start is not None and self.selection_end < self.selection_start:
+            raise ValueError("selection_end must not precede selection_start")
+        return self
+
+
 class AgentTurnRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model_id: str | None = Field(default=None, min_length=1, max_length=80)
@@ -141,6 +158,7 @@ class AgentTurnRequest(BaseModel):
     document_id: UUID | None = None
     section_id: str | None = None
     document_version: int | None = None
+    writing_context: AgentWritingContext | None = None
     theory_plan_id: UUID | None = None
     material_ids: tuple[UUID, ...] = Field(default=(), max_length=20)
     mode: Literal["standard", "deep_research"] = "standard"

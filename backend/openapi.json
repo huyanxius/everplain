@@ -1973,6 +1973,16 @@
             ],
             "title": "Workspace",
             "type": "string"
+          },
+          "writing_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentWritingContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -2026,6 +2036,51 @@
           "assistant"
         ],
         "title": "AgentTurnResponse",
+        "type": "object"
+      },
+      "AgentWritingContext": {
+        "additionalProperties": false,
+        "properties": {
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "document_version": {
+            "minimum": 1.0,
+            "title": "Document Version",
+            "type": "integer"
+          },
+          "selection_end": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection End"
+          },
+          "selection_start": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Start"
+          }
+        },
+        "required": [
+          "document_id",
+          "document_version"
+        ],
+        "title": "AgentWritingContext",
         "type": "object"
       },
       "AnalysisAnnotationKind": {

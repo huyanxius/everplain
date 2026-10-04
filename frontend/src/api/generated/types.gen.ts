@@ -1035,6 +1035,7 @@ export type AgentTurnRequest = {
      * Workspace
      */
     workspace?: 'agent' | 'research';
+    writing_context?: AgentWritingContext | null;
 };
 
 /**
@@ -1059,6 +1060,28 @@ export type AgentTurnResponse = {
      */
     turn_id: string;
     user: AgentMessageResponse;
+};
+
+/**
+ * AgentWritingContext
+ */
+export type AgentWritingContext = {
+    /**
+     * Document Id
+     */
+    document_id: string;
+    /**
+     * Document Version
+     */
+    document_version: number;
+    /**
+     * Selection End
+     */
+    selection_end?: number | null;
+    /**
+     * Selection Start
+     */
+    selection_start?: number | null;
 };
 
 /**

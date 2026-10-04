@@ -208,6 +208,8 @@ const toolLabels: Record<string, string> = {
   get_research_workflow_state: '读取研究进度',
   start_theory_matching: '启动理论匹配',
   save_confirmed_theory_plan: '保存已确认理论方案',
+  read_writing_document: '读取当前文稿',
+  propose_writing_edit: '提出文稿精确修订',
   read_research_document: '读取研究文档',
   propose_document_revision: '整理文档修订提议',
   propose_document_creation: '整理文档创建提议',
@@ -227,6 +229,8 @@ const englishToolLabels: Record<string, string> = {
   get_research_workflow_state: 'Read research progress',
   start_theory_matching: 'Start theory matching',
   save_confirmed_theory_plan: 'Save confirmed theory plan',
+  read_writing_document: 'Read current article',
+  propose_writing_edit: 'Propose article edit',
   read_research_document: 'Read research document',
   propose_document_revision: 'Prepare document revision',
   propose_document_creation: 'Prepare document creation',
@@ -246,6 +250,8 @@ const toolPurposes: Record<string, string> = {
   get_research_workflow_state: '读取当前研究任务的阶段与可继续操作',
   start_theory_matching: '基于已确认现象和证据生成可比较的理论候选',
   save_confirmed_theory_plan: '保存你已经确认的理论取舍与使用方式',
+  read_writing_document: '读取当前文章、选区、版本及同文体样文',
+  propose_writing_edit: '按原文与版本校验提出修订，接受前不会覆盖正文',
   read_research_document: '读取当前正式研究文档及其版本',
   propose_document_revision: '把修改整理成待你接受或拒绝的文档建议',
   propose_document_creation: '把已确认理论方案整理成 12 节研究框架草稿',
@@ -265,6 +271,8 @@ const englishToolPurposes: Record<string, string> = {
   get_research_workflow_state: 'Read the current research phase and available next actions',
   start_theory_matching: 'Compare theory candidates against the confirmed phenomenon and evidence',
   save_confirmed_theory_plan: 'Save the theory choices and use confirmed by you',
+  read_writing_document: 'Read the current article, selection, version and style samples',
+  propose_writing_edit: 'Prepare an exact version-checked edit for your review',
   read_research_document: 'Read the current formal research document and version',
   propose_document_revision: 'Prepare document changes for your acceptance or rejection',
   propose_document_creation: 'Turn the confirmed theory plan into a 12-section framework draft',
@@ -1001,8 +1009,12 @@ type ResearchAgentConversationPageProps = {
   documentId?: string | null
   sectionId?: string | null
   documentVersion?: number | null
+  writingDocumentId?: string | null
+  initialWritingMessage?: { id: string; text: string } | null
+  prepareWritingContext?: () => Promise<AgentTurnRequest['writing_context']>
   theoryPlanId?: string | null
   onTurnCompleted?: () => void
+  onWritingRevisionCreated?: () => void
   onConversationStarted?: (identity: { conversation_id: string; task_id: string | null }) => void
   onConversationChange?: (conversation: AgentConversation) => void
   onStreamingTurnChange?: (turn: ResearchCanvasStreamingTurn | null) => void
@@ -1034,8 +1046,12 @@ export function ResearchAgentConversationPage({
   documentId = null,
   sectionId = null,
   documentVersion = null,
+  writingDocumentId = null,
+  initialWritingMessage = null,
+  prepareWritingContext,
   theoryPlanId = null,
   onTurnCompleted,
+  onWritingRevisionCreated,
   onConversationChange,
   onConversationStarted,
   onStreamingTurnChange,
@@ -1063,7 +1079,7 @@ export function ResearchAgentConversationPage({
   const homeSubmission = (entryNavigationType ?? navigationType) !== 'POP' && !embedded && !requestedConversationId && !searchParams.get('task_id')
     ? readHomeSubmission(location.state?.homeSubmitId, userId) : null
   const requestedKnowledgeReleaseId = embedded ? boundKnowledgeReleaseId : searchParams.get('knowledge_release_id')
-  const storageWorkspace = embedded && boundReferenceKnowledgeBaseId ? `course:${boundReferenceKnowledgeBaseId}` : embedded ? boundWorkspace : 'agent'
+  const storageWorkspace = writingDocumentId ? `writing:${writingDocumentId}` : embedded && boundReferenceKnowledgeBaseId ? `course:${boundReferenceKnowledgeBaseId}` : embedded ? boundWorkspace : 'agent'
   const requestedScope = conversationStorageScope(userId, requestedConversationId, embedded ? boundTaskId : searchParams.get('task_id'), storageWorkspace)
   const storageScope = useRef(requestedScope)
   const restoredPendingTurn = useRef<PendingTurnAttempt | null>(readPendingTurnAttempt(storageScope.current))
@@ -1113,6 +1129,9 @@ export function ResearchAgentConversationPage({
     requestedConversationId ? readStoredRuntimeModes(userId)[requestedConversationId] ?? null : null
   ))
   const [status, setStatus] = useState<AgentPageStatus>('idle')
+  const writingIntentStarted = useRef<string | null>(null)
+  const writingPreparation = useRef(false)
+  const [preparingWriting, setPreparingWriting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [historyLoading, setHistoryLoading] = useState(!embedded)
   const greeting = useConversationGreeting(locale, conversations.some(item => item.turn_count > 0), userId, !historyLoading)
@@ -1338,7 +1357,7 @@ export function ResearchAgentConversationPage({
   }, [citationRequest, activeConversation])
 
   const canStopGeneration = status === 'thinking' || status === 'retrieving' || status === 'answering'
-  const isBusy = status === 'loading' || status === 'pausing' || status === 'pause-failed' || canStopGeneration
+  const isBusy = preparingWriting || status === 'loading' || status === 'pausing' || status === 'pause-failed' || canStopGeneration
   const canSubmit = draft.trim().length > 0
     && !isBusy
     && (!homeSubmission || modelSelection.status === 'ready')
@@ -1877,7 +1896,7 @@ export function ResearchAgentConversationPage({
       setError('讨论内容过长，请缩短问题或重新选择较短的段落。')
       return null
     }
-    if (!question || isBusy || streamAbortController.current || (!researchEntry && researchEntryAbortController.current)) return null
+    if (!question || writingPreparation.current || isBusy || streamAbortController.current || (!researchEntry && researchEntryAbortController.current)) return null
     const turnMode = researchEntry ? 'standard' : (failedTurnAttempt.current?.idempotencyKey === retryIdempotencyKey && failedTurnAttempt.current?.request ? failedTurnAttempt.current.request.mode === 'deep_research' ? 'deep-research' : 'standard' : composerMode)
     let resultConversation: AgentConversation | null = null
     const idempotencyKey = retryIdempotencyKey
@@ -1898,12 +1917,22 @@ export function ResearchAgentConversationPage({
       materialIds: resumableAttempt?.materialIds ?? attachedMaterials.map((item) => item.materialId),
       request: resumableAttempt?.request,
     }
+    let writingContext: AgentTurnRequest['writing_context']
+    if (!attempt.request && prepareWritingContext) {
+      const preparationGeneration = streamGeneration.current
+      writingPreparation.current = true
+      setPreparingWriting(true)
+      try { writingContext = await prepareWritingContext(); if (preparationGeneration !== streamGeneration.current) return null }
+      catch (cause) { setError(cause instanceof Error ? cause.message : '无法保存当前文稿，请重试。'); return null }
+      finally { writingPreparation.current = false; setPreparingWriting(false) }
+    }
     const request: AgentTurnRequest = attempt.request ? { ...attempt.request, conversation_id: attempt.conversationId } : {
           ...newModelFields,
           conversation_id: activeConversation?.conversation_id ?? pendingConversationId.current,
           message: question,
           mode: turnMode === 'deep-research' ? 'deep_research' : 'standard',
           workspace,
+          ...(writingContext ? { writing_context: writingContext } : {}),
           web_search: webSearchEnabled,
           task_id: workspace === 'research' ? taskId : null,
           document_id: workspace === 'research' ? documentId : null,
@@ -1962,7 +1991,7 @@ export function ResearchAgentConversationPage({
             }
             startedAttempt.request = { ...request, conversation_id: event.conversation_id }
             activeTurnAttempt.current = startedAttempt
-            const nextScope = conversationStorageScope(userId, event.conversation_id, taskId, embedded && boundReferenceKnowledgeBaseId ? storageWorkspace : workspace)
+            const nextScope = conversationStorageScope(userId, event.conversation_id, taskId, embedded && (boundReferenceKnowledgeBaseId || writingDocumentId) ? storageWorkspace : workspace)
             if (storageScope.current !== nextScope) {
               persistPendingTurnAttempt(storageScope.current, null)
               persistInterruptedTurn(storageScope.current, null)
@@ -2020,6 +2049,7 @@ export function ResearchAgentConversationPage({
             settleDeepResearchElapsed()
             setDeepResearchMockStage('completed')
           } else if (event.type === 'tool_started' || event.type === 'tool_finished' || event.type === 'tool_failed') {
+            if (event.type === 'tool_finished' && event.tool === 'propose_writing_edit') onWritingRevisionCreated?.()
             const next = updateToolSteps(pendingToolSteps.current, event)
             pendingToolSteps.current = next
             if (turnMode === 'deep-research' && event.type === 'tool_started') {
@@ -2205,6 +2235,12 @@ export function ResearchAgentConversationPage({
     modelSelection.onChange(intent.selection)
     void submitQuestion(intent.question, intent.id, undefined, false, intent.selection)
   })
+  useEffect(() => {
+    if (!initialWritingMessage || requestedConversationId || modelSelection.owner !== userId || modelSelection.status !== 'ready' || isBusy || writingIntentStarted.current === initialWritingMessage.id) return
+    writingIntentStarted.current = initialWritingMessage.id
+    void submitQuestion(initialWritingMessage.text, initialWritingMessage.id)
+  }, [initialWritingMessage, requestedConversationId, userId, modelSelection.owner, modelSelection.status, isBusy])
+
   useEffect(() => {
     if (!homeSubmission || modelSelection.owner !== userId || modelSelection.status !== 'ready' || isBusy) return
     // One task lets StrictMode finish setup/cleanup before the real request.
@@ -2582,7 +2618,7 @@ export function ResearchAgentConversationPage({
     sourceMotionRef={sourceMotionRef}
     sourceClosing={!contextOpen}
     title={activeConversation?.title || text('新对话', 'New conversation')}
-    label={embedded ? text('研究 Agent 对话栏', 'Research Agent conversation panel') : text('Everplain Agent 对话', 'Everplain conversation')}
+    label={writingDocumentId ? text('写作 Agent 对话栏', 'Writing Agent conversation panel') : embedded ? text('研究 Agent 对话栏', 'Research Agent conversation panel') : text('Everplain Agent 对话', 'Everplain conversation')}
     modes={<AgentModeSwitch mode={composerMode} disabled={isBusy} avatar={<PersonalCompanion userId={userId} compact working={isBusy} fallback={<AgentAvatar avatar="shi" size={32} state={isBusy ? 'work' : 'idle'} />} />} onChange={mode => { setComposerMode(mode); setMaterialMenuOpen(false); if (mode === 'deep-research') setDeepResearchIntroVisible(false) }}>{modeIntroduction}</AgentModeSwitch>}
     actions={<ConversationActions key={requestedScope} label={text('更多对话操作', 'More conversation actions')}>{conversationActions}</ConversationActions>}
     history={!embedded && showConversationManagement ? <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon cv-layout__history-button" aria-label={text('打开研究记录', 'Open research history')} onClick={() => setHistoryOpen(true)}><ListIcon /></button> : null}

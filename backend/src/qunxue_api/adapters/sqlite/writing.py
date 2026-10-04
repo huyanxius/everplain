@@ -14,6 +14,7 @@ from sqlalchemy import (
     select,
     update,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column
 
 from qunxue_api.modules.writing import StyleSample, WritingConflict, fingerprint
@@ -379,7 +380,13 @@ class SqliteWritingRepository:
             created_at=now(),
         )
         self.session.add(row)
-        self.session.flush()
+        try:
+            self.session.flush()
+        except IntegrityError:
+            # A concurrent Agent tool retry must leave the shared session usable
+            # so the run can report the conflict without losing its checkpoint.
+            self.session.rollback()
+            raise
         return row
 
     def complete(self, operation, result):

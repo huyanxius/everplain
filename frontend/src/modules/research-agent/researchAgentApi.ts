@@ -344,6 +344,7 @@ async function streamAgentTurnOnce(
       section_id: payload.section_id ?? null,
       document_version: payload.document_version ?? null,
       theory_plan_id: payload.theory_plan_id ?? null,
+      ...(payload.writing_context ? { writing_context: payload.writing_context } : {}),
       material_ids: payload.material_ids ?? [],
       reference_knowledge_base_id: payload.reference_knowledge_base_id ?? null,
       deep_research_run_id: payload.deep_research_run_id ?? null,
