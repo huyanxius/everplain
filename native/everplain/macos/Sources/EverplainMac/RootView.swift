@@ -66,6 +66,11 @@ struct RootView: View {
 
             }
         }
+                    .overlay(alignment: .bottomTrailing) {
+                        if !store.booting, store.session != nil, store.profile?.setupCompleted == true, !store.welcomePresented {
+                            HomeCompanion(active: (store.route == .account || store.route == .agent ? store.settingsBackground : store.route) == .home)
+                        }
+                    }
                     .disabled(modalOpen).accessibilityHidden(modalOpen)
                     .overlay {
                         if store.session != nil && (store.route == .account || store.route == .agent) {

@@ -8,6 +8,7 @@ python3 scripts/sync-shared.py --check
 python3 scripts/generate-avatars.py --check
 python3 scripts/generate-brand.py --check
 python3 scripts/generate-icons.py --check
+python3 scripts/generate-companion.py --check
 python3 scripts/verify-assets.py
 python3 scripts/verify-export-resources.py
 python3 Tests/LibraryNativeParityChecks/resource-integrity.py --web-source DesignSources/graph/ObsidianKnowledgeGraph.tsx

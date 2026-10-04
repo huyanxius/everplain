@@ -538,7 +538,7 @@ final class AppStore: ObservableObject {
             guard epoch == ownerEpoch else { return }; sessions = devices.items
         } catch { guard epoch == ownerEpoch else { return }; accountError = error.localizedDescription; handleAuth(error) }
     }
-    func navigate(_ next: Route, newChat: Bool = false) async {
+    func navigate(_ next: Route, newChat: Bool = false, composerDraft: String? = nil) async {
         guard session != nil else { return }
         guard !saving || (route != .account && route != .agent) else { return }
         if next == .account || next == .agent {
@@ -556,6 +556,7 @@ final class AppStore: ObservableObject {
         guard epoch == ownerEpoch, navigation == navigationEpoch else { return }
         if newChat || next == .home { endStopWaiting(); clearAttachments(); selectedReferenceKnowledgeBaseId = nil; conversation = nil; pending = nil; clearRetainedTurns(); completedPendingTurn = nil; completedTurnId = nil; pendingConversationId = nil; composer = ""; composerMode = "standard" }
         if newChat && next == .workspace { workspaceTaskId = nil; workspaceDocumentId = nil; workspaceDocumentVersion = nil }
+        if newChat && next == .chat, let composerDraft { composer = composerDraft }
         if next == .home || next == .chat || next == .workspace { focusComposer = UUID() }
     }
     func openConversation(_ id: String, destination: Route = .chat) {

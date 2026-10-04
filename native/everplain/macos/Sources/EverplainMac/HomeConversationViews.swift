@@ -84,7 +84,7 @@ struct HomeConversationSurface: View {
                         homePrompt("找回以前收藏过的资料", prompt: "帮我找回以前收藏过的资料")
                         homePrompt("把资料串起来", prompt: "帮我把资料之间的联系整理一下")
                     }
-                    if viewport <= 1100 { HomeOverview().padding(.top, T.space8) }
+                    if viewport <= 1100 { HomeOverview().padding(.top, T.space10 - T.space4) }
                 }.frame(width: columnWidth, alignment: .leading).offset(y: viewport > 1100 ? max(0, -homeScrollOffset) : 0)
                 if viewport > 1100 { HomeOverview().frame(width: columnWidth, alignment: .leading) }
             }
@@ -94,7 +94,7 @@ struct HomeConversationSurface: View {
         }.coordinateSpace(name: "home-scroll").onPreferenceChange(HomeScrollOffset.self) { homeScrollOffset = $0 }
     }
     private func homePrompt(_ title: String, prompt: String) -> some View {
-        Button { store.composer = prompt; store.focusComposer = UUID() } label: {
+        Button { Task { await store.navigate(.chat, newChat:true, composerDraft:prompt) } } label: {
             Text(title).font(TypeStyle.ui(T.textMeta)).padding(.horizontal, T.space4).frame(minHeight: 32)
                 .overlay(Capsule().stroke(Palette(dark: scheme == .dark).rule, lineWidth: 1))
         }.buttonStyle(.plain)

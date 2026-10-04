@@ -1,4 +1,12 @@
 extension AppStore {
+    func probeHomePromptStartsAnUnsentFreshConversation() async {
+        session = SessionResponse(allowedActions: [], expiresAt: "2099-01-01T00:00:00Z", sessionId: "synthetic-session", status: "active", user: SessionUserResponse(email: "probe@example.invalid", userId: "synthetic-owner"), version: 1)
+        route = .home; pendingConversationId = "old-conversation"; composer = "Old draft"
+        await navigate(.chat, newChat:true, composerDraft:"帮我把资料之间的联系整理一下")
+        precondition(route == .chat && composer == "帮我把资料之间的联系整理一下")
+        precondition(pending == nil && pendingConversationId == nil && !running, "A Home suggestion dispatched a model request or reused old context")
+        resetOwner()
+    }
     func probeImmediateWorkspaceSwitch() -> (String?, String?, Bool) {
         session = SessionResponse(allowedActions: [], expiresAt: "2099-01-01T00:00:00Z", sessionId: "synthetic-session", status: "active", user: SessionUserResponse(email: "probe@example.invalid", userId: "synthetic-owner"), version: 1)
         route = .workspace; workspaceTaskId = "old-project"; workspace.taskId = "old-project"
@@ -183,6 +191,7 @@ extension AppStore {
         AppStore().probeCompletionEventPreservesOtherFailures()
         await AppStore().probeRetryDispatchAndLateCanonicalRead()
         await AppStore().probeLateOwnerReadAndRunningRecovery()
-        print("Passed 10 offline AppStore scope/overlay/recovery checks. All responses are synthetic; no API call or model request occurred.")
+        await AppStore().probeHomePromptStartsAnUnsentFreshConversation()
+        print("Passed 11 offline AppStore scope/overlay/recovery checks. All responses are synthetic; no API call or model request occurred.")
     }
 }

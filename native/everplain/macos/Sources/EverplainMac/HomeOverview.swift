@@ -24,7 +24,7 @@ private struct HomeStatusContent: View {
             } else if let graph = knowledge.personalGraph, graph.pendingCount > 0 {
                 Button("\(graph.pendingCount) 份资料没整理。") { store.openLibraryImport() }.buttonStyle(.plain)
             } else { EPText("这里还空着。丢一份资料，或者问一个你想弄清楚的问题。") }
-        }.font(TypeStyle.ui(T.textControl)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+        }.font(TypeStyle.ui(T.textBody)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -42,15 +42,15 @@ private struct HomeOverviewContent: View {
     var body: some View {
         let p = Palette(dark: scheme == .dark)
         VStack(alignment: .leading, spacing: T.space3) {
-            HStack { EPText("接着研究"); Spacer(); if open == "hand" { EPButton("收起") { toggle(nil) } }; EPButton("全部 →") { Task { await store.navigate(.research) } } }
+            HStack { EPText("接着研究"); Spacer(); if open == "hand" { EPButton("收起") { toggle(nil) } }; Button { Task { await store.navigate(.research) } } label: { HStack(spacing:T.space1) { EPText("全部"); WebIcon(name:.arrowRight,size:14) } } }
                 .font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.muted).buttonStyle(.plain)
             if research.loading { Card { EPText("正在读取最近研究").font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.muted) } }
             else if let message = research.error { Card { VStack(alignment: .leading) { Text(message); EPButton("重新加载研究") { Task { await research.load() } }.buttonStyle(EPGhostButtonStyle()) } } }
             else if research.projects.isEmpty {
                 Button { research.openWorkspace(nil) } label: {
                     VStack(spacing: T.space2) {
-                        EPText("＋").font(TypeStyle.ui(24))
-                        EPText("开始第一项研究").font(TypeStyle.reading(T.textTitle))
+                        WebIcon(name:.plus,size:24)
+                        EPText("开始第一项研究").font(TypeStyle.reading(T.textTitle).weight(.medium)).foregroundStyle(p.ink)
                         EPText("还没有研究项目"); Text("问 \(store.agentName) 一个问题，或者从一份资料出发")
                     }.font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.muted).frame(maxWidth: .infinity).frame(height: 212)
                         .background(p.surface, in: RoundedRectangle(cornerRadius: T.radiusCard)).rotationEffect(.degrees(-1.5))
@@ -60,7 +60,7 @@ private struct HomeOverviewContent: View {
             HStack {
                 EPText("我的资料"); Spacer()
                 if open == "deck" { Button("\(knowledge.personalGraph?.pendingCount ?? 0) 份待整理") { store.openLibraryImport() }; EPButton("收起") { toggle(nil) } }
-                EPButton("知识库 →") { Task { await store.navigate(.library) } }
+                Button { Task { await store.navigate(.library) } } label: { HStack(spacing:T.space1) { EPText("知识库"); WebIcon(name:.arrowRight,size:14) } }
             }.font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.muted).buttonStyle(.plain).padding(.top, T.space6)
             if knowledge.graphLoading || (knowledge.personalGraph == nil && knowledge.graphError == nil) { Card { EPText("正在读取资料").font(TypeStyle.ui(T.textMeta)).foregroundStyle(p.muted) } }
             else if let message = knowledge.graphError { Card { VStack(alignment: .leading) { Text(message); EPButton("重试") { Task { await knowledge.loadGraph() } }.buttonStyle(EPGhostButtonStyle()) } } }
@@ -68,8 +68,8 @@ private struct HomeOverviewContent: View {
             else {
                 Button { store.openLibraryImport() } label: {
                     HStack(spacing: T.space3) {
-                        NavigationIcon(kind: .file)
-                        VStack(alignment: .leading) { EPText("把第一份资料，放进来。").fontWeight(.medium); EPText("浏览器收藏、Obsidian、Markdown 或 PDF").font(TypeStyle.ui(T.textMeta)) }
+                        WebIcon(name:.uploadSimple,size:22)
+                        VStack(alignment: .leading) { EPText("把第一份资料，放进来。").font(TypeStyle.ui(T.textControl,weight:.medium)).foregroundStyle(p.ink); EPText("浏览器收藏、Obsidian、Markdown 或 PDF").font(TypeStyle.ui(T.textMeta)) }
                     }.padding(.vertical, T.space4).padding(.horizontal, T.space5).frame(maxWidth: .infinity, alignment: .leading)
                         .overlay(RoundedRectangle(cornerRadius: T.radiusCard).stroke(p.rule, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
                 }.buttonStyle(.plain).foregroundStyle(p.muted).padding(.trailing, 44)
