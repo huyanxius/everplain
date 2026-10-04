@@ -7,15 +7,15 @@ import EverplainCore
 
 /// Opt-in CI only. These render production native views with explicitly synthetic,
 /// offline state; they are not screenshots of a signed-in production account.
-@MainActor final class NativeHomeVisualTests: XCTestCase {
-    private func enabled() throws {
+final class NativeHomeVisualTests: XCTestCase {
+    @MainActor private func enabled() throws {
         guard ProcessInfo.processInfo.environment["EVERPLAIN_RUN_NATIVE_UI_TESTS"] == "1" else {
             throw XCTSkip("Set EVERPLAIN_RUN_NATIVE_UI_TESTS=1 on an interactive macOS runner.")
         }
         let app = NSApplication.shared
         app.setActivationPolicy(.regular); app.activate(ignoringOtherApps: true)
     }
-    private func window<V: View>(_ content: V, size: CGSize) -> (NSWindow, NSHostingView<V>) {
+    @MainActor private func window<V: View>(_ content: V, size: CGSize) -> (NSWindow, NSHostingView<V>) {
         let window = NSWindow(contentRect: CGRect(origin:.zero,size:size),styleMask:[.titled,.closable],backing:.buffered,defer:false)
         window.title = "Everplain native UI test · Synthetic offline fixture"
         window.isReleasedWhenClosed = false; window.acceptsMouseMovedEvents = false
@@ -24,8 +24,8 @@ import EverplainCore
         host.layoutSubtreeIfNeeded(); window.displayIfNeeded()
         return (window,host)
     }
-    private func settle(_ seconds: Double) async throws { try await Task.sleep(nanoseconds:UInt64(seconds*1_000_000_000)) }
-    @discardableResult private func capture(_ host: NSView, name: String) throws -> Data {
+    @MainActor private func settle(_ seconds: Double) async throws { try await Task.sleep(nanoseconds:UInt64(seconds*1_000_000_000)) }
+    @MainActor @discardableResult private func capture(_ host: NSView, name: String) throws -> Data {
         host.layoutSubtreeIfNeeded(); host.window?.displayIfNeeded()
         let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in:host.bounds))
         host.cacheDisplay(in:host.bounds,to:bitmap)
@@ -38,7 +38,7 @@ import EverplainCore
         return bytes
     }
 
-    func testCompanionNativeRenderingAndInterruptedDeparture() async throws {
+    @MainActor func testCompanionNativeRenderingAndInterruptedDeparture() async throws {
         try enabled()
         let controller = CompanionVisualController(), model = HomeCompanionState()
         let (window,host) = window(CompanionVisualHost(controller:controller,model:model),size:CGSize(width:800,height:400))
@@ -62,7 +62,7 @@ import EverplainCore
         XCTAssertFalse(model.frame.present); XCTAssertFalse(window.acceptsMouseMovedEvents,"The removed companion left its pointer monitor active")
     }
 
-    func testActualHomeViewRendersOfflineAndKeepsComposerAcrossRoutes() async throws {
+    @MainActor func testActualHomeViewRendersOfflineAndKeepsComposerAcrossRoutes() async throws {
         try enabled()
         // This process-only endpoint override prevents any production-origin use.
         let old = ProcessInfo.processInfo.environment["EVERPLAIN_API_URL"]

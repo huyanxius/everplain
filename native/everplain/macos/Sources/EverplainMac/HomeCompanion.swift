@@ -55,7 +55,7 @@ struct CompanionFrame: Equatable {
     private let origin = ProcessInfo.processInfo.systemUptime
     private var mountedAt = 0.0, changedAt = 0.0, bobStartedAt = 0.0
     private var happySince: Double?, blushSince = 0.0, blushFrom = 0.85, blushTarget = 0.85
-    private var active = false, reduced = false
+    private var active = false, reduced = false, windowVisible = true
     private var gaze = CompanionGaze()
     private var now: Double { ProcessInfo.processInfo.systemUptime - origin }
     func configure(active: Bool, reduced: Bool) {
@@ -78,6 +78,7 @@ struct CompanionFrame: Equatable {
         gaze.observe(x: Double(point.x - center.x), y: Double(center.y - point.y), width: Double(viewport.width), height: Double(viewport.height), now: now)
     }
     func viewport(_ size: CGSize) { if viewportWidth != size.width { viewportWidth = size.width } }
+    func visibility(_ visible: Bool) { windowVisible = visible }
     func smile() {
         guard active, happySince == nil else { return }
         happySince = now; setBlush(0.95, at: now); restartClock()
@@ -100,13 +101,14 @@ struct CompanionFrame: Equatable {
                 let delay = self.nextDelay()
                 do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) } catch { return }
                 guard !Task.isCancelled else { return }
-                if NSApp.isActive { self.tick() }
+                // Mood/departure deadlines must settle even when the app loses focus.
+                self.tick()
                 if !self.frame.present { return }
             }
         }
     }
     private func nextDelay() -> Double {
-        if !NSApp.isActive { return 0.2 }
+        if !windowVisible { return 0.2 }
         if !reduced || now - blushSince < 0.3 { return 1 / 60 }
         if let happySince { return max(0.001, min(1, happySince + CompanionMotion.happyDuration - now)) }
         return 1
@@ -117,9 +119,11 @@ struct CompanionFrame: Equatable {
             self.happySince = nil; bobStartedAt = time; setBlush(0.85, at: time)
         }
         let present = active || (!reduced && frame.present && time - changedAt < CompanionMotion.leaveDuration)
-        gaze.tick(now: time, reduced: reduced)
-        let next = CompanionFrame(present: present, elapsed: reduced ? 0 : time - mountedAt,
-                                  bobElapsed: reduced ? 0 : time - bobStartedAt,
+        if windowVisible || reduced { gaze.tick(now: time, reduced: reduced) }
+        let elapsed = reduced ? 0 : windowVisible ? time - mountedAt : frame.elapsed
+        let bobElapsed = reduced ? 0 : windowVisible ? time - bobStartedAt : frame.bobElapsed
+        let next = CompanionFrame(present: present, elapsed: elapsed,
+                                  bobElapsed: bobElapsed,
                                   happyAge: happySince.map { time - $0 },
                                   turn: (gaze.turn * 1000).rounded() / 1000, nod: (gaze.nod * 1000).rounded() / 1000,
                                   blush: blush(at: time), slide: CompanionMotion.entrance(age: time - changedAt, active: active, reduced: reduced))
@@ -136,6 +140,7 @@ private struct CompanionPointerAnchor: NSViewRepresentable {
     @MainActor final class Anchor: NSView {
         weak var state: HomeCompanionState?
         private var monitor: Any?
+        private var observers: [NSObjectProtocol] = []
         private weak var trackedWindow: NSWindow?
         private var previousMouseEvents = false
         override func viewDidMoveToWindow() {
@@ -147,13 +152,21 @@ private struct CompanionPointerAnchor: NSViewRepresentable {
                 Task { @MainActor [weak self] in self?.observe(point, windowNumber: number) }
                 return event
             }
+            for name in [NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification, NSWindow.didChangeOcclusionStateNotification] {
+                observers.append(NotificationCenter.default.addObserver(forName:name,object:window,queue:.main) { [weak self] _ in
+                    Task { @MainActor [weak self] in self?.reportViewport() }
+                })
+            }
             reportViewport()
         }
         override func layout() { super.layout(); reportViewport() }
         func reportViewport() {
-            guard let size = window?.contentView?.bounds.size else { return }
             // Avoid publishing while SwiftUI is updating this representable.
-            Task { @MainActor [weak state] in state?.viewport(size) }
+            Task { @MainActor [weak self] in
+                guard let self, let window = self.window, let size = window.contentView?.bounds.size else { return }
+                self.state?.viewport(size)
+                self.state?.visibility(window.isVisible && !window.isMiniaturized)
+            }
         }
         private func observe(_ point: CGPoint, windowNumber: Int) {
             guard let window, window.windowNumber == windowNumber, let content = window.contentView else { return }
@@ -162,7 +175,9 @@ private struct CompanionPointerAnchor: NSViewRepresentable {
         }
         func removeMonitor() {
             if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
+            observers.forEach(NotificationCenter.default.removeObserver); observers.removeAll()
             trackedWindow?.acceptsMouseMovedEvents = previousMouseEvents; trackedWindow = nil
+            state?.visibility(false)
         }
     }
 }
