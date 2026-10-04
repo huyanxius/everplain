@@ -236,23 +236,7 @@ internal class LibraryController(
 
     fun previewAsset(libraryId: String, documentId: String): String? {
         val raw = state.value.imageSources["$libraryId:$documentId"]?.assetUrl ?: return null
-        val resolved = api.endpoint.url.resolve(raw) ?: return null
-        val base = api.endpoint.url
-        if (
-            resolved.scheme != base.scheme ||
-                resolved.host != base.host ||
-                resolved.port != base.port ||
-                resolved.username.isNotEmpty() ||
-                resolved.password.isNotEmpty() ||
-                resolved.query != null ||
-                resolved.fragment != null
-        )
-            return null
-        val id =
-            resolved.pathSegments
-                .takeIf { it.size == 4 && it.take(3) == listOf("api", "imports", "assets") }
-                ?.last() ?: return null
-        return runCatching { java.util.UUID.fromString(id).toString() }.getOrNull()
+        return api.endpoint.imageAssetId(raw)
     }
 
     suspend fun imagePreview(asset: String): BinaryPayload =

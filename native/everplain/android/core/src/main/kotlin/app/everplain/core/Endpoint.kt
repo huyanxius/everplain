@@ -26,4 +26,23 @@ class Endpoint private constructor(val url: HttpUrl) {
         get() = url.toString()
 
     fun path(path: String): HttpUrl = url.newBuilder().encodedPath(path).build()
+
+    /** Only the documented authenticated import-image route may receive this session's cookies. */
+    fun imageAssetId(raw: String): String? {
+        val resolved = url.resolve(raw) ?: return null
+        if (
+            resolved.scheme != url.scheme ||
+                resolved.host != url.host ||
+                resolved.port != url.port ||
+                resolved.username.isNotEmpty() ||
+                resolved.password.isNotEmpty() ||
+                resolved.query != null ||
+                resolved.fragment != null
+        )
+            return null
+        val segments = resolved.pathSegments
+        if (segments.size != 4 || segments.take(3) != listOf("api", "imports", "assets"))
+            return null
+        return runCatching { java.util.UUID.fromString(segments.last()).toString() }.getOrNull()
+    }
 }
