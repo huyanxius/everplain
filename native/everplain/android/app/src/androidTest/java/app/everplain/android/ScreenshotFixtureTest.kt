@@ -9,7 +9,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.platform.graphics.HardwareRendererCompat
 import app.everplain.core.Endpoint
-import app.everplain.core.EverplainApi
 import app.everplain.core.MemoryStore
 import app.everplain.core.WireJson
 import app.everplain.shared.*
@@ -73,8 +72,10 @@ class ScreenshotFixtureTest {
                 credits = credits,
             )
         lateinit var mutable: MutableStateFlow<AppState>
+        lateinit var fixtureViewModel: AppViewModel
         compose.runOnUiThread {
             val vm = ViewModelProvider(compose.activity)[AppViewModel::class.java]
+            fixtureViewModel = vm
             AppViewModel::class
                 .java
                 .getDeclaredField("api")
@@ -82,7 +83,10 @@ class ScreenshotFixtureTest {
                 .set(
                     vm,
                     object :
-                        NativeFixtureApi(Endpoint.parse("https://qa.example.invalid"), MemoryStore()) {
+                        NativeFixtureApi(
+                            Endpoint.parse("https://qa.example.invalid"),
+                            MemoryStore(),
+                        ) {
                         override suspend fun session() = session
 
                         override suspend fun profile() = profile
@@ -149,10 +153,28 @@ class ScreenshotFixtureTest {
         capture("agent-save-visible")
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasContentDescription("名字"))
         compose.onNodeWithContentDescription("名字").performTextReplacement("保留未保存的草稿")
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("名字").assertTextContains("保留未保存的草稿")
+        lateinit var retainedDraft: AgentSettingsDraft
+        compose.runOnUiThread {
+            retainedDraft = fixtureViewModel.agentDraft(profile)
+            org.junit.Assert.assertEquals("保留未保存的草稿", retainedDraft.state.value.name)
+            val saved =
+                EncryptedStore(compose.activity)
+                    .read("agent-settings-draft:${base.origin}:${session.user.userId}")
+            org.junit.Assert.assertEquals(
+                "保留未保存的草稿",
+                WireJson.decodeFromString<AgentDraftData>(saved!!).name,
+            )
+        }
         compose.runOnUiThread { mutable.value = base.copy(destination = Destination.Home) }
         compose.waitForIdle()
         compose.runOnUiThread { mutable.value = base.copy(destination = Destination.Agent) }
         compose.waitForIdle()
+        compose.runOnUiThread {
+            org.junit.Assert.assertSame(retainedDraft, fixtureViewModel.agentDraft(profile))
+            org.junit.Assert.assertEquals("保留未保存的草稿", retainedDraft.state.value.name)
+        }
         compose.onNodeWithContentDescription("名字").assertTextContains("保留未保存的草稿")
         compose.onNodeWithContentDescription("名字").performTextReplacement("澄")
         compose.runOnUiThread { mutable.value = base.copy(destination = Destination.Chat) }

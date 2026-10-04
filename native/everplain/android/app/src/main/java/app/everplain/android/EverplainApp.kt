@@ -1611,12 +1611,14 @@ private fun AgentSettings(s: AppState, vm: AppViewModel) {
         return
     }
     val draft = vm.agentDraft(p)
-    var expectedVersion by draft.expectedVersion
-    var name by draft.name
-    var style by draft.style
-    var soul by draft.soul
-    var avatar by draft.avatar
-    var color by draft.color
+    val draftData by draft.state.collectAsStateWithLifecycle()
+    val storageError by draft.error.collectAsStateWithLifecycle()
+    val expectedVersion = draftData.expectedVersion
+    val name = draftData.name
+    val style = draftData.style
+    val soul = draftData.soul
+    val avatar = draftData.avatar
+    val color = draftData.color
     var saved by remember { mutableStateOf(false) }
     var discard by remember { mutableStateOf(false) }
     val colors =
@@ -1633,7 +1635,7 @@ private fun AgentSettings(s: AppState, vm: AppViewModel) {
     LaunchedEffect(s.settingsSaved) {
         if (s.settingsSaved > 0) {
             saved = true
-            expectedVersion = p.version
+            draft.edit { it.copy(expectedVersion = p.version) }
         }
     }
     LazyColumn(
@@ -1642,6 +1644,9 @@ private fun AgentSettings(s: AppState, vm: AppViewModel) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item { SettingsCategory("我的 Agent", vm) }
+        storageError?.let { message ->
+            item { Text(message, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+        }
         item {
             Row(
                 Modifier.padding(vertical = 8.dp),
@@ -1666,8 +1671,9 @@ private fun AgentSettings(s: AppState, vm: AppViewModel) {
                                             else Modifier
                                         )
                                         .clickable(enabled = !s.busy) {
-                                            avatar = id
-                                            color = colors[row * 4 + col]
+                                            draft.edit {
+                                                it.copy(avatar = id, color = colors[row * 4 + col])
+                                            }
                                             saved = false
                                         }
                                         .semantics {
@@ -1695,7 +1701,7 @@ private fun AgentSettings(s: AppState, vm: AppViewModel) {
                                     Modifier.size(44.dp)
                                         .clip(CircleShape)
                                         .clickable(enabled = !s.busy) {
-                                            color = value
+                                            draft.edit { it.copy(color = value) }
                                             saved = false
                                         }
                                         .semantics {
@@ -1735,7 +1741,7 @@ private fun AgentSettings(s: AppState, vm: AppViewModel) {
                 "名字",
                 name,
                 {
-                    name = it.take(40)
+                    draft.edit { old -> old.copy(name = it.take(40)) }
                     saved = false
                 },
                 enabled = !s.busy,
@@ -1765,7 +1771,7 @@ private fun AgentSettings(s: AppState, vm: AppViewModel) {
                                         EpButton(
                                             label,
                                             {
-                                                style = value
+                                                draft.edit { it.copy(style = value) }
                                                 saved = false
                                             },
                                             selected = style == value,
@@ -1784,7 +1790,7 @@ private fun AgentSettings(s: AppState, vm: AppViewModel) {
                 "人格描述（Markdown）",
                 soul,
                 {
-                    soul = it.take(8000)
+                    draft.edit { old -> old.copy(soul = it.take(8000)) }
                     saved = false
                 },
                 minHeight = 180,
@@ -1824,7 +1830,7 @@ private fun AgentSettings(s: AppState, vm: AppViewModel) {
                     EpButton(
                         "保留我的修改继续编辑",
                         {
-                            expectedVersion = p.version
+                            draft.edit { it.copy(expectedVersion = p.version) }
                             vm.acknowledgeConflict()
                         },
                         enabled = s.settingsConflictReady,
@@ -1832,12 +1838,16 @@ private fun AgentSettings(s: AppState, vm: AppViewModel) {
                     EpButton(
                         "采用最新版本",
                         {
-                            name = p.name
-                            style = p.speakingStyle
-                            soul = p.soulText.orEmpty()
-                            avatar = p.avatarId
-                            color = p.color
-                            expectedVersion = p.version
+                            draft.edit {
+                                AgentDraftData(
+                                    p.version,
+                                    p.name,
+                                    p.speakingStyle,
+                                    p.soulText.orEmpty(),
+                                    p.avatarId,
+                                    p.color,
+                                )
+                            }
                             vm.acknowledgeConflict()
                         },
                         enabled = s.settingsConflictReady,
@@ -1851,12 +1861,16 @@ private fun AgentSettings(s: AppState, vm: AppViewModel) {
                     EpButton(
                         "放弃未保存的修改",
                         {
-                            name = p.name
-                            style = p.speakingStyle
-                            soul = p.soulText.orEmpty()
-                            avatar = p.avatarId
-                            color = p.color
-                            expectedVersion = p.version
+                            draft.edit {
+                                AgentDraftData(
+                                    p.version,
+                                    p.name,
+                                    p.speakingStyle,
+                                    p.soulText.orEmpty(),
+                                    p.avatarId,
+                                    p.color,
+                                )
+                            }
                             discard = false
                         },
                     )

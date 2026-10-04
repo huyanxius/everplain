@@ -1,7 +1,7 @@
 package app.everplain.android
 
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.mutableStateOf
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -22,36 +22,21 @@ internal class AgentSettingsDraft(
     data: AgentDraftData,
     private val persist: (AgentDraftData) -> Unit,
 ) {
-    private fun <T> field(initial: T): MutableState<T> {
-        val backing = mutableStateOf(initial)
-        return object : MutableState<T> {
-            override var value: T
-                get() = backing.value
-                set(value) {
-                    backing.value = value
-                    persist(snapshot())
-                }
+    private val mutable = MutableStateFlow(data)
+    val state = mutable.asStateFlow()
+    private val storageError = MutableStateFlow<String?>(null)
+    val error = storageError.asStateFlow()
 
-            override fun component1() = value
-
-            override fun component2(): (T) -> Unit = { value = it }
+    @Synchronized
+    fun edit(change: (AgentDraftData) -> AgentDraftData) {
+        val next = change(mutable.value)
+        if (next == mutable.value) return
+        try {
+            persist(next)
+            storageError.value = null
+        } catch (_: Exception) {
+            storageError.value = "本机草稿暂未写入安全存储。文字仍保留在当前页面，请不要退出应用。"
         }
+        mutable.value = next
     }
-
-    val expectedVersion = field(data.expectedVersion)
-    val name = field(data.name)
-    val style = field(data.style)
-    val soul = field(data.soul)
-    val avatar = field(data.avatar)
-    val color = field(data.color)
-
-    private fun snapshot() =
-        AgentDraftData(
-            expectedVersion.value,
-            name.value,
-            style.value,
-            soul.value,
-            avatar.value,
-            color.value,
-        )
 }
