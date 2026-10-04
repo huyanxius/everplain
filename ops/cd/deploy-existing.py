@@ -45,9 +45,9 @@ BASE = Path("/srv/everplain-updates")
 NAMES = {"api": "everplain-api", "web": "everplain-web"}
 
 
-def require(condition):
+def require(condition, message="checked release precondition failed"):
     if not condition:
-        raise RuntimeError("checked release precondition failed")
+        raise RuntimeError(message)
 
 
 def run(args, timeout=180, report=None, prefix=""):
@@ -334,6 +334,46 @@ def environment(container):
     return result
 
 
+
+def configure_billing_policy(current, policy, report):
+    """Apply only an explicit, checksum-bound additive writing billing policy."""
+    requested = policy.get("add_user_billing_phases", [])
+    require(requested == [] or requested == ["writing"], "unsupported billing policy update")
+    report["billing_policy_update_requested"] = bool(requested)
+    report["billing_policy_changed"] = False
+    result = dict(current)
+    if not requested:
+        return result
+
+    def unique_mapping(pairs):
+        value = {}
+        for key, item in pairs:
+            require(key not in value, "duplicate billing policy entry")
+            value[key] = item
+        return value
+
+    try:
+        phases = json.loads(
+            current.get("EVERPLAIN_BILLING_PHASE_POLICIES", "{}"),
+            object_pairs_hook=unique_mapping,
+        )
+    except (ValueError, TypeError):
+        raise RuntimeError("existing billing policy requires review") from None
+    require(isinstance(phases, dict), "existing billing policy requires review")
+    require(
+        all(isinstance(k, str) and v in ("user", "operator") for k, v in phases.items()),
+        "existing billing policy requires review",
+    )
+    require(phases.get("writing") in (None, "user"), "existing writing policy requires review")
+    if "writing" not in phases:
+        phases["writing"] = "user"
+        result["EVERPLAIN_BILLING_PHASE_POLICIES"] = json.dumps(
+            phases, sort_keys=True, separators=(",", ":")
+        )
+        report["billing_policy_changed"] = True
+    return result
+
+
 def existing_layout(api, web):
     for role, value, port, inside in (
         ("api", api, "8297", "8297/tcp"),
@@ -464,6 +504,13 @@ class ExistingRelease:
 
     def complete(self, manifest):
         actual = snapshot(run, metadata)
+        if self.report.get("billing_policy_update_requested"):
+            active_env = environment(metadata(NAMES["api"]))
+            require(
+                active_env.get("EVERPLAIN_BILLING_PHASE_POLICIES") == self.expected_billing_policy,
+                "activated billing policy differs from reviewed update",
+            )
+            self.report["writing_user_policy_verified"] = True
         require(actual["api"] == manifest["runtime_identity"]["api"])
         require(actual["web_tree"] == manifest["runtime_identity"]["web_tree"])
         require(actual["api_image"] in {API_IMAGE, self.images["api"]})
@@ -570,9 +617,11 @@ class ExistingRelease:
             self.baseline, self.previous_state, manifest.get("initial_live_fingerprint"),
             REVISION, RUN_ID, ARCHIVE_SHA256,
         )
+        policy = json.loads((release / "ops/cd/policy.json").read_text())
+        env = configure_billing_policy(old_env, policy, self.report)
+        self.expected_billing_policy = env.get("EVERPLAIN_BILLING_PHASE_POLICIES")
         check_compatible(
-            {"migration_tree": self.baseline["api"]["migration_tree"]}, manifest,
-            json.loads((release / "ops/cd/policy.json").read_text()),
+            {"migration_tree": self.baseline["api"]["migration_tree"]}, manifest, policy,
         )
         self.report["live_overlay_guard_verified"] = True
         self.report["artifact_verified"] = True
@@ -601,7 +650,6 @@ class ExistingRelease:
             require(info["Architecture"] == "amd64" and info["Os"] == "linux")
             require(info["Config"]["Labels"].get("org.opencontainers.image.revision") == REVISION)
             self.report[role + "_image_verified"] = True
-        env = environment(api)
         env.update(EVERPLAIN_RELEASE_REVISION=REVISION, EVERPLAIN_MIGRATIONS_MANAGED="1")
         atomic_bytes(
             release / "runtime.env", "".join(k + "=" + v + "\n" for k, v in env.items()).encode()
@@ -648,6 +696,7 @@ class ExistingRelease:
         self.record()
         if (
             self.old_revision == REVISION
+            and not self.report.get("billing_policy_changed")
             and api.get("Image") == self.images["api"]
             and web.get("Image") == self.images["web"]
         ):

@@ -1,4 +1,7 @@
 {
   "format": 1,
-  "rollback_compatible_migration_trees": []
+  "rollback_compatible_migration_trees": [],
+  "add_user_billing_phases": [
+    "writing"
+  ]
 }
