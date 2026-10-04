@@ -1128,7 +1128,7 @@ describe('ResearchAgentConversationPage', () => {
   })
 
   it('applies the global English locale to an existing conversation', async () => {
-    const conversation = conversationFixture({ id: 'conversation-english' })
+    const conversation = conversationFixture({ id: 'conversation-english', citations: [{ citation_id: 'english-source', kind: 'entry', label: 'Community research', excerpt: 'Evidence for the answer.' }] })
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = urlFor(input)
       if (url.pathname === '/api/agent/conversations') return json({ items: [] })
@@ -1141,7 +1141,8 @@ describe('ResearchAgentConversationPage', () => {
     const region = await screen.findByRole('region', { name: 'Everplain conversation' })
     expect(within(region).getByRole('button', { name: 'Copy answer' })).toBeVisible()
     expect(within(region).getByRole('button', { name: 'Regenerate' })).toBeVisible()
-    expect(within(region).getByText(/Knowledge base not searched/)).toBeVisible()
+    expect(within(region).getByRole('status', { name: 'Evidence sources for this answer' })).toHaveTextContent('Cited this turn · Knowledge library 1')
+    expect(within(region).getByRole('button', { name: 'View evidence: Community research' })).toBeVisible()
     expect(within(region).getByRole('textbox', { name: 'Ask Everplain' })).toBeVisible()
   })
 
@@ -1922,12 +1923,12 @@ it('keeps an unsent draft when the composer switches between project and indepen
   const projectSelect = screen.getByRole('button', { name: '对话所属项目' })
   fireEvent.click(projectSelect)
   fireEvent.click(screen.getByRole('menuitemradio', { name: '社区研究' }))
-  expect(input).toHaveValue('保留这段未发送的问题')
-  expect(projectSelect).toHaveTextContent('社区研究')
-  fireEvent.click(projectSelect)
+  expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('保留这段未发送的问题')
+  await waitFor(() => expect(screen.getByRole('button', { name: '对话所属项目' })).toHaveTextContent('社区研究'))
+  fireEvent.click(screen.getByRole('button', { name: '对话所属项目' }))
   fireEvent.click(screen.getByRole('menuitemradio', { name: '独立对话' }))
-  expect(input).toHaveValue('保留这段未发送的问题')
-  expect(projectSelect).toHaveTextContent('独立对话')
+  expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('保留这段未发送的问题')
+  await waitFor(() => expect(screen.getByRole('button', { name: '对话所属项目' })).toHaveTextContent('独立对话'))
 })
 
 it('opens project creation in a dismissible sidebar popover', async () => {

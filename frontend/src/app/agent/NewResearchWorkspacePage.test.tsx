@@ -737,7 +737,7 @@ describe('NewResearchWorkspacePage', () => {
       fireEvent.click(resume)
     })
 
-    expect(await screen.findByText(conversation.turns[0].assistant.content)).toBeVisible()
+    expect(await screen.findByText((_text, element) => element?.classList.contains('cv-turn__prose') === true && element.textContent === conversation.turns[0].assistant.content)).toBeVisible()
     expect(turnRequests).toBe(2)
   })
 
@@ -817,7 +817,7 @@ describe('NewResearchWorkspacePage', () => {
     }))
     renderPage(`/research/new?conversation_id=${conversation.conversation_id}`)
 
-    expect(await screen.findByText(conversation.turns[0].assistant.content)).toBeVisible()
+    expect(await screen.findByText((_text, element) => element?.classList.contains('cv-turn__prose') === true && element.textContent === conversation.turns[0].assistant.content)).toBeVisible()
     const recovery = await screen.findByRole('alert', { name: '研究状态恢复失败' })
     expect(recovery).toHaveTextContent('对话已保留')
     expect(within(recovery).getByRole('button', { name: '继续对话' })).toBeEnabled()
@@ -927,7 +927,7 @@ describe('NewResearchWorkspacePage', () => {
 
     const table = await within(workspace).findByRole('table')
     expect(within(table).getByRole('columnheader', { name: '机制' })).toBeVisible()
-    expect(within(table).getByRole('cell', { name: '职业可见性变化' })).toBeVisible()
+    expect(await within(table).findByRole('cell', { name: '职业可见性变化' })).toBeVisible()
   })
 
   it('regenerates by starting a real follow-up Agent turn and exposes no dead feedback controls', async () => {
@@ -951,14 +951,14 @@ describe('NewResearchWorkspacePage', () => {
     fireEvent.change(textbox, { target: { value: first.title } })
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
-    expect(await within(region).findByText('第一版回答。', { exact: true })).toBeVisible()
+    expect(await within(region).findByText((_text, element) => element?.classList.contains('cv-turn__prose') === true && element.textContent === '第一版回答。')).toBeVisible()
     expect(within(region).queryByRole('button', { name: '有帮助' })).not.toBeInTheDocument()
     expect(within(region).queryByRole('button', { name: '没帮助' })).not.toBeInTheDocument()
 
     fireEvent.click(within(region).getByRole('button', { name: '重新生成' }))
 
     await waitFor(() => expect(turnCalls).toBe(2))
-    expect(await within(region).findByText('重新生成后的回答。', { exact: true })).toBeVisible()
+    expect(await within(region).findByText((_text, element) => element?.classList.contains('cv-turn__prose') === true && element.textContent === '重新生成后的回答。')).toBeVisible()
   })
 
   it('does not claim a copy succeeded when the browser clipboard rejects it', async () => {
@@ -1163,7 +1163,7 @@ describe('NewResearchWorkspacePage', () => {
     const firstTextbox = within(firstWorkspace).getByRole('textbox', { name: '和 Agent 讨论你的研究' })
     fireEvent.change(firstTextbox, { target: { value: conversation.title } })
     fireEvent.submit(firstTextbox.closest('form') as HTMLFormElement)
-    await within(firstWorkspace).findByText(conversation.turns[0].assistant.content, { exact: true })
+    await within(firstWorkspace).findByText((_text, element) => element?.classList.contains('cv-turn__prose') === true && element.textContent === conversation.turns[0].assistant.content)
     firstPage.unmount()
     window.sessionStorage.clear()
 
@@ -1193,7 +1193,7 @@ describe('NewResearchWorkspacePage', () => {
     renderPage()
     const history = await screen.findByRole('region', { name: 'Agent 对话记录' })
     fireEvent.click(await within(history).findByRole('button', { name: conversation.title }))
-    expect(await screen.findByText(conversation.turns[0].assistant.content)).toBeVisible()
+    expect(await screen.findByText((_text, element) => element?.classList.contains('cv-turn__prose') === true && element.textContent === conversation.turns[0].assistant.content)).toBeVisible()
     expect(screen.getByLabelText('当前测试路径')).toHaveTextContent(`conversation_id=${conversation.conversation_id}`)
   })
 
