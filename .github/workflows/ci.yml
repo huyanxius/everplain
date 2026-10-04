@@ -33,7 +33,7 @@ jobs:
           paths = result.stdout.splitlines()
           unknown = result.returncode != 0 or not paths or any(not p.startswith(('backend/', 'frontend/', 'extensions/', 'ops/', '.github/workflows/', 'docs/')) for p in paths)
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              for role, prefixes in [('backend', ('backend/',)), ('frontend', ('frontend/', 'extensions/', 'backend/openapi.json'))]:
+              for role, prefixes in [('backend', ('backend/',)), ('frontend', ('frontend/', 'extensions/', 'backend/'))]:
                   output.write(f'{role}={str(unknown or any(p.startswith(prefixes) for p in paths)).lower()}\n')
           PY
   release-build:

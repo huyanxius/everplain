@@ -26,6 +26,40 @@ spec.loader.exec_module(release)
 
 
 class RegistryReleaseTests(unittest.TestCase):
+    def test_web_only_release_never_stops_api_or_copies_data_and_restores_web_on_failure(self):
+        for failed in (False, True):
+            with self.subTest(failed=failed), tempfile.TemporaryDirectory() as d:
+                root = Path(d)
+                api = container("api", root)
+                api["Image"] = "sha256:" + "b" * 64
+                web = container("web", root)
+                web["Mounts"] = [{"Destination": "/etc/nginx/conf.d/default.conf"}]
+                update = release.ExistingRelease(root / "input", root)
+                update.stage = root
+                update.old_names = {"web": "everplain-web-before-test"}
+                update.images = {"api": api["Image"], "web": "sha256:" + "a" * 64}
+                update.baseline, update.previous_state = {}, None
+                update.state_path = root / "state"
+                update.old_revision = "c" * 40
+                with patch.object(release, "snapshot", return_value={}), \
+                     patch.object(release, "read_state", return_value=None), \
+                     patch.object(release, "run", return_value="") as commands, \
+                     patch.object(release, "metadata", return_value=api), \
+                     patch.object(release, "environment", return_value={"EVERPLAIN_RUNTIME_MODE": "base"}), \
+                     patch.object(release, "public_health", side_effect=RuntimeError("health") if failed else None), \
+                     patch.object(update, "complete"), patch.object(update, "record"):
+                    if failed:
+                        with self.assertRaises(RuntimeError):
+                            update.activate_web_only({}, api, web, "bridge")
+                        self.assertTrue(update.report["old_service_restored"])
+                    else:
+                        update.activate_web_only({}, api, web, "bridge")
+                        self.assertTrue(update.report["api_unchanged_verified"])
+                    for call in commands.call_args_list:
+                        self.assertNotIn("everplain-api", call.args[0])
+                        self.assertNotIn("alembic", call.args[0])
+                    self.assertFalse((root / "data").exists())
+
     def test_digest_pull_reuses_layers_and_removes_temporary_credentials(self):
         manifest = {
             "registry_images": {role: f"ghcr.io/huyanxius/everplain-{role}@sha256:" + "a" * 64
