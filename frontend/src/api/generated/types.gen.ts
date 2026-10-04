@@ -832,6 +832,47 @@ export type AgentResearchMapResponse = {
 };
 
 /**
+ * AgentRunLookupResponse
+ *
+ * Owner-scoped observation only; looking up a run never resumes it.
+ */
+export type AgentRunLookupResponse = {
+    /**
+     * Cancel Requested
+     */
+    cancel_requested: boolean;
+    /**
+     * Conversation Id
+     */
+    conversation_id: string;
+    /**
+     * Idempotency Key
+     */
+    idempotency_key: string;
+    /**
+     * Partial Answer
+     */
+    partial_answer: string;
+    request: AgentTurnRequest | null;
+    /**
+     * Run Id
+     */
+    run_id: string;
+    /**
+     * Status
+     */
+    status: 'running' | 'completed' | 'failed' | 'interrupted' | 'awaiting_clarification' | 'awaiting_plan_confirmation';
+    /**
+     * Turn Id
+     */
+    turn_id: string | null;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
  * AgentRunRecoveryResponse
  */
 export type AgentRunRecoveryResponse = {
@@ -1471,6 +1512,17 @@ export type BodyUploadSharedDocument = {
 };
 
 /**
+ * Body_upload_writing_sample
+ */
+export type BodyUploadWritingSample = {
+    /**
+     * File
+     */
+    file: Blob | File;
+    genre: Genre;
+};
+
+/**
  * BuiltInCaseContentStatus
  */
 export type BuiltInCaseContentStatus = 'reviewed' | 'demonstration';
@@ -1690,6 +1742,156 @@ export type ChangePasswordResponse = {
      * Revoked Session Count
      */
     revoked_session_count: number;
+};
+
+/**
+ * ChannelBindingResponse
+ */
+export type ChannelBindingResponse = {
+    /**
+     * Binding Id
+     */
+    binding_id: string;
+    /**
+     * Created At
+     */
+    created_at: number;
+    /**
+     * Gateway Id
+     */
+    gateway_id: string;
+    /**
+     * Subject Id
+     */
+    subject_id: string;
+};
+
+/**
+ * ChannelDeliveryResponse
+ */
+export type ChannelDeliveryResponse = {
+    /**
+     * Allowed
+     */
+    allowed: boolean;
+};
+
+/**
+ * ChannelDispatchRequest
+ */
+export type ChannelDispatchRequest = {
+    /**
+     * Bot Id
+     */
+    bot_id: string;
+    /**
+     * Chat Id
+     */
+    chat_id: string;
+    /**
+     * Chat Type
+     */
+    chat_type: 'private' | 'group';
+    /**
+     * Event Id
+     */
+    event_id: string;
+    /**
+     * Occurred At
+     */
+    occurred_at: number;
+    /**
+     * Platform
+     */
+    platform: 'telegram' | 'feishu';
+    /**
+     * Received At Ms
+     */
+    received_at_ms: number;
+    /**
+     * Subject Id
+     */
+    subject_id: string;
+    /**
+     * Tenant Id
+     */
+    tenant_id?: string;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Thread Id
+     */
+    thread_id?: string;
+};
+
+/**
+ * ChannelDispatchResponse
+ */
+export type ChannelDispatchResponse = {
+    /**
+     * Event Key
+     */
+    event_key: string;
+    /**
+     * Text
+     */
+    text: string;
+};
+
+/**
+ * ChannelGatewayInfoResponse
+ */
+export type ChannelGatewayInfoResponse = {
+    /**
+     * Bot Url
+     */
+    bot_url?: string | null;
+    /**
+     * Gateway Id
+     */
+    gateway_id: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Platform
+     */
+    platform: 'telegram' | 'feishu';
+};
+
+/**
+ * ChannelLinkCodeRequest
+ */
+export type ChannelLinkCodeRequest = {
+    /**
+     * Acknowledge Private Data And Usage
+     */
+    acknowledge_private_data_and_usage: true;
+    /**
+     * Gateway Id
+     */
+    gateway_id: string;
+};
+
+/**
+ * ChannelLinkCodeResponse
+ */
+export type ChannelLinkCodeResponse = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Expires At
+     */
+    expires_at: number;
+    /**
+     * Gateway Id
+     */
+    gateway_id: string;
 };
 
 /**
@@ -2645,6 +2847,10 @@ export type CreditUsageBucketResponse = {
      * Limit Points
      */
     limit_points: number;
+    /**
+     * Settled Remaining Points
+     */
+    settled_remaining_points?: number | null;
 };
 
 /**
@@ -3587,6 +3793,11 @@ export type FrameworkReviewRunStatus = 'requested' | 'running' | 'succeeded' | '
  * FrameworkStatus
  */
 export type FrameworkStatus = 'draft' | 'under_review' | 'revision_required' | 'ready_to_confirm' | 'confirmed';
+
+/**
+ * Genre
+ */
+export type Genre = 'official' | 'report' | 'academic' | 'fiction' | 'essay';
 
 /**
  * HTTPValidationError
@@ -9046,6 +9257,266 @@ export type ValidationError = {
     type: string;
 };
 
+/**
+ * WritingDocumentCreate
+ */
+export type WritingDocumentCreate = {
+    genre?: Genre;
+    /**
+     * Markdown
+     */
+    markdown?: string;
+    /**
+     * Title
+     */
+    title?: string;
+};
+
+/**
+ * WritingDocumentList
+ */
+export type WritingDocumentList = {
+    /**
+     * Items
+     */
+    items: Array<WritingDocumentResponse>;
+};
+
+/**
+ * WritingDocumentResponse
+ */
+export type WritingDocumentResponse = {
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Document Id
+     */
+    document_id: string;
+    genre: Genre;
+    /**
+     * Markdown
+     */
+    markdown: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+    /**
+     * Version
+     */
+    version: number;
+};
+
+/**
+ * WritingDocumentUpdate
+ */
+export type WritingDocumentUpdate = {
+    /**
+     * Expected Version
+     */
+    expected_version: number;
+    genre?: Genre | null;
+    /**
+     * Markdown
+     */
+    markdown?: string | null;
+    /**
+     * Title
+     */
+    title?: string | null;
+};
+
+/**
+ * WritingGenreSummary
+ */
+export type WritingGenreSummary = {
+    /**
+     * Character Count
+     */
+    character_count: number;
+    genre: Genre;
+    /**
+     * Readiness
+     */
+    readiness: 'empty' | 'limited' | 'ready';
+    /**
+     * Sample Count
+     */
+    sample_count: number;
+};
+
+/**
+ * WritingRevisionCreate
+ */
+export type WritingRevisionCreate = {
+    /**
+     * Action
+     */
+    action: 'rewrite' | 'personalize' | 'continue';
+    /**
+     * Expected Version
+     */
+    expected_version: number;
+    /**
+     * Instruction
+     */
+    instruction?: string;
+    /**
+     * Selection End
+     */
+    selection_end?: number | null;
+    /**
+     * Selection Start
+     */
+    selection_start?: number | null;
+};
+
+/**
+ * WritingRevisionList
+ */
+export type WritingRevisionList = {
+    /**
+     * Items
+     */
+    items: Array<WritingRevisionResponse>;
+};
+
+/**
+ * WritingRevisionResolution
+ */
+export type WritingRevisionResolution = {
+    document: WritingDocumentResponse;
+    revision: WritingRevisionResponse;
+};
+
+/**
+ * WritingRevisionResolve
+ */
+export type WritingRevisionResolve = {
+    /**
+     * Decision
+     */
+    decision: 'accept' | 'reject';
+    /**
+     * Expected Version
+     */
+    expected_version: number;
+};
+
+/**
+ * WritingRevisionResponse
+ */
+export type WritingRevisionResponse = {
+    /**
+     * Action
+     */
+    action: 'rewrite' | 'personalize' | 'continue';
+    /**
+     * After Markdown
+     */
+    after_markdown: string;
+    /**
+     * Base Version
+     */
+    base_version: number;
+    /**
+     * Before Markdown
+     */
+    before_markdown: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Document Id
+     */
+    document_id: string;
+    /**
+     * Revision Id
+     */
+    revision_id: string;
+    /**
+     * Status
+     */
+    status: 'pending' | 'accepted' | 'rejected' | 'stale';
+    /**
+     * Warnings
+     */
+    warnings: Array<string>;
+};
+
+/**
+ * WritingSampleCreate
+ */
+export type WritingSampleCreate = {
+    genre: Genre;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Title
+     */
+    title: string;
+};
+
+/**
+ * WritingSampleList
+ */
+export type WritingSampleList = {
+    /**
+     * Items
+     */
+    items: Array<WritingSampleResponse>;
+};
+
+/**
+ * WritingSampleResponse
+ */
+export type WritingSampleResponse = {
+    /**
+     * Character Count
+     */
+    character_count: number;
+    /**
+     * Created At
+     */
+    created_at: string;
+    genre: Genre;
+    /**
+     * Sample Id
+     */
+    sample_id: string;
+    /**
+     * Title
+     */
+    title: string;
+};
+
+/**
+ * WritingSummary
+ */
+export type WritingSummary = {
+    /**
+     * Documents
+     */
+    documents: Array<WritingDocumentResponse>;
+    /**
+     * Genres
+     */
+    genres: Array<WritingGenreSummary>;
+    /**
+     * Sample Count
+     */
+    sample_count: number;
+};
+
 export type GetAccountData = {
     body?: never;
     path?: never;
@@ -10378,6 +10849,45 @@ export type ConfirmAgentResearchStartResponses = {
 
 export type ConfirmAgentResearchStartResponse = ConfirmAgentResearchStartResponses[keyof ConfirmAgentResearchStartResponses];
 
+export type LookupAgentRunData = {
+    body?: never;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/agent/runs/by-idempotency-key';
+};
+
+export type LookupAgentRunErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type LookupAgentRunError = LookupAgentRunErrors[keyof LookupAgentRunErrors];
+
+export type LookupAgentRunResponses = {
+    /**
+     * Successful Response
+     */
+    200: AgentRunLookupResponse;
+};
+
+export type LookupAgentRunResponse = LookupAgentRunResponses[keyof LookupAgentRunResponses];
+
 export type StopAgentRunData = {
     body?: never;
     headers: {
@@ -10464,6 +10974,182 @@ export type StreamAgentTurnResponses = {
 };
 
 export type StreamAgentTurnResponse = StreamAgentTurnResponses[keyof StreamAgentTurnResponses];
+
+export type DispatchChannelMessageData = {
+    body: ChannelDispatchRequest;
+    path?: never;
+    query?: never;
+    url: '/api/channel-gateway/dispatch';
+};
+
+export type DispatchChannelMessageErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DispatchChannelMessageError = DispatchChannelMessageErrors[keyof DispatchChannelMessageErrors];
+
+export type DispatchChannelMessageResponses = {
+    /**
+     * Successful Response
+     */
+    200: ChannelDispatchResponse;
+};
+
+export type DispatchChannelMessageResponse = DispatchChannelMessageResponses[keyof DispatchChannelMessageResponses];
+
+export type AuthorizeChannelDeliveryData = {
+    body?: never;
+    path: {
+        /**
+         * Event Key
+         */
+        event_key: string;
+    };
+    query?: never;
+    url: '/api/channel-gateway/events/{event_key}/delivery';
+};
+
+export type AuthorizeChannelDeliveryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type AuthorizeChannelDeliveryError = AuthorizeChannelDeliveryErrors[keyof AuthorizeChannelDeliveryErrors];
+
+export type AuthorizeChannelDeliveryResponses = {
+    /**
+     * Successful Response
+     */
+    200: ChannelDeliveryResponse;
+};
+
+export type AuthorizeChannelDeliveryResponse = AuthorizeChannelDeliveryResponses[keyof AuthorizeChannelDeliveryResponses];
+
+export type ListChannelBindingsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/channels/bindings';
+};
+
+export type ListChannelBindingsResponses = {
+    /**
+     * Response List Channel Bindings
+     *
+     * Successful Response
+     */
+    200: Array<ChannelBindingResponse>;
+};
+
+export type ListChannelBindingsResponse = ListChannelBindingsResponses[keyof ListChannelBindingsResponses];
+
+export type RevokeChannelBindingData = {
+    body?: never;
+    path: {
+        /**
+         * Binding Id
+         */
+        binding_id: string;
+    };
+    query?: never;
+    url: '/api/channels/bindings/{binding_id}';
+};
+
+export type RevokeChannelBindingErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type RevokeChannelBindingError = RevokeChannelBindingErrors[keyof RevokeChannelBindingErrors];
+
+export type RevokeChannelBindingResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type RevokeChannelBindingResponse = RevokeChannelBindingResponses[keyof RevokeChannelBindingResponses];
+
+export type ListChannelGatewaysData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/channels/gateways';
+};
+
+export type ListChannelGatewaysResponses = {
+    /**
+     * Response List Channel Gateways
+     *
+     * Successful Response
+     */
+    200: Array<ChannelGatewayInfoResponse>;
+};
+
+export type ListChannelGatewaysResponse = ListChannelGatewaysResponses[keyof ListChannelGatewaysResponses];
+
+export type CancelChannelLinkCodesData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Gateway Id
+         */
+        gateway_id: string;
+    };
+    url: '/api/channels/link-codes';
+};
+
+export type CancelChannelLinkCodesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CancelChannelLinkCodesError = CancelChannelLinkCodesErrors[keyof CancelChannelLinkCodesErrors];
+
+export type CancelChannelLinkCodesResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type CancelChannelLinkCodesResponse = CancelChannelLinkCodesResponses[keyof CancelChannelLinkCodesResponses];
+
+export type CreateChannelLinkCodeData = {
+    body: ChannelLinkCodeRequest;
+    path?: never;
+    query?: never;
+    url: '/api/channels/link-codes';
+};
+
+export type CreateChannelLinkCodeErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateChannelLinkCodeError = CreateChannelLinkCodeErrors[keyof CreateChannelLinkCodeErrors];
+
+export type CreateChannelLinkCodeResponses = {
+    /**
+     * Successful Response
+     */
+    201: ChannelLinkCodeResponse;
+};
+
+export type CreateChannelLinkCodeResponse = CreateChannelLinkCodeResponses[keyof CreateChannelLinkCodeResponses];
 
 export type ConfirmTheoryPlanData = {
     body: ConfirmTheoryPlanRequest;
@@ -16410,3 +17096,346 @@ export type GetConfirmedTheoryPlanResponses = {
 };
 
 export type GetConfirmedTheoryPlanResponse = GetConfirmedTheoryPlanResponses[keyof GetConfirmedTheoryPlanResponses];
+
+export type ListWritingDocumentsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/writing/documents';
+};
+
+export type ListWritingDocumentsResponses = {
+    /**
+     * Successful Response
+     */
+    200: WritingDocumentList;
+};
+
+export type ListWritingDocumentsResponse = ListWritingDocumentsResponses[keyof ListWritingDocumentsResponses];
+
+export type CreateWritingDocumentData = {
+    body: WritingDocumentCreate;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/writing/documents';
+};
+
+export type CreateWritingDocumentErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateWritingDocumentError = CreateWritingDocumentErrors[keyof CreateWritingDocumentErrors];
+
+export type CreateWritingDocumentResponses = {
+    /**
+     * Successful Response
+     */
+    200: WritingDocumentResponse;
+};
+
+export type CreateWritingDocumentResponse = CreateWritingDocumentResponses[keyof CreateWritingDocumentResponses];
+
+export type GetWritingDocumentData = {
+    body?: never;
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+    };
+    query?: never;
+    url: '/api/writing/documents/{document_id}';
+};
+
+export type GetWritingDocumentErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetWritingDocumentError = GetWritingDocumentErrors[keyof GetWritingDocumentErrors];
+
+export type GetWritingDocumentResponses = {
+    /**
+     * Successful Response
+     */
+    200: WritingDocumentResponse;
+};
+
+export type GetWritingDocumentResponse = GetWritingDocumentResponses[keyof GetWritingDocumentResponses];
+
+export type UpdateWritingDocumentData = {
+    body: WritingDocumentUpdate;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+    };
+    query?: never;
+    url: '/api/writing/documents/{document_id}';
+};
+
+export type UpdateWritingDocumentErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateWritingDocumentError = UpdateWritingDocumentErrors[keyof UpdateWritingDocumentErrors];
+
+export type UpdateWritingDocumentResponses = {
+    /**
+     * Successful Response
+     */
+    200: WritingDocumentResponse;
+};
+
+export type UpdateWritingDocumentResponse = UpdateWritingDocumentResponses[keyof UpdateWritingDocumentResponses];
+
+export type ListWritingRevisionsData = {
+    body?: never;
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+    };
+    query?: never;
+    url: '/api/writing/documents/{document_id}/revisions';
+};
+
+export type ListWritingRevisionsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListWritingRevisionsError = ListWritingRevisionsErrors[keyof ListWritingRevisionsErrors];
+
+export type ListWritingRevisionsResponses = {
+    /**
+     * Successful Response
+     */
+    200: WritingRevisionList;
+};
+
+export type ListWritingRevisionsResponse = ListWritingRevisionsResponses[keyof ListWritingRevisionsResponses];
+
+export type CreateWritingRevisionData = {
+    body: WritingRevisionCreate;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+    };
+    query?: never;
+    url: '/api/writing/documents/{document_id}/revisions';
+};
+
+export type CreateWritingRevisionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateWritingRevisionError = CreateWritingRevisionErrors[keyof CreateWritingRevisionErrors];
+
+export type CreateWritingRevisionResponses = {
+    /**
+     * Successful Response
+     */
+    200: WritingRevisionResponse;
+};
+
+export type CreateWritingRevisionResponse = CreateWritingRevisionResponses[keyof CreateWritingRevisionResponses];
+
+export type ResolveWritingRevisionData = {
+    body: WritingRevisionResolve;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+        /**
+         * Revision Id
+         */
+        revision_id: string;
+    };
+    query?: never;
+    url: '/api/writing/documents/{document_id}/revisions/{revision_id}/resolve';
+};
+
+export type ResolveWritingRevisionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ResolveWritingRevisionError = ResolveWritingRevisionErrors[keyof ResolveWritingRevisionErrors];
+
+export type ResolveWritingRevisionResponses = {
+    /**
+     * Successful Response
+     */
+    200: WritingRevisionResolution;
+};
+
+export type ResolveWritingRevisionResponse = ResolveWritingRevisionResponses[keyof ResolveWritingRevisionResponses];
+
+export type ListWritingSamplesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/writing/samples';
+};
+
+export type ListWritingSamplesResponses = {
+    /**
+     * Successful Response
+     */
+    200: WritingSampleList;
+};
+
+export type ListWritingSamplesResponse = ListWritingSamplesResponses[keyof ListWritingSamplesResponses];
+
+export type CreateWritingSampleData = {
+    body: WritingSampleCreate;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/writing/samples';
+};
+
+export type CreateWritingSampleErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateWritingSampleError = CreateWritingSampleErrors[keyof CreateWritingSampleErrors];
+
+export type CreateWritingSampleResponses = {
+    /**
+     * Successful Response
+     */
+    200: WritingSampleResponse;
+};
+
+export type CreateWritingSampleResponse = CreateWritingSampleResponses[keyof CreateWritingSampleResponses];
+
+export type UploadWritingSampleData = {
+    body: BodyUploadWritingSample;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/writing/samples/upload';
+};
+
+export type UploadWritingSampleErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UploadWritingSampleError = UploadWritingSampleErrors[keyof UploadWritingSampleErrors];
+
+export type UploadWritingSampleResponses = {
+    /**
+     * Successful Response
+     */
+    200: WritingSampleResponse;
+};
+
+export type UploadWritingSampleResponse = UploadWritingSampleResponses[keyof UploadWritingSampleResponses];
+
+export type DeleteWritingSampleData = {
+    body?: never;
+    path: {
+        /**
+         * Sample Id
+         */
+        sample_id: string;
+    };
+    query?: never;
+    url: '/api/writing/samples/{sample_id}';
+};
+
+export type DeleteWritingSampleErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteWritingSampleError = DeleteWritingSampleErrors[keyof DeleteWritingSampleErrors];
+
+export type DeleteWritingSampleResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteWritingSampleResponse = DeleteWritingSampleResponses[keyof DeleteWritingSampleResponses];
+
+export type GetWritingSummaryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/writing/summary';
+};
+
+export type GetWritingSummaryResponses = {
+    /**
+     * Successful Response
+     */
+    200: WritingSummary;
+};
+
+export type GetWritingSummaryResponse = GetWritingSummaryResponses[keyof GetWritingSummaryResponses];

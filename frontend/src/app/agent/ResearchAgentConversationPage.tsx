@@ -1,12 +1,16 @@
 import { ConversationHistoryView, ConversationHistoryView as AgentConversationHistoryRail } from '../conversation-view/ConversationHistoryView'
 import { ConversationResearchFlow } from '../conversation-view/ConversationResearchFlow'
+import { usePresence } from '../../ui/usePresence'
 import { ConversationSourcePanel } from '../conversation-view/ConversationSourcePanel'
 import { ConversationTurn } from '../conversation-view/ConversationThread'
 import type { ConversationAction, ConversationHandoff } from '../conversation-view/types'
 import { ConversationLayout } from '../conversation-view/ConversationLayout'
 import { ConversationComposer } from '../conversation-view/ConversationComposer'
 import { ModelSelectionSettings, useAgentModelSelection } from '../model-selection'
-import { AgentAvatar } from '../../modules/agent-avatar'
+import { AgentAvatar, agentAvatarById, type AgentAvatarId } from '../../modules/agent-avatar'
+import { useQuery } from '@tanstack/react-query'
+import { notifyAccountUsageChanged } from '../../modules/account'
+import { readAgentProfile } from '../../modules/agent-profile'
 import { AgentModeSwitch } from './AgentModeSwitch'
 import { ConversationActions } from './ConversationActions'
 import { CompanionStatusBar, PersonalCompanion } from './PersonalCompanion'
@@ -25,6 +29,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -35,7 +40,7 @@ import {
   type SetStateAction,
 } from 'react'
 import { createPortal, flushSync } from 'react-dom'
-import { useLocation, useNavigate, useSearchParams } from 'react-router'
+import { useLocation, useNavigate, useNavigationType, useSearchParams, type NavigationType } from 'react-router'
 
 import {
   type ResearchActivity,
@@ -87,6 +92,9 @@ import {
 import { ProjectScopeMenu } from './ProjectScopeMenu'
 import { deleteResearchProject, listResearchProjects, type ResearchProject } from '../../modules/research-projects'
 import { ConversationSuggestions } from '../conversation-view/ConversationSuggestions'
+import { useConversationGreeting } from '../conversation-view/researchPrompts'
+import { readHomeSubmission, takeHomeSubmission } from '../conversation-view/homeSubmission'
+import { isModelSelectionValid, toModelSelectionRequest, type ModelSelection } from '../model-selection'
 import { useAppLocale, type AppLocale } from '../i18n/AppLocaleProvider'
 
 // The conversation controller is shared by the standalone Agent and embedded
@@ -100,9 +108,6 @@ const KNOWLEDGE_RELEASE_STORAGE_KEY = 'everplain.agent.knowledge-releases.v1'
 const AGENT_RUNTIME_STORAGE_KEY = 'everplain.agent.runtime-modes.v1'
 const DEEP_RESEARCH_INTRO_SESSION_KEY = 'everplain.agent.deep-research-intro-session.v1'
 const DEEP_RESEARCH_INTRO_TIMEOUT_MS = 10_000
-// Keep the source selection mounted briefly while closing so focus can return safely.
-const RAIL_EXIT_MS = 220
-
 const DELETED_MATERIAL_ANSWER = '该回答引用的个人研究材料已删除，原回答内容已隐藏。'
 type AgentComposerMode = 'standard' | 'deep-research'
 type DeepResearchMockStage = 'idle' | 'clarifying' | 'planning' | 'researching' | 'completed'
@@ -397,7 +402,7 @@ function persistDraft(userId: string | null, value: string) {
   }
 }
 
-/** 首页输入框把问题交给 /agent：写进独立对话的草稿，进入后问题已在输入框里，由用户确认发送。 */
+/** Persist a recoverable draft. This alone never authorizes sending it. */
 export function seedAgentDraft(userId: string, value: string) {
   persistDraft(conversationStorageScope(userId, null, null, 'agent'), value.slice(0, MAX_AGENT_MESSAGE_LENGTH))
 }
@@ -887,6 +892,7 @@ function ConversationHistory({
 
 function AssistantTurn({
   userId,
+  turnId,
   question,
   answer,
   citations,
@@ -907,6 +913,7 @@ function AssistantTurn({
   researchEntryBusy,
 }: {
   userId: string | null
+  turnId: string
   question: string
   answer: string
   citations: AgentCitation[]
@@ -927,6 +934,9 @@ function AssistantTurn({
   researchEntryBusy?: boolean
 }) {
   const { locale, text } = useAppLocale()
+  const profile = useQuery({ queryKey: ['agent-profile', userId], queryFn: readAgentProfile, enabled: Boolean(userId), staleTime: 30_000 })
+  const avatarId = profile.data?.avatar_id as AgentAvatarId | undefined
+  const avatar = avatarId && agentAvatarById[avatarId] ? avatarId : 'shi'
   const researchHandoff = researchStartHandoffFromSteps(toolSteps)
   const knowledgeHandoffCitation = showResearchHandoff && conversationId && knowledgeReleaseId
     && hasCompletedKnowledgeActivity(toolSteps)
@@ -950,7 +960,7 @@ function AssistantTurn({
   const provenance = !streaming && answer && !citations.length
     ? hasKnowledgeActivity(toolSteps) ? text('已检索知识库，但没有可展示的来源，请谨慎引用。', 'The knowledge base was searched, but no displayable source was returned. Cite with care.')
     : hasResearchMaterialActivity(toolSteps) ? text('已检索个人材料，但没有可展示的原文位置，请谨慎引用。', 'Personal materials were searched, but no displayable source position was returned. Cite with care.')
-    : text('未调用知识库 · 以下内容仅作工作假设，请结合材料核验。', 'Knowledge base not searched · treat this as a working hypothesis and verify it against your materials.') : undefined
+    : undefined : undefined
   const runningTool = [...toolSteps].reverse().find(step => step.status === 'running')?.tool
   const statusText = runningTool && ['read_knowledge_entry', 'read_sources', 'read_research_document', 'read_research_material_context'].includes(runningTool)
     ? text('正在阅读研究材料', 'Reading research materials')
@@ -961,7 +971,8 @@ function AssistantTurn({
     : runningTool ? text('正在更新研究进度', 'Updating research progress')
     : streamingStatus === 'answering' ? text('正在生成回答', 'Writing the answer') : text('正在理解并整理研究问题', 'Understanding and structuring the research question')
   return <ConversationTurn
-    turn={{ id: conversationId ?? 'current', question, answer, citations, knowledgeReleaseId,
+    agent={{ name: profile.data?.name.trim() || 'Everplain', avatar, color: profile.data?.color }}
+    turn={{ id: turnId, question, answer, citations, knowledgeReleaseId,
       toolSteps: toolSteps.map(step => ({ ...step, label: localizedToolLabel(step.tool, locale, step.label), detail: step.detail ? localizedToolDetail(step.detail, locale) : undefined, purpose: localizedToolPurpose(step.tool, locale), resultItems: resultItemsFromOutput(step.output) })),
       streaming, statusText,
       progressEnd, interrupted, failure, provenance, handoffs,
@@ -979,6 +990,7 @@ function AssistantTurn({
 
 type ResearchAgentConversationPageProps = {
   userId: string | null
+  entryNavigationType?: NavigationType
   embedded?: boolean
   referenceKnowledgeBaseId?: string | null
   onOpenCourseCitation?: (citation: AgentCitation) => void
@@ -1011,6 +1023,7 @@ type ResearchAgentConversationPageProps = {
 
 export function ResearchAgentConversationPage({
   userId,
+  entryNavigationType,
   embedded = false,
   referenceKnowledgeBaseId: boundReferenceKnowledgeBaseId = null,
   onOpenCourseCitation,
@@ -1043,16 +1056,19 @@ export function ResearchAgentConversationPage({
   const { locale, text } = useAppLocale()
   const modelSelection = useAgentModelSelection(userId)
   const location = useLocation()
+  const navigationType = useNavigationType()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedConversationId = embedded ? boundConversationId : searchParams.get('conversation_id')
+  const homeSubmission = (entryNavigationType ?? navigationType) !== 'POP' && !embedded && !requestedConversationId && !searchParams.get('task_id')
+    ? readHomeSubmission(location.state?.homeSubmitId, userId) : null
   const requestedKnowledgeReleaseId = embedded ? boundKnowledgeReleaseId : searchParams.get('knowledge_release_id')
   const storageWorkspace = embedded && boundReferenceKnowledgeBaseId ? `course:${boundReferenceKnowledgeBaseId}` : embedded ? boundWorkspace : 'agent'
   const requestedScope = conversationStorageScope(userId, requestedConversationId, embedded ? boundTaskId : searchParams.get('task_id'), storageWorkspace)
   const storageScope = useRef(requestedScope)
   const restoredPendingTurn = useRef<PendingTurnAttempt | null>(readPendingTurnAttempt(storageScope.current))
   const restoredInterruptedTurn = useRef<StreamingTurn | null>(readInterruptedTurn(storageScope.current))
-  const [draft, setDraft] = useState(() => readStoredDraft(storageScope.current) || restoredPendingTurn.current?.question || '')
+  const [draft, setDraft] = useState(() => homeSubmission?.question ?? (readStoredDraft(storageScope.current) || restoredPendingTurn.current?.question || ''))
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([])
   const [activeConversation, setActiveConversation] = useState<AgentConversation | null>(null)
   const taskId = embedded ? boundTaskId : (
@@ -1073,10 +1089,15 @@ export function ResearchAgentConversationPage({
     return () => controller.abort()
   }, [projectScopeKey, text])
 
+  // Presentation identity survives temporary stream → saved turn, without changing request state.
+  const visualTurnKeys = useRef(new Map<string, string>())
+  const streamVisualKey = useRef(0)
   const [streamingTurn, setStreamingTurnState] = useState<StreamingTurn | null>(restoredInterruptedTurn.current)
   const streamingTurnRef = useRef(streamingTurn)
   const setStreamingTurn = useCallback((update: SetStateAction<StreamingTurn | null>) => {
     const next = typeof update === 'function' ? update(streamingTurnRef.current) : update
+    // A freshly loaded/restored turn owns a new identity; in-place stream updates keep it.
+    if (next && typeof update !== 'function' && next !== streamingTurnRef.current) streamVisualKey.current += 1
     streamingTurnRef.current = next
     setStreamingTurnState(next)
   }, [])
@@ -1094,6 +1115,7 @@ export function ResearchAgentConversationPage({
   const [status, setStatus] = useState<AgentPageStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [historyLoading, setHistoryLoading] = useState(!embedded)
+  const greeting = useConversationGreeting(locale, conversations.some(item => item.turn_count > 0), userId, !historyLoading)
   const [contextOpen, setContextOpen] = useState(false)
   // 研究工作区里内嵌的面板仍然保留这个浮层入口，独立 Agent 页已经由左侧对话记录栏取代它。
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -1102,7 +1124,9 @@ export function ResearchAgentConversationPage({
   const researchPanelDismissed = useRef(false)
   const sourceTriggerRef = useRef<HTMLElement | null>(null)
   // 收起时先播完退场动画再卸载，所以挂载状态比 contextOpen 多活一小会儿。
-  const [railMounted, setRailMounted] = useState(false)
+  const sourceMotionRef = useRef<HTMLDivElement>(null)
+  const sourceMotion = usePresence(contextOpen && storageScope.current === requestedScope, sourceMotionRef, requestedScope)
+  const railMounted = sourceMotion.present
   const [contextTab, setContextTab] = useState<ResearchContextTab>('agent')
   const [materialsOpen, setMaterialsOpen] = useState(false)
   const [materialPickerOpen, setMaterialPickerOpen] = useState(false)
@@ -1317,13 +1341,15 @@ export function ResearchAgentConversationPage({
   const isBusy = status === 'loading' || status === 'pausing' || status === 'pause-failed' || canStopGeneration
   const canSubmit = draft.trim().length > 0
     && !isBusy
+    && (!homeSubmission || modelSelection.status === 'ready')
     && !researchEntryBusy
     && !materialUploading
     && attachedMaterials.every((material) => material.status === 'ready')
   const isEmpty = !turns.length && !streamingTurn && !hasDeepResearchMockConversation
+  const isLanding = isEmpty && !homeSubmission
 
   useEffect(() => {
-    if (embedded || !isEmpty || composerMode !== 'standard' || deepResearchIntroShown.current) return undefined
+    if (embedded || !isLanding || composerMode !== 'standard' || deepResearchIntroShown.current) return undefined
     if (introSessionId && window.localStorage.getItem(DEEP_RESEARCH_INTRO_SESSION_KEY) === introSessionId) return undefined
     deepResearchIntroShown.current = true
     if (introSessionId) window.localStorage.setItem(DEEP_RESEARCH_INTRO_SESSION_KEY, introSessionId)
@@ -1333,7 +1359,7 @@ export function ResearchAgentConversationPage({
       introSessionId ? DEEP_RESEARCH_INTRO_TIMEOUT_MS : 5000,
     )
     return () => window.clearTimeout(timeout)
-  }, [composerMode, embedded, introSessionId, isEmpty])
+  }, [composerMode, embedded, introSessionId, isLanding])
 
   useEffect(() => {
     onStreamingTurnChange?.(streamingTurn)
@@ -1342,10 +1368,13 @@ export function ResearchAgentConversationPage({
   useEffect(() => {
     const question = searchParams.get('prompt')
     if (!question || requestedConversationId) return
-    updateDraft(question)
+    // Only explicit text submitted by a public-page composer may seed this route.
+    // Legacy automatic suggestion URLs must never overwrite a user's saved draft.
+    if (searchParams.get('prompt_source') === 'user') updateDraft(question)
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
       next.delete('prompt')
+      next.delete('prompt_source')
       return next
     }, { replace: true })
   }, [searchParams, requestedConversationId, setSearchParams])
@@ -1367,6 +1396,7 @@ export function ResearchAgentConversationPage({
   }, [isEmpty])
 
   function updateDraft(value: string) {
+    if (homeSubmission && value !== homeSubmission.question) takeHomeSubmission(homeSubmission.id, userId)
     setDraft(value)
     persistDraft(storageScope.current, value)
   }
@@ -1640,6 +1670,16 @@ export function ResearchAgentConversationPage({
     pendingConversationId.current = requestedConversationId
     loadedConversationId.current = null
     setActiveConversation(null)
+    // Account/conversation replacement must never retain a previous source or modal.
+    sourceTriggerRef.current = null
+    setSelectedCitationContext(null)
+    setSelectedActivityId(null)
+    setContextOpen(false)
+    setHistoryOpen(false)
+    setMaterialsOpen(false)
+    setMaterialPickerOpen(false)
+    setMaterialMenuOpen(false)
+    setAvailableMaterials([])
     setStreamingTurn(readInterruptedTurn(requestedScope))
     setDraft(readStoredDraft(requestedScope))
     setStatus('idle')
@@ -1830,7 +1870,7 @@ export function ResearchAgentConversationPage({
     }
   }
 
-  async function submitQuestion(rawQuestion: string, retryIdempotencyKey?: string, deepAction?: { action: 'clarify' | 'confirm' | 'skip'; selection?: string }, researchEntry = false): Promise<AgentConversation | null> {
+  async function submitQuestion(rawQuestion: string, retryIdempotencyKey?: string, deepAction?: { action: 'clarify' | 'confirm' | 'skip'; selection?: string }, researchEntry = false, entrySelection?: ModelSelection): Promise<AgentConversation | null> {
     const question = retryIdempotencyKey || deepAction || researchEntry ? rawQuestion.trim() : composeResearchDiscussion(rawQuestion.trim(), discussion)
     if (!rawQuestion.trim()) return null
     if (question.length > MAX_AGENT_MESSAGE_LENGTH) {
@@ -1848,7 +1888,8 @@ export function ResearchAgentConversationPage({
       : activeTurnAttempt.current?.idempotencyKey === idempotencyKey
         ? activeTurnAttempt.current
         : null
-    const newModelFields = resumableAttempt?.request ? {} : modelSelection.requestFields()
+    const newModelFields = resumableAttempt?.request ? {} : entrySelection
+      ? toModelSelectionRequest(entrySelection, modelSelection.catalog) : modelSelection.requestFields()
     const attempt: PendingTurnAttempt = {
       question,
       idempotencyKey,
@@ -1909,6 +1950,7 @@ export function ResearchAgentConversationPage({
       await streamAgentTurn(
         { ...request, idempotencyKey },
         (event: AgentEvent) => {
+          if (['turn_completed', 'turn_interrupted', 'turn_failed', 'research_waiting'].includes(event.type)) notifyAccountUsageChanged()
           if (streamGeneration.current !== runGeneration) return
           if (event.type === 'turn_started') {
             activeRunId.current = event.run_id
@@ -2043,6 +2085,7 @@ export function ResearchAgentConversationPage({
             )
             resultConversation = completedConversation
             const completedTurn = completedConversation.turns.at(-1)
+            if (completedTurn) visualTurnKeys.current.set(completedTurn.turn_id, `live-${streamVisualKey.current}`)
             const releaseId = event.knowledge_release_id.trim()
             if (releaseId) rememberKnowledgeRelease(completedConversation.conversation_id, releaseId)
             if (completedTurn && localToolSteps.length) {
@@ -2143,10 +2186,32 @@ export function ResearchAgentConversationPage({
   }, [deepResearchMockStage])
 
   function submitDraft() {
+    if (homeSubmission && modelSelection.status !== 'ready') return
     const normalized = draft.trim()
     const attempt = failedTurnAttempt.current
     void submitQuestion(normalized, attempt?.question === normalized ? attempt.idempotencyKey : undefined)
   }
+
+  const sendHomeSubmission = useEffectEvent(() => {
+    if (!homeSubmission) return
+    const intent = takeHomeSubmission(homeSubmission.id, userId)
+    if (!intent) return
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null })
+    if (!isModelSelectionValid(intent.selection, modelSelection.catalog)) {
+      updateDraft(intent.question)
+      setError(text('所选模型暂时不可用。问题已保留，请选择模型后重试。', 'The selected model is unavailable. Your question is saved; choose a model and retry.'))
+      return
+    }
+    modelSelection.onChange(intent.selection)
+    void submitQuestion(intent.question, intent.id, undefined, false, intent.selection)
+  })
+  useEffect(() => {
+    if (!homeSubmission || modelSelection.owner !== userId || modelSelection.status !== 'ready' || isBusy) return
+    // One task lets StrictMode finish setup/cleanup before the real request.
+    // Atomically claim the in-memory capability immediately before submitting.
+    const timer = window.setTimeout(sendHomeSubmission, 0)
+    return () => window.clearTimeout(timer)
+  }, [homeSubmission, userId, modelSelection.owner, modelSelection.status, isBusy])
 
   // 计时器一秒一跳，收尾时按真实起止时间再算一次，卡片上不会出现少一秒的用时。
   function settleDeepResearchElapsed() {
@@ -2367,13 +2432,10 @@ export function ResearchAgentConversationPage({
   }, [activities.length, citationsForRail.length, embedded])
 
   useEffect(() => {
-    if (contextOpen) {
-      setRailMounted(true)
-      return undefined
-    }
-    if (!railMounted) return undefined
-    const timer = setTimeout(() => setRailMounted(false), RAIL_EXIT_MS)
-    return () => clearTimeout(timer)
+    if (contextOpen || railMounted) return
+    // Restore only after the native mobile sheet has closed; a rapid reopen cancels exit.
+    if (sourceTriggerRef.current?.isConnected) sourceTriggerRef.current.focus({ preventScroll: true })
+    sourceTriggerRef.current = null
   }, [contextOpen, railMounted])
 
   function toggleResearchPanel() {
@@ -2390,8 +2452,6 @@ export function ResearchAgentConversationPage({
   function closeResearchPanel() {
     researchPanelDismissed.current = true
     setContextOpen(false)
-    if (sourceTriggerRef.current?.isConnected) sourceTriggerRef.current.focus({ preventScroll: true })
-    sourceTriggerRef.current = null
   }
 
   function backToResearchPanel() {
@@ -2517,21 +2577,24 @@ export function ResearchAgentConversationPage({
   </aside> : null
 
   const conversationSurface = <ConversationLayout
-    embedded={embedded} empty={isEmpty} runtimeMode={runtimeMode ?? 'unknown'} research={composerMode === 'deep-research'}
-    sourceOpen={embedded ? contextOpen : railMounted}
+    embedded={embedded} empty={isLanding} composerOrigin={homeSubmission?.origin} runtimeMode={runtimeMode ?? 'unknown'} research={composerMode === 'deep-research'}
+    sourceOpen={railMounted}
+    sourceMotionRef={sourceMotionRef}
+    sourceClosing={!contextOpen}
     title={activeConversation?.title || text('新对话', 'New conversation')}
     label={embedded ? text('研究 Agent 对话栏', 'Research Agent conversation panel') : text('Everplain Agent 对话', 'Everplain conversation')}
     modes={<AgentModeSwitch mode={composerMode} disabled={isBusy} avatar={<PersonalCompanion userId={userId} compact working={isBusy} fallback={<AgentAvatar avatar="shi" size={32} state={isBusy ? 'work' : 'idle'} />} />} onChange={mode => { setComposerMode(mode); setMaterialMenuOpen(false); if (mode === 'deep-research') setDeepResearchIntroVisible(false) }}>{modeIntroduction}</AgentModeSwitch>}
-    actions={<ConversationActions key={activeConversation?.conversation_id ?? 'new'} label={text('更多对话操作', 'More conversation actions')}>{conversationActions}</ConversationActions>}
+    actions={<ConversationActions key={requestedScope} label={text('更多对话操作', 'More conversation actions')}>{conversationActions}</ConversationActions>}
     history={!embedded && showConversationManagement ? <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon cv-layout__history-button" aria-label={text('打开研究记录', 'Open research history')} onClick={() => setHistoryOpen(true)}><ListIcon /></button> : null}
     companionBar={<CompanionStatusBar userId={userId} status={status} />}
     pet={<PersonalCompanion userId={userId} fallback={<AgentAvatar avatar="shi" size={96} state="greet" />} />}
-    prompt={composerMode === 'deep-research' ? text('你想弄清楚什么？', 'What would you like to investigate?') : text('今天想聊什么？', 'What is on your mind?')}
+    prompt={greeting}
     thread={              <div className="cv-thread">
-                {turns.map((turn) => (
+                {[...turns.map((turn) => (
                   <AssistantTurn
                     userId={userId}
-                    key={turn.turn_id}
+                    key={visualTurnKeys.current.get(turn.turn_id) ?? turn.turn_id}
+                    turnId={visualTurnKeys.current.get(turn.turn_id) ?? turn.turn_id}
                     question={turn.user.content}
                     answer={turn.assistant.content}
                     citations={turn.assistant.citations}
@@ -2546,12 +2609,13 @@ export function ResearchAgentConversationPage({
                     onSelectCitation={openCitation}
                     onRegenerate={() => { void submitQuestion(turn.user.content) }}
                   />
-                ))}
-                {(activeConversation?.unfinished_runs ?? []).filter((run) => run.run_id !== streamingTurn?.runId).map((run) => {
+                )),
+                ...(activeConversation?.unfinished_runs ?? []).filter((run) => run.run_id !== streamingTurn?.runId).map((run) => {
                   const saved = recoveryTurn(run)
                   return <AssistantTurn
                     userId={userId}
                     key={run.run_id}
+                    turnId={run.run_id}
                     question={saved.question}
                     answer={saved.answer}
                     citations={saved.citations}
@@ -2565,9 +2629,9 @@ export function ResearchAgentConversationPage({
                     onSelectCitation={openCitation}
                     onRegenerate={isBusy ? undefined : () => resumeRecovery(run)}
                   />
-                })}
-                {streamingTurn && deepResearchMockStage === 'researching' ? (
-                  <DeepResearchMockFlow
+                }),
+                streamingTurn && deepResearchMockStage === 'researching' ? (
+                  <DeepResearchMockFlow key="live-research"
                     stage={deepResearchMockStage}
                     question={deepResearchMockQuestion}
                     stepIndex={deepResearchMockStep}
@@ -2584,11 +2648,11 @@ export function ResearchAgentConversationPage({
                       globalThis.requestAnimationFrame?.(() => composerInputRef.current?.focus())
                     }}
                   />
-                ) : null}
-                {status === 'pausing' ? <p role="status">正在暂停，等待当前操作结束…</p> : null}
-                {status === 'pause-failed' ? <button className="qx-btn qx-btn--ghost" type="button" onClick={() => { void stopGeneration() }}>重试暂停</button> : null}
-                {streamingTurn ? (
-                  <AssistantTurn
+                ) : null,
+                status === 'pausing' ? <p key="pausing" role="status">正在暂停，等待当前操作结束…</p> : null,
+                status === 'pause-failed' ? <button key="pause-failed" className="qx-btn qx-btn--ghost" type="button" onClick={() => { void stopGeneration() }}>重试暂停</button> : null,
+                streamingTurn ? (
+                  <AssistantTurn key={`live-${streamVisualKey.current}`} turnId={`live-${streamVisualKey.current}`}
                     userId={userId}
                     question={streamingTurn.question}
                     answer={streamingTurn.answer}
@@ -2606,7 +2670,7 @@ export function ResearchAgentConversationPage({
                     onSelectCitation={openCitation}
                     onRegenerate={isBusy ? undefined : () => retryFailedTurn(streamingTurn.question)}
                   />
-                ) : null}
+                ) : null]}
                 {hasDeepResearchMockConversation && deepResearchMockStage !== 'researching' ? (
                   <DeepResearchMockFlow
                     stage={deepResearchMockStage}
@@ -2670,6 +2734,7 @@ export function ResearchAgentConversationPage({
             ) : null}
 
             <ConversationComposer
+              scopeKey={requestedScope}
               mode={composerMode} value={draft} label={composerAriaLabel ?? text('问 Everplain', 'Ask Everplain')}
               placeholder={composerMode === 'deep-research' ? text('描述你想弄清楚的问题', 'Describe what you want to investigate') : text('问一个问题', 'Ask a question')}
               maxLength={MAX_AGENT_MESSAGE_LENGTH} busy={isBusy} canSend={canSubmit} canStop={canStopGeneration}
@@ -2683,7 +2748,7 @@ export function ResearchAgentConversationPage({
               attachments={attachedMaterials.map(material => ({ id: material.materialId, title: material.filename,
                 status: material.status === 'ready' ? text('已添加', 'Added') : attachmentStatusLabel(material, locale), removable: !isBusy }))}
               researchLayout={researchToolsVisible}
-              modelSelector={<ModelSelectionSettings state={modelSelection} disabled={isBusy || materialUploading}
+              modelSelector={<ModelSelectionSettings key={requestedScope} state={modelSelection} disabled={isBusy || materialUploading}
                 activeRequest={isBusy ? activeTurnAttempt.current?.request : null} />}
               context={composerPrefix}
               attachmentPicker={materialPickerOpen ? <AgentMaterialAttachmentPicker inline loading={materialPickerLoading}
@@ -2702,14 +2767,18 @@ export function ResearchAgentConversationPage({
             />
             {researchToolsVisible && <>
               <div className="cv-research-base" role="group" aria-label={text('研究工具栏', 'Research tools')}>
-                {!embedded && <ProjectScopeMenu projects={projects} taskId={taskId} disabled={isBusy || materialUploading} onChange={switchComposerProject} />}
+                {!embedded && <ProjectScopeMenu key={requestedScope} projects={projects} taskId={taskId} disabled={isBusy || materialUploading} onChange={switchComposerProject} />}
                 <button type="button" className="qx-btn qx-btn--ghost" aria-label={text('查看材料库', 'Open material library')} onClick={openResearchMaterials}><FolderOpenIcon size={16} /><span>{text('材料库', 'Materials')}</span></button>
               </div>
-              <div className="cv-research-suggestions"><ConversationSuggestions onSelect={choosePrompt} /></div>
             </>}
+            {isLanding && <div className="cv-research-suggestions"><ConversationSuggestions
+              mode={researchToolsVisible ? 'research' : 'chat'} taskId={taskId}
+              projects={projects} conversations={conversations} attachedMaterials={attachedMaterials}
+              onSelect={choosePrompt} /></div>}
 </>}
 
     source={<ConversationSourcePanel
+      closing={!contextOpen}
       detail={contextTab === 'basis' && selectedCitation && !selectedActivity ? { citation: selectedCitation,
         kindLabel: citationGroup(selectedCitation) === 'knowledge' ? text('知识库资料', 'Library material') : citationKindLabel(selectedCitation.kind, locale),
         locatorLabel: selectedMaterialCitation.locator ? formatMaterialLocator(selectedMaterialCitation.locator) : undefined,

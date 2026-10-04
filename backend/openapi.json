@@ -1530,6 +1530,85 @@
         "title": "AgentResearchMapResponse",
         "type": "object"
       },
+      "AgentRunLookupResponse": {
+        "description": "Owner-scoped observation only; looking up a run never resumes it.",
+        "properties": {
+          "cancel_requested": {
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "partial_answer": {
+            "title": "Partial Answer",
+            "type": "string"
+          },
+          "request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentTurnRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "interrupted",
+              "awaiting_clarification",
+              "awaiting_plan_confirmation"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "turn_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Id"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "conversation_id",
+          "idempotency_key",
+          "status",
+          "cancel_requested",
+          "partial_answer",
+          "request",
+          "updated_at",
+          "turn_id"
+        ],
+        "title": "AgentRunLookupResponse",
+        "type": "object"
+      },
       "AgentRunRecoveryResponse": {
         "properties": {
           "cancel_requested": {
@@ -2769,6 +2848,24 @@
         "title": "Body_upload_shared_document",
         "type": "object"
       },
+      "Body_upload_writing_sample": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "genre": {
+            "$ref": "#/components/schemas/Genre"
+          }
+        },
+        "required": [
+          "file",
+          "genre"
+        ],
+        "title": "Body_upload_writing_sample",
+        "type": "object"
+      },
       "BuiltInCaseContentStatus": {
         "enum": [
           "reviewed",
@@ -3183,6 +3280,240 @@
           "revoked_session_count"
         ],
         "title": "ChangePasswordResponse",
+        "type": "object"
+      },
+      "ChannelBindingResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "binding_id": {
+            "format": "uuid",
+            "title": "Binding Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "integer"
+          },
+          "gateway_id": {
+            "title": "Gateway Id",
+            "type": "string"
+          },
+          "subject_id": {
+            "title": "Subject Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "binding_id",
+          "gateway_id",
+          "subject_id",
+          "created_at"
+        ],
+        "title": "ChannelBindingResponse",
+        "type": "object"
+      },
+      "ChannelDeliveryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed": {
+            "title": "Allowed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "allowed"
+        ],
+        "title": "ChannelDeliveryResponse",
+        "type": "object"
+      },
+      "ChannelDispatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "bot_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Bot Id",
+            "type": "string"
+          },
+          "chat_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Chat Id",
+            "type": "string"
+          },
+          "chat_type": {
+            "enum": [
+              "private",
+              "group"
+            ],
+            "title": "Chat Type",
+            "type": "string"
+          },
+          "event_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "minimum": 0.0,
+            "title": "Occurred At",
+            "type": "integer"
+          },
+          "platform": {
+            "enum": [
+              "telegram",
+              "feishu"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "received_at_ms": {
+            "minimum": 0.0,
+            "title": "Received At Ms",
+            "type": "integer"
+          },
+          "subject_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "tenant_id": {
+            "default": "",
+            "maxLength": 100,
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 16000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "thread_id": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "bot_id",
+          "event_id",
+          "subject_id",
+          "chat_id",
+          "chat_type",
+          "occurred_at",
+          "received_at_ms",
+          "text"
+        ],
+        "title": "ChannelDispatchRequest",
+        "type": "object"
+      },
+      "ChannelDispatchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "event_key": {
+            "title": "Event Key",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_key",
+          "text"
+        ],
+        "title": "ChannelDispatchResponse",
+        "type": "object"
+      },
+      "ChannelGatewayInfoResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bot_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bot Url"
+          },
+          "gateway_id": {
+            "title": "Gateway Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "telegram",
+              "feishu"
+            ],
+            "title": "Platform",
+            "type": "string"
+          }
+        },
+        "required": [
+          "gateway_id",
+          "platform",
+          "name"
+        ],
+        "title": "ChannelGatewayInfoResponse",
+        "type": "object"
+      },
+      "ChannelLinkCodeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledge_private_data_and_usage": {
+            "const": true,
+            "title": "Acknowledge Private Data And Usage",
+            "type": "boolean"
+          },
+          "gateway_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Gateway Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "gateway_id",
+          "acknowledge_private_data_and_usage"
+        ],
+        "title": "ChannelLinkCodeRequest",
+        "type": "object"
+      },
+      "ChannelLinkCodeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "integer"
+          },
+          "gateway_id": {
+            "title": "Gateway Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "expires_at",
+          "gateway_id"
+        ],
+        "title": "ChannelLinkCodeResponse",
         "type": "object"
       },
       "ClipImportRequest": {
@@ -4911,6 +5242,18 @@
             "exclusiveMinimum": 0.0,
             "title": "Limit Points",
             "type": "integer"
+          },
+          "settled_remaining_points": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settled Remaining Points"
           }
         },
         "required": [
@@ -6557,6 +6900,17 @@
           "confirmed"
         ],
         "title": "FrameworkStatus",
+        "type": "string"
+      },
+      "Genre": {
+        "enum": [
+          "official",
+          "report",
+          "academic",
+          "fiction",
+          "essay"
+        ],
+        "title": "Genre",
         "type": "string"
       },
       "HTTPValidationError": {
@@ -16356,6 +16710,460 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "WritingDocumentCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "genre": {
+            "$ref": "#/components/schemas/Genre",
+            "default": "essay"
+          },
+          "markdown": {
+            "default": "",
+            "maxLength": 200000,
+            "title": "Markdown",
+            "type": "string"
+          },
+          "title": {
+            "default": "未命名文稿",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "title": "WritingDocumentCreate",
+        "type": "object"
+      },
+      "WritingDocumentList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WritingDocumentResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "WritingDocumentList",
+        "type": "object"
+      },
+      "WritingDocumentResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "genre": {
+            "$ref": "#/components/schemas/Genre"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "document_id",
+          "title",
+          "genre",
+          "markdown",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WritingDocumentResponse",
+        "type": "object"
+      },
+      "WritingDocumentUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "genre": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Genre"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "markdown": {
+            "anyOf": [
+              {
+                "maxLength": 200000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Markdown"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "WritingDocumentUpdate",
+        "type": "object"
+      },
+      "WritingGenreSummary": {
+        "properties": {
+          "character_count": {
+            "title": "Character Count",
+            "type": "integer"
+          },
+          "genre": {
+            "$ref": "#/components/schemas/Genre"
+          },
+          "readiness": {
+            "enum": [
+              "empty",
+              "limited",
+              "ready"
+            ],
+            "title": "Readiness",
+            "type": "string"
+          },
+          "sample_count": {
+            "title": "Sample Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "genre",
+          "sample_count",
+          "character_count",
+          "readiness"
+        ],
+        "title": "WritingGenreSummary",
+        "type": "object"
+      },
+      "WritingRevisionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "rewrite",
+              "personalize",
+              "continue"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "instruction": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Instruction",
+            "type": "string"
+          },
+          "selection_end": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection End"
+          },
+          "selection_start": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Start"
+          }
+        },
+        "required": [
+          "expected_version",
+          "action"
+        ],
+        "title": "WritingRevisionCreate",
+        "type": "object"
+      },
+      "WritingRevisionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WritingRevisionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "WritingRevisionList",
+        "type": "object"
+      },
+      "WritingRevisionResolution": {
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/WritingDocumentResponse"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/WritingRevisionResponse"
+          }
+        },
+        "required": [
+          "document",
+          "revision"
+        ],
+        "title": "WritingRevisionResolution",
+        "type": "object"
+      },
+      "WritingRevisionResolve": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "accept",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "decision",
+          "expected_version"
+        ],
+        "title": "WritingRevisionResolve",
+        "type": "object"
+      },
+      "WritingRevisionResponse": {
+        "properties": {
+          "action": {
+            "enum": [
+              "rewrite",
+              "personalize",
+              "continue"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "after_markdown": {
+            "title": "After Markdown",
+            "type": "string"
+          },
+          "base_version": {
+            "title": "Base Version",
+            "type": "integer"
+          },
+          "before_markdown": {
+            "title": "Before Markdown",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected",
+              "stale"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "revision_id",
+          "document_id",
+          "base_version",
+          "action",
+          "before_markdown",
+          "after_markdown",
+          "status",
+          "warnings",
+          "created_at"
+        ],
+        "title": "WritingRevisionResponse",
+        "type": "object"
+      },
+      "WritingSampleCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "genre": {
+            "$ref": "#/components/schemas/Genre"
+          },
+          "text": {
+            "maxLength": 100000,
+            "minLength": 80,
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "genre",
+          "text"
+        ],
+        "title": "WritingSampleCreate",
+        "type": "object"
+      },
+      "WritingSampleList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WritingSampleResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "WritingSampleList",
+        "type": "object"
+      },
+      "WritingSampleResponse": {
+        "properties": {
+          "character_count": {
+            "title": "Character Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "genre": {
+            "$ref": "#/components/schemas/Genre"
+          },
+          "sample_id": {
+            "format": "uuid",
+            "title": "Sample Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sample_id",
+          "title",
+          "genre",
+          "character_count",
+          "created_at"
+        ],
+        "title": "WritingSampleResponse",
+        "type": "object"
+      },
+      "WritingSummary": {
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/WritingDocumentResponse"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "genres": {
+            "items": {
+              "$ref": "#/components/schemas/WritingGenreSummary"
+            },
+            "title": "Genres",
+            "type": "array"
+          },
+          "sample_count": {
+            "title": "Sample Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sample_count",
+          "genres",
+          "documents"
+        ],
+        "title": "WritingSummary",
+        "type": "object"
       }
     }
   },
@@ -18682,6 +19490,71 @@
         ]
       }
     },
+    "/api/agent/runs/by-idempotency-key": {
+      "get": {
+        "description": "Observe the owner's original intent without replay, renewal or billing.\n\nA missing record is provisional: a disconnected request could still be\nentering the server. It must not be interpreted as proof no work occurred.",
+        "operationId": "lookup_agent_run",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunLookupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Lookup Agent Run",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
     "/api/agent/runs/{run_id}/stop": {
       "post": {
         "operationId": "stop_agent_run",
@@ -18837,6 +19710,251 @@
         "summary": "Stream Agent Turn",
         "tags": [
           "agent"
+        ]
+      }
+    },
+    "/api/channel-gateway/dispatch": {
+      "post": {
+        "operationId": "dispatch_channel_message",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelDispatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelDispatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dispatch",
+        "tags": [
+          "channel-gateway"
+        ]
+      }
+    },
+    "/api/channel-gateway/events/{event_key}/delivery": {
+      "get": {
+        "operationId": "authorize_channel_delivery",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_key",
+            "required": true,
+            "schema": {
+              "title": "Event Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelDeliveryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Authorize Delivery",
+        "tags": [
+          "channel-gateway"
+        ]
+      }
+    },
+    "/api/channels/bindings": {
+      "get": {
+        "operationId": "list_channel_bindings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChannelBindingResponse"
+                  },
+                  "title": "Response List Channel Bindings",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Bindings",
+        "tags": [
+          "channel-gateway"
+        ]
+      }
+    },
+    "/api/channels/bindings/{binding_id}": {
+      "delete": {
+        "operationId": "revoke_channel_binding",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "binding_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Binding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Binding",
+        "tags": [
+          "channel-gateway"
+        ]
+      }
+    },
+    "/api/channels/gateways": {
+      "get": {
+        "operationId": "list_channel_gateways",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChannelGatewayInfoResponse"
+                  },
+                  "title": "Response List Channel Gateways",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Gateways",
+        "tags": [
+          "channel-gateway"
+        ]
+      }
+    },
+    "/api/channels/link-codes": {
+      "delete": {
+        "operationId": "cancel_channel_link_codes",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "gateway_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Gateway Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Link Codes",
+        "tags": [
+          "channel-gateway"
+        ]
+      },
+      "post": {
+        "operationId": "create_channel_link_code",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelLinkCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelLinkCodeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Link Code",
+        "tags": [
+          "channel-gateway"
         ]
       }
     },
@@ -29476,6 +30594,547 @@
         "summary": "Get Confirmed Theory Plan",
         "tags": [
           "matching"
+        ]
+      }
+    },
+    "/api/writing/documents": {
+      "get": {
+        "operationId": "list_writing_documents",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingDocumentList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Documents",
+        "tags": [
+          "writing"
+        ]
+      },
+      "post": {
+        "operationId": "create_writing_document",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WritingDocumentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingDocumentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Document",
+        "tags": [
+          "writing"
+        ]
+      }
+    },
+    "/api/writing/documents/{document_id}": {
+      "get": {
+        "operationId": "get_writing_document",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingDocumentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Document",
+        "tags": [
+          "writing"
+        ]
+      },
+      "patch": {
+        "operationId": "update_writing_document",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WritingDocumentUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingDocumentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Document",
+        "tags": [
+          "writing"
+        ]
+      }
+    },
+    "/api/writing/documents/{document_id}/revisions": {
+      "get": {
+        "operationId": "list_writing_revisions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingRevisionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revisions",
+        "tags": [
+          "writing"
+        ]
+      },
+      "post": {
+        "operationId": "create_writing_revision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WritingRevisionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingRevisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Propose",
+        "tags": [
+          "writing"
+        ]
+      }
+    },
+    "/api/writing/documents/{document_id}/revisions/{revision_id}/resolve": {
+      "post": {
+        "operationId": "resolve_writing_revision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WritingRevisionResolve"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingRevisionResolution"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve",
+        "tags": [
+          "writing"
+        ]
+      }
+    },
+    "/api/writing/samples": {
+      "get": {
+        "operationId": "list_writing_samples",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingSampleList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Samples",
+        "tags": [
+          "writing"
+        ]
+      },
+      "post": {
+        "operationId": "create_writing_sample",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WritingSampleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingSampleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Sample",
+        "tags": [
+          "writing"
+        ]
+      }
+    },
+    "/api/writing/samples/upload": {
+      "post": {
+        "operationId": "upload_writing_sample",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_writing_sample"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingSampleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Sample",
+        "tags": [
+          "writing"
+        ]
+      }
+    },
+    "/api/writing/samples/{sample_id}": {
+      "delete": {
+        "operationId": "delete_writing_sample",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sample_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Sample Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Sample",
+        "tags": [
+          "writing"
+        ]
+      }
+    },
+    "/api/writing/summary": {
+      "get": {
+        "operationId": "get_writing_summary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Summary",
+        "tags": [
+          "writing"
         ]
       }
     }

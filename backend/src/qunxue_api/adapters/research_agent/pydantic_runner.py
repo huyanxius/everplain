@@ -6,6 +6,7 @@ from asyncio import sleep as async_sleep
 from collections.abc import AsyncGenerator, AsyncIterable, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
 from contextvars import ContextVar
+from dataclasses import asdict
 from typing import Any, Literal, cast
 from uuid import UUID, uuid4
 
@@ -38,6 +39,7 @@ from pydantic_ai.models.openai import (
     OpenAIResponsesModel,
     OpenAIResponsesModelSettings,
 )
+from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings, merge_model_settings
 from pydantic_ai.usage import UsageLimits
@@ -66,6 +68,7 @@ from qunxue_api.adapters.retrieval.errors import RetrievalPipelineUnavailable
 from qunxue_api.modules.agent_conversation import (
     AgentEvidence,
     AgentInterrupted,
+    AgentModelRouteFailure,
     AgentResearchEvent,
     AgentRunResult,
     AgentRuntimeIdentity,
@@ -610,6 +613,19 @@ class _RetryingOpenAIChatModel(MeteredOpenAIChatModel):
         return routed.value
 
 
+def _responses_input_token_estimate(serialized: str) -> int:
+    """Conservative local context estimate; no provider token-count request.
+
+    The image preloads the public o200k encoding. The 25% margin and 4096-token
+    overhead tolerate model/serialization differences. Usage and cash billing
+    still use the provider's final counters and the existing wire reservation.
+    """
+    import tiktoken
+
+    tokens = len(tiktoken.get_encoding("o200k_base").encode(serialized, disallowed_special=()))
+    return (tokens * 5 + 3) // 4 + 4096
+
+
 class _RetryingOpenAIResponsesModel(MeteredOpenAIResponsesModel):
     """Bridge Pydantic AI serialization onto the shared route executor."""
 
@@ -701,11 +717,20 @@ class _RetryingOpenAIResponsesModel(MeteredOpenAIResponsesModel):
                 merge_model_settings(model.settings, runtime_overrides) or {},
             )
             if self._route_executor.max_input_tokens is not None:
-                serialized = ModelMessagesTypeAdapter.dump_json(messages)
-                contracts = json.dumps(
-                    model_request_parameters.__dict__, default=str, ensure_ascii=False
-                ).encode()
-                if len(serialized) + len(contracts) + 4096 > self._route_executor.max_input_tokens:
+                # Count the actual Responses request shape, not Pydantic's
+                # internal history (which repeats instructions on every turn).
+                # This context estimate is independent from the unchanged final
+                # wire-body cash reservation in the metering boundary.
+                request_params = await model._build_responses_request_params(
+                    messages, endpoint_settings, model_request_parameters,
+                    OpenAIModelProfile.from_profile(model.profile),
+                )
+                serialized = json.dumps(
+                    asdict(request_params), default=str, ensure_ascii=False
+                )
+                if _responses_input_token_estimate(serialized) > (
+                    self._route_executor.max_input_tokens
+                ):
                     raise ModelAttemptFailure(code="model_input_limit", retryable=False)
             if self._route_executor.max_output_tokens is not None:
                 endpoint_settings["max_tokens"] = min(
@@ -744,7 +769,7 @@ class _RetryingOpenAIResponsesModel(MeteredOpenAIResponsesModel):
         return routed.value
 
 
-class AgentModelRouteError(RuntimeError):
+class AgentModelRouteError(AgentModelRouteFailure):
     """Safe, stable failure raised after an Agent model route cannot complete."""
 
     _MESSAGES = {
@@ -752,6 +777,7 @@ class AgentModelRouteError(RuntimeError):
             "Agent model providers are temporarily unavailable."
         ),
         "agent_model_request_rejected": "Agent model request was rejected.",
+        "agent_input_limit": "Agent input exceeds the configured context limit.",
     }
 
     def __init__(self, code: str) -> None:
@@ -762,11 +788,10 @@ class AgentModelRouteError(RuntimeError):
 
     @classmethod
     def from_attempt(cls, failure: ModelAttemptFailure) -> "AgentModelRouteError":
-        code = (
-            "agent_model_request_rejected"
-            if failure.code == "model_request_rejected"
-            else "agent_model_unavailable"
-        )
+        code = {
+            "model_request_rejected": "agent_model_request_rejected",
+            "model_input_limit": "agent_input_limit",
+        }.get(failure.code, "agent_model_unavailable")
         return cls(code)
 
 
@@ -900,6 +925,7 @@ class PydanticAIKnowledgeRunner:
                 fallback_models=fallback_models,
                 require_billing=require_billing,
             )
+        self._writing_model = model_instance
         self._agent = Agent(
             model_instance,
             deps_type=KnowledgeToolRegistry,
@@ -2424,6 +2450,19 @@ class PydanticAIKnowledgeRunner:
             _agent_route_correlation.reset(route_token)
             self._active_tool_event.reset(token)
             self._active_cancelled.reset(cancel_token)
+
+    def run_writing_stage(self, instructions: str, payload: dict, run_id: UUID) -> str:
+        """Tool-free bounded writing stage, sharing routing and mandatory metering."""
+        token = _agent_route_correlation.set({"agent_run_id": run_id})
+        try:
+            agent = Agent(self._writing_model, instructions=instructions, retries=0)
+            result = agent.run_sync(
+                json.dumps(payload, ensure_ascii=False),
+                usage_limits=UsageLimits(request_limit=1, tool_calls_limit=0),
+            )
+            return visible_text(str(result.output)).strip()
+        finally:
+            _agent_route_correlation.reset(token)
 
     def _usage_limits_for(self, tools: AgentToolContext) -> UsageLimits:
         return (
