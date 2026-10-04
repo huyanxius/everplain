@@ -7,15 +7,20 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.takeScreenshot
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.platform.graphics.HardwareRendererCompat
+import androidx.test.uiautomator.UiDevice
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -107,6 +112,62 @@ class NativeMotionPlaybackTest {
                 first.recycle()
                 second.recycle()
             }
+        }
+    }
+
+    @Test(timeout = 60000)
+    fun originalXiaopingRendersMovesSmilesAndHonorsReducedMotion() {
+        val bounds = AtomicReference(Rect.Zero)
+        motionScene(
+            content = {
+                Text("合成动效验收 · Everplain 的小平")
+                HomeCompanion(
+                    true,
+                    Modifier.onGloballyPositioned { bounds.set(it.boundsInRoot()) },
+                    narrow = true,
+                )
+            }
+        ) {
+            fun body(image: Bitmap): Bitmap {
+                val box = bounds.get()
+                assertTrue("Original companion is laid out", box.width > 80 && box.height > 80)
+                return Bitmap.createBitmap(
+                    image,
+                    box.left.toInt(),
+                    box.top.toInt(),
+                    box.width.toInt(),
+                    box.height.toInt(),
+                )
+            }
+            Thread.sleep(1700)
+            val first = capture("companion-idle-a")
+            Thread.sleep(650)
+            val second = capture("companion-idle-b")
+            val a = body(first)
+            val b = body(second)
+            assertFalse("Authored hair and breathing really animate", a.sameAs(b))
+            a.recycle()
+            b.recycle()
+            first.recycle()
+            second.recycle()
+            val box = bounds.get()
+            UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+                .click(box.center.x.toInt(), box.center.y.toInt())
+            Thread.sleep(350)
+            capture("companion-happy").recycle()
+            Thread.sleep(1700)
+            shell("settings put global animator_duration_scale 0")
+            Thread.sleep(600)
+            val staticA = capture("companion-reduced-a")
+            Thread.sleep(300)
+            val staticB = capture("companion-reduced-b")
+            val stillA = body(staticA)
+            val stillB = body(staticB)
+            assertTrue("Reduced motion stops the companion clock", stillA.sameAs(stillB))
+            stillA.recycle()
+            stillB.recycle()
+            staticA.recycle()
+            staticB.recycle()
         }
     }
 

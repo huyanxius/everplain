@@ -75,7 +75,7 @@ class NativeKeyboardTest {
                     .set(
                         vm,
                         object :
-                            EverplainApi(
+                            NativeFixtureApi(
                                 Endpoint.parse("https://keyboard-fixture.example.invalid"),
                                 MemoryStore(),
                             ) {
@@ -177,7 +177,7 @@ class NativeKeyboardTest {
                     .set(
                         vm,
                         object :
-                            EverplainApi(
+                            NativeFixtureApi(
                                 Endpoint.parse("https://keyboard-fixture.example.invalid"),
                                 MemoryStore(),
                             ) {

@@ -154,7 +154,7 @@ class NativeFlowTest {
         val fixtureSession: SessionResponse,
         var fixtureProfile: AgentProfileResponse,
         val fixtureConversation: AgentConversationResponse,
-    ) : EverplainApi(Endpoint.parse("https://native-fixture.example.invalid"), MemoryStore()) {
+    ) : NativeFixtureApi(Endpoint.parse("https://native-fixture.example.invalid"), MemoryStore()) {
         val calls = mutableListOf<Pair<AgentTurnRequest, String>>()
         var visible = false
         var startImmediately = false

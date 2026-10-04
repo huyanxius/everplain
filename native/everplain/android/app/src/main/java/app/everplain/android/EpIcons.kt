@@ -10,355 +10,219 @@ import androidx.compose.ui.unit.dp
 // Shared asset SHA256: 5bdcf5ae87d17fb29ed8e53a7eae6d4991d9dc9b51b319086b71613c201ebad6
 object EpIcons {
     val Menu: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.Menu", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16ZM216,184H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.Menu", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128ZM40,72H216a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16ZM216,184H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val Add: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.Add", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.Add", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val ArrowUpward: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.ArrowUpward", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M205.66,117.66a8,8,0,0,1-11.32,0L136,59.31V216a8,8,0,0,1-16,0V59.31L61.66,117.66a8,8,0,0,1-11.32-11.32l72-72a8,8,0,0,1,11.32,0l72,72A8,8,0,0,1,205.66,117.66Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.ArrowUpward", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M205.66,117.66a8,8,0,0,1-11.32,0L136,59.31V216a8,8,0,0,1-16,0V59.31L61.66,117.66a8,8,0,0,1-11.32-11.32l72-72a8,8,0,0,1,11.32,0l72,72A8,8,0,0,1,205.66,117.66Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val Stop: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.Stop", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,160H56V56H200V200Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.Stop", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M200,40H56A16,16,0,0,0,40,56V200a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,160H56V56H200V200Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val ContentCopy: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.ContentCopy", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.ContentCopy", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val Check: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.Check", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.Check", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val Close: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.Close", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.Close", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val ExpandMore: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.ExpandMore", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.ExpandMore", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val ChevronRight: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.ChevronRight", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.ChevronRight", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val EditNote: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.EditNote", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M229.66,58.34l-32-32a8,8,0,0,0-11.32,0l-96,96A8,8,0,0,0,88,128v32a8,8,0,0,0,8,8h32a8,8,0,0,0,5.66-2.34l96-96A8,8,0,0,0,229.66,58.34ZM124.69,152H104V131.31l64-64L188.69,88ZM200,76.69,179.31,56,192,43.31,212.69,64ZM224,128v80a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32h80a8,8,0,0,1,0,16H48V208H208V128a8,8,0,0,1,16,0Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.EditNote", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M229.66,58.34l-32-32a8,8,0,0,0-11.32,0l-96,96A8,8,0,0,0,88,128v32a8,8,0,0,0,8,8h32a8,8,0,0,0,5.66-2.34l96-96A8,8,0,0,0,229.66,58.34ZM124.69,152H104V131.31l64-64L188.69,88ZM200,76.69,179.31,56,192,43.31,212.69,64ZM224,128v80a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32h80a8,8,0,0,1,0,16H48V208H208V128a8,8,0,0,1,16,0Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val MoreHoriz: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.MoreHoriz", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M140,128a12,12,0,1,1-12-12A12,12,0,0,1,140,128Zm56-12a12,12,0,1,0,12,12A12,12,0,0,0,196,116ZM60,116a12,12,0,1,0,12,12A12,12,0,0,0,60,116Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.MoreHoriz", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M140,128a12,12,0,1,1-12-12A12,12,0,0,1,140,128Zm56-12a12,12,0,1,0,12,12A12,12,0,0,0,196,116ZM60,116a12,12,0,1,0,12,12A12,12,0,0,0,60,116Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val Home: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.Home", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M219.31,108.68l-80-80a16,16,0,0,0-22.62,0l-80,80A15.87,15.87,0,0,0,32,120v96a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V160h32v56a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V120A15.87,15.87,0,0,0,219.31,108.68ZM208,208H160V152a8,8,0,0,0-8-8H104a8,8,0,0,0-8,8v56H48V120l80-80,80,80Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.Home", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M219.31,108.68l-80-80a16,16,0,0,0-22.62,0l-80,80A15.87,15.87,0,0,0,32,120v96a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V160h32v56a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V120A15.87,15.87,0,0,0,219.31,108.68ZM208,208H160V152a8,8,0,0,0-8-8H104a8,8,0,0,0-8,8v56H48V120l80-80,80,80Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val Person: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.Person", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M230.92,212c-15.23-26.33-38.7-45.21-66.09-54.16a72,72,0,1,0-73.66,0C63.78,166.78,40.31,185.66,25.08,212a8,8,0,1,0,13.85,8c18.84-32.56,52.14-52,89.07-52s70.23,19.44,89.07,52a8,8,0,1,0,13.85-8ZM72,96a56,56,0,1,1,56,56A56.06,56.06,0,0,1,72,96Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.Person", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M230.92,212c-15.23-26.33-38.7-45.21-66.09-54.16a72,72,0,1,0-73.66,0C63.78,166.78,40.31,185.66,25.08,212a8,8,0,1,0,13.85,8c18.84-32.56,52.14-52,89.07-52s70.23,19.44,89.07,52a8,8,0,1,0,13.85-8ZM72,96a56,56,0,1,1,56,56A56.06,56.06,0,0,1,72,96Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val Tune: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.Tune", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M40,88H73a32,32,0,0,0,62,0h81a8,8,0,0,0,0-16H135a32,32,0,0,0-62,0H40a8,8,0,0,0,0,16Zm64-24A16,16,0,1,1,88,80,16,16,0,0,1,104,64ZM216,168H199a32,32,0,0,0-62,0H40a8,8,0,0,0,0,16h97a32,32,0,0,0,62,0h17a8,8,0,0,0,0-16Zm-48,24a16,16,0,1,1,16-16A16,16,0,0,1,168,192Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.Tune", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M40,88H73a32,32,0,0,0,62,0h81a8,8,0,0,0,0-16H135a32,32,0,0,0-62,0H40a8,8,0,0,0,0,16Zm64-24A16,16,0,1,1,88,80,16,16,0,0,1,104,64ZM216,168H199a32,32,0,0,0-62,0H40a8,8,0,0,0,0,16h97a32,32,0,0,0,62,0h17a8,8,0,0,0,0-16Zm-48,24a16,16,0,1,1,16-16A16,16,0,0,1,168,192Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val Refresh: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.Refresh", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.Refresh", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val Eye: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.Eye", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M247.31,124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57,61.26,162.88,48,128,48S61.43,61.26,36.34,86.35C17.51,105.18,9,124,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208s66.57-13.26,91.66-38.34c18.83-18.83,27.3-37.61,27.65-38.4A8,8,0,0,0,247.31,124.76ZM128,192c-30.78,0-57.67-11.19-79.93-33.25A133.47,133.47,0,0,1,25,128,133.33,133.33,0,0,1,48.07,97.25C70.33,75.19,97.22,64,128,64s57.67,11.19,79.93,33.25A133.46,133.46,0,0,1,231.05,128C223.84,141.46,192.43,192,128,192Zm0-112a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.Eye", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M247.31,124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57,61.26,162.88,48,128,48S61.43,61.26,36.34,86.35C17.51,105.18,9,124,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208s66.57-13.26,91.66-38.34c18.83-18.83,27.3-37.61,27.65-38.4A8,8,0,0,0,247.31,124.76ZM128,192c-30.78,0-57.67-11.19-79.93-33.25A133.47,133.47,0,0,1,25,128,133.33,133.33,0,0,1,48.07,97.25C70.33,75.19,97.22,64,128,64s57.67,11.19,79.93,33.25A133.46,133.46,0,0,1,231.05,128C223.84,141.46,192.43,192,128,192Zm0-112a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val EyeSlash: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.EyeSlash", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M53.92,34.62A8,8,0,1,0,42.08,45.38L61.32,66.55C25,88.84,9.38,123.2,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208a127.11,127.11,0,0,0,52.07-10.83l22,24.21a8,8,0,1,0,11.84-10.76Zm47.33,75.84,41.67,45.85a32,32,0,0,1-41.67-45.85ZM128,192c-30.78,0-57.67-11.19-79.93-33.25A133.16,133.16,0,0,1,25,128c4.69-8.79,19.66-33.39,47.35-49.38l18,19.75a48,48,0,0,0,63.66,70l14.73,16.2A112,112,0,0,1,128,192Zm6-95.43a8,8,0,0,1,3-15.72,48.16,48.16,0,0,1,38.77,42.64,8,8,0,0,1-7.22,8.71,6.39,6.39,0,0,1-.75,0,8,8,0,0,1-8-7.26A32.09,32.09,0,0,0,134,96.57Zm113.28,34.69c-.42.94-10.55,23.37-33.36,43.8a8,8,0,1,1-10.67-11.92A132.77,132.77,0,0,0,231.05,128a133.15,133.15,0,0,0-23.12-30.77C185.67,75.19,158.78,64,128,64a118.37,118.37,0,0,0-19.36,1.57A8,8,0,1,1,106,49.79,134,134,0,0,1,128,48c34.88,0,66.57,13.26,91.66,38.35,18.83,18.83,27.3,37.62,27.65,38.41A8,8,0,0,1,247.31,131.26Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.EyeSlash", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M53.92,34.62A8,8,0,1,0,42.08,45.38L61.32,66.55C25,88.84,9.38,123.2,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208a127.11,127.11,0,0,0,52.07-10.83l22,24.21a8,8,0,1,0,11.84-10.76Zm47.33,75.84,41.67,45.85a32,32,0,0,1-41.67-45.85ZM128,192c-30.78,0-57.67-11.19-79.93-33.25A133.16,133.16,0,0,1,25,128c4.69-8.79,19.66-33.39,47.35-49.38l18,19.75a48,48,0,0,0,63.66,70l14.73,16.2A112,112,0,0,1,128,192Zm6-95.43a8,8,0,0,1,3-15.72,48.16,48.16,0,0,1,38.77,42.64,8,8,0,0,1-7.22,8.71,6.39,6.39,0,0,1-.75,0,8,8,0,0,1-8-7.26A32.09,32.09,0,0,0,134,96.57Zm113.28,34.69c-.42.94-10.55,23.37-33.36,43.8a8,8,0,1,1-10.67-11.92A132.77,132.77,0,0,0,231.05,128a133.15,133.15,0,0,0-23.12-30.77C185.67,75.19,158.78,64,128,64a118.37,118.37,0,0,0-19.36,1.57A8,8,0,1,1,106,49.79,134,134,0,0,1,128,48c34.88,0,66.57,13.26,91.66,38.35,18.83,18.83,27.3,37.62,27.65,38.41A8,8,0,0,1,247.31,131.26Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val ArrowLeft: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.ArrowLeft", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.ArrowLeft", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val Bell: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.Bell", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M221.8,175.94C216.25,166.38,208,139.33,208,104a80,80,0,1,0-160,0c0,35.34-8.26,62.38-13.81,71.94A16,16,0,0,0,48,200H88.81a40,40,0,0,0,78.38,0H208a16,16,0,0,0,13.8-24.06ZM128,216a24,24,0,0,1-22.62-16h45.24A24,24,0,0,1,128,216ZM48,184c7.7-13.24,16-43.92,16-80a64,64,0,1,1,128,0c0,36.05,8.28,66.73,16,80Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.Bell", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M221.8,175.94C216.25,166.38,208,139.33,208,104a80,80,0,1,0-160,0c0,35.34-8.26,62.38-13.81,71.94A16,16,0,0,0,48,200H88.81a40,40,0,0,0,78.38,0H208a16,16,0,0,0,13.8-24.06ZM128,216a24,24,0,0,1-22.62-16h45.24A24,24,0,0,1,128,216ZM48,184c7.7-13.24,16-43.92,16-80a64,64,0,1,1,128,0c0,36.05,8.28,66.73,16,80Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val Fingerprint: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.Fingerprint", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M72,128a134.63,134.63,0,0,1-14.16,60.47,8,8,0,1,1-14.32-7.12A118.8,118.8,0,0,0,56,128,71.73,71.73,0,0,1,83,71.8,8,8,0,1,1,93,84.29,55.76,55.76,0,0,0,72,128Zm56-8a8,8,0,0,0-8,8,184.12,184.12,0,0,1-23,89.1,8,8,0,0,0,14,7.76A200.19,200.19,0,0,0,136,128,8,8,0,0,0,128,120Zm0-32a40,40,0,0,0-40,40,8,8,0,0,0,16,0,24,24,0,0,1,48,0,214.09,214.09,0,0,1-20.51,92A8,8,0,1,0,146,226.83,230,230,0,0,0,168,128,40,40,0,0,0,128,88Zm0-64A104.11,104.11,0,0,0,24,128a87.76,87.76,0,0,1-5,29.33,8,8,0,0,0,15.09,5.33A103.9,103.9,0,0,0,40,128a88,88,0,0,1,176,0,282.24,282.24,0,0,1-5.29,54.45,8,8,0,0,0,6.3,9.4,8.22,8.22,0,0,0,1.55.15,8,8,0,0,0,7.84-6.45A298.37,298.37,0,0,0,232,128,104.12,104.12,0,0,0,128,24ZM94.4,152.17A8,8,0,0,0,85,158.42a151,151,0,0,1-17.21,45.44,8,8,0,0,0,13.86,8,166.67,166.67,0,0,0,19-50.25A8,8,0,0,0,94.4,152.17ZM128,56a72.85,72.85,0,0,0-9,.56,8,8,0,0,0,2,15.87A56.08,56.08,0,0,1,184,128a252.12,252.12,0,0,1-1.92,31A8,8,0,0,0,189,168a8.39,8.39,0,0,0,1,.06,8,8,0,0,0,7.92-7,266.48,266.48,0,0,0,2-33A72.08,72.08,0,0,0,128,56Zm57.93,128.25a8,8,0,0,0-9.75,5.75c-1.46,5.69-3.15,11.4-5,17a8,8,0,0,0,5,10.13,7.88,7.88,0,0,0,2.55.42,8,8,0,0,0,7.58-5.46c2-5.92,3.79-12,5.35-18.05A8,8,0,0,0,185.94,184.26Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.Fingerprint", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M72,128a134.63,134.63,0,0,1-14.16,60.47,8,8,0,1,1-14.32-7.12A118.8,118.8,0,0,0,56,128,71.73,71.73,0,0,1,83,71.8,8,8,0,1,1,93,84.29,55.76,55.76,0,0,0,72,128Zm56-8a8,8,0,0,0-8,8,184.12,184.12,0,0,1-23,89.1,8,8,0,0,0,14,7.76A200.19,200.19,0,0,0,136,128,8,8,0,0,0,128,120Zm0-32a40,40,0,0,0-40,40,8,8,0,0,0,16,0,24,24,0,0,1,48,0,214.09,214.09,0,0,1-20.51,92A8,8,0,1,0,146,226.83,230,230,0,0,0,168,128,40,40,0,0,0,128,88Zm0-64A104.11,104.11,0,0,0,24,128a87.76,87.76,0,0,1-5,29.33,8,8,0,0,0,15.09,5.33A103.9,103.9,0,0,0,40,128a88,88,0,0,1,176,0,282.24,282.24,0,0,1-5.29,54.45,8,8,0,0,0,6.3,9.4,8.22,8.22,0,0,0,1.55.15,8,8,0,0,0,7.84-6.45A298.37,298.37,0,0,0,232,128,104.12,104.12,0,0,0,128,24ZM94.4,152.17A8,8,0,0,0,85,158.42a151,151,0,0,1-17.21,45.44,8,8,0,0,0,13.86,8,166.67,166.67,0,0,0,19-50.25A8,8,0,0,0,94.4,152.17ZM128,56a72.85,72.85,0,0,0-9,.56,8,8,0,0,0,2,15.87A56.08,56.08,0,0,1,184,128a252.12,252.12,0,0,1-1.92,31A8,8,0,0,0,189,168a8.39,8.39,0,0,0,1,.06,8,8,0,0,0,7.92-7,266.48,266.48,0,0,0,2-33A72.08,72.08,0,0,0,128,56Zm57.93,128.25a8,8,0,0,0-9.75,5.75c-1.46,5.69-3.15,11.4-5,17a8,8,0,0,0,5,10.13,7.88,7.88,0,0,0,2.55.42,8,8,0,0,0,7.58-5.46c2-5.92,3.79-12,5.35-18.05A8,8,0,0,0,185.94,184.26Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val Brain: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.Brain", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M248,124a56.11,56.11,0,0,0-32-50.61V72a48,48,0,0,0-88-26.49A48,48,0,0,0,40,72v1.39a56,56,0,0,0,0,101.2V176a48,48,0,0,0,88,26.49A48,48,0,0,0,216,176v-1.41A56.09,56.09,0,0,0,248,124ZM88,208a32,32,0,0,1-31.81-28.56A55.87,55.87,0,0,0,64,180h8a8,8,0,0,0,0-16H64A40,40,0,0,1,50.67,86.27,8,8,0,0,0,56,78.73V72a32,32,0,0,1,64,0v68.26A47.8,47.8,0,0,0,88,128a8,8,0,0,0,0,16,32,32,0,0,1,0,64Zm104-44h-8a8,8,0,0,0,0,16h8a55.87,55.87,0,0,0,7.81-.56A32,32,0,1,1,168,144a8,8,0,0,0,0-16,47.8,47.8,0,0,0-32,12.26V72a32,32,0,0,1,64,0v6.73a8,8,0,0,0,5.33,7.54A40,40,0,0,1,192,164Zm16-52a8,8,0,0,1-8,8h-4a36,36,0,0,1-36-36V80a8,8,0,0,1,16,0v4a20,20,0,0,0,20,20h4A8,8,0,0,1,208,112ZM60,120H56a8,8,0,0,1,0-16h4A20,20,0,0,0,80,84V80a8,8,0,0,1,16,0v4A36,36,0,0,1,60,120Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.Brain", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M248,124a56.11,56.11,0,0,0-32-50.61V72a48,48,0,0,0-88-26.49A48,48,0,0,0,40,72v1.39a56,56,0,0,0,0,101.2V176a48,48,0,0,0,88,26.49A48,48,0,0,0,216,176v-1.41A56.09,56.09,0,0,0,248,124ZM88,208a32,32,0,0,1-31.81-28.56A55.87,55.87,0,0,0,64,180h8a8,8,0,0,0,0-16H64A40,40,0,0,1,50.67,86.27,8,8,0,0,0,56,78.73V72a32,32,0,0,1,64,0v68.26A47.8,47.8,0,0,0,88,128a8,8,0,0,0,0,16,32,32,0,0,1,0,64Zm104-44h-8a8,8,0,0,0,0,16h8a55.87,55.87,0,0,0,7.81-.56A32,32,0,1,1,168,144a8,8,0,0,0,0-16,47.8,47.8,0,0,0-32,12.26V72a32,32,0,0,1,64,0v6.73a8,8,0,0,0,5.33,7.54A40,40,0,0,1,192,164Zm16-52a8,8,0,0,1-8,8h-4a36,36,0,0,1-36-36V80a8,8,0,0,1,16,0v4a20,20,0,0,0,20,20h4A8,8,0,0,1,208,112ZM60,120H56a8,8,0,0,1,0-16h4A20,20,0,0,0,80,84V80a8,8,0,0,1,16,0v4A36,36,0,0,1,60,120Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val ArrowCounterClockwise: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.ArrowCounterClockwise", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.ArrowCounterClockwise", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val ClockCounterClockwise: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.ClockCounterClockwise", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.ClockCounterClockwise", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val PencilSimple: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.PencilSimple", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.PencilSimple", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
     val Trash: ImageVector by lazy {
-        ImageVector.Builder("EpIcons.Trash", 24.dp, 24.dp, 256f, 256f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z"
-                        )
-                        .toNodes(),
-                    fill = SolidColor(Color.Black),
-                )
-            }
-            .build()
+        ImageVector.Builder("EpIcons.Trash", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
     }
-    val History: ImageVector
-        get() = Refresh
+    val Books: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.Books", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M231.65,194.55,198.46,36.75a16,16,0,0,0-19-12.39L132.65,34.42a16.08,16.08,0,0,0-12.3,19l33.19,157.8A16,16,0,0,0,169.16,224a16.25,16.25,0,0,0,3.38-.36l46.81-10.06A16.09,16.09,0,0,0,231.65,194.55ZM136,50.15c0-.06,0-.09,0-.09l46.8-10,3.33,15.87L139.33,66Zm6.62,31.47,46.82-10.05,3.34,15.9L146,97.53Zm6.64,31.57,46.82-10.06,13.3,63.24-46.82,10.06ZM216,197.94l-46.8,10-3.33-15.87L212.67,182,216,197.85C216,197.91,216,197.94,216,197.94ZM104,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V48A16,16,0,0,0,104,32ZM56,48h48V64H56Zm0,32h48v96H56Zm48,128H56V192h48v16Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val FileText: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.FileText", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Zm-32-80a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,136Zm0,32a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,168Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val Image: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.Image", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val Presentation: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.Presentation", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M216,40H136V24a8,8,0,0,0-16,0V40H40A16,16,0,0,0,24,56V176a16,16,0,0,0,16,16H79.36L57.75,219a8,8,0,0,0,12.5,10l29.59-37h56.32l29.59,37a8,8,0,1,0,12.5-10l-21.61-27H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,136H40V56H216V176Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val WarningCircle: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.WarningCircle", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm-8-80V80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,172Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val UploadSimple: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.UploadSimple", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0ZM93.66,77.66,120,51.31V144a8,8,0,0,0,16,0V51.31l26.34,26.35a8,8,0,0,0,11.32-11.32l-40-40a8,8,0,0,0-11.32,0l-40,40A8,8,0,0,0,93.66,77.66Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val TreeStructure: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.TreeStructure", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M160,112h48a16,16,0,0,0,16-16V48a16,16,0,0,0-16-16H160a16,16,0,0,0-16,16V64H128a24,24,0,0,0-24,24v32H72v-8A16,16,0,0,0,56,96H24A16,16,0,0,0,8,112v32a16,16,0,0,0,16,16H56a16,16,0,0,0,16-16v-8h32v32a24,24,0,0,0,24,24h16v16a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V160a16,16,0,0,0-16-16H160a16,16,0,0,0-16,16v16H128a8,8,0,0,1-8-8V88a8,8,0,0,1,8-8h16V96A16,16,0,0,0,160,112ZM56,144H24V112H56v32Zm104,16h48v48H160Zm0-112h48V96H160Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val ArrowUpRight: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.ArrowUpRight", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val MagnifyingGlass: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.MagnifyingGlass", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M229.66,218.34l-50.07-50.06a88.11,88.11,0,1,0-11.31,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val SquaresFour: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.SquaresFour", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M104,40H56A16,16,0,0,0,40,56v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,104,40Zm0,64H56V56h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V56A16,16,0,0,0,200,40Zm0,64H152V56h48v48Zm-96,32H56a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,104,136Zm0,64H56V152h48v48Zm96-64H152a16,16,0,0,0-16,16v48a16,16,0,0,0,16,16h48a16,16,0,0,0,16-16V152A16,16,0,0,0,200,136Zm0,64H152V152h48v48Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val ShareNetwork: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.ShareNetwork", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M176,160a39.89,39.89,0,0,0-28.62,12.09l-46.1-29.63a39.8,39.8,0,0,0,0-28.92l46.1-29.63a40,40,0,1,0-8.66-13.45l-46.1,29.63a40,40,0,1,0,0,55.82l46.1,29.63A40,40,0,1,0,176,160Zm0-128a24,24,0,1,1-24,24A24,24,0,0,1,176,32ZM64,152a24,24,0,1,1,24-24A24,24,0,0,1,64,152Zm112,72a24,24,0,1,1,24-24A24,24,0,0,1,176,224Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val Folder: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.Folder", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72ZM40,56H92.69l16,16H40ZM216,200H40V88H216Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val Link: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.Link", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M240,88.23a54.43,54.43,0,0,1-16,37L189.25,160a54.27,54.27,0,0,1-38.63,16h-.05A54.63,54.63,0,0,1,96,119.84a8,8,0,0,1,16,.45A38.62,38.62,0,0,0,150.58,160h0a38.39,38.39,0,0,0,27.31-11.31l34.75-34.75a38.63,38.63,0,0,0-54.63-54.63l-11,11A8,8,0,0,1,135.7,59l11-11A54.65,54.65,0,0,1,224,48,54.86,54.86,0,0,1,240,88.23ZM109,185.66l-11,11A38.41,38.41,0,0,1,70.6,208h0a38.63,38.63,0,0,1-27.29-65.94L78,107.31A38.63,38.63,0,0,1,144,135.71a8,8,0,0,0,16,.45A54.86,54.86,0,0,0,144,96a54.65,54.65,0,0,0-77.27,0L32,130.75A54.62,54.62,0,0,0,70.56,224h0a54.28,54.28,0,0,0,38.64-16l11-11A8,8,0,0,0,109,185.66Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val ArrowRight: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.ArrowRight", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M221.66,133.66l-72,72a8,8,0,0,1-11.32-11.32L196.69,136H40a8,8,0,0,1,0-16H196.69L138.34,61.66a8,8,0,0,1,11.32-11.32l72,72A8,8,0,0,1,221.66,133.66Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val Minus: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.Minus", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M224,128a8,8,0,0,1-8,8H40a8,8,0,0,1,0-16H216A8,8,0,0,1,224,128Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val CornersOut: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.CornersOut", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M216,48V88a8,8,0,0,1-16,0V56H168a8,8,0,0,1,0-16h40A8,8,0,0,1,216,48ZM88,200H56V168a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H88a8,8,0,0,0,0-16Zm120-40a8,8,0,0,0-8,8v32H168a8,8,0,0,0,0,16h40a8,8,0,0,0,8-8V168A8,8,0,0,0,208,160ZM88,40H48a8,8,0,0,0-8,8V88a8,8,0,0,0,16,0V56H88a8,8,0,0,0,0-16Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val Shuffle: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.Shuffle", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M237.66,178.34a8,8,0,0,1,0,11.32l-24,24a8,8,0,0,1-11.32-11.32L212.69,192H200.94a72.12,72.12,0,0,1-58.59-30.15l-41.72-58.4A56.1,56.1,0,0,0,55.06,80H32a8,8,0,0,1,0-16H55.06a72.12,72.12,0,0,1,58.59,30.15l41.72,58.4A56.1,56.1,0,0,0,200.94,176h11.75l-10.35-10.34a8,8,0,0,1,11.32-11.32ZM143,107a8,8,0,0,0,11.16-1.86l1.2-1.67A56.1,56.1,0,0,1,200.94,80h11.75L202.34,90.34a8,8,0,0,0,11.32,11.32l24-24a8,8,0,0,0,0-11.32l-24-24a8,8,0,0,0-11.32,11.32L212.69,64H200.94a72.12,72.12,0,0,0-58.59,30.15l-1.2,1.67A8,8,0,0,0,143,107Zm-30,42a8,8,0,0,0-11.16,1.86l-1.2,1.67A56.1,56.1,0,0,1,55.06,176H32a8,8,0,0,0,0,16H55.06a72.12,72.12,0,0,0,58.59-30.15l1.2-1.67A8,8,0,0,0,113,149Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val Graph: ImageVector by lazy {
+        ImageVector.Builder("EpIcons.Graph", 24.dp, 24.dp, 256f, 256f).apply {
+            addPath(PathParser().parsePathString("M200,152a31.84,31.84,0,0,0-19.53,6.68l-23.11-18A31.65,31.65,0,0,0,160,128c0-.74,0-1.48-.08-2.21l13.23-4.41A32,32,0,1,0,168,104c0,.74,0,1.48.08,2.21l-13.23,4.41A32,32,0,0,0,128,96a32.59,32.59,0,0,0-5.27.44L115.89,81A32,32,0,1,0,96,88a32.59,32.59,0,0,0,5.27-.44l6.84,15.4a31.92,31.92,0,0,0-8.57,39.64L73.83,165.44a32.06,32.06,0,1,0,10.63,12l25.71-22.84a31.91,31.91,0,0,0,37.36-1.24l23.11,18A31.65,31.65,0,0,0,168,184a32,32,0,1,0,32-32Zm0-64a16,16,0,1,1-16,16A16,16,0,0,1,200,88ZM80,56A16,16,0,1,1,96,72,16,16,0,0,1,80,56ZM56,208a16,16,0,1,1,16-16A16,16,0,0,1,56,208Zm56-80a16,16,0,1,1,16,16A16,16,0,0,1,112,128Zm88,72a16,16,0,1,1,16-16A16,16,0,0,1,200,200Z").toNodes(), fill = SolidColor(Color.Black))
+        }.build()
+    }
+    val History: ImageVector get() = Refresh
 }

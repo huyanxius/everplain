@@ -170,6 +170,14 @@ open class EverplainApi(val endpoint: Endpoint, private val store: PrivateStore)
         return multipart("/api/shared-knowledge-bases/${UUID.fromString(libraryId)}/documents",body,key,SharedDocumentResponse.serializer())
     }
 
+    open suspend fun uploadResearchDocument(taskId:String,file:UploadSnapshot,key:String):ResearchMaterialResponse {
+        val body=MultipartBody.Builder(multipartBoundary(key)).setType(MultipartBody.FORM)
+            .addFormDataPart("file",file.filename,file.body())
+            .addFormDataPart("material_kind","other")
+            .addFormDataPart("defer_processing","true").build()
+        return multipart("/api/research-tasks/${UUID.fromString(taskId)}/materials",body,key,ResearchMaterialResponse.serializer())
+    }
+
     open suspend fun importFiles(sourceType: String, files: List<UploadSnapshot>, key: String, libraryId: String?=null): ImportBatchResponse {
         require(sourceType in setOf("chrome","markdown","obsidian","enex","notion","flomo","keep","apple_notes","image"))
         require(files.isNotEmpty())
@@ -249,9 +257,7 @@ open class EverplainApi(val endpoint: Endpoint, private val store: PrivateStore)
         json(EverplainEndpoint.updateAgentProfile, "PATCH", WireJson.encodeToString(update), key)
 
     open suspend fun history(): List<AgentConversationSummaryResponse> =
-        json<AgentConversationListResponse>(EverplainEndpoint.listAgentConversations).items.filter {
-            it.taskId == null && it.referenceKnowledgeBaseId == null
-        }
+        json<AgentConversationListResponse>(EverplainEndpoint.listAgentConversations).items
 
     open suspend fun conversation(id: String): AgentConversationResponse =
         json("/api/agent/conversations/${UUID.fromString(id)}")

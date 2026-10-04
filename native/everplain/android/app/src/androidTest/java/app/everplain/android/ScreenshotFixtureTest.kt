@@ -82,7 +82,7 @@ class ScreenshotFixtureTest {
                 .set(
                     vm,
                     object :
-                        EverplainApi(Endpoint.parse("https://qa.example.invalid"), MemoryStore()) {
+                        NativeFixtureApi(Endpoint.parse("https://qa.example.invalid"), MemoryStore()) {
                         override suspend fun session() = session
 
                         override suspend fun profile() = profile

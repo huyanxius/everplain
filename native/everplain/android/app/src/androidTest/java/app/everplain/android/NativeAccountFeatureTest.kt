@@ -117,6 +117,7 @@ class NativeAccountFeatureTest {
         compose.onNodeWithContentDescription("账户 演示用户").performClick()
         compose.onNodeWithText("Soul · 人格").performClick()
         compose.onNodeWithContentDescription("名字").performScrollTo().assertTextContains("关闭仍保留的草稿")
+        compose.onNodeWithContentDescription("名字").performTextReplacement(profile.name)
         compose.onNodeWithText("Memory · 记忆").performClick()
         compose.waitUntil(30000) { !vm.memory().state.value.loading }
         assertEquals(0, fake.overviews)
@@ -169,6 +170,9 @@ private class FeatureApi(
         key: String?,
         query: Map<String, List<String>?>,
     ): T {
+        fixtureHomeJson(path)?.let {
+            return WireJson.decodeFromString(serializer, it)
+        }
         val json =
             when (path) {
                 "/api/subscription" ->

@@ -1,0 +1,1621 @@
+{
+  "source": "Everplain Companion.tsx / companion.css",
+  "sourceSha256": "456b978fa3edaf1e2e8d4f074649411907e46b641fc726dddded36d1ac3d6641",
+  "cssSha256": "0b627c839bbc52673527a71a3f6dd9d255b783fb6b04ee1bf95abf94ffd99228",
+  "viewBox": [
+    0,
+    -10,
+    220,
+    224
+  ],
+  "palette": {
+    "--cp-sleeve": "#66728a",
+    "--cp-sleeve-light": "#8592a8",
+    "--cp-sleeve-front": "#707d94",
+    "--cp-sleeve-front-light": "#909db2",
+    "--cp-fold": "#56617a",
+    "--cp-cuff": "#efe8dd",
+    "--cp-rib": "#d9cfc1",
+    "--cp-hand-shade": "#f0dccb",
+    "--cp-finger": "#dcbfa9",
+    "--cp-face": "#f6ece2",
+    "--cp-face-light": "#fffaf5",
+    "--cp-hair": "#e6d8c5",
+    "--cp-hair-back": "#d9c7b0",
+    "--cp-hair-shade": "#d6c3aa",
+    "--cp-eye": "#2b221e",
+    "--cp-blush": "#f5c3ba",
+    "--cp-petal": "#c98a63",
+    "--cp-flower-heart": "#f0c9a6",
+    "--cp-ribbon": "#b97f5d",
+    "--cp-star": "#fff4e6"
+  },
+  "defs": [
+    {
+      "type": "radialGradient",
+      "attributes": {
+        "id": "companion-face",
+        "cx": "42%",
+        "cy": "40%",
+        "r": "70%"
+      },
+      "bounds": null,
+      "parentBounds": null,
+      "children": [
+        {
+          "type": "stop",
+          "attributes": {
+            "offset": "0%",
+            "stop-color": "var(--cp-face-light)"
+          },
+          "bounds": null,
+          "parentBounds": null,
+          "children": []
+        },
+        {
+          "type": "stop",
+          "attributes": {
+            "offset": "100%",
+            "stop-color": "var(--cp-face)"
+          },
+          "bounds": null,
+          "parentBounds": null,
+          "children": []
+        }
+      ]
+    },
+    {
+      "type": "linearGradient",
+      "attributes": {
+        "id": "companion-sleeve",
+        "x1": "0",
+        "y1": "0",
+        "x2": "0",
+        "y2": "1"
+      },
+      "bounds": null,
+      "parentBounds": null,
+      "children": [
+        {
+          "type": "stop",
+          "attributes": {
+            "offset": "0%",
+            "stop-color": "var(--cp-sleeve-light)"
+          },
+          "bounds": null,
+          "parentBounds": null,
+          "children": []
+        },
+        {
+          "type": "stop",
+          "attributes": {
+            "offset": "100%",
+            "stop-color": "var(--cp-sleeve)"
+          },
+          "bounds": null,
+          "parentBounds": null,
+          "children": []
+        }
+      ]
+    },
+    {
+      "type": "linearGradient",
+      "attributes": {
+        "id": "companion-sleeve-front",
+        "x1": "0",
+        "y1": "0",
+        "x2": "0",
+        "y2": "1"
+      },
+      "bounds": null,
+      "parentBounds": null,
+      "children": [
+        {
+          "type": "stop",
+          "attributes": {
+            "offset": "0%",
+            "stop-color": "var(--cp-sleeve-front-light)"
+          },
+          "bounds": null,
+          "parentBounds": null,
+          "children": []
+        },
+        {
+          "type": "stop",
+          "attributes": {
+            "offset": "100%",
+            "stop-color": "var(--cp-sleeve-front)"
+          },
+          "bounds": null,
+          "parentBounds": null,
+          "children": []
+        }
+      ]
+    },
+    {
+      "type": "linearGradient",
+      "attributes": {
+        "id": "companion-hand",
+        "x1": "0",
+        "y1": "0",
+        "x2": "0",
+        "y2": "1"
+      },
+      "bounds": null,
+      "parentBounds": null,
+      "children": [
+        {
+          "type": "stop",
+          "attributes": {
+            "offset": "0%",
+            "stop-color": "var(--cp-face-light)"
+          },
+          "bounds": null,
+          "parentBounds": null,
+          "children": []
+        },
+        {
+          "type": "stop",
+          "attributes": {
+            "offset": "100%",
+            "stop-color": "var(--cp-hand-shade)"
+          },
+          "bounds": null,
+          "parentBounds": null,
+          "children": []
+        }
+      ]
+    }
+  ],
+  "root": {
+    "type": "svg",
+    "attributes": {
+      "viewBox": "0 -10 220 224"
+    },
+    "bounds": [
+      -4.0,
+      -4.0,
+      224.0,
+      218.0
+    ],
+    "parentBounds": [
+      -4.0,
+      -4.0,
+      224.0,
+      218.0
+    ],
+    "children": [
+      {
+        "type": "g",
+        "attributes": {
+          "class": "cp-rest"
+        },
+        "bounds": [
+          -4.0,
+          -4.0,
+          224.0,
+          218.0
+        ],
+        "parentBounds": [
+          -4.0,
+          -4.0,
+          224.0,
+          218.0
+        ],
+        "children": [
+          {
+            "type": "g",
+            "attributes": {
+              "class": "cp-bob"
+            },
+            "bounds": [
+              6.0,
+              -4.0,
+              196.0,
+              214.0
+            ],
+            "parentBounds": [
+              6.0,
+              -4.0,
+              196.0,
+              214.0
+            ],
+            "children": [
+              {
+                "type": "g",
+                "attributes": {
+                  "class": "cp-layer",
+                  "data-dx": "-7",
+                  "data-dy": "-2"
+                },
+                "bounds": [
+                  6.0,
+                  20.0,
+                  196.0,
+                  214.0
+                ],
+                "parentBounds": [
+                  6.0,
+                  20.0,
+                  196.0,
+                  214.0
+                ],
+                "children": [
+                  {
+                    "type": "g",
+                    "attributes": {
+                      "class": "cp-sway-slow"
+                    },
+                    "bounds": [
+                      6.0,
+                      20.0,
+                      196.0,
+                      214.0
+                    ],
+                    "parentBounds": [
+                      6.0,
+                      20.0,
+                      196.0,
+                      214.0
+                    ],
+                    "children": [
+                      {
+                        "type": "path",
+                        "attributes": {
+                          "class": "cp-hair-back",
+                          "d": "M20 120 C14 54 56 20 102 20 C152 20 190 56 182 124 C180 156 188 182 196 214 L6 214 C16 182 24 156 20 120 Z"
+                        },
+                        "bounds": [
+                          6.0,
+                          20.0,
+                          196.0,
+                          214.0
+                        ],
+                        "parentBounds": [
+                          6.0,
+                          20.0,
+                          196.0,
+                          214.0
+                        ],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "g",
+                "attributes": {
+                  "class": "cp-layer",
+                  "data-dx": "4",
+                  "data-dy": "1"
+                },
+                "bounds": [
+                  43.0,
+                  75.0,
+                  157.0,
+                  179.0
+                ],
+                "parentBounds": [
+                  43.0,
+                  75.0,
+                  157.0,
+                  179.0
+                ],
+                "children": [
+                  {
+                    "type": "ellipse",
+                    "attributes": {
+                      "class": "cp-face",
+                      "cx": "100",
+                      "cy": "127",
+                      "rx": "57",
+                      "ry": "52",
+                      "fill": "url(#companion-face)"
+                    },
+                    "bounds": [
+                      43.0,
+                      75.0,
+                      157.0,
+                      179.0
+                    ],
+                    "parentBounds": [
+                      43.0,
+                      75.0,
+                      157.0,
+                      179.0
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "type": "g",
+                "attributes": {
+                  "class": "cp-layer",
+                  "data-dx": "8",
+                  "data-dy": "2"
+                },
+                "bounds": [
+                  52.0,
+                  146.0,
+                  148.0,
+                  160.0
+                ],
+                "parentBounds": [
+                  52.0,
+                  146.0,
+                  148.0,
+                  160.0
+                ],
+                "children": [
+                  {
+                    "type": "ellipse",
+                    "attributes": {
+                      "class": "cp-blush",
+                      "cx": "64",
+                      "cy": "153",
+                      "rx": "12",
+                      "ry": "7"
+                    },
+                    "bounds": [
+                      52.0,
+                      146.0,
+                      76.0,
+                      160.0
+                    ],
+                    "parentBounds": [
+                      52.0,
+                      146.0,
+                      76.0,
+                      160.0
+                    ],
+                    "children": []
+                  },
+                  {
+                    "type": "ellipse",
+                    "attributes": {
+                      "class": "cp-blush",
+                      "cx": "136",
+                      "cy": "153",
+                      "rx": "12",
+                      "ry": "7"
+                    },
+                    "bounds": [
+                      124.0,
+                      146.0,
+                      148.0,
+                      160.0
+                    ],
+                    "parentBounds": [
+                      124.0,
+                      146.0,
+                      148.0,
+                      160.0
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "type": "g",
+                "attributes": {
+                  "class": "cp-layer",
+                  "data-dx": "11",
+                  "data-dy": "5"
+                },
+                "bounds": [
+                  71.0,
+                  112.0,
+                  130.0,
+                  145.0
+                ],
+                "parentBounds": [
+                  71.0,
+                  112.0,
+                  130.0,
+                  145.0
+                ],
+                "children": [
+                  {
+                    "type": "g",
+                    "attributes": {
+                      "class": "cp-eyes"
+                    },
+                    "bounds": [
+                      72.5,
+                      112.0,
+                      127.5,
+                      145.0
+                    ],
+                    "parentBounds": [
+                      72.5,
+                      112.0,
+                      127.5,
+                      145.0
+                    ],
+                    "children": [
+                      {
+                        "type": "rect",
+                        "attributes": {
+                          "class": "cp-eye",
+                          "x": "72.5",
+                          "y": "112",
+                          "width": "12.5",
+                          "height": "33",
+                          "rx": "6.25"
+                        },
+                        "bounds": [
+                          72.5,
+                          112.0,
+                          85.0,
+                          145.0
+                        ],
+                        "parentBounds": [
+                          72.5,
+                          112.0,
+                          85.0,
+                          145.0
+                        ],
+                        "children": []
+                      },
+                      {
+                        "type": "rect",
+                        "attributes": {
+                          "class": "cp-eye",
+                          "x": "115",
+                          "y": "112",
+                          "width": "12.5",
+                          "height": "33",
+                          "rx": "6.25"
+                        },
+                        "bounds": [
+                          115.0,
+                          112.0,
+                          127.5,
+                          145.0
+                        ],
+                        "parentBounds": [
+                          115.0,
+                          112.0,
+                          127.5,
+                          145.0
+                        ],
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "g",
+                    "attributes": {
+                      "class": "cp-happy"
+                    },
+                    "bounds": [
+                      71.0,
+                      126.0,
+                      130.0,
+                      132.0
+                    ],
+                    "parentBounds": [
+                      71.0,
+                      126.0,
+                      130.0,
+                      132.0
+                    ],
+                    "children": [
+                      {
+                        "type": "path",
+                        "attributes": {
+                          "d": "M71 132 Q79 120 87 132"
+                        },
+                        "bounds": [
+                          71.0,
+                          126.0,
+                          87.0,
+                          132.0
+                        ],
+                        "parentBounds": [
+                          71.0,
+                          126.0,
+                          87.0,
+                          132.0
+                        ],
+                        "children": []
+                      },
+                      {
+                        "type": "path",
+                        "attributes": {
+                          "d": "M114 132 Q122 120 130 132"
+                        },
+                        "bounds": [
+                          114.0,
+                          126.0,
+                          130.0,
+                          132.0
+                        ],
+                        "parentBounds": [
+                          114.0,
+                          126.0,
+                          130.0,
+                          132.0
+                        ],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "g",
+                "attributes": {
+                  "class": "cp-layer",
+                  "data-dx": "3",
+                  "data-dy": "0"
+                },
+                "bounds": [
+                  31.67938279008733,
+                  30.0,
+                  170.379000772445,
+                  112.0
+                ],
+                "parentBounds": [
+                  31.67938279008733,
+                  30.0,
+                  170.379000772445,
+                  112.0
+                ],
+                "children": [
+                  {
+                    "type": "path",
+                    "attributes": {
+                      "class": "cp-hair",
+                      "d": "M32 110 C28 56 62 30 102 30 C146 30 174 58 170 112 C158 92 134 82 104 82 C76 82 50 92 32 110 Z"
+                    },
+                    "bounds": [
+                      31.67938279008733,
+                      30.0,
+                      170.379000772445,
+                      112.0
+                    ],
+                    "parentBounds": [
+                      31.67938279008733,
+                      30.0,
+                      170.379000772445,
+                      112.0
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "type": "g",
+                "attributes": {
+                  "class": "cp-layer",
+                  "data-dx": "7",
+                  "data-dy": "1"
+                },
+                "bounds": [
+                  32.0,
+                  72.0,
+                  162.3020306143702,
+                  136.0
+                ],
+                "parentBounds": [
+                  32.0,
+                  72.0,
+                  162.3020306143702,
+                  136.0
+                ],
+                "children": [
+                  {
+                    "type": "path",
+                    "attributes": {
+                      "class": "cp-face-shade",
+                      "clip-path": "url(#companion-face-clip)",
+                      "d": "M50 100 C72 112 130 112 152 102 L150 116 C128 124 74 124 52 114 Z"
+                    },
+                    "bounds": [
+                      50.0,
+                      100.0,
+                      152.0,
+                      121.77087639996635
+                    ],
+                    "parentBounds": [
+                      50.0,
+                      100.0,
+                      152.0,
+                      121.77087639996635
+                    ],
+                    "children": []
+                  },
+                  {
+                    "type": "g",
+                    "attributes": {
+                      "class": "cp-strand cp-strand--a"
+                    },
+                    "bounds": [
+                      32.0,
+                      92.0,
+                      58.38320341483518,
+                      136.0
+                    ],
+                    "parentBounds": [
+                      32.0,
+                      92.0,
+                      58.38320341483518,
+                      136.0
+                    ],
+                    "children": [
+                      {
+                        "type": "path",
+                        "attributes": {
+                          "class": "cp-hair",
+                          "d": "M44 92 C54 102 60 118 58 136 C52 122 42 114 32 112 C34 104 38 96 44 92 Z"
+                        },
+                        "bounds": [
+                          32.0,
+                          92.0,
+                          58.38320341483518,
+                          136.0
+                        ],
+                        "parentBounds": [
+                          32.0,
+                          92.0,
+                          58.38320341483518,
+                          136.0
+                        ],
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "g",
+                    "attributes": {
+                      "class": "cp-strand cp-strand--b"
+                    },
+                    "bounds": [
+                      52.0,
+                      78.0,
+                      84.3,
+                      128.0
+                    ],
+                    "parentBounds": [
+                      52.0,
+                      78.0,
+                      84.3,
+                      128.0
+                    ],
+                    "children": [
+                      {
+                        "type": "path",
+                        "attributes": {
+                          "class": "cp-hair",
+                          "d": "M60 78 C78 88 86 106 84 128 C78 114 68 106 52 102 C52 92 55 84 60 78 Z"
+                        },
+                        "bounds": [
+                          52.0,
+                          78.0,
+                          84.3,
+                          128.0
+                        ],
+                        "parentBounds": [
+                          52.0,
+                          78.0,
+                          84.3,
+                          128.0
+                        ],
+                        "children": []
+                      },
+                      {
+                        "type": "path",
+                        "attributes": {
+                          "class": "cp-hair-shade",
+                          "d": "M70 90 C78 98 82 108 82 120 C76 110 70 104 62 100 Z"
+                        },
+                        "bounds": [
+                          62.0,
+                          90.0,
+                          82.0,
+                          120.0
+                        ],
+                        "parentBounds": [
+                          62.0,
+                          90.0,
+                          82.0,
+                          120.0
+                        ],
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "g",
+                    "attributes": {
+                      "class": "cp-strand cp-strand--c"
+                    },
+                    "bounds": [
+                      78.0,
+                      72.0,
+                      162.3020306143702,
+                      128.0
+                    ],
+                    "parentBounds": [
+                      78.0,
+                      72.0,
+                      162.3020306143702,
+                      128.0
+                    ],
+                    "children": [
+                      {
+                        "type": "path",
+                        "attributes": {
+                          "class": "cp-hair",
+                          "d": "M80 72 C104 78 114 98 108 122 C102 108 92 100 78 96 C78 88 78 80 80 72 Z"
+                        },
+                        "bounds": [
+                          78.0,
+                          72.0,
+                          109.70092092122368,
+                          122.0
+                        ],
+                        "parentBounds": [
+                          78.0,
+                          72.0,
+                          109.70092092122368,
+                          122.0
+                        ],
+                        "children": []
+                      },
+                      {
+                        "type": "path",
+                        "attributes": {
+                          "class": "cp-hair",
+                          "d": "M108 72 C134 76 148 94 150 120 C140 106 128 98 112 96 C114 88 112 80 108 72 Z"
+                        },
+                        "bounds": [
+                          108.0,
+                          72.0,
+                          150.0,
+                          120.0
+                        ],
+                        "parentBounds": [
+                          108.0,
+                          72.0,
+                          150.0,
+                          120.0
+                        ],
+                        "children": []
+                      },
+                      {
+                        "type": "path",
+                        "attributes": {
+                          "class": "cp-hair",
+                          "d": "M140 82 C156 92 164 108 162 128 C156 116 148 110 138 108 C140 100 140 90 140 82 Z"
+                        },
+                        "bounds": [
+                          138.0,
+                          82.0,
+                          162.3020306143702,
+                          128.0
+                        ],
+                        "parentBounds": [
+                          138.0,
+                          82.0,
+                          162.3020306143702,
+                          128.0
+                        ],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "g",
+                "attributes": {
+                  "class": "cp-layer",
+                  "data-dx": "5",
+                  "data-dy": "0"
+                },
+                "bounds": [
+                  23.904992070060167,
+                  98.0,
+                  176.09500792993984,
+                  196.0
+                ],
+                "parentBounds": [
+                  23.904992070060167,
+                  98.0,
+                  176.09500792993984,
+                  196.0
+                ],
+                "children": [
+                  {
+                    "type": "g",
+                    "attributes": {
+                      "class": "cp-lock cp-lock--left"
+                    },
+                    "bounds": [
+                      23.904992070060167,
+                      98.0,
+                      47.0,
+                      196.0
+                    ],
+                    "parentBounds": [
+                      23.904992070060167,
+                      98.0,
+                      47.0,
+                      196.0
+                    ],
+                    "children": [
+                      {
+                        "type": "path",
+                        "attributes": {
+                          "class": "cp-hair",
+                          "d": "M40 98 C34 128 36 162 47 196 C36 190 26 166 24 136 C23 118 30 104 40 98 Z"
+                        },
+                        "bounds": [
+                          23.904992070060167,
+                          98.0,
+                          47.0,
+                          196.0
+                        ],
+                        "parentBounds": [
+                          23.904992070060167,
+                          98.0,
+                          47.0,
+                          196.0
+                        ],
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "g",
+                    "attributes": {
+                      "class": "cp-lock cp-lock--right"
+                    },
+                    "bounds": [
+                      153.0,
+                      98.0,
+                      176.09500792993984,
+                      196.0
+                    ],
+                    "parentBounds": [
+                      153.0,
+                      98.0,
+                      176.09500792993984,
+                      196.0
+                    ],
+                    "children": [
+                      {
+                        "type": "path",
+                        "attributes": {
+                          "class": "cp-hair",
+                          "d": "M160 98 C166 128 164 162 153 196 C164 190 174 166 176 136 C177 118 170 104 160 98 Z"
+                        },
+                        "bounds": [
+                          153.0,
+                          98.0,
+                          176.09500792993984,
+                          196.0
+                        ],
+                        "parentBounds": [
+                          153.0,
+                          98.0,
+                          176.09500792993984,
+                          196.0
+                        ],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "g",
+                "attributes": {
+                  "class": "cp-layer",
+                  "data-dx": "9",
+                  "data-dy": "-1"
+                },
+                "bounds": [
+                  95.71773065698022,
+                  -4.0,
+                  128.0,
+                  36.0
+                ],
+                "parentBounds": [
+                  95.71773065698022,
+                  -4.0,
+                  128.0,
+                  36.0
+                ],
+                "children": [
+                  {
+                    "type": "g",
+                    "attributes": {
+                      "class": "cp-ahoge"
+                    },
+                    "bounds": [
+                      95.71773065698022,
+                      -4.0,
+                      128.0,
+                      36.0
+                    ],
+                    "parentBounds": [
+                      95.71773065698022,
+                      -4.0,
+                      128.0,
+                      36.0
+                    ],
+                    "children": [
+                      {
+                        "type": "path",
+                        "attributes": {
+                          "class": "cp-hair",
+                          "d": "M98 32 C92 14 98 0 114 -4 C106 4 104 14 108 26 C112 18 120 14 128 16 C118 20 110 28 106 36 Z"
+                        },
+                        "bounds": [
+                          95.71773065698022,
+                          -4.0,
+                          128.0,
+                          36.0
+                        ],
+                        "parentBounds": [
+                          95.71773065698022,
+                          -4.0,
+                          128.0,
+                          36.0
+                        ],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "g",
+                "attributes": {
+                  "class": "cp-layer",
+                  "data-dx": "8",
+                  "data-dy": "0"
+                },
+                "bounds": [
+                  132.0,
+                  60.0,
+                  168.0,
+                  142.0
+                ],
+                "parentBounds": [
+                  132.0,
+                  60.0,
+                  168.0,
+                  142.0
+                ],
+                "children": [
+                  {
+                    "type": "g",
+                    "attributes": {
+                      "class": "cp-ribbon"
+                    },
+                    "bounds": [
+                      142.0,
+                      86.0,
+                      166.0,
+                      142.0
+                    ],
+                    "parentBounds": [
+                      142.0,
+                      86.0,
+                      166.0,
+                      142.0
+                    ],
+                    "children": [
+                      {
+                        "type": "path",
+                        "attributes": {
+                          "class": "cp-ribbon-tail",
+                          "d": "M150 86 L166 136 L156 132 L150 142 L142 92 Z"
+                        },
+                        "bounds": [
+                          142.0,
+                          86.0,
+                          166.0,
+                          142.0
+                        ],
+                        "parentBounds": [
+                          142.0,
+                          86.0,
+                          166.0,
+                          142.0
+                        ],
+                        "children": []
+                      },
+                      {
+                        "type": "path",
+                        "attributes": {
+                          "class": "cp-star",
+                          "d": "M156 116 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6 -4 -4 -1.6 4 -1.6 Z"
+                        },
+                        "bounds": [
+                          150.4,
+                          116.0,
+                          161.6,
+                          127.19999999999999
+                        ],
+                        "parentBounds": [
+                          150.4,
+                          116.0,
+                          161.6,
+                          127.19999999999999
+                        ],
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "g",
+                    "attributes": {
+                      "class": "cp-flower",
+                      "transform": "translate(150 78)"
+                    },
+                    "bounds": [
+                      -18.0,
+                      -18.0,
+                      18.0,
+                      18.0
+                    ],
+                    "parentBounds": [
+                      132.0,
+                      60.0,
+                      168.0,
+                      96.0
+                    ],
+                    "children": [
+                      {
+                        "type": "ellipse",
+                        "attributes": {
+                          "class": "cp-petal",
+                          "cx": "0",
+                          "cy": "-9",
+                          "rx": "3.6",
+                          "ry": "9",
+                          "transform": "rotate(0)"
+                        },
+                        "bounds": [
+                          -3.6,
+                          -18.0,
+                          3.6,
+                          0.0
+                        ],
+                        "parentBounds": [
+                          -3.6,
+                          -18.0,
+                          3.6,
+                          0.0
+                        ],
+                        "children": []
+                      },
+                      {
+                        "type": "ellipse",
+                        "attributes": {
+                          "class": "cp-petal",
+                          "cx": "0",
+                          "cy": "-9",
+                          "rx": "3.6",
+                          "ry": "9",
+                          "transform": "rotate(45)"
+                        },
+                        "bounds": [
+                          -3.6,
+                          -18.0,
+                          3.6,
+                          0.0
+                        ],
+                        "parentBounds": [
+                          -0.49023476459858983,
+                          -13.218156825956447,
+                          13.218156825956445,
+                          0.49023476459858983
+                        ],
+                        "children": []
+                      },
+                      {
+                        "type": "ellipse",
+                        "attributes": {
+                          "class": "cp-petal",
+                          "cx": "0",
+                          "cy": "-9",
+                          "rx": "3.6",
+                          "ry": "9",
+                          "transform": "rotate(90)"
+                        },
+                        "bounds": [
+                          -3.6,
+                          -18.0,
+                          3.6,
+                          0.0
+                        ],
+                        "parentBounds": [
+                          0.0,
+                          -3.6000000000000005,
+                          18.0,
+                          3.5999999999999996
+                        ],
+                        "children": []
+                      },
+                      {
+                        "type": "ellipse",
+                        "attributes": {
+                          "class": "cp-petal",
+                          "cx": "0",
+                          "cy": "-9",
+                          "rx": "3.6",
+                          "ry": "9",
+                          "transform": "rotate(135)"
+                        },
+                        "bounds": [
+                          -3.6,
+                          -18.0,
+                          3.6,
+                          0.0
+                        ],
+                        "parentBounds": [
+                          -0.49023476459858983,
+                          -0.49023476459858983,
+                          13.218156825956447,
+                          13.218156825956445
+                        ],
+                        "children": []
+                      },
+                      {
+                        "type": "ellipse",
+                        "attributes": {
+                          "class": "cp-petal",
+                          "cx": "0",
+                          "cy": "-9",
+                          "rx": "3.6",
+                          "ry": "9",
+                          "transform": "rotate(180)"
+                        },
+                        "bounds": [
+                          -3.6,
+                          -18.0,
+                          3.6,
+                          0.0
+                        ],
+                        "parentBounds": [
+                          -3.599999999999999,
+                          0.0,
+                          3.600000000000001,
+                          18.0
+                        ],
+                        "children": []
+                      },
+                      {
+                        "type": "ellipse",
+                        "attributes": {
+                          "class": "cp-petal",
+                          "cx": "0",
+                          "cy": "-9",
+                          "rx": "3.6",
+                          "ry": "9",
+                          "transform": "rotate(225)"
+                        },
+                        "bounds": [
+                          -3.6,
+                          -18.0,
+                          3.6,
+                          0.0
+                        ],
+                        "parentBounds": [
+                          -13.218156825956445,
+                          -0.49023476459858983,
+                          0.49023476459858983,
+                          13.218156825956449
+                        ],
+                        "children": []
+                      },
+                      {
+                        "type": "ellipse",
+                        "attributes": {
+                          "class": "cp-petal",
+                          "cx": "0",
+                          "cy": "-9",
+                          "rx": "3.6",
+                          "ry": "9",
+                          "transform": "rotate(270)"
+                        },
+                        "bounds": [
+                          -3.6,
+                          -18.0,
+                          3.6,
+                          0.0
+                        ],
+                        "parentBounds": [
+                          -18.0,
+                          -3.5999999999999983,
+                          0.0,
+                          3.600000000000002
+                        ],
+                        "children": []
+                      },
+                      {
+                        "type": "ellipse",
+                        "attributes": {
+                          "class": "cp-petal",
+                          "cx": "0",
+                          "cy": "-9",
+                          "rx": "3.6",
+                          "ry": "9",
+                          "transform": "rotate(315)"
+                        },
+                        "bounds": [
+                          -3.6,
+                          -18.0,
+                          3.6,
+                          0.0
+                        ],
+                        "parentBounds": [
+                          -13.218156825956449,
+                          -13.218156825956441,
+                          0.49023476459858983,
+                          0.49023476459858983
+                        ],
+                        "children": []
+                      },
+                      {
+                        "type": "circle",
+                        "attributes": {
+                          "class": "cp-flower-heart",
+                          "r": "4"
+                        },
+                        "bounds": [
+                          -4.0,
+                          -4.0,
+                          4.0,
+                          4.0
+                        ],
+                        "parentBounds": [
+                          -4.0,
+                          -4.0,
+                          4.0,
+                          4.0
+                        ],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "g",
+            "attributes": {
+              "class": "cp-arms"
+            },
+            "bounds": [
+              -4.0,
+              173.95948164509574,
+              224.0,
+              218.0
+            ],
+            "parentBounds": [
+              -4.0,
+              173.95948164509574,
+              224.0,
+              218.0
+            ],
+            "children": [
+              {
+                "type": "path",
+                "attributes": {
+                  "class": "cp-sleeve",
+                  "d": "M-4 216 C0 196 18 184 44 180 C72 176 104 174 126 176 L124 204 C100 208 60 212 30 216 Z"
+                },
+                "bounds": [
+                  -4.0,
+                  175.21539030917347,
+                  126.0,
+                  216.0
+                ],
+                "parentBounds": [
+                  -4.0,
+                  175.21539030917347,
+                  126.0,
+                  216.0
+                ],
+                "children": []
+              },
+              {
+                "type": "path",
+                "attributes": {
+                  "class": "cp-fold",
+                  "d": "M60 182 C70 188 76 196 78 206"
+                },
+                "bounds": [
+                  60.0,
+                  182.0,
+                  78.0,
+                  206.0
+                ],
+                "parentBounds": [
+                  60.0,
+                  182.0,
+                  78.0,
+                  206.0
+                ],
+                "children": []
+              },
+              {
+                "type": "path",
+                "attributes": {
+                  "class": "cp-fold",
+                  "d": "M96 178 C102 184 106 192 106 201"
+                },
+                "bounds": [
+                  96.0,
+                  178.0,
+                  106.0,
+                  201.0
+                ],
+                "parentBounds": [
+                  96.0,
+                  178.0,
+                  106.0,
+                  201.0
+                ],
+                "children": []
+              },
+              {
+                "type": "path",
+                "attributes": {
+                  "class": "cp-cuff",
+                  "d": "M124 175 C131 173 138 174 142 177 C145 186 145 196 141 203 C135 205 128 205 123 203 C126 194 126 184 124 175 Z"
+                },
+                "bounds": [
+                  123.0,
+                  173.95948164509574,
+                  144.13843876330614,
+                  204.5
+                ],
+                "parentBounds": [
+                  123.0,
+                  173.95948164509574,
+                  144.13843876330614,
+                  204.5
+                ],
+                "children": []
+              },
+              {
+                "type": "path",
+                "attributes": {
+                  "class": "cp-rib",
+                  "d": "M130 176 C131 185 131 194 129 203 M135 176 C136 185 136 194 134 204 M139.5 177 C140.5 186 140.5 195 138.5 203"
+                },
+                "bounds": [
+                  129.0,
+                  176.0,
+                  140.15685424949237,
+                  204.0
+                ],
+                "parentBounds": [
+                  129.0,
+                  176.0,
+                  140.15685424949237,
+                  204.0
+                ],
+                "children": []
+              },
+              {
+                "type": "path",
+                "attributes": {
+                  "class": "cp-hand",
+                  "d": "M140 179 C150 176 160 178 165 184 C169 189 168 196 163 199 C157 202 149 202 142 200 C144 193 144 186 140 179 Z"
+                },
+                "bounds": [
+                  140.0,
+                  177.62170656776914,
+                  167.46817918814523,
+                  201.39387691339815
+                ],
+                "parentBounds": [
+                  140.0,
+                  177.62170656776914,
+                  167.46817918814523,
+                  201.39387691339815
+                ],
+                "children": []
+              },
+              {
+                "type": "path",
+                "attributes": {
+                  "class": "cp-finger",
+                  "d": "M150 184 C153 188 154 193 153 198 M156.5 185.5 C159.5 189 160.5 193 159.5 197.5"
+                },
+                "bounds": [
+                  150.0,
+                  184.0,
+                  159.875,
+                  198.0
+                ],
+                "parentBounds": [
+                  150.0,
+                  184.0,
+                  159.875,
+                  198.0
+                ],
+                "children": []
+              },
+              {
+                "type": "ellipse",
+                "attributes": {
+                  "class": "cp-chin-shadow",
+                  "cx": "112",
+                  "cy": "181",
+                  "rx": "44",
+                  "ry": "6"
+                },
+                "bounds": [
+                  68.0,
+                  175.0,
+                  156.0,
+                  187.0
+                ],
+                "parentBounds": [
+                  68.0,
+                  175.0,
+                  156.0,
+                  187.0
+                ],
+                "children": []
+              },
+              {
+                "type": "path",
+                "attributes": {
+                  "class": "cp-sleeve cp-sleeve--front",
+                  "d": "M224 218 C222 200 206 188 182 186 C156 184 126 184 104 187 L104 214 C130 216 170 218 224 218 Z"
+                },
+                "bounds": [
+                  104.0,
+                  184.60612308660188,
+                  224.0,
+                  218.0
+                ],
+                "parentBounds": [
+                  104.0,
+                  184.60612308660188,
+                  224.0,
+                  218.0
+                ],
+                "children": []
+              },
+              {
+                "type": "path",
+                "attributes": {
+                  "class": "cp-fold",
+                  "d": "M160 189 C152 194 148 202 147 212"
+                },
+                "bounds": [
+                  147.0,
+                  189.0,
+                  160.0,
+                  212.0
+                ],
+                "parentBounds": [
+                  147.0,
+                  189.0,
+                  160.0,
+                  212.0
+                ],
+                "children": []
+              },
+              {
+                "type": "path",
+                "attributes": {
+                  "class": "cp-fold",
+                  "d": "M190 190 C184 196 181 204 181 214"
+                },
+                "bounds": [
+                  181.0,
+                  190.0,
+                  190.0,
+                  214.0
+                ],
+                "parentBounds": [
+                  181.0,
+                  190.0,
+                  190.0,
+                  214.0
+                ],
+                "children": []
+              },
+              {
+                "type": "path",
+                "attributes": {
+                  "class": "cp-cuff",
+                  "d": "M106 186 C99 185 92 187 88 190 C85 199 85 207 88 213 C94 215 101 215 106 213 C104 205 104 194 106 186 Z"
+                },
+                "bounds": [
+                  85.75,
+                  185.73987041127393,
+                  106.0,
+                  214.5
+                ],
+                "parentBounds": [
+                  85.75,
+                  185.73987041127393,
+                  106.0,
+                  214.5
+                ],
+                "children": []
+              },
+              {
+                "type": "path",
+                "attributes": {
+                  "class": "cp-rib",
+                  "d": "M100.5 187 C99.5 196 99.5 205 100.5 213.5 M96 188 C95 197 95 206 96 214 M91.5 189 C90.5 198 90.5 206 91.5 213"
+                },
+                "bounds": [
+                  90.75,
+                  187.0,
+                  100.5,
+                  214.0
+                ],
+                "parentBounds": [
+                  90.75,
+                  187.0,
+                  100.5,
+                  214.0
+                ],
+                "children": []
+              },
+              {
+                "type": "path",
+                "attributes": {
+                  "class": "cp-hand",
+                  "d": "M90 190 C80 187 69 189 64 195 C60 200 61 206 66 209 C72 212 81 212 89 210 C87 203 87 196 90 190 Z"
+                },
+                "bounds": [
+                  61.53182081185471,
+                  188.6217065677691,
+                  90.0,
+                  211.39387691339815
+                ],
+                "parentBounds": [
+                  61.53182081185471,
+                  188.6217065677691,
+                  90.0,
+                  211.39387691339815
+                ],
+                "children": []
+              },
+              {
+                "type": "path",
+                "attributes": {
+                  "class": "cp-finger",
+                  "d": "M79 194 C76 198 75 203 76 208 M72 196 C69 199 68 203 69 207"
+                },
+                "bounds": [
+                  68.625,
+                  194.0,
+                  79.0,
+                  208.0
+                ],
+                "parentBounds": [
+                  68.625,
+                  194.0,
+                  79.0,
+                  208.0
+                ],
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

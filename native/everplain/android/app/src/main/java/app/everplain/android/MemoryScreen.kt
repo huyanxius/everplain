@@ -28,8 +28,7 @@ internal fun MemoryScreen(controller: MemoryController, vm: AppViewModel) {
     var origin by rememberSaveable { mutableStateOf("all") }
     var oldest by rememberSaveable { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<MemoryResponse?>(null) }
-    LaunchedEffect(controller) { controller.enter() }
-    DisposableEffect(controller) { onDispose { controller.leave() } }
+    FeatureVisibility(controller,controller::enter,controller::leave)
     val selected = s.items.find { it.memoryId == s.selected }
     val current = s.items.find { it.memoryId == s.editor }
     val review =

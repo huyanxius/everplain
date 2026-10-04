@@ -11,6 +11,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 
+@Serializable
+private data class ResearchStartIntent(val key: String, val request: ConfirmResearchStartRequest)
+
 @Serializable data class SavedSelection(val modelId: String, val effort: String)
 
 @Serializable
@@ -24,6 +27,7 @@ data class PendingTurn(
     val stopKey: String? = null,
     val outcomeConfirmed: Boolean = false,
     val origin: String = "",
+    val signals: NativeTurnSignals = NativeTurnSignals(),
 )
 
 enum class Destination {
@@ -33,6 +37,11 @@ enum class Destination {
     Account,
     Agent,
     Memory,
+    Library,
+    Graph,
+    Files,
+    Research,
+    ResearchLaunch,
 }
 
 data class AppState(
@@ -71,6 +80,17 @@ data class AppState(
     val settingsConflictReady: Boolean = false,
     val settingsSaved: Long = 0,
     val draft: String = "",
+    val referenceLibraryId: String? = null,
+    val composerMode: String = "standard",
+    val turnSignals: Map<String, NativeTurnSignals> = emptyMap(),
+    val researchPanel: Boolean = false,
+    val materialScope: String = newIntentKey(),
+    val materialContext: AgentMaterialContextResponse? = null,
+    val workspaceTask: String? = null,
+    val selectedCitation: AgentCitationResponse? = null,
+    val journey: AgentResearchJourneyResponse? = null,
+    val journeyError: String? = null,
+    val journeyBusy: Boolean = false,
     val webSearch: Boolean = true,
 )
 
@@ -110,6 +130,239 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return memoryFeature!!
     }
 
+    private var libraryFeature: LibraryController? = null
+    private var libraryIdentity: Pair<String, EverplainApi>? = null
+
+    internal fun library(): LibraryController {
+        val client = api ?: error("尚未登录")
+        val owner = sessionOwner ?: error("尚未登录")
+        if (libraryIdentity != (owner to client)) {
+            libraryFeature?.close()
+            libraryIdentity = owner to client
+            libraryFeature =
+                LibraryController(client, viewModelScope, store, owner) { error ->
+                    if (sessionOwner == owner && api === client) report(error)
+                }
+        }
+        return libraryFeature!!
+    }
+
+    private var graphFeature: GraphController? = null
+    private var graphIdentity: Pair<String, EverplainApi>? = null
+
+    internal fun graph(): GraphController {
+        val client = api ?: error("尚未登录")
+        val owner = sessionOwner ?: error("尚未登录")
+        if (graphIdentity != (owner to client)) {
+            graphFeature?.close()
+            graphIdentity = owner to client
+            graphFeature =
+                GraphController(client, viewModelScope, store, owner) { error ->
+                    if (sessionOwner == owner && api === client) report(error)
+                }
+        }
+        return graphFeature!!
+    }
+
+    private var materialFeature: MaterialController? = null
+    private var materialIdentity: Pair<String, EverplainApi>? = null
+
+    internal fun materials(): MaterialController {
+        val client = api ?: error("尚未登录")
+        val owner = sessionOwner ?: error("尚未登录")
+        if (materialIdentity != (owner to client)) {
+            materialFeature?.close()
+            materialIdentity = owner to client
+            materialFeature =
+                MaterialController(
+                    client,
+                    viewModelScope,
+                    store,
+                    owner,
+                    { scope, context ->
+                        if (
+                            sessionOwner == owner &&
+                                api === client &&
+                                state.value.materialScope == scope
+                        )
+                            update { it.copy(materialContext = context) }
+                    },
+                ) { error ->
+                    if (sessionOwner == owner && api === client) report(error)
+                }
+        }
+        return materialFeature!!
+    }
+
+    private var researchFeature: ResearchController? = null
+    private var researchIdentity: Pair<String, EverplainApi>? = null
+    private val projectMemories = mutableMapOf<String, MemoryController>()
+
+    internal fun research(): ResearchController {
+        val client = api ?: error("尚未登录")
+        val owner = sessionOwner ?: error("尚未登录")
+        if (researchIdentity != (owner to client)) {
+            researchFeature?.close()
+            researchIdentity = owner to client
+            researchFeature =
+                ResearchController(client, viewModelScope) { error ->
+                    if (sessionOwner == owner && api === client) report(error)
+                }
+        }
+        return researchFeature!!
+    }
+
+    internal fun projectMemory(task: String): MemoryController {
+        val client = api ?: error("尚未登录")
+        val owner = sessionOwner ?: error("尚未登录")
+        return projectMemories.getOrPut("${client.endpoint.origin}:$owner:$task") {
+            MemoryController(client, viewModelScope, store, owner, task) { error ->
+                if (sessionOwner == owner && api === client) report(error)
+            }
+        }
+    }
+
+    fun newResearch() {
+        if (state.value.streaming || state.value.stopping) return
+        newChat()
+        update {
+            it.copy(destination = Destination.ResearchLaunch, journey = null, journeyError = null)
+        }
+    }
+
+    fun openResearch(project: ResearchTaskNavigationResponse) {
+        if (state.value.streaming || state.value.stopping) return
+        newChat()
+        update { it.copy(workspaceTask = project.taskId, destination = Destination.ResearchLaunch) }
+        project.conversationId?.let { openConversation(it, Destination.ResearchLaunch) }
+    }
+
+    fun loadJourney() {
+        val current = api ?: return
+        val owner = sessionOwner ?: return
+        val id =
+            state.value.conversation?.conversationId
+                ?: state.value.pending?.conversationId
+                ?: return
+        viewModelScope.launch {
+            update { it.copy(journeyBusy = true, journeyError = null) }
+            try {
+                val value = current.native.getAgentResearchJourney(id)
+                if (
+                    api === current &&
+                        sessionOwner == owner &&
+                        (state.value.conversation?.conversationId
+                            ?: state.value.pending?.conversationId) == id
+                )
+                    update {
+                        it.copy(journey = value, workspaceTask = value.taskId ?: it.workspaceTask)
+                    }
+            } catch (e: Throwable) {
+                if (e is CancellationException) throw e
+                if (e is ApiFailure && e.status == 401) report(e)
+                else update { it.copy(journeyError = e.message ?: "研究状态暂时无法恢复") }
+            } finally {
+                if (api === current && sessionOwner == owner)
+                    update { it.copy(journeyBusy = false) }
+            }
+        }
+    }
+
+    private var canvasFeature: CanvasController? = null
+    private var canvasIdentity: Pair<String, EverplainApi>? = null
+
+    internal fun canvas(): CanvasController {
+        val client = api ?: error("尚未登录")
+        val owner = sessionOwner ?: error("尚未登录")
+        if (canvasIdentity != (owner to client)) {
+            canvasFeature?.close()
+            canvasIdentity = owner to client
+            canvasFeature =
+                CanvasController(
+                    client,
+                    viewModelScope,
+                    store,
+                    owner,
+                    { conversation ->
+                        if (
+                            api === client &&
+                                sessionOwner == owner &&
+                                state.value.conversation?.conversationId ==
+                                    conversation.conversationId
+                        )
+                            update { it.copy(conversation = conversation) }
+                    },
+                ) { error ->
+                    if (api === client && sessionOwner == owner) report(error)
+                }
+        }
+        return canvasFeature!!
+    }
+
+    fun confirmResearchStart(proposal: ResearchStartProposalResponse) {
+        val client = api ?: return
+        val owner = sessionOwner ?: return
+        if (state.value.journeyBusy || state.value.streaming) return
+        val journal = "research-start:${client.endpoint.origin}:$owner:${proposal.proposalId}"
+        val requested =
+            ConfirmResearchStartRequest(
+                proposal.context,
+                proposal.version,
+                proposal.phenomenon,
+                proposal.researchIntent,
+            )
+        val existing =
+            store.read(journal)?.let {
+                runCatching { WireJson.decodeFromString<ResearchStartIntent>(it) }.getOrNull()
+            }
+        if (existing != null && existing.request != requested) {
+            update { it.copy(journeyError = "上次建立结果未确认，请先恢复研究状态核对。") }
+            return
+        }
+        val intent = existing ?: ResearchStartIntent(newIntentKey(), requested)
+        try {
+            store.write(journal, WireJson.encodeToString(intent))
+        } catch (e: Throwable) {
+            update { it.copy(journeyError = "无法安全记录研究确认。") }
+            return
+        }
+        update { it.copy(journeyBusy = true, journeyError = null) }
+        viewModelScope.launch {
+            try {
+                val response =
+                    client.native.confirmAgentResearchStart(
+                        proposal.proposalId,
+                        intent.key,
+                        intent.request,
+                    )
+                store.write(journal, null)
+                if (api === client && sessionOwner == owner)
+                    update {
+                        it.copy(
+                            journey =
+                                AgentResearchJourneyResponse(
+                                    response.conversationId,
+                                    response.navigation,
+                                    response.proposal,
+                                    response.status,
+                                    response.taskId,
+                                ),
+                            workspaceTask = response.taskId,
+                        )
+                    }
+            } catch (e: Throwable) {
+                if (e is CancellationException) throw e
+                if (e is ApiFailure && e.status in 400..499 && e.status != 408)
+                    store.write(journal, null)
+                if (e is ApiFailure && e.status == 401) report(e)
+                else if (api === client && sessionOwner == owner)
+                    update { it.copy(journeyError = e.message ?: "研究建立失败") }
+            } finally {
+                if (api === client && sessionOwner == owner) update { it.copy(journeyBusy = false) }
+            }
+        }
+    }
+
     init {
         restore()
     }
@@ -135,6 +388,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             api?.clearLocalSession()
             store.write("pending", null)
             memoryFeature?.close()
+            libraryFeature?.close()
+            libraryFeature = null
+            libraryIdentity = null
+            graphFeature?.close()
+            graphFeature = null
+            materialFeature?.close()
+            materialFeature = null
+            materialIdentity = null
+            researchFeature?.close()
+            researchFeature = null
+            researchIdentity = null
+            projectMemories.values.forEach { it.close() }
+            projectMemories.clear()
+            canvasFeature?.close()
+            canvasFeature = null
+            canvasIdentity = null
+            graphIdentity = null
             memoryFeature = null
             memoryIdentity = null
             sessionOwner = null
@@ -412,8 +682,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             update { it.copy(error = "请先停止当前回答，再离开对话") }
             return
         }
+        if (destination == Destination.Home && state.value.destination != Destination.Home) {
+            newChat()
+            update { it.copy(destination = Destination.Home) }
+            return
+        }
         if (destination != state.value.destination) generation++
         if (destination != Destination.Memory) memoryFeature?.pauseOverview()
+        if (destination !in setOf(Destination.Library, Destination.Graph)) libraryFeature?.leave()
+        if (destination != Destination.Graph && destination != Destination.Home)
+            graphFeature?.leave()
+        if (destination !in setOf(Destination.Research, Destination.Home)) researchFeature?.leave()
         update { it.copy(destination = destination, error = null, busy = false) }
         if (destination == Destination.Account) viewModelScope.launch { loadAccount() }
     }
@@ -425,6 +704,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 destination = Destination.Chat,
                 conversation = null,
+                referenceLibraryId = null,
+                composerMode = "standard",
+                materialScope = newIntentKey(),
+                materialContext = null,
+                workspaceTask = null,
+                selectedCitation = null,
+                researchPanel = false,
                 pending = null,
                 draft = "",
                 status = null,
@@ -432,7 +718,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 busy = false,
             )
         }
+        materialFeature?.bind(state.value.materialScope, null)
         // Durable pending state is retained until completion or explicit replacement by a new send.
+    }
+
+    fun newChatWithLibrary(id: String?) {
+        if (state.value.streaming || state.value.stopping) return
+        newChat()
+        update { it.copy(referenceLibraryId = id) }
     }
 
     fun setDraft(value: String) {
@@ -481,12 +774,74 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         update { it.copy(draft = unsent) }
     }
 
+    fun setComposerMode(value: String) {
+        if (!state.value.streaming && value in setOf("standard", "deep_research"))
+            update { it.copy(composerMode = value) }
+    }
+
+    fun selectCitation(citation: AgentCitationResponse) = update {
+        it.copy(selectedCitation = citation, researchPanel = true)
+    }
+
+    fun backToSources() = update { it.copy(selectedCitation = null) }
+
+    fun toggleResearchPanel() = update { it.copy(researchPanel = !it.researchPanel) }
+
+    fun continueDeepResearch(action: String, selection: String? = null) {
+        val current = state.value
+        val pending = current.pending ?: return
+        if (
+            current.streaming ||
+                current.stopping ||
+                pending.runId == null ||
+                pending.signals.research.waitingState == null ||
+                action !in setOf("clarify", "confirm", "skip")
+        )
+            return
+        if (action == "clarify" && selection.isNullOrBlank()) return
+        val next =
+            pending.copy(
+                request =
+                    pending.request.copy(
+                        conversationId = pending.conversationId,
+                        deepResearchRunId = pending.runId,
+                        deepResearchAction = action,
+                        deepResearchSelection = selection,
+                    ),
+                outcomeConfirmed = false,
+                stopKey = null,
+            )
+        persist(next)
+        update { it.copy(pending = next, error = null) }
+        beginStream(next)
+    }
+
+    fun editResearchPlan() {
+        val p = state.value.pending ?: return
+        if (state.value.streaming || p.signals.research.waitingState == null) return
+        generation++
+        update {
+            it.copy(
+                pending = null,
+                draft = p.request.message,
+                status = null,
+                composerMode = "deep_research",
+            )
+        }
+    }
+
     fun toggleWebSearch() {
         update { it.copy(webSearch = !it.webSearch) }
     }
 
     fun send() {
         val s = state.value
+        val attached = materialFeature?.state?.value?.attached.orEmpty()
+        if (
+            materialFeature?.state?.value?.uploading == true ||
+                attached.any { it.status != "ready" }
+        )
+            return
         if (
             s.streaming ||
                 s.stopping ||
@@ -514,29 +869,38 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 newIntentKey(),
                 AgentTurnRequest(
                     message = s.draft.trim(),
-                    conversationId = s.conversation?.conversationId,
-                    mode = "standard",
-                    workspace = "agent",
+                    conversationId =
+                        s.conversation?.conversationId ?: s.materialContext?.conversationId,
+                    materialIds = attached.map { it.materialId },
+                    referenceKnowledgeBaseId =
+                        s.conversation?.referenceKnowledgeBaseId ?: s.referenceLibraryId,
+                    mode = s.composerMode,
+                    workspace = if (s.workspaceTask != null) "research" else "agent",
+                    taskId = s.workspaceTask,
                     modelId = s.model,
                     reasoningEffort = s.effort,
                     webSearch = s.webSearch,
                 ),
                 origin = api!!.endpoint.origin,
+                signals = NativeTurnSignals(canvas = s.conversation?.researchMap),
             )
         persist(pending)
         update {
-            it.copy(destination = Destination.Chat, draft = "", pending = pending, error = null)
+            it.copy(
+                destination =
+                    if (s.destination == Destination.ResearchLaunch) Destination.ResearchLaunch
+                    else Destination.Chat,
+                draft = "",
+                pending = pending,
+                error = null,
+            )
         }
         beginStream(pending)
     }
 
     private fun eligible(request: AgentTurnRequest) =
-        request.mode in setOf(null, "standard") &&
-            request.workspace in setOf(null, "agent") &&
-            request.taskId == null &&
-            request.referenceKnowledgeBaseId == null &&
-            request.documentId == null &&
-            request.deepResearchAction == null
+        request.mode in setOf(null, "standard", "deep_research") &&
+            request.workspace in setOf(null, "agent", "research")
 
     private fun persist(pending: PendingTurn?) {
         val previousKey = state.value.pending?.key
@@ -631,11 +995,40 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                     "turn_failed",
                                     "turn_interrupted",
                                     "research_waiting",
+                                    "research_ask",
+                                    "research_plan",
+                                    "research_step",
+                                    "research_result",
+                                    "citation_added",
+                                    "canvas_patch",
                                 )
                         )
                             return@collect
                         val json = WireJson.parseToJsonElement(frame.data).jsonObject
                         fun text(key: String) = (json[key] as? JsonPrimitive)?.contentOrNull
+                        val signals =
+                            reduceTurnSignals(
+                                state.value.pending?.signals
+                                    ?: NativeTurnSignals(
+                                        canvas = state.value.conversation?.researchMap
+                                    ),
+                                frame.event,
+                                json,
+                            )
+                        if (signals != state.value.pending?.signals) {
+                            val changed =
+                                state.value.pending?.copy(
+                                    signals = signals,
+                                    partial =
+                                        if (signals.citations.any { it.deleted == true })
+                                            "该回答引用的个人研究材料已删除，原回答内容已隐藏。"
+                                        else state.value.pending!!.partial,
+                                )
+                            if (changed != null) {
+                                persist(changed)
+                                update { it.copy(pending = changed) }
+                            }
+                        }
                         when (frame.event) {
                             "turn_started" -> {
                                 val next =
@@ -654,7 +1047,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                         pending =
                                             it.pending?.copy(
                                                 partial =
-                                                    it.pending.partial + text("delta").orEmpty()
+                                                    if (
+                                                        it.pending.signals.citations.any { c ->
+                                                            c.deleted == true
+                                                        }
+                                                    )
+                                                        it.pending.partial
+                                                    else
+                                                        it.pending.partial + text("delta").orEmpty()
                                             ),
                                     )
                                 }
@@ -678,9 +1078,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                         json.getValue("conversation")
                                     )
                                 persist(null)
+                                materialFeature?.clearAfterSend()
                                 update {
                                     it.copy(
                                         conversation = conversation,
+                                        turnSignals =
+                                            conversation.turns.lastOrNull()?.turnId?.let { id ->
+                                                it.turnSignals +
+                                                    (id to
+                                                        completedSignals(
+                                                            it.pending?.signals
+                                                                ?: NativeTurnSignals(),
+                                                            conversation.turns.last(),
+                                                        ))
+                                            } ?: it.turnSignals,
                                         turnKeys =
                                             conversation.turns.lastOrNull()?.turnId?.let { turnId ->
                                                 it.turnKeys + (turnId to "pending:${pending.key}")
@@ -690,9 +1101,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                     )
                                 }
                             }
-                            "turn_failed",
-                            "turn_interrupted",
                             "research_waiting" -> {
+                                val terminal =
+                                    state.value.pending?.copy(
+                                        runId = text("run_id") ?: state.value.pending?.runId,
+                                        outcomeConfirmed = true,
+                                    )
+                                persist(terminal)
+                                update { it.copy(pending = terminal, status = null) }
+                            }
+                            "turn_failed",
+                            "turn_interrupted" -> {
                                 val terminal = state.value.pending?.copy(outcomeConfirmed = true)
                                 persist(terminal)
                                 update {
@@ -762,17 +1181,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 persist(null)
                 update { it.copy(conversation = conversation, pending = null, status = null) }
             } else {
+                val waiting =
+                    conversation.unfinishedRuns?.firstOrNull { it.idempotencyKey == pending.key }
+                val recovered =
+                    if (waiting?.status?.startsWith("awaiting_") == true)
+                        next.copy(signals = recoverySignals(waiting))
+                    else next
+                persist(recovered)
                 update {
                     it.copy(
                         conversation = conversation,
-                        pending = next,
+                        pending = recovered,
                         status =
                             when (lookup.status) {
                                 "running" ->
                                     if (lookup.cancelRequested) "服务端正在处理停止请求" else "服务端仍在处理这段回答"
                                 "interrupted" -> "已确认中断，可恢复原来的回答"
                                 "failed" -> "上次回答未完成，可恢复原来的回答"
-                                else -> "这段回答需要在网页版继续"
+                                "awaiting_clarification",
+                                "awaiting_plan_confirmation" -> null
+                                else -> "这段回答尚未结束"
                             },
                     )
                 }
@@ -793,6 +1221,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         conversationId = id,
                         partial = it.partialAnswer,
                         outcomeConfirmed = it.status != "running",
+                        signals = recoverySignals(it),
                     )
                 } ?: pending
             persist(next)
@@ -826,6 +1255,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 state.value.pending?.let {
                     if (it.stopKey != null && !it.outcomeConfirmed)
                         update { state -> state.copy(error = "停止结果仍未知，请先核对状态。不要重复发起同一个请求。") }
+                    else if (it.signals.research.waitingState != null)
+                        update { state -> state.copy(status = null) }
                     else if (eligible(it.request)) beginStream(it)
                     else update { state -> state.copy(error = "这段回答属于网页版的研究功能，请在网页继续。") }
                 }
@@ -937,18 +1368,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
     }
 
-    fun openConversation(id: String) {
+    fun openConversation(id: String, target: Destination = Destination.Chat) {
         if (state.value.streaming || state.value.stopping) return
         val identity = ++generation
         update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             try {
                 val conversation = api!!.conversation(id)
-                require(
-                    conversation.taskId == null && conversation.referenceKnowledgeBaseId == null
-                ) {
-                    "这段对话属于网页版的其他工作区"
-                }
                 val run = conversation.unfinishedRuns?.lastOrNull { eligible(it.request) }
                 val pending =
                     run?.let {
@@ -960,14 +1386,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             id,
                             it.partialAnswer,
                             origin = api!!.endpoint.origin,
+                            signals = recoverySignals(it),
                         )
                     }
                 if (identity == generation) {
                     update {
                         it.copy(
                             conversation = conversation,
+                            referenceLibraryId = conversation.referenceKnowledgeBaseId,
+                            workspaceTask = conversation.taskId,
+                            materialScope = "conversation:${conversation.conversationId}",
+                            materialContext =
+                                conversation.taskId?.let { task ->
+                                    AgentMaterialContextResponse(conversation.conversationId, task)
+                                },
+                            composerMode = run?.request?.mode ?: "standard",
                             pending = pending,
-                            destination = Destination.Chat,
+                            destination = target,
                             status = if (pending != null) "这段回答尚未完成" else null,
                             draft = "",
                         )
@@ -1180,6 +1615,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 api?.clearLocalSession()
                 store.write("pending", null)
                 memoryFeature?.close()
+                libraryFeature?.close()
+                libraryFeature = null
+                libraryIdentity = null
+                graphFeature?.close()
+                graphFeature = null
+                materialFeature?.close()
+                materialFeature = null
+                materialIdentity = null
+                researchFeature?.close()
+                researchFeature = null
+                researchIdentity = null
+                projectMemories.values.forEach { it.close() }
+                projectMemories.clear()
+                canvasFeature?.close()
+                canvasFeature = null
+                canvasIdentity = null
+                graphIdentity = null
                 memoryFeature = null
                 memoryIdentity = null
                 sessionOwner = null

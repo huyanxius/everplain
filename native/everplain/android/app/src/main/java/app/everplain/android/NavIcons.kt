@@ -10,539 +10,131 @@ import androidx.compose.ui.unit.dp
 // Shared asset SHA256: 5bdcf5ae87d17fb29ed8e53a7eae6d4991d9dc9b51b319086b71613c201ebad6
 object NavIcons {
     val Home: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Home", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"
-                        )
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Home", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Chat: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Chat", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString("M20 11.5a8 8 0 0 1-8 8H4l-1 2V11.5a8.5 8.5 0 1 1 17 0Z")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Chat", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M20 11.5a8 8 0 0 1-8 8H4l-1 2V11.5a8.5 8.5 0 1 1 17 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Library: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Library", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M4.0 4.0h3.0a1.0 1.0 0 0 1 1.0 1.0v14.0a1.0 1.0 0 0 1 -1.0 1.0h-3.0a1.0 1.0 0 0 1 -1.0 -1.0v-14.0a1.0 1.0 0 0 1 1.0 -1.0Z"
-                        )
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser().parsePathString("M11 4v16M15 5l4-1 3 15-4 1Z").toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Library", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M4.0 4.0h3.0a1.0 1.0 0 0 1 1.0 1.0v14.0a1.0 1.0 0 0 1 -1.0 1.0h-3.0a1.0 1.0 0 0 1 -1.0 -1.0v-14.0a1.0 1.0 0 0 1 1.0 -1.0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M11 4v16M15 5l4-1 3 15-4 1Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Graph: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Graph", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString("M9.5 5.0a2.5 2.5 0 1 0 5.0 0a2.5 2.5 0 1 0 -5.0 0Z")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser()
-                        .parsePathString("M2.5 18.0a2.5 2.5 0 1 0 5.0 0a2.5 2.5 0 1 0 -5.0 0Z")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser()
-                        .parsePathString("M16.5 18.0a2.5 2.5 0 1 0 5.0 0a2.5 2.5 0 1 0 -5.0 0Z")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser()
-                        .parsePathString("m10.8 7.3-4.6 8.4m7-8.4 4.6 8.4M7.5 18h9")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Graph", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M9.5 5.0a2.5 2.5 0 1 0 5.0 0a2.5 2.5 0 1 0 -5.0 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M2.5 18.0a2.5 2.5 0 1 0 5.0 0a2.5 2.5 0 1 0 -5.0 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M16.5 18.0a2.5 2.5 0 1 0 5.0 0a2.5 2.5 0 1 0 -5.0 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("m10.8 7.3-4.6 8.4m7-8.4 4.6 8.4M7.5 18h9").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val File: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.File", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString("M14 3H5v18h14V8Zm0 0v5h5M8 12h8M8 16h6")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.File", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M14 3H5v18h14V8Zm0 0v5h5M8 12h8M8 16h6").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Compose: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Compose", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M12 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-7M10 14l1-4L19 2l3 3-8 8-4 1ZM17 4l3 3"
-                        )
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Compose", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M12 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-7M10 14l1-4L19 2l3 3-8 8-4 1ZM17 4l3 3").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Plus: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Plus", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser().parsePathString("M12 5v14M5 12h14").toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Plus", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M12 5v14M5 12h14").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Import: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Import", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M3 8V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v12H3V8ZM12 10v7m-3-3 3 3 3-3"
-                        )
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Import", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M3 8V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v12H3V8ZM12 10v7m-3-3 3 3 3-3").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Share: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Share", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString("M15.0 5.0a3.0 3.0 0 1 0 6.0 0a3.0 3.0 0 1 0 -6.0 0Z")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser()
-                        .parsePathString("M3.0 12.0a3.0 3.0 0 1 0 6.0 0a3.0 3.0 0 1 0 -6.0 0Z")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser()
-                        .parsePathString("M15.0 19.0a3.0 3.0 0 1 0 6.0 0a3.0 3.0 0 1 0 -6.0 0Z")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser().parsePathString("m8.6 10.5 6.8-4m-6.8 7 6.8 4").toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Share", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M15.0 5.0a3.0 3.0 0 1 0 6.0 0a3.0 3.0 0 1 0 -6.0 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M3.0 12.0a3.0 3.0 0 1 0 6.0 0a3.0 3.0 0 1 0 -6.0 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M15.0 19.0a3.0 3.0 0 1 0 6.0 0a3.0 3.0 0 1 0 -6.0 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("m8.6 10.5 6.8-4m-6.8 7 6.8 4").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Compass: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Compass", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString("M3.0 12.0a9.0 9.0 0 1 0 18.0 0a9.0 9.0 0 1 0 -18.0 0Z")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser().parsePathString("m16 8-2.5 5.5L8 16l2.5-5.5Z").toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Compass", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M3.0 12.0a9.0 9.0 0 1 0 18.0 0a9.0 9.0 0 1 0 -18.0 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("m16 8-2.5 5.5L8 16l2.5-5.5Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Connection: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Connection", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "m9 7 3-3a5 5 0 0 1 7 7l-3 3M8 10l-3 3a5 5 0 0 0 7 7l3-3m-7-1 8-8"
-                        )
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Connection", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("m9 7 3-3a5 5 0 0 1 7 7l-3 3M8 10l-3 3a5 5 0 0 0 7 7l3-3m-7-1 8-8").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Card: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Card", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M5.0 5.0h14.0a3.0 3.0 0 0 1 3.0 3.0v8.0a3.0 3.0 0 0 1 -3.0 3.0h-14.0a3.0 3.0 0 0 1 -3.0 -3.0v-8.0a3.0 3.0 0 0 1 3.0 -3.0Z"
-                        )
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser().parsePathString("M2 10h20M6 15h4").toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Card", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M5.0 5.0h14.0a3.0 3.0 0 0 1 3.0 3.0v8.0a3.0 3.0 0 0 1 -3.0 3.0h-14.0a3.0 3.0 0 0 1 -3.0 -3.0v-8.0a3.0 3.0 0 0 1 3.0 -3.0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M2 10h20M6 15h4").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Users: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Users", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString("M6.0 7.0a3.0 3.0 0 1 0 6.0 0a3.0 3.0 0 1 0 -6.0 0Z")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M3 21v-3a6 6 0 0 1 12 0v3M16 4a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 4v3"
-                        )
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Users", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M6.0 7.0a3.0 3.0 0 1 0 6.0 0a3.0 3.0 0 1 0 -6.0 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M3 21v-3a6 6 0 0 1 12 0v3M16 4a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 4v3").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Shield: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Shield", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString("m12 2 8 3v6c0 5-3 8-8 11-5-3-8-6-8-11V5Zm-4 9 3 3 5-5")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Shield", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("m12 2 8 3v6c0 5-3 8-8 11-5-3-8-6-8-11V5Zm-4 9 3 3 5-5").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Settings: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Settings", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString("M3 6h4m4 0h10M3 12h10m4 0h4M3 18h4m4 0h10")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser()
-                        .parsePathString("M7.0 6.0a2.0 2.0 0 1 0 4.0 0a2.0 2.0 0 1 0 -4.0 0Z")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser()
-                        .parsePathString("M13.0 12.0a2.0 2.0 0 1 0 4.0 0a2.0 2.0 0 1 0 -4.0 0Z")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser()
-                        .parsePathString("M7.0 18.0a2.0 2.0 0 1 0 4.0 0a2.0 2.0 0 1 0 -4.0 0Z")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Settings", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M3 6h4m4 0h10M3 12h10m4 0h4M3 18h4m4 0h10").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M7.0 6.0a2.0 2.0 0 1 0 4.0 0a2.0 2.0 0 1 0 -4.0 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M13.0 12.0a2.0 2.0 0 1 0 4.0 0a2.0 2.0 0 1 0 -4.0 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M7.0 18.0a2.0 2.0 0 1 0 4.0 0a2.0 2.0 0 1 0 -4.0 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Bell: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Bell", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString("M18 8a6 6 0 0 0-12 0c0 7-3 8-3 9h18c0-1-3-2-3-9M10 21h4")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Bell", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M18 8a6 6 0 0 0-12 0c0 7-3 8-3 9h18c0-1-3-2-3-9M10 21h4").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val User: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.User", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString("M8.0 8.0a4.0 4.0 0 1 0 8.0 0a4.0 4.0 0 1 0 -8.0 0Z")
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser().parsePathString("M4 21v-2a8 8 0 0 1 16 0v2").toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.User", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M8.0 8.0a4.0 4.0 0 1 0 8.0 0a4.0 4.0 0 1 0 -8.0 0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M4 21v-2a8 8 0 0 1 16 0v2").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Sidebar: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Sidebar", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M5.0 4.0h14.0a2.0 2.0 0 0 1 2.0 2.0v12.0a2.0 2.0 0 0 1 -2.0 2.0h-14.0a2.0 2.0 0 0 1 -2.0 -2.0v-12.0a2.0 2.0 0 0 1 2.0 -2.0Z"
-                        )
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser().parsePathString("M9 4v16").toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Sidebar", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M5.0 4.0h14.0a2.0 2.0 0 0 1 2.0 2.0v12.0a2.0 2.0 0 0 1 -2.0 2.0h-14.0a2.0 2.0 0 0 1 -2.0 -2.0v-12.0a2.0 2.0 0 0 1 2.0 -2.0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M9 4v16").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Menu: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Menu", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser().parsePathString("M4 6h16M4 12h16M4 18h16").toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Menu", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M4 6h16M4 12h16M4 18h16").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Close: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Close", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser().parsePathString("m6 6 12 12M6 18 18 6").toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Close", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("m6 6 12 12M6 18 18 6").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val More: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.More", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M4.0 3.0h4.0a1.0 1.0 0 0 1 1.0 1.0v4.0a1.0 1.0 0 0 1 -1.0 1.0h-4.0a1.0 1.0 0 0 1 -1.0 -1.0v-4.0a1.0 1.0 0 0 1 1.0 -1.0Z"
-                        )
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M16.0 3.0h4.0a1.0 1.0 0 0 1 1.0 1.0v4.0a1.0 1.0 0 0 1 -1.0 1.0h-4.0a1.0 1.0 0 0 1 -1.0 -1.0v-4.0a1.0 1.0 0 0 1 1.0 -1.0Z"
-                        )
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M4.0 15.0h4.0a1.0 1.0 0 0 1 1.0 1.0v4.0a1.0 1.0 0 0 1 -1.0 1.0h-4.0a1.0 1.0 0 0 1 -1.0 -1.0v-4.0a1.0 1.0 0 0 1 1.0 -1.0Z"
-                        )
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    PathParser()
-                        .parsePathString(
-                            "M16.0 15.0h4.0a1.0 1.0 0 0 1 1.0 1.0v4.0a1.0 1.0 0 0 1 -1.0 1.0h-4.0a1.0 1.0 0 0 1 -1.0 -1.0v-4.0a1.0 1.0 0 0 1 1.0 -1.0Z"
-                        )
-                        .toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.More", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("M4.0 3.0h4.0a1.0 1.0 0 0 1 1.0 1.0v4.0a1.0 1.0 0 0 1 -1.0 1.0h-4.0a1.0 1.0 0 0 1 -1.0 -1.0v-4.0a1.0 1.0 0 0 1 1.0 -1.0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M16.0 3.0h4.0a1.0 1.0 0 0 1 1.0 1.0v4.0a1.0 1.0 0 0 1 -1.0 1.0h-4.0a1.0 1.0 0 0 1 -1.0 -1.0v-4.0a1.0 1.0 0 0 1 1.0 -1.0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M4.0 15.0h4.0a1.0 1.0 0 0 1 1.0 1.0v4.0a1.0 1.0 0 0 1 -1.0 1.0h-4.0a1.0 1.0 0 0 1 -1.0 -1.0v-4.0a1.0 1.0 0 0 1 1.0 -1.0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+            addPath(PathParser().parsePathString("M16.0 15.0h4.0a1.0 1.0 0 0 1 1.0 1.0v4.0a1.0 1.0 0 0 1 -1.0 1.0h-4.0a1.0 1.0 0 0 1 -1.0 -1.0v-4.0a1.0 1.0 0 0 1 1.0 -1.0Z").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
     val Chevron: ImageVector by lazy {
-        ImageVector.Builder("NavIcons.Chevron", 24.dp, 24.dp, 24f, 24f)
-            .apply {
-                addPath(
-                    PathParser().parsePathString("m9 5 7 7-7 7").toNodes(),
-                    fill = null,
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = 1.75f,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-            }
-            .build()
+        ImageVector.Builder("NavIcons.Chevron", 24.dp, 24.dp, 24f, 24f).apply {
+            addPath(PathParser().parsePathString("m9 5 7 7-7 7").toNodes(), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round)
+        }.build()
     }
 }

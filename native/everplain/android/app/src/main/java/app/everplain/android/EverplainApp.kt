@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,6 +32,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.*
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
@@ -83,6 +86,8 @@ fun EverplainApp(vm: AppViewModel) {
 
 @Composable
 private fun MainShell(s: AppState, vm: AppViewModel) {
+    val companionPointer = remember { CompanionPointer() }
+    val companionNarrow = LocalConfiguration.current.screenWidthDp <= 640
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val drawerWidth =
         with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() * .86f }
@@ -133,6 +138,7 @@ private fun MainShell(s: AppState, vm: AppViewModel) {
             },
             dismissButton = { EpButton("继续等待", { endWait = false }) },
         )
+    if (s.researchPanel) ResearchSourcePanel(s, vm)
     if (identityTab != null)
         settingsPages.SaveableStateProvider("identity-panel") {
             RoleIdentityPanel(s, vm, identityTab!!) { identityTab = null }
@@ -170,6 +176,22 @@ private fun MainShell(s: AppState, vm: AppViewModel) {
                 }
                 DrawerNavRow("首页", NavIcons.Home, s.destination == Destination.Home) {
                     vm.navigate(Destination.Home)
+                    scope.launch { drawer.close() }
+                }
+                DrawerNavRow("知识库", NavIcons.Library, s.destination == Destination.Library) {
+                    vm.navigate(Destination.Library)
+                    scope.launch { drawer.close() }
+                }
+                DrawerNavRow("图谱", NavIcons.Graph, s.destination == Destination.Graph) {
+                    vm.navigate(Destination.Graph)
+                    scope.launch { drawer.close() }
+                }
+                DrawerNavRow(
+                    "研究",
+                    NavIcons.File,
+                    s.destination in setOf(Destination.Research, Destination.ResearchLaunch),
+                ) {
+                    vm.navigate(Destination.Research)
                     scope.launch { drawer.close() }
                 }
                 Column(
@@ -234,32 +256,7 @@ private fun MainShell(s: AppState, vm: AppViewModel) {
                         EpIcon(NavIcons.Menu, "打开导航", { scope.launch { drawer.open() } })
                     }
                     if (s.destination == Destination.Chat) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.padding(4.dp).height(44.dp),
-                                shadowElevation = 1.dp,
-                            ) {
-                                Box(
-                                    Modifier.padding(horizontal = 12.dp).semantics {
-                                        contentDescription = "对话模式"
-                                    },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    AgentAvatar(
-                                        s.profile?.avatarId ?: "cheng",
-                                        s.profile?.color,
-                                        s.profile?.name ?: "Agent",
-                                        32,
-                                        state = if (s.streaming) "work" else "idle",
-                                    )
-                                }
-                            }
-                        }
+                        ConversationModeSwitch(s, vm)
                     } else
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -286,6 +283,21 @@ private fun MainShell(s: AppState, vm: AppViewModel) {
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                                 ) {
                                     DropdownMenuItem(
+                                        text = { Text("联网搜索", fontSize = 14.sp) },
+                                        onClick = { vm.toggleWebSearch() },
+                                        trailingIcon = {
+                                            Checkbox(s.webSearch, { vm.toggleWebSearch() })
+                                        },
+                                        enabled = !s.streaming,
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("研究面板", fontSize = 14.sp) },
+                                        onClick = {
+                                            conversationActions = false
+                                            vm.toggleResearchPanel()
+                                        },
+                                    )
+                                    DropdownMenuItem(
                                         text = { Text("新对话", fontSize = 14.sp) },
                                         onClick = {
                                             conversationActions = false
@@ -309,7 +321,10 @@ private fun MainShell(s: AppState, vm: AppViewModel) {
             },
         ) { padding ->
             Box(
-                Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
+                Modifier.fillMaxSize()
+                    .padding(padding)
+                    .consumeWindowInsets(padding)
+                    .observeCompanionPointer(companionPointer),
                 contentAlignment = Alignment.TopCenter,
             ) {
                 Column(Modifier.widthIn(max = 840.dp).fillMaxSize()) {
@@ -329,6 +344,25 @@ private fun MainShell(s: AppState, vm: AppViewModel) {
                         Destination.Home,
                         Destination.Chat -> ConversationScreen(s, vm)
                         Destination.History -> HistoryScreen(s, vm)
+                        Destination.Research ->
+                            settingsPages.SaveableStateProvider("research") {
+                                ResearchHubScreen(s, vm)
+                            }
+                        Destination.ResearchLaunch -> ResearchLaunchScreen(s, vm)
+                        Destination.Files ->
+                            settingsPages.SaveableStateProvider("files") {
+                                MaterialsScreen(vm.materials(), s)
+                            }
+                        Destination.Graph ->
+                            settingsPages.SaveableStateProvider("graph") {
+                                GraphScreen(vm.graph(), vm.library(), vm)
+                            }
+                        Destination.Library ->
+                            settingsPages.SaveableStateProvider("library") {
+                                LibraryScreen(vm.library(), s.origin) {
+                                    vm.navigate(Destination.Graph)
+                                }
+                            }
                         Destination.Account ->
                             settingsPages.SaveableStateProvider("account") { AccountScreen(s, vm) }
                         Destination.Agent ->
@@ -339,6 +373,15 @@ private fun MainShell(s: AppState, vm: AppViewModel) {
                             }
                     }
                 }
+                HomeCompanion(
+                    active = s.destination == Destination.Home,
+                    modifier =
+                        Modifier.align(Alignment.BottomEnd)
+                            .padding(end = if (companionNarrow) 8.dp else 24.dp)
+                            .offset(y = 14.dp),
+                    narrow = companionNarrow,
+                    pointer = companionPointer,
+                )
             }
         }
     }
@@ -349,7 +392,7 @@ private fun MainShell(s: AppState, vm: AppViewModel) {
  * weights change, so a first send never detaches the native input connection.
  */
 @Composable
-private fun ConversationScreen(s: AppState, vm: AppViewModel) {
+internal fun ConversationScreen(s: AppState, vm: AppViewModel) {
     val home = s.destination == Destination.Home
     val empty = s.conversation == null && s.pending == null
     val homeScroll = rememberScrollState()
@@ -379,7 +422,7 @@ private fun ConversationScreen(s: AppState, vm: AppViewModel) {
                 if (!home && empty) Spacer(Modifier.weight(1f))
                 Box((if (!home && !empty) Modifier.weight(1f) else Modifier).fillMaxWidth()) {
                     when {
-                        home -> HomeHeading(s)
+                        home -> HomeHeading(s, vm)
                         empty -> ChatGreeting(s)
                         else -> ChatTranscript(s, vm, Modifier.fillMaxSize())
                     }
@@ -399,6 +442,7 @@ private fun ConversationScreen(s: AppState, vm: AppViewModel) {
                         Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
+                        HomeContents(s, vm)
                         if (s.catalog == null || s.profile == null)
                             EpButton("重新读取伙伴设置", vm::refresh, enabled = !s.busy)
                     }
@@ -410,7 +454,7 @@ private fun ConversationScreen(s: AppState, vm: AppViewModel) {
 }
 
 @Composable
-private fun HomeHeading(s: AppState) {
+private fun HomeHeading(s: AppState, vm: AppViewModel) {
     Column(
         Modifier.padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -430,12 +474,7 @@ private fun HomeHeading(s: AppState) {
                 ),
             modifier = Modifier.padding(top = 8.dp),
         )
-        Text(
-            "问一个你想弄清楚的问题。",
-            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 27.2.sp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 16.dp),
-        )
+        HomeContext(vm)
     }
 }
 
@@ -467,9 +506,56 @@ private fun ChatGreeting(s: AppState) {
 
 @Composable
 private fun Composer(s: AppState, vm: AppViewModel, home: Boolean = false) {
+    val materialController = vm.materials()
+    val materialState by materialController.state.collectAsStateWithLifecycle()
+    var materialPicker by remember { mutableStateOf(false) }
+    var libraryPicker by remember { mutableStateOf(false) }
+    val (upload, preparing) =
+        rememberMaterialUpload(
+            materialController,
+            s.streaming || materialState.uploading || materialState.unresolved,
+        )
+    LaunchedEffect(s.materialScope, s.conversation?.conversationId, s.materialContext) {
+        materialController.bind(
+            s.materialScope,
+            s.conversation?.conversationId ?: s.materialContext?.conversationId,
+            s.materialContext?.taskId ?: s.conversation?.taskId,
+        )
+    }
+    FeatureVisibility(
+        materialController,
+        {
+            materialController.bind(
+                s.materialScope,
+                s.conversation?.conversationId ?: s.materialContext?.conversationId,
+                s.materialContext?.taskId ?: s.conversation?.taskId,
+            )
+        },
+        materialController::leave,
+    )
+    if (materialPicker) MaterialPicker(materialController) { materialPicker = false }
+    if (libraryPicker) ReferenceLibraryPicker(vm.library(), s, vm) { libraryPicker = false }
+
     var tools by remember { mutableStateOf(false) }
+    var editorValue by remember {
+        mutableStateOf(TextFieldValue(s.draft, androidx.compose.ui.text.TextRange(s.draft.length)))
+    }
+    LaunchedEffect(s.draft) {
+        if (editorValue.text != s.draft)
+            editorValue =
+                TextFieldValue(s.draft, androidx.compose.ui.text.TextRange(s.draft.length))
+    }
     val flight = LocalSendFlight.current
     val motion = rememberMotionEnabled()
+    val narrow = LocalConfiguration.current.screenWidthDp <= 480
+    val research = s.composerMode == "deep_research"
+    var availableWidth by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val multiline =
+        s.draft.contains('\n') ||
+            s.draft.length > 40 ||
+            (availableWidth < with(density) { 480.dp.toPx() } && s.draft.isNotEmpty())
+    val panel = narrow || research || multiline || materialState.attached.isNotEmpty()
     Surface(
         modifier =
             if (motion)
@@ -477,43 +563,108 @@ private fun Composer(s: AppState, vm: AppViewModel, home: Boolean = false) {
                     tween(320, easing = CubicBezierEasing(.16f, 1f, .3f, 1f))
                 )
             else Modifier,
-        shape = RoundedCornerShape(EverplainTokens.radiusPanel.dp),
+        shape =
+            RoundedCornerShape(
+                if (panel) EverplainTokens.radiusPanel.dp else EverplainTokens.radiusPill.dp
+            ),
         color = MaterialTheme.colorScheme.surfaceVariant,
         shadowElevation = 3.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .5f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = .07f)),
     ) {
-        Column(Modifier.padding(start = 12.dp, top = 10.dp, end = 10.dp, bottom = 10.dp)) {
-            Row(
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+        Column(
+            Modifier.onSizeChanged { availableWidth = it.width }
+                .padding(
+                    start = 12.dp,
+                    top = if (research) 16.dp else 10.dp,
+                    end = if (research) 12.dp else 10.dp,
+                    bottom = if (research) 12.dp else 10.dp,
+                )
+        ) {
+            ComposerAttachments(s, materialController)
+            if (preparing) Text("正在读取文件…", fontSize = 13.sp)
+            ComposerGrid(research = research, narrow = narrow, multiline = multiline) {
                 Box {
-                    EpIcon(EpIcons.Add, "添加选项", { tools = true })
+                    EpIcon(
+                        EpIcons.Add,
+                        "添加附件",
+                        { tools = true },
+                        enabled = !materialState.uploading && !preparing,
+                    )
                     DropdownMenu(
                         tools,
                         { tools = false },
                         containerColor = MaterialTheme.colorScheme.surfaceContainer,
                         shape = RoundedCornerShape(EverplainTokens.radiusCard.dp),
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("联网搜索", fontSize = 14.sp) },
-                            onClick = {
-                                vm.toggleWebSearch()
-                                tools = false
-                            },
-                            trailingIcon = { if (s.webSearch) Icon(EpIcons.Check, null) },
-                            enabled = !s.streaming,
-                        )
+                        if (home)
+                            DropdownMenuItem(
+                                text = { Text("导入资料") },
+                                onClick = {
+                                    tools = false
+                                    vm.navigate(Destination.Library)
+                                },
+                            )
+                        else {
+                            DropdownMenuItem(
+                                text = { Text("上传文件", fontSize = 14.sp) },
+                                onClick = {
+                                    tools = false
+                                    upload()
+                                },
+                                enabled = !s.streaming && !preparing,
+                            )
+                            DropdownMenuItem(
+                                text = { Text("从研究材料添加", fontSize = 14.sp) },
+                                onClick = {
+                                    tools = false
+                                    materialPicker = true
+                                },
+                                enabled = !s.streaming,
+                            )
+                            DropdownMenuItem(
+                                text = { Text("参考知识库", fontSize = 14.sp) },
+                                onClick = {
+                                    tools = false
+                                    libraryPicker = true
+                                },
+                                enabled = !s.streaming,
+                            )
+                        }
                     }
                 }
                 BasicTextField(
-                    s.draft,
-                    vm::setDraft,
+                    editorValue,
+                    { next ->
+                        if (!s.streaming) {
+                            editorValue = next
+                            vm.setDraft(next.text)
+                        }
+                    },
                     modifier =
-                        Modifier.weight(1f)
-                            .heightIn(min = 36.dp, max = 240.dp)
-                            .padding(vertical = 5.dp)
+                        Modifier.heightIn(min = if (research) 52.dp else 36.dp, max = 240.dp)
+                            .padding(
+                                horizontal = if (research) 8.dp else 0.dp,
+                                vertical = if (research) 0.dp else 5.dp,
+                            )
                             .onGloballyPositioned { flight?.editorBounds = it.boundsInRoot() }
+                            .onPreviewKeyEvent { event ->
+                                if (
+                                    event.key == Key.Enter &&
+                                        !event.isShiftPressed &&
+                                        editorValue.composition == null
+                                ) {
+                                    if (
+                                        event.type == KeyEventType.KeyDown &&
+                                            !s.streaming &&
+                                            s.pending == null &&
+                                            s.draft.isNotBlank()
+                                    ) {
+                                        flight?.mark(s.draft)
+                                        vm.send()
+                                    }
+                                    true
+                                } else false
+                            }
                             .semantics {
                                 contentDescription =
                                     if (home) "问${s.profile?.name ?: "Agent"}" else "问一个问题"
@@ -521,6 +672,21 @@ private fun Composer(s: AppState, vm: AppViewModel, home: Boolean = false) {
                     // Compose readOnly ends the platform input session, unlike the Web
                     // textarea. Keep this editor enabled; setDraft rejects in-flight edits.
                     readOnly = false,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions =
+                        KeyboardActions(
+                            onSend = {
+                                if (
+                                    !s.streaming &&
+                                        s.pending == null &&
+                                        editorValue.composition == null &&
+                                        s.draft.isNotBlank()
+                                ) {
+                                    flight?.mark(s.draft)
+                                    vm.send()
+                                }
+                            }
+                        ),
                     textStyle =
                         MaterialTheme.typography.bodyLarge.copy(
                             color = MaterialTheme.colorScheme.onSurface,
@@ -531,22 +697,16 @@ private fun Composer(s: AppState, vm: AppViewModel, home: Boolean = false) {
                     decorationBox = { inner ->
                         if (s.draft.isEmpty())
                             Text(
-                                if (home) "问${s.profile?.name ?: "Agent"}，或者丢一个链接进来" else "问一个问题",
+                                if (s.composerMode == "deep_research") "描述你想弄清楚的问题"
+                                else if (home) "问${s.profile?.name ?: "Agent"}，或者丢一个链接进来"
+                                else "问一个问题",
                                 style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .7f),
                             )
                         inner()
                     },
                 )
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End,
-            ) {
                 ModelSelector(s, vm)
-                Spacer(Modifier.width(8.dp))
                 EpIcon(
                     if (s.streaming) EpIcons.Stop else EpIcons.ArrowUpward,
                     if (s.streaming) "停止生成" else "发送给 Everplain",
@@ -566,6 +726,9 @@ private fun Composer(s: AppState, vm: AppViewModel, home: Boolean = false) {
                         if (s.streaming) !s.stopping
                         else
                             s.draft.isNotBlank() &&
+                                !materialState.uploading &&
+                                !preparing &&
+                                materialState.attached.all { it.status == "ready" } &&
                                 s.model != null &&
                                 s.effort != null &&
                                 s.pending == null,
@@ -783,6 +946,7 @@ private data class DisplayTurn(
     val answer: String,
     val citations: List<AgentCitationResponse>,
     val pending: Boolean,
+    val signals: app.everplain.core.NativeTurnSignals = app.everplain.core.NativeTurnSignals(),
 )
 
 @Composable
@@ -810,6 +974,7 @@ private fun ChatTranscript(s: AppState, vm: AppViewModel, modifier: Modifier) {
                     turn.assistant.content,
                     turn.assistant.citations.orEmpty(),
                     false,
+                    s.turnSignals[turn.turnId] ?: app.everplain.core.canonicalSignals(turn),
                 )
             } +
                 listOfNotNull(
@@ -818,27 +983,34 @@ private fun ChatTranscript(s: AppState, vm: AppViewModel, modifier: Modifier) {
                             "pending:${it.key}",
                             it.request.message,
                             it.partial,
-                            emptyList(),
+                            it.signals.citations,
                             true,
+                            it.signals,
                         )
                     }
                 )
         items(entries, key = { it.key }) { turn ->
             Column(verticalArrangement = Arrangement.spacedBy(32.dp)) {
                 UserQuestion(turn.question, newlySubmitted = turn.pending)
+                ResearchFlow(turn.signals, turn.pending && s.streaming, turn.pending, vm)
                 AssistantAnswer(
                     s.profile,
                     turn.answer,
                     streaming = turn.pending && s.streaming,
                     status = if (turn.pending) s.status else null,
                     citations = turn.citations,
+                    onCitation = vm::selectCitation,
                     regenerate =
                         if (turn.pending || s.streaming || s.pending != null) null
                         else {
                             { vm.regenerate(turn.question) }
                         },
                 ) {
-                    if (turn.pending && !s.streaming) {
+                    if (turn.signals.research.stage == "idle")
+                        ConversationActivity(turn.signals.tools, turn.pending && s.streaming)
+                    if (
+                        turn.pending && !s.streaming && turn.signals.research.waitingState == null
+                    ) {
                         Row(
                             Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -897,6 +1069,7 @@ private fun AssistantAnswer(
     status: String? = null,
     citations: List<AgentCitationResponse> = emptyList(),
     regenerate: (() -> Unit)? = null,
+    onCitation: ((AgentCitationResponse) -> Unit)? = null,
     extra: @Composable ColumnScope.() -> Unit = {},
 ) {
     val paced = rememberPacedText(text, streaming)
@@ -935,6 +1108,10 @@ private fun AssistantAnswer(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     citations.forEachIndexed { index, citation ->
                         Surface(
+                            modifier =
+                                Modifier.clickable(enabled = onCitation != null) {
+                                    onCitation?.invoke(citation)
+                                },
                             shape = RoundedCornerShape(999.dp),
                             color = Color.Transparent,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
