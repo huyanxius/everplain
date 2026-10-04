@@ -26,6 +26,88 @@ spec.loader.exec_module(release)
 
 
 class RegistryReleaseTests(unittest.TestCase):
+    def test_live_compatibility_overlays_require_reviewed_bytes_and_read_only_mounts(self):
+        with tempfile.TemporaryDirectory() as d:
+            source = Path(d) / "settings.py"
+            source.write_bytes(b"reviewed-model-allowlist")
+            destination = sorted(release.COMPATIBILITY_DESTINATIONS)[0]
+            mount = {"Source": str(source), "Destination": destination,
+                     "Type": "bind", "RW": False}
+            policy = {"reviewed_live_file_overlays": {
+                destination: hashlib.sha256(source.read_bytes()).hexdigest()}}
+            release.verify_live_overlays({"Mounts": [mount]}, policy)
+            for changed in ({**mount, "RW": True}, {**mount, "Destination": "/other.py"}):
+                with self.assertRaises(RuntimeError):
+                    release.verify_live_overlays({"Mounts": [changed]}, policy)
+            source.write_bytes(b"unreviewed")
+            with self.assertRaises(RuntimeError):
+                release.verify_live_overlays({"Mounts": [mount]}, policy)
+
+    def test_public_http_identifies_the_release_client(self):
+        url = "https://e.qunxue.xyz/api/health"
+        with patch.object(release.urllib.request, "build_opener") as factory:
+            response = factory.return_value.open.return_value.__enter__.return_value
+            response.url, response.status = url, 200
+            response.read.return_value = b"{}"
+            self.assertEqual(release.http(url), b"{}")
+            request = factory.return_value.open.call_args.args[0]
+            self.assertEqual(request.full_url, url)
+            self.assertEqual(request.get_header("User-agent"), "Everplain-Release/1.0")
+
+    def test_registry_identity_accepts_config_or_pinned_manifest_and_rejects_unbound_images(self):
+        expected = "sha256:" + "b" * 64
+        digest = "sha256:" + "a" * 64
+        reference = "ghcr.io/huyanxius/everplain-api@" + digest
+        for identity, references, valid in (
+            (expected, [reference], True), (digest, [reference], True),
+            (expected, [], False), ("sha256:" + "d" * 64, [reference], False),
+            (digest, ["ghcr.io/huyanxius/everplain-api@" + expected], False),
+        ):
+            with self.subTest(identity=identity, references=references):
+                value = {"Id": identity, "RepoDigests": references}
+                with patch.object(release, "run", return_value=json.dumps([value])) as inspect:
+                    if valid:
+                        self.assertEqual(
+                            release.registry_image(expected, reference, "api", {}), value)
+                    else:
+                        with self.assertRaises(RuntimeError):
+                            release.registry_image(expected, reference, "api", {})
+                    inspect.assert_called_once_with(["docker", "image", "inspect", reference])
+
+    def test_web_only_release_never_stops_api_or_copies_data_and_restores_web_on_failure(self):
+        for failed in (False, True):
+            with self.subTest(failed=failed), tempfile.TemporaryDirectory() as d:
+                root = Path(d)
+                api = container("api", root)
+                api["Image"] = "sha256:" + "b" * 64
+                web = container("web", root)
+                web["Mounts"] = [{"Destination": "/etc/nginx/conf.d/default.conf"}]
+                update = release.ExistingRelease(root / "input", root)
+                update.stage = root
+                update.old_names = {"web": "everplain-web-before-test"}
+                update.images = {"api": api["Image"], "web": "sha256:" + "a" * 64}
+                update.baseline, update.previous_state = {}, None
+                update.state_path = root / "state"
+                update.old_revision = "c" * 40
+                with patch.object(release, "snapshot", return_value={}), \
+                     patch.object(release, "read_state", return_value=None), \
+                     patch.object(release, "run", return_value="") as commands, \
+                     patch.object(release, "metadata", return_value=api), \
+                     patch.object(release, "environment", return_value={"EVERPLAIN_RUNTIME_MODE": "base"}), \
+                     patch.object(release, "public_health", side_effect=RuntimeError("health") if failed else None), \
+                     patch.object(update, "complete"), patch.object(update, "record"):
+                    if failed:
+                        with self.assertRaises(RuntimeError):
+                            update.activate_web_only({}, api, web, "bridge")
+                        self.assertTrue(update.report["old_service_restored"])
+                    else:
+                        update.activate_web_only({}, api, web, "bridge")
+                        self.assertTrue(update.report["api_unchanged_verified"])
+                    for call in commands.call_args_list:
+                        self.assertNotIn("everplain-api", call.args[0])
+                        self.assertNotIn("alembic", call.args[0])
+                    self.assertFalse((root / "data").exists())
+
     def test_digest_pull_reuses_layers_and_removes_temporary_credentials(self):
         manifest = {
             "registry_images": {role: f"ghcr.io/huyanxius/everplain-{role}@sha256:" + "a" * 64
@@ -43,7 +125,7 @@ class RegistryReleaseTests(unittest.TestCase):
                      patch.object(release.subprocess, "run", return_value=login) as auth, \
                      patch.object(release, "run", side_effect=RuntimeError("pull failed") if failed
                                   else None, return_value="aaa: Already exists\nbbb: Pull complete\n") as run, \
-                     patch.object(release, "loaded_image", return_value=info):
+                     patch.object(release, "registry_image", return_value=info):
                     if failed:
                         with self.assertRaises(RuntimeError):
                             release.pull_registry_images(manifest, Path(d), report)
@@ -342,7 +424,16 @@ class ExistingReleaseTests(unittest.TestCase):
                 self.updater = release.ExistingRelease(self.archive, self.root / "updates")
                 with self.assertRaises(RuntimeError):
                     self.execute()
-                self.assertTrue(self.updater.report["forward_stop_required"])
+                if failure == "public-health":
+                    self.assertTrue(self.updater.report["candidate_kept_running"])
+                    self.assertFalse(self.updater.report["forward_stop_required"])
+                    api_start = next(i for i, call in enumerate(self.calls)
+                                     if call[:2] == ["docker", "run"]
+                                     and "everplain-api" in call)
+                    self.assertFalse(any(call[:2] == ["docker", "stop"]
+                                         for call in self.calls[api_start + 1:]))
+                else:
+                    self.assertTrue(self.updater.report["forward_stop_required"])
                 self.assertFalse(self.updater.report["old_service_restored"])
                 self.assertFalse(any(call[:2] == ["docker", "start"] for call in self.calls))
                 self.assertEqual(

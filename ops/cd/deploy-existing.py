@@ -43,6 +43,10 @@ RUN_ID = None
 RUN_ATTEMPT = None
 BASE = Path("/srv/everplain-updates")
 NAMES = {"api": "everplain-api", "web": "everplain-web"}
+COMPATIBILITY_DESTINATIONS = {
+    "/app/backend/.venv/lib/python3.12/site-packages/qunxue_api/settings.py",
+    "/app/ops/preflight.py",
+}
 DATABASE_FILES = {
     name + suffix
     for name in ("everplain.db", "everplain-retrieval.db")
@@ -327,7 +331,20 @@ def metadata(name):
     return json.loads(run(["docker", "inspect", name]))[0]
 
 
-def pull_registry_images(manifest, stage, report):
+def registry_image(expected, reference, role, report):
+    value = json.loads(run(["docker", "image", "inspect", reference]))[0]
+    # Docker verifies the pinned manifest while pulling. Classic stores expose its
+    # config digest as Id; containerd stores expose the manifest digest instead.
+    report[role + "_registry_digest_bound"] = reference in value.get("RepoDigests", [])
+    report[role + "_registry_identity_matches"] = value.get("Id") in {
+        expected, reference.split("@", 1)[1],
+    }
+    require(report[role + "_registry_digest_bound"])
+    require(report[role + "_registry_identity_matches"])
+    return value
+
+
+def pull_registry_images(manifest, stage, report, roles=("api", "web")):
     """Use the job's temporary read token; Docker reuses local content-addressed layers."""
     token = sys.stdin.readline(8193).strip()
     require(0 < len(token) <= 8192 and not any(c.isspace() for c in token))
@@ -341,6 +358,8 @@ def pull_registry_images(manifest, stage, report):
         report["registry_authentication_succeeded"] = login.returncode == 0
         require(login.returncode == 0, "registry authentication failed")
         for role, reference in manifest["registry_images"].items():
+            if role not in roles:
+                continue
             output = run(["docker", "--config", private, "pull", "--platform", "linux/amd64",
                           reference], timeout=600, report=report, prefix=role + "_pull_")
             report[role + "_reused_layer_count"] = len(set(re.findall(
@@ -348,7 +367,7 @@ def pull_registry_images(manifest, stage, report):
             report[role + "_downloaded_layer_count"] = len(set(re.findall(
                 r"^([a-f0-9]+): Pull complete", output, re.MULTILINE)))
             run(["docker", "tag", reference, "everplain-" + role + ":" + REVISION])
-            info = loaded_image(manifest["images"][role], role, report)
+            info = registry_image(manifest["images"][role], reference, role, report)
             require(info["Architecture"] == "amd64" and info["Os"] == "linux")
             require(info["Config"]["Labels"].get("org.opencontainers.image.revision") == REVISION)
             images[role] = info["Id"]
@@ -455,6 +474,20 @@ def configure_billing_policy(current, policy, report):
     return result
 
 
+def verify_live_overlays(api, policy):
+    reviewed = policy.get("reviewed_live_file_overlays", {})
+    require(set(reviewed) <= COMPATIBILITY_DESTINATIONS)
+    for mount in api["Mounts"]:
+        if mount["Destination"] == "/data":
+            continue
+        path = Path(mount["Source"])
+        require(mount["Type"] == "bind" and not mount["RW"])
+        require(path.is_absolute() and path.resolve() == path and path.is_file())
+        require(path.stat().st_size < 1024**2)
+        require(mount["Destination"] in reviewed)
+        require(digest(path) == reviewed[mount["Destination"]], "unreviewed live source overlay")
+
+
 def existing_layout(api, web):
     for role, value, port, inside in (
         ("api", api, "8297", "8297/tcp"),
@@ -474,7 +507,11 @@ def existing_layout(api, web):
     web_network = next(iter(web["NetworkSettings"]["Networks"]))
     require(api_network == web_network)
     require(api_network == "bridge" or api_network.startswith("everplain"))
-    mounts = api["Mounts"]
+    mounts = [item for item in api["Mounts"] if item["Destination"] == "/data"]
+    require(all(item["Destination"] == "/data" or (
+        item["Destination"] in COMPATIBILITY_DESTINATIONS
+        and item["Type"] == "bind" and not item["RW"]
+    ) for item in api["Mounts"]))
     require(len(mounts) == 1 and mounts[0]["Destination"] == "/data" and mounts[0]["RW"])
     mount = mounts[0]
     require(mount["Type"] in {"volume", "bind"})
@@ -495,16 +532,18 @@ def save_json(path, value):
 
 def http(url):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(url, timeout=5) as response:
+    request = urllib.request.Request(url, headers={"User-Agent": "Everplain-Release/1.0"})
+    with opener.open(request, timeout=5) as response:
         require(response.url == url and response.status == 200)
         return response.read(16 * 1024**2 + 1)
 
 
-def public_health(manifest, mode):
+def public_health(manifest, mode, api_revision=None):
     for _attempt in range(12):
         try:
             health = json.loads(http("https://e.qunxue.xyz/api/health?revision=" + REVISION))
-            require(health.get("status") == "ok" and health.get("release_revision") == REVISION)
+            require(health.get("status") == "ok"
+                    and health.get("release_revision") == (api_revision or REVISION))
             require(health.get("runtime_mode") == mode)
             require(
                 json.loads(http("https://e.qunxue.xyz/revision.json?revision=" + REVISION))[
@@ -600,7 +639,10 @@ class ExistingRelease:
 
     def recover(self):
         # After API start, even background writes belong to the new database/schema.
-        if self.started:
+        if self.started and self.report.get("candidate_local_acceptance_verified"):
+            # A remote edge rejection must not take a locally verified service down.
+            self.report["candidate_kept_running"] = True
+        elif self.started:
             for role in ("web", "api"):
                 with contextlib.suppress(Exception):
                     run(["docker", "stop", "--time", "45", NAMES[role]])
@@ -634,6 +676,47 @@ class ExistingRelease:
                         raise RuntimeError("previous service readiness failed") from None
                     time.sleep(2)
         self.record()
+
+    def activate_web_only(self, manifest, api, web, network):
+        """Replace Web while API, its configuration and its live data mount keep running."""
+        require(len(web["Mounts"]) == 1
+                and web["Mounts"][0]["Destination"] == "/etc/nginx/conf.d/default.conf")
+        require(snapshot(run, metadata) == self.baseline)
+        require(read_state(self.state_path, os.geteuid()) == self.previous_state)
+        run(["docker", "run", "--rm", "--network", network,
+             "--volumes-from", web["Id"] + ":ro", "--entrypoint", "nginx",
+             self.images["web"], "-t"])
+        stopped, renamed = False, False
+        self.report["web_only_release"] = True
+        try:
+            stopped = True
+            run(["docker", "stop", "--time", "45", NAMES["web"]])
+            run(["docker", "rename", NAMES["web"], self.old_names["web"]])
+            renamed = True
+            run(["docker", "run", "-d", "--name", NAMES["web"], "--restart", "unless-stopped",
+                 "--network", network, "--security-opt", "no-new-privileges:true",
+                 "-p", "127.0.0.1:5196:8080", "--volumes-from", self.old_names["web"] + ":ro",
+                 self.images["web"]])
+            public_health(manifest, environment(api)["EVERPLAIN_RUNTIME_MODE"], self.old_revision)
+            active_api = metadata(NAMES["api"])
+            require(active_api["Id"] == api["Id"] and active_api["State"]["Running"])
+            require(active_api["Config"] == api["Config"] and active_api["Mounts"] == api["Mounts"])
+            self.report["api_unchanged_verified"] = True
+            self.complete(manifest)
+            self.report.update(api_health_ok=True, web_health_ok=True, public_health_ok=True,
+                               deployment_succeeded=True)
+            self.record()
+            return self.report
+        except BaseException:
+            if renamed:
+                with contextlib.suppress(Exception):
+                    run(["docker", "rm", "-f", NAMES["web"]])
+                run(["docker", "rename", self.old_names["web"], NAMES["web"]])
+            if stopped:
+                run(["docker", "start", NAMES["web"]])
+                self.report["old_service_restored"] = True
+            self.record()
+            raise
 
     def execute(self):
         api, web = metadata(NAMES["api"]), metadata(NAMES["web"])
@@ -694,6 +777,7 @@ class ExistingRelease:
             REVISION, RUN_ID, ARCHIVE_SHA256,
         )
         policy = json.loads((release / "ops/cd/policy.json").read_text())
+        verify_live_overlays(api, policy)
         env = configure_billing_policy(old_env, policy, self.report)
         self.expected_billing_policy = env.get("EVERPLAIN_BILLING_PHASE_POLICIES")
         check_compatible(
@@ -702,6 +786,8 @@ class ExistingRelease:
         self.report["live_overlay_guard_verified"] = True
         self.report["artifact_verified"] = True
         registry = "registry_images" in manifest
+        web_only = (registry and manifest["runtime_identity"]["api"] == self.baseline["api"]
+                    and env == old_env)
         image_bytes = (sum(manifest["image_sizes"].values()) if registry else sum(
             (release / "images" / (role + ".tar")).stat().st_size for role in ("api", "web")
         ))
@@ -714,7 +800,10 @@ class ExistingRelease:
         require(shutil.disk_usage(docker_root).free > remaining_budget)
         self.report["docker_load_budget_verified"] = True
         if registry:
-            self.images = pull_registry_images(manifest, self.stage, self.report)
+            self.images = pull_registry_images(manifest, self.stage, self.report,
+                                               ("web",) if web_only else ("api", "web"))
+            if web_only:
+                self.images["api"] = api["Image"]
         for role, image in (() if registry else (("api", API_IMAGE), ("web", WEB_IMAGE))):
             archive_path = release / "images" / (role + ".tar")
             archive_config = inspect_image_archive(archive_path, image, self.report, role)
@@ -729,6 +818,8 @@ class ExistingRelease:
             require(info["Architecture"] == "amd64" and info["Os"] == "linux")
             require(info["Config"]["Labels"].get("org.opencontainers.image.revision") == REVISION)
             self.report[role + "_image_verified"] = True
+        if web_only:
+            return self.activate_web_only(manifest, api, web, network)
         env.update(EVERPLAIN_RELEASE_REVISION=REVISION, EVERPLAIN_MIGRATIONS_MANAGED="1")
         atomic_bytes(
             release / "runtime.env", "".join(k + "=" + v + "\n" for k, v in env.items()).encode()
@@ -933,9 +1024,10 @@ class ExistingRelease:
             self.report["web_runtime_image_reference_verified"] = True
             checker.health(REVISION)
             self.report["web_health_ok"] = True
+            self.complete(manifest)
+            self.report["candidate_local_acceptance_verified"] = True
             public_health(manifest, mode)
             self.report["public_health_ok"] = True
-            self.complete(manifest)
             self.report["deployment_succeeded"] = True
             self.record()
         except BaseException:
