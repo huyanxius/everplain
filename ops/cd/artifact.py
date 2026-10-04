@@ -70,7 +70,22 @@ def validate_manifest(value, revision):
             raise ValueError("invalid artifact entry")
         if path.parts[0] not in {"backend", "images", "ops"}:
             raise ValueError("unexpected artifact entry")
-    required = {"images/api.tar", "images/web.tar", "ops/cd/policy.json"}
+    required = {"ops/cd/policy.json"}
+    if "registry_images" in value:
+        references = value["registry_images"]
+        sizes = value.get("image_sizes", {})
+        if set(references) != {"api", "web"} or set(sizes) != {"api", "web"}:
+            raise ValueError("incomplete registry images")
+        for role in ("api", "web"):
+            if not re.fullmatch(r"ghcr\.io/huyanxius/everplain-" + role + r"@sha256:[0-9a-f]{64}",
+                                references[role]):
+                raise ValueError("registry image must use the repository's immutable digest")
+            if type(sizes[role]) is not int or not 0 < sizes[role] <= MAX_BYTES:
+                raise ValueError("invalid registry image size")
+        if any(name.startswith("images/") for name in value.get("files", {})):
+            raise ValueError("registry release must not carry complete image archives")
+    else:
+        required.update({"images/api.tar", "images/web.tar"})
     if set(value.get("images", {})) != {"api", "web"} or any(
         not re.fullmatch(r"sha256:[0-9a-f]{64}", image) for image in value["images"].values()
     ):
@@ -156,7 +171,9 @@ def build(root, prepared, output, revision, images, bases):
             root / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py",
             stage / "backend/schema/sqlite_index.py",
         )
-        shutil.copytree(prepared / "images", stage / "images")
+        registry = prepared / "registry.json"
+        if not registry.exists():
+            shutil.copytree(prepared / "images", stage / "images")
         files = {
             p.relative_to(stage).as_posix(): digest(p)
             for p in sorted(stage.rglob("*"))
@@ -194,6 +211,9 @@ def build(root, prepared, output, revision, images, bases):
                 "clipper_lock_sha256": digest(root / "extensions/clipper/package-lock.json"),
             },
         }
+        if registry.exists():
+            manifest["registry_images"] = json.loads(registry.read_text())
+            manifest["image_sizes"] = json.loads((prepared / "image-sizes.json").read_text())
         validate_manifest(manifest, revision)
         (stage / "manifest.json").write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n")
         archive = output / "everplain.tar.gz"

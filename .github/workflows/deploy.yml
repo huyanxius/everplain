@@ -21,6 +21,9 @@ jobs:
     # Build may run beside checks; deployment still requires both to pass.
     runs-on: ubuntu-22.04
     timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
     outputs:
       digest: ${{ steps.digest.outputs.sha256 }}
     steps:
@@ -31,6 +34,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Build immutable application artifact
+        env:
+          EVERPLAIN_PUBLISH_IMAGES: 'true'
+          EVERPLAIN_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash ops/cd/build.sh
       - name: Record artifact identity
         id: digest
@@ -50,6 +56,9 @@ jobs:
     runs-on: ubuntu-22.04
     # Two bounded 30-minute transfers resume identical bytes before verification/cutover.
     timeout-minutes: 75
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -72,4 +81,5 @@ jobs:
           EVERPLAIN_SSH_PRIVATE_KEY: ${{ secrets.EVERPLAIN_SSH_PRIVATE_KEY }}
           EVERPLAIN_SSH_HOST_KEY_FINGERPRINT: SHA256:2QamxRsk36HjNhAek1+zT6Db1PtPKuuDoplLOCdTTmA
           EXPECTED_SHA256: ${{ needs.build.outputs.digest }}
+          EVERPLAIN_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash ops/cd/deploy-existing-ssh.sh all

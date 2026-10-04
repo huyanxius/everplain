@@ -117,5 +117,5 @@ else
 fi
 [[ "$mode" != upload ]] || exit 0
 # No secret or private production metadata appears in argv or public output.
-ssh "${opts[@]}" -p "$port" "$target" \
+printf '%s\n' "${EVERPLAIN_REGISTRY_TOKEN:-}" | ssh "${opts[@]}" -p "$port" "$target" \
   "tar -xzf $upload/code.tar.gz -C $upload && sudo -n python3 $upload/ops/cd/deploy-existing.py $upload/release.tar.gz $GITHUB_SHA $EXPECTED_SHA256 $GITHUB_RUN_ID $GITHUB_RUN_ATTEMPT"
