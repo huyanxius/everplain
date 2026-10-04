@@ -12,12 +12,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.paths.outputs.release }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: paths
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        run: python3 ops/cd/changed_paths.py
+
   checks:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/ci.yml
 
   build:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: changes
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.release == 'true'
     # Build may run beside checks; deployment still requires both to pass.
     runs-on: ubuntu-22.04
     timeout-minutes: 25
@@ -83,3 +98,4 @@ jobs:
           EXPECTED_SHA256: ${{ needs.build.outputs.digest }}
           EVERPLAIN_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash ops/cd/deploy-existing-ssh.sh all
+
