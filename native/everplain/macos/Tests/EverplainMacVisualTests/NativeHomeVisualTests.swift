@@ -125,6 +125,67 @@ final class NativeHomeVisualTests: XCTestCase {
         XCTAssertEqual(model.appearances,[0:1,1:1,2:1])
         _ = try capture(host,name:"home-material-pile-native-return")
     }
+
+    @MainActor func testNativeModelPanelRendersAndRapidlyReopensWithoutStaleClose() async throws {
+        try enabled()
+        let old = ProcessInfo.processInfo.environment["EVERPLAIN_API_URL"]
+        setenv("EVERPLAIN_API_URL","http://127.0.0.1:9",1)
+        defer { if let old { setenv("EVERPLAIN_API_URL",old,1) } else { unsetenv("EVERPLAIN_API_URL") } }
+        let store = AppStore(); store.booting = false
+        store.catalog = AgentModelCatalogResponse(items:[AgentModelChoiceResponse(defaultReasoningEffort:"none",label:"GPT 6 Luna",modelId:"synthetic-model",reasoningEfforts:["none","low","medium","high","xhigh","max"])],runtimeMode:"mock")
+        store.modelId = "synthetic-model"; store.effort = "none"; store.modelCatalogStatus = "ready"
+        let controller = ModelPopoverVisualController()
+        let (window,_) = window(ModelPopoverVisualHost(controller:controller,store:store),size:CGSize(width:800,height:500))
+        defer { controller.presented = false; window.close(); store.client?.close() }
+        try await settle(0.2)
+        controller.presented = true; try await settle(0.4)
+        let panel = try XCTUnwrap(window.childWindows?.compactMap { $0 as? ModelPanel }.first)
+        XCTAssertEqual(panel.frame.width,300,accuracy:0.5)
+        XCTAssertGreaterThan(panel.frame.height,170,"The model and six effort controls were clipped")
+        _ = try capture(try XCTUnwrap(panel.contentView),name:"model-settings-native-synthetic")
+        controller.presented = false; try await settle(0.04)
+        controller.presented = true; try await settle(0.5)
+        let reopened = window.childWindows?.compactMap { $0 as? ModelPanel } ?? []
+        XCTAssertEqual(reopened.count,1,"Interrupted dismissal removed or duplicated the reopened panel")
+        XCTAssertTrue(reopened.first?.isVisible ?? false)
+        controller.presented = false; try await settle(0.25)
+        XCTAssertEqual(window.childWindows?.compactMap { $0 as? ModelPanel }.count ?? 0,0)
+    }
+
+    @MainActor func testNativeLoginAccountAndAgentSurfacesRenderOffline() async throws {
+        try enabled()
+        let old = ProcessInfo.processInfo.environment["EVERPLAIN_API_URL"]
+        setenv("EVERPLAIN_API_URL","http://127.0.0.1:9",1)
+        defer { if let old { setenv("EVERPLAIN_API_URL",old,1) } else { unsetenv("EVERPLAIN_API_URL") } }
+        let store = AppStore(); store.booting = false; store.splitSidebar = false
+        let (window,host) = window(RootView().environmentObject(store).environment(\.colorScheme,.light),size:CGSize(width:1180,height:757))
+        defer { window.close(); store.client?.close() }
+        try await settle(0.4)
+        _ = try capture(host,name:"login-native-email-step")
+        let owner = "synthetic-settings-owner"
+        store.session = SessionResponse(allowedActions:[],expiresAt:"2099-01-01T00:00:00Z",sessionId:"synthetic-settings-session",status:"active",user:SessionUserResponse(displayName:"离线测试",email:"fixture@example.invalid",userId:owner),version:1)
+        store.profile = AgentProfileResponse(avatarId:"cheng",color:"#5d8fe6",greeting:"",name:"示例伙伴",questionnaire:Questionnaire(),setupCompleted:true,setupStep:4,speakingStyle:"clear",version:1)
+        store.account = AccountResponse(createdAt:"2026-01-01T00:00:00Z",displayName:"离线测试",email:"fixture@example.invalid",isProtectedAdmin:false,preferences:AccountPreferencesResponse(consentPolicyVersion:"synthetic",locale:"zh-CN",modelImprovementAllowed:false,researchUpdatesEnabled:false,timezone:"UTC",version:1),role:"user",status:"active",updatedAt:"2026-01-01T00:00:00Z",userId:owner,version:1)
+        store.settingsSection = .profile; store.route = .account
+        try await settle(0.5)
+        _ = try capture(host,name:"account-native-synthetic-profile")
+        store.settingsSection = .agent
+        try await settle(0.5)
+        _ = try capture(host,name:"agent-native-synthetic-settings")
+        XCTAssertEqual(store.profile?.name,"示例伙伴")
+        XCTAssertFalse(store.saving); XCTAssertFalse(store.authenticating)
+    }
+}
+
+@MainActor private final class ModelPopoverVisualController: ObservableObject {
+    @Published var presented = false
+}
+@MainActor private struct ModelPopoverVisualHost: View {
+    @ObservedObject var controller: ModelPopoverVisualController
+    let store: AppStore
+    var body: some View {
+        VStack { Spacer(); Text("离线模型选择测试").frame(width:160,height:36).background(NativeModelPopover(isPresented:$controller.presented,store:store,disabled:false,dark:false,reducedMotion:false)); Spacer().frame(height:40) }.frame(maxWidth:.infinity).background(Color.white)
+    }
 }
 
 @MainActor private final class HomePileVisualController: ObservableObject {
