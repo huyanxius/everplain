@@ -1,4 +1,7 @@
+import logging
 from uuid import UUID, uuid4
+
+logger = logging.getLogger(__name__)
 
 
 class KnowledgeImportApplication:
@@ -80,6 +83,12 @@ class KnowledgeImportApplication:
                 raise ValueError(doc.error_message or "正文解析失败")
             self.repository.complete(item, doc.id)
         except Exception as exc:
+            logger.warning(
+                "Import processing failed item=%s type=%s code=%s",
+                item["id"],
+                type(exc).__name__,
+                getattr(exc, "code", "import_error"),
+            )
             # Persist one item failure; other records continue in separate transactions.
             self.repository.fail(
                 item,

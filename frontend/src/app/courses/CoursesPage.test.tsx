@@ -166,3 +166,34 @@ it('dismisses a scoped delete confirmation when browser history leaves that scop
   await waitFor(() => expect(screen.queryByRole('dialog', { name: '删除知识库？' })).not.toBeInTheDocument())
   expect(await screen.findByRole('button', { name: '切换知识库：全部资料' })).toBeInTheDocument()
 })
+
+it('shows all submitted bookmarks and failed items alongside the generated documents', async () => {
+  const batch = { id: 'batch-1', library_id: 'kb-1', source_type: 'chrome', total: 50, finished: 50, imported: 5, duplicates: 0, failed: 45, status: 'partial', items: [] }
+  vi.stubGlobal('fetch', async (input: Request) => {
+    if (input.url.endsWith('/imports')) return json({ items: [batch, { ...batch, id: 'other', library_id: 'another-library', total: 100 }] })
+    if (input.url.endsWith('/knowledge-storage')) return json({ used_bytes: 0, max_bytes: 1000000, library_count: 1, max_libraries: 10 })
+    return json(input.url.endsWith('/kb-1') ? course : { items: [course] })
+  })
+  render(<MemoryRouter initialEntries={['/library?kb_id=kb-1']}><CoursesPage /></MemoryRouter>)
+  expect(await screen.findByText(/50 条已提交 · 5 条已入库 · 0 条重复 · 0 条处理中 · 45 条读取失败/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '查看导入详情' }))
+  expect(await screen.findByRole('dialog', { name: '添加资料' })).toBeInTheDocument()
+})
+
+it('polls a queued import even before any document is created', async () => {
+  let importReads = 0
+  const doc = { id: 'd1', filename: 'Imported title.md', media_type: 'text/markdown', size_bytes: 100, parse_id: 'p1', status: 'ready', created_at: '2026-09-08', knowledge_status: 'ready', index_status: 'ready' }
+  vi.stubGlobal('fetch', async (input: Request) => {
+    if (input.url.endsWith('/imports')) {
+      importReads++
+      return json({ items: [{ id: 'batch-1', library_id: 'kb-1', source_type: 'chrome', total: 1, finished: importReads > 1 ? 1 : 0, imported: importReads > 1 ? 1 : 0, duplicates: 0, failed: 0, status: importReads > 1 ? 'completed' : 'processing', items: [] }] })
+    }
+    if (input.url.endsWith('/knowledge-storage')) return json({ used_bytes: 0, max_bytes: 1000000, library_count: 1, max_libraries: 10 })
+    if (input.url.endsWith('/kb-1')) return json({ ...course, documents: importReads > 1 ? [doc] : [] })
+    return json({ items: [course] })
+  })
+  render(<MemoryRouter initialEntries={['/library?kb_id=kb-1']}><CoursesPage /></MemoryRouter>)
+  expect(await screen.findByText(/1 条处理中/)).toBeInTheDocument()
+  expect(await screen.findByRole('link', { name: 'Imported title.md' }, { timeout: 6000 })).toBeInTheDocument()
+  expect(screen.queryByText(/1 条处理中/)).not.toBeInTheDocument()
+}, 8000)
