@@ -52,6 +52,7 @@ from qunxue_api.adapters.model import (
     ModelRouteExecutor,
     ModelRoutesUnavailable,
 )
+from qunxue_api.adapters.model.failure_diagnostics import log_model_failure
 from qunxue_api.adapters.model.metering import MeteredOpenAIChatModel, MeteredOpenAIResponsesModel
 from qunxue_api.adapters.research_agent.catalog_tools import (
     KnowledgeToolRegistry,
@@ -592,6 +593,7 @@ class _RetryingOpenAIChatModel(MeteredOpenAIChatModel):
                     model_request_parameters,
                 )
             except (ModelHTTPError, ModelAPIError) as error:
+                log_model_failure(error)
                 raise ModelAttemptFailure(
                     code=_model_attempt_failure_code(error),
                     retryable=_is_retryable_model_error(error),
@@ -748,6 +750,7 @@ class _RetryingOpenAIResponsesModel(MeteredOpenAIResponsesModel):
                     model_request_parameters,
                 )
             except (ModelHTTPError, ModelAPIError) as error:
+                log_model_failure(error)
                 raise ModelAttemptFailure(
                     code=_model_attempt_failure_code(error),
                     retryable=_is_retryable_model_error(error),

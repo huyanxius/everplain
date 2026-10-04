@@ -12,7 +12,7 @@ vi.mock('../../modules/agent-avatar', () => ({ AgentAvatar: () => <span>头像</
 vi.mock('../ui/PageShell', () => ({ PageShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }))
 vi.mock('../ui/Select', () => ({ Select: ({ options, onChange, ...props }: { options: { value: string; label: string }[]; onChange(value: string): void }) => <select {...props} onChange={event => onChange(event.target.value)}>{options.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select> }))
 vi.mock('../../modules/shared-editor', () => ({ SharedEditor: ({ markdown, onChange, readOnly }: { markdown: string; onChange(value: string): void; readOnly?: boolean }) => <textarea aria-label="Markdown 源码" value={markdown} onChange={event => onChange(event.target.value)} readOnly={readOnly} /> }))
-const agent = vi.hoisted(() => ({ props: null as null | { prepareWritingContext: () => Promise<unknown>; onTurnCompleted: () => void; onConversationStarted: (identity: { conversation_id: string }) => void; conversationId: string | null } }))
+const agent = vi.hoisted(() => ({ props: null as null | { prepareWritingContext: () => Promise<unknown>; onTurnCompleted: () => void; onConversationStarted: (identity: { conversation_id: string }) => void; conversationId: string | null; writingAction?: { id: string; text: string } | null; onWritingActionFinished?: (id: string) => void } }))
 vi.mock('../agent/ResearchAgentConversationPage', () => ({ ResearchAgentConversationPage: (props: NonNullable<typeof agent.props>) => { agent.props = props; return <div>公共 Agent 面板<button>Agent 发送消息</button></div> } }))
 const doc = { document_id: 'doc-1', title: '原题', genre: 'essay' as const, markdown: '原文内容', version: 1, created_at: '2026-10-04T00:00:00Z', updated_at: '2026-10-04T00:00:00Z' }
 const revision = { revision_id: 'rev-1', document_id: 'doc-1', base_version: 1, action: 'rewrite' as const, before_markdown: '原文内容', after_markdown: '建议内容', status: 'pending' as const, warnings: [], created_at: doc.created_at }
@@ -55,4 +55,44 @@ describe('writing draft and revision safety', () => {
   it('makes no automatic model call during document open or Agent-tab open', async () => { wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); await screen.findByRole('textbox', { name: 'Markdown 源码' }); fireEvent.click(screen.getByRole('tab', { name: 'Agent' })); expect(screen.getByText('公共 Agent 面板')).toBeInTheDocument(); expect(writingApi.propose).not.toHaveBeenCalled() })
   it('serializes duplicate save clicks', async () => { const pending = deferred<typeof doc>(); vi.mocked(writingApi.update).mockReturnValue(pending.promise); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); fireEvent.change(await screen.findByRole('textbox', { name: '文稿标题' }), { target: { value: '新题' } }); const save = screen.getByRole('button', { name: '保存' }); fireEvent.click(save); fireEvent.click(save); expect(writingApi.update).toHaveBeenCalledTimes(1); await act(async () => pending.resolve({ ...doc, title: '新题' })) })
   it('refreshes server version while preserving conflicted local edits', async () => { vi.mocked(writingApi.update).mockRejectedValue(new Error('版本冲突')); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); fireEvent.change(await screen.findByRole('textbox', { name: 'Markdown 源码' }), { target: { value: '本地内容' } }); fireEvent.click(screen.getByRole('button', { name: '保存' })); await screen.findByText('版本冲突'); vi.mocked(writingApi.document).mockResolvedValue({ ...doc, version: 5, markdown: '服务器新正文' }); fireEvent.click(screen.getByRole('button', { name: '刷新版本并保留修改' })); await screen.findByText('服务器版本已刷新，本地修改仍保留。请对照最新正文后再保存。'); expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('本地内容') })
+})
+
+
+describe('direct writing controls', () => {
+  it('submits optimization to the existing Agent once without prefilling or a second send', async () => {
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+    const button = await screen.findByRole('button', { name: '优化全文' })
+    fireEvent.click(button); fireEvent.click(button)
+    await waitFor(() => expect(agent.props!.writingAction?.text).toContain('优化当前全文'))
+    const id = agent.props!.writingAction!.id
+    expect(button).toBeDisabled()
+    expect(writingApi.propose).not.toHaveBeenCalled()
+    act(() => agent.props!.onWritingActionFinished?.(id))
+    expect(button).toBeEnabled()
+  })
+  it('does not pretend to personalize without same-genre samples', async () => {
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+    fireEvent.click(await screen.findByRole('button', { name: '更像我' }))
+    await screen.findByText(/当前随笔还没有可用样文/)
+    expect(agent.props!.writingAction).toBeNull()
+    expect(screen.getByRole('link', { name: '管理同文体样文' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Agent 发送消息' })).toBeEnabled()
+  })
+  it('personalizes directly after checking real sample readiness', async () => {
+    vi.mocked(writingApi.summary).mockResolvedValue({ sample_count: 3, genres: [{ genre: 'essay', sample_count: 3, character_count: 9000, readiness: 'ready' }], documents: [] })
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+    fireEvent.click(await screen.findByRole('button', { name: '更像我' }))
+    await waitFor(() => expect(agent.props!.writingAction?.text).toContain('真实同文体样文'))
+    expect(writingApi.summary).toHaveBeenCalledTimes(1)
+    expect(writingApi.propose).not.toHaveBeenCalled()
+  })
+  it('uses global segmented tabs and leaves a dirty pending diff reviewable but unappliable', async () => {
+    vi.mocked(writingApi.revisions).mockResolvedValue({ items: [revision] })
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Markdown 源码' }), { target: { value: '我正在写的新内容' } })
+    expect(screen.getByRole('tablist', { name: '写作侧栏' })).toHaveClass('qx-segmented')
+    expect(screen.getByRole('region', { name: '待定修订预览' })).toHaveTextContent('建议内容')
+    expect(screen.getByRole('button', { name: '接受修订' })).toBeDisabled()
+    expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('我正在写的新内容')
+  })
 })

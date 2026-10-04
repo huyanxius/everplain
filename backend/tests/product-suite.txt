@@ -91,6 +91,7 @@ tests/test_writing_release_policy.py
 
 # Explicit model routing and versioned additional-provider billing.
 tests/test_agent_model_selection.py
+tests/test_model_failure_diagnostics.py
 tests/test_agent_provider_registry.py
 tests/billing/test_configured_tariffs.py
 tests/billing/test_unigate_transport.py
