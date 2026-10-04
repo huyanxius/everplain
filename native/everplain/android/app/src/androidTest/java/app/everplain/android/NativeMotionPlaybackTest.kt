@@ -31,17 +31,49 @@ class NativeMotionPlaybackTest {
         }
     }
 
-    private fun withMotion(test: () -> Unit) {
+    private fun motionScene(content: @Composable () -> Unit, test: (MainActivity) -> Unit) {
+        val inst = InstrumentationRegistry.getInstrumentation()
         val original =
             shell("settings get global animator_duration_scale").trim().takeIf {
                 it.toFloatOrNull() != null
             } ?: "0"
         HardwareRendererCompat.setDrawingEnabled(true)
-        shell("settings put global animator_duration_scale 1")
+        // ActivityScenario itself waits for UI idleness. Acquire/close the Activity only with
+        // motion off.
+        shell("settings put global animator_duration_scale 0")
+        var activity: MainActivity? = null
+        var scenario: ActivityScenario<MainActivity>? = null
         try {
-            test()
+            scenario = ActivityScenario.launch(MainActivity::class.java)
+            scenario.onActivity {
+                activity = it
+                it.setContent {}
+            }
+            val ready = CountDownLatch(1)
+            shell("settings put global animator_duration_scale 1")
+            inst.runOnMainSync {
+                activity!!.setContent {
+                    EverplainTheme {
+                        Surface(Modifier.fillMaxSize()) {
+                            Column(
+                                Modifier.fillMaxWidth().safeDrawingPadding().padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(20.dp),
+                            ) {
+                                content()
+                                LaunchedEffect(Unit) { ready.countDown() }
+                            }
+                        }
+                    }
+                }
+            }
+            assertTrue("Native composition started", ready.await(20, TimeUnit.SECONDS))
+            // This callback must never use ActivityScenario.onActivity: its waitForIdleSync blocks
+            // a continuously animated frame clock even when frames are rendering correctly.
+            test(activity!!)
         } finally {
+            inst.runOnMainSync { activity?.setContent {} }
             shell("settings put global animator_duration_scale $original")
+            scenario?.close()
         }
     }
 
@@ -58,28 +90,13 @@ class NativeMotionPlaybackTest {
     }
 
     @Test(timeout = 60000)
-    fun liquidActuallyRendersDifferentSourceFrames() = withMotion {
-        val ready = CountDownLatch(1)
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            scenario.onActivity { activity ->
-                activity.setContent {
-                    EverplainTheme {
-                        Surface(Modifier.fillMaxSize()) {
-                            Column(
-                                Modifier.fillMaxWidth().safeDrawingPadding().padding(20.dp),
-                                verticalArrangement = Arrangement.spacedBy(20.dp),
-                            ) {
-                                Text("合成动效验收 · Liquid")
-                                AgentLiquid()
-                                LaunchedEffect(Unit) { ready.countDown() }
-                            }
-                        }
-                    }
-                }
+    fun liquidActuallyRendersDifferentSourceFrames() {
+        motionScene(
+            content = {
+                Text("合成动效验收 · Liquid")
+                AgentLiquid()
             }
-            // Never ask UiAutomator to wait for accessibility idleness during an infinite
-            // animation.
-            assertTrue("Native composition started", ready.await(20, TimeUnit.SECONDS))
+        ) {
             Thread.sleep(500)
             val first = capture("motion-liquid-a")
             Thread.sleep(760)
@@ -94,45 +111,33 @@ class NativeMotionPlaybackTest {
     }
 
     @Test(timeout = 60000)
-    fun pacedNativeMarkdownDrainsAfterTerminalSignal() = withMotion {
-        val ready = CountDownLatch(1)
+    fun pacedNativeMarkdownDrainsAfterTerminalSignal() {
+        val inst = InstrumentationRegistry.getInstrumentation()
         var answer by mutableStateOf("")
         var streaming by mutableStateOf(true)
         val complete =
             "这是 **逐字显现** 的合成验收。😀 中文与 emoji 不拆开。\n\n`native code` 与 [引用](https://example.invalid) 都是测试文字。"
-        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            scenario.onActivity { activity ->
-                activity.setContent {
-                    EverplainTheme {
-                        Surface(Modifier.fillMaxSize()) {
-                            Column(
-                                Modifier.fillMaxWidth().safeDrawingPadding().padding(20.dp),
-                                verticalArrangement = Arrangement.spacedBy(20.dp),
-                            ) {
-                                Text("合成动效验收 · Markdown")
-                                val view = rememberPacedText(answer, streaming)
-                                ThinkingStatus(streaming && view.visible.isEmpty(), "正在核对合成来源")
-                                if (view.visible.isNotEmpty())
-                                    NativeMarkdown(
-                                        view.visible,
-                                        revealedAt = view.revealedAt,
-                                        revealColor = "#5d8fe6",
-                                    )
-                                LaunchedEffect(Unit) { ready.countDown() }
-                            }
-                        }
-                    }
-                }
+        motionScene(
+            content = {
+                Text("合成动效验收 · Markdown")
+                val view = rememberPacedText(answer, streaming)
+                ThinkingStatus(streaming && view.visible.isEmpty(), "正在核对合成来源")
+                if (view.visible.isNotEmpty())
+                    NativeMarkdown(
+                        view.visible,
+                        revealedAt = view.revealedAt,
+                        revealColor = "#5d8fe6",
+                    )
             }
-            assertTrue("Native composition started", ready.await(20, TimeUnit.SECONDS))
-            scenario.onActivity { answer = complete }
+        ) { activity ->
+            inst.runOnMainSync { answer = complete }
             Thread.sleep(350)
             capture("motion-stream-early").recycle()
-            scenario.onActivity { streaming = false }
+            inst.runOnMainSync { streaming = false }
             val until = System.currentTimeMillis() + 30000
             var content = ""
             while (System.currentTimeMillis() < until) {
-                scenario.onActivity { activity ->
+                inst.runOnMainSync {
                     fun texts(view: android.view.View): List<TextView> =
                         when (view) {
                             is TextView -> listOf(view)
