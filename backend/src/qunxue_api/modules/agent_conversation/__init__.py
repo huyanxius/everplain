@@ -39,6 +39,7 @@ from qunxue_api.modules.agent_conversation.research_map import (
 from qunxue_api.modules.agent_conversation.service import ConversationService
 
 from .canvas_editing import CanvasEditConflict, apply_canvas_edits, prepare_canvas_edit
+from .context import excerpt, merge_digest, render_recent_context
 from .model_selection import (
     LUNA_REASONING_EFFORTS,
     MOCK_AGENT_MODEL_CHOICES,
@@ -50,6 +51,9 @@ from .model_selection import (
 )
 
 __all__ = [
+    "excerpt",
+    "merge_digest",
+    "render_recent_context",
     "AgentModelRouteFailure",
     "AgentModelChoice",
     "AgentModelSelection",

@@ -1219,7 +1219,7 @@ def create_app(
                     ),
                     persona_factory=current_persona,
                     memory_tools_factory=lambda **scope: AgentMemoryTools(
-                        memory_service_scope, **scope
+                        memory_service_scope, conversation_scope=conversation_context_scope, **scope
                     ),
                     conversations=conversations,
                     runner=runner,
@@ -1294,6 +1294,17 @@ def create_app(
             yield MemoryService(SqliteMemoryRepository(memory_session))
 
     app.state.memory_service_scope = memory_service_scope
+
+    @contextmanager
+    def conversation_context_scope():
+        from qunxue_api.adapters.sqlite.conversation_context_repository import (
+            SqliteConversationContextRepository,
+        )
+        with resolved_database.session() as session:
+            yield SqliteConversationContextRepository(session), SqliteMemoryRepository(session)
+
+    app.state.conversation_context_scope = conversation_context_scope
+
 
     @contextmanager
     def agent_profile_scope():

@@ -197,3 +197,13 @@ export type AgentEvent =
   | { type: 'turn_completed'; conversation: AgentConversation; knowledge_release_id: string }
   | { type: 'turn_interrupted'; code: string; message: string }
   | { type: 'turn_failed'; code: string; message: string }
+
+export type RecentConversationContext = {
+  conversation_id: string
+  title: string
+  updated_at: string
+  kind: 'user_excerpt'
+  excerpt: string
+  source_message_id: string | null
+  recent_excerpts: { message_id: string; sequence: number; excerpt: string }[]
+}

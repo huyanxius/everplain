@@ -33,6 +33,7 @@ from qunxue_api.api.contracts.agent import (
     AgentTurnResponse,
     ConfirmResearchStartRequest,
     ConfirmResearchStartResponse,
+    RecentConversationContextsResponse,
     ResearchStartProposalResponse,
 )
 from qunxue_api.api.contracts.common import ErrorCode, ErrorDetail, ErrorResponse
@@ -120,6 +121,15 @@ def _effective_agent_runtime_mode(request: Request) -> AgentRuntimeMode:
     if settings.runtime_mode != "mock":
         return settings.runtime_mode
     return "base" if settings.has_model_api_key else "mock"
+
+
+@router.get("/recent-context", response_model=RecentConversationContextsResponse,
+            operation_id="list_recent_conversation_context")
+def list_recent_conversation_context(request: Request, current: CurrentSessionDependency,
+                                     response: Response) -> RecentConversationContextsResponse:
+    response.headers["Cache-Control"] = "private, no-store"
+    with request.app.state.conversation_context_scope() as (repository, _):
+        return RecentConversationContextsResponse(items=repository.recent(current.user.user_id))
 
 
 @router.post(
