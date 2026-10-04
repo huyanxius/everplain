@@ -1,0 +1,23 @@
+
+app.everplain.android.ScreenshotFixtureTest:.
+app.everplain.android.NativeKeyboardTest:
+Error in actualImeDoesNotCoverComposerAndBackKeepsText(app.everplain.android.NativeKeyboardTest):
+java.lang.AssertionError: First Home send must preserve the real IME during streaming
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at app.everplain.android.NativeKeyboardTest.actualImeDoesNotCoverComposerAndBackKeepsText(NativeKeyboardTest.kt:248)
+
+app.everplain.android.NativeFlowTest:.
+
+Time: 404.314
+There was 1 failure:
+1) actualImeDoesNotCoverComposerAndBackKeepsText(app.everplain.android.NativeKeyboardTest)
+java.lang.AssertionError: First Home send must preserve the real IME during streaming
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at app.everplain.android.NativeKeyboardTest.actualImeDoesNotCoverComposerAndBackKeepsText(NativeKeyboardTest.kt:248)
+
+FAILURES!!!
+Tests run: 3,  Failures: 1
+
+

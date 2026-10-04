@@ -1,0 +1,544 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": {
+    "modules/agent-avatar/AgentLiquid.tsx": "717028e78aad8c52dda36a98ce31200b402fa341dd61d70951ba6fe7e2ac259e",
+    "modules/agent-avatar/avatars.tsx": "6b85379f05d7107deae132379805e4358dcc081f0d24eb935e5fb3f63e7e7e77",
+    "modules/agent-avatar/agent-avatar.css": "3e9c51f5061409d30dd9151cd8f95ea7346d7406cec9abe4fea7f2ed867a7985",
+    "app/conversation-view/sendFlight.ts": "42efffcbebc7c3d537aa48397e19d4199a001d103387ee404f951f99336cd8a7",
+    "app/conversation-view/useComposerDock.ts": "03dc3a66469e828c25d33132af29d2507e6f4e5ffae0420e3314ee6ca40c8eac",
+    "app/conversation-view/ConversationComposer.tsx": "4f0d1158f2dede9aad905260b6beaa6b66b746403796501d28ae6071d8933eeb",
+    "app/conversation-view/conversation-composer.css": "fab361a235e357e29a9d215782c7025ea05f9129d5a43643424163beda5d91c3",
+    "app/conversation-view/conversation-view.css": "af90cb515141198adfea049622b19cb69d836cde2df599a61e37282ca125dbe1",
+    "app/agent/useStreamPacer.ts": "d42e2dbc346d23df30157c5915058b45c3a09eed4b07966c9104b24da088e15e",
+    "app/route-motion.tsx": "8d816cc25fa7f3caae666a664f8ed3f3e3a431d0882a2a2ba44e84c21f6b2094",
+    "app/route-motion-model.ts": "ac02e31d398b4990086b1de62a7d4ce7fe6beb10d297734c3c522809f4814b9d",
+    "ui/usePresence.ts": "a52e5cf847a9325ca1ab2cfcabde4fe5672a702e96627c95c326438ae8770d25",
+    "ui/useReducedMotion.ts": "95ed5ec193eba0648067ca46fe45010b4d5eca09083bcb8240b92794b2ff665c",
+    "../assets/avatars.json": "a7d07770418ce43a347e0c25a71fc867f26304e10e10e05c46e17a754b3d4f83"
+  },
+  "spring": {
+    "dampingRatio": 0.7,
+    "naturalPeriodSeconds": 0.7,
+    "formula": "1-exp(-zeta*w*t)*(cos(wd*t)+zeta*w/wd*sin(wd*t)); w=2*pi/period; wd=w*sqrt(1-zeta*zeta)"
+  },
+  "liquid": {
+    "points": 120,
+    "denseSamples": 1440,
+    "center": [
+      60.0,
+      62.0
+    ],
+    "order": [
+      "cheng",
+      "you",
+      "ruo",
+      "heng",
+      "shi",
+      "qi",
+      "nian"
+    ],
+    "defaultLead": "cheng",
+    "defaultSize": 76,
+    "leadOrder": "[validLead, ...order excluding validLead]",
+    "speed": 1.5,
+    "holdSeconds": 0.6,
+    "flowSeconds": 0.6666666666666666,
+    "periodSeconds": 1.2666666666666666,
+    "morphProgress": "local > hold ? spring((local-hold)*speed) : 0",
+    "geometryProgressClamped": false,
+    "colorDecorNoseProgressClamped": true,
+    "idleWaveAmplitude": 0.5,
+    "morphWaveAmplitude": 2.6,
+    "waveHarmonics": [
+      {
+        "weight": 0.6,
+        "angularFrequency": 3,
+        "timeFrequency": 2.1
+      },
+      {
+        "weight": 0.4,
+        "angularFrequency": 5,
+        "timeFrequency": -1.7
+      }
+    ],
+    "waveTime": "elapsedSeconds*speed",
+    "morphWaveEnvelope": "sin(pi*min(1,(local-hold)/flow))*(local>hold?1:0)",
+    "colorSpace": "oklab",
+    "colorFirstWeightPercentDecimalPlaces": 1,
+    "lookDecimalPlaces": 2,
+    "decorDecimalPlaces": 3,
+    "decorScaleBase": 0.55,
+    "decorScaleWeight": 0.45,
+    "noseInkOpacity": 0.86,
+    "closedSmoothPath": {
+      "type": "closed Catmull-Rom to cubic Bezier",
+      "controlPointDivisor": 6,
+      "coordinateDecimalPlaces": 2
+    },
+    "reducedMotion": "Render frame at elapsedSeconds=0 once, including idle wave; do not start animation loop"
+  },
+  "sendFlight": {
+    "durationMs": 940,
+    "sampleIntervals": 56,
+    "sampleCount": 57,
+    "springSamples": [
+      0.0,
+      0.010573017820286634,
+      0.03934720606725228,
+      0.08227338547762741,
+      0.13578332925761238,
+      0.19677118982289576,
+      0.26256901226448526,
+      0.33091795929722023,
+      0.3999366510670628,
+      0.4680878152452872,
+      0.5341442500159396,
+      0.597154925929679,
+      0.6564118926820086,
+      0.711418513764292,
+      0.7618594253593172,
+      0.8075725052510419,
+      0.8485230421119897,
+      0.8847802143806263,
+      0.9164959199917321,
+      0.9438859423527471,
+      0.9672133930124194,
+      0.9867743362856611,
+      1.0028854745421345,
+      1.0158737538377622,
+      1.026067737025185,
+      1.0337905844440736,
+      1.0393544798613856,
+      1.0430563406791624,
+      1.0451746558072477,
+      1.045967301344212,
+      1.0456701927340504,
+      1.0444966418565156,
+      1.042637298124514,
+      1.0402605637290316,
+      1.0375133843786322,
+      1.034522327971209,
+      1.0313948744058918,
+      1.028220850033694,
+      1.025073949937655,
+      1.0220133002426843,
+      1.019085020927854,
+      1.0163237571206725,
+      1.013754153586165,
+      1.0113922530929487,
+      1.0092468045672682,
+      1.0073204714681543,
+      1.0056109346744972,
+      1.0041118874154735,
+      1.0028139224505317,
+      1.0017053138670484,
+      1.0007726975661457,
+      1.0000016558026459,
+      0.9993772120846387,
+      0.9988842433701679,
+      0.9985078168686498,
+      0.9982334589050889,
+      1.0
+    ],
+    "cssLinearSamples": [
+      0.0,
+      0.0106,
+      0.0393,
+      0.0823,
+      0.1358,
+      0.1968,
+      0.2626,
+      0.3309,
+      0.3999,
+      0.4681,
+      0.5341,
+      0.5972,
+      0.6564,
+      0.7114,
+      0.7619,
+      0.8076,
+      0.8485,
+      0.8848,
+      0.9165,
+      0.9439,
+      0.9672,
+      0.9868,
+      1.0029,
+      1.0159,
+      1.0261,
+      1.0338,
+      1.0394,
+      1.0431,
+      1.0452,
+      1.046,
+      1.0457,
+      1.0445,
+      1.0426,
+      1.0403,
+      1.0375,
+      1.0345,
+      1.0314,
+      1.0282,
+      1.0251,
+      1.022,
+      1.0191,
+      1.0163,
+      1.0138,
+      1.0114,
+      1.0092,
+      1.0073,
+      1.0056,
+      1.0041,
+      1.0028,
+      1.0017,
+      1.0008,
+      1.0,
+      0.9994,
+      0.9989,
+      0.9985,
+      0.9982,
+      1.0
+    ],
+    "finalSampleForcedToOne": true,
+    "fallbackCubicBezier": [
+      0.34,
+      1.3,
+      0.64,
+      1
+    ],
+    "verticalDurationMs": 582.8,
+    "verticalCubicBezier": [
+      0.22,
+      1,
+      0.36,
+      1
+    ],
+    "backgroundDurationMs": 376.0,
+    "backgroundCubicBezier": [
+      0.4,
+      0,
+      0.2,
+      1
+    ],
+    "stretchFrames": [
+      {
+        "offset": 0.0,
+        "scaleX": 0.9959,
+        "scaleY": 0.9886
+      },
+      {
+        "offset": 0.017857142857142856,
+        "scaleX": 0.9986,
+        "scaleY": 0.9713
+      },
+      {
+        "offset": 0.03571428571428571,
+        "scaleX": 1.0011,
+        "scaleY": 0.9515
+      },
+      {
+        "offset": 0.05357142857142857,
+        "scaleX": 1.0042,
+        "scaleY": 0.9375
+      },
+      {
+        "offset": 0.07142857142857142,
+        "scaleX": 1.0126,
+        "scaleY": 0.9334
+      },
+      {
+        "offset": 0.08928571428571429,
+        "scaleX": 1.0259,
+        "scaleY": 0.9382
+      },
+      {
+        "offset": 0.10714285714285714,
+        "scaleX": 1.0393,
+        "scaleY": 0.9466
+      },
+      {
+        "offset": 0.125,
+        "scaleX": 1.0485,
+        "scaleY": 0.9535
+      },
+      {
+        "offset": 0.14285714285714285,
+        "scaleX": 1.0527,
+        "scaleY": 0.9578
+      },
+      {
+        "offset": 0.16071428571428573,
+        "scaleX": 1.0531,
+        "scaleY": 0.9603
+      },
+      {
+        "offset": 0.17857142857142858,
+        "scaleX": 1.0516,
+        "scaleY": 0.9623
+      },
+      {
+        "offset": 0.19642857142857142,
+        "scaleX": 1.0489,
+        "scaleY": 0.9644
+      },
+      {
+        "offset": 0.21428571428571427,
+        "scaleX": 1.0457,
+        "scaleY": 0.9667
+      },
+      {
+        "offset": 0.23214285714285715,
+        "scaleX": 1.0422,
+        "scaleY": 0.9693
+      },
+      {
+        "offset": 0.25,
+        "scaleX": 1.0385,
+        "scaleY": 0.972
+      },
+      {
+        "offset": 0.26785714285714285,
+        "scaleX": 1.0347,
+        "scaleY": 0.9748
+      },
+      {
+        "offset": 0.2857142857142857,
+        "scaleX": 1.0309,
+        "scaleY": 0.9775
+      },
+      {
+        "offset": 0.30357142857142855,
+        "scaleX": 1.0272,
+        "scaleY": 0.9802
+      },
+      {
+        "offset": 0.32142857142857145,
+        "scaleX": 1.0237,
+        "scaleY": 0.9828
+      },
+      {
+        "offset": 0.3392857142857143,
+        "scaleX": 1.0203,
+        "scaleY": 0.9852
+      },
+      {
+        "offset": 0.35714285714285715,
+        "scaleX": 1.0172,
+        "scaleY": 0.9875
+      },
+      {
+        "offset": 0.375,
+        "scaleX": 1.0143,
+        "scaleY": 0.9896
+      },
+      {
+        "offset": 0.39285714285714285,
+        "scaleX": 1.0117,
+        "scaleY": 0.9915
+      },
+      {
+        "offset": 0.4107142857142857,
+        "scaleX": 1.0093,
+        "scaleY": 0.9932
+      },
+      {
+        "offset": 0.42857142857142855,
+        "scaleX": 1.0072,
+        "scaleY": 0.9948
+      },
+      {
+        "offset": 0.44642857142857145,
+        "scaleX": 1.0053,
+        "scaleY": 0.9961
+      },
+      {
+        "offset": 0.4642857142857143,
+        "scaleX": 1.0037,
+        "scaleY": 0.9973
+      },
+      {
+        "offset": 0.48214285714285715,
+        "scaleX": 1.0023,
+        "scaleY": 0.9983
+      },
+      {
+        "offset": 0.5,
+        "scaleX": 1.0012,
+        "scaleY": 0.9992
+      },
+      {
+        "offset": 0.5178571428571429,
+        "scaleX": 1.0002,
+        "scaleY": 0.9999
+      },
+      {
+        "offset": 0.5357142857142857,
+        "scaleX": 0.9994,
+        "scaleY": 1.0004
+      },
+      {
+        "offset": 0.5535714285714286,
+        "scaleX": 0.9988,
+        "scaleY": 1.0009
+      },
+      {
+        "offset": 0.5714285714285714,
+        "scaleX": 0.9983,
+        "scaleY": 1.0012
+      },
+      {
+        "offset": 0.5892857142857143,
+        "scaleX": 0.9979,
+        "scaleY": 1.0015
+      },
+      {
+        "offset": 0.6071428571428571,
+        "scaleX": 0.9977,
+        "scaleY": 1.0017
+      },
+      {
+        "offset": 0.625,
+        "scaleX": 0.9976,
+        "scaleY": 1.0018
+      },
+      {
+        "offset": 0.6428571428571429,
+        "scaleX": 0.9975,
+        "scaleY": 1.0018
+      },
+      {
+        "offset": 0.6607142857142857,
+        "scaleX": 0.9975,
+        "scaleY": 1.0018
+      },
+      {
+        "offset": 0.6785714285714286,
+        "scaleX": 0.9975,
+        "scaleY": 1.0018
+      },
+      {
+        "offset": 0.6964285714285714,
+        "scaleX": 0.9976,
+        "scaleY": 1.0017
+      },
+      {
+        "offset": 0.7142857142857143,
+        "scaleX": 0.9977,
+        "scaleY": 1.0017
+      },
+      {
+        "offset": 0.7321428571428571,
+        "scaleX": 0.9979,
+        "scaleY": 1.0016
+      },
+      {
+        "offset": 0.75,
+        "scaleX": 0.998,
+        "scaleY": 1.0014
+      },
+      {
+        "offset": 0.7678571428571429,
+        "scaleX": 0.9982,
+        "scaleY": 1.0013
+      },
+      {
+        "offset": 0.7857142857142857,
+        "scaleX": 0.9984,
+        "scaleY": 1.0012
+      },
+      {
+        "offset": 0.8035714285714286,
+        "scaleX": 0.9985,
+        "scaleY": 1.0011
+      },
+      {
+        "offset": 0.8214285714285714,
+        "scaleX": 0.9987,
+        "scaleY": 1.0009
+      },
+      {
+        "offset": 0.8392857142857143,
+        "scaleX": 0.9989,
+        "scaleY": 1.0008
+      },
+      {
+        "offset": 0.8571428571428571,
+        "scaleX": 0.999,
+        "scaleY": 1.0007
+      },
+      {
+        "offset": 0.875,
+        "scaleX": 0.9992,
+        "scaleY": 1.0006
+      },
+      {
+        "offset": 0.8928571428571429,
+        "scaleX": 0.9993,
+        "scaleY": 1.0005
+      },
+      {
+        "offset": 0.9107142857142857,
+        "scaleX": 0.9994,
+        "scaleY": 1.0004
+      },
+      {
+        "offset": 0.9285714285714286,
+        "scaleX": 0.9996,
+        "scaleY": 1.0003
+      },
+      {
+        "offset": 0.9464285714285714,
+        "scaleX": 0.9997,
+        "scaleY": 1.0003
+      },
+      {
+        "offset": 0.9642857142857143,
+        "scaleX": 0.9997,
+        "scaleY": 1.0002
+      },
+      {
+        "offset": 0.9821428571428571,
+        "scaleX": 1.0006,
+        "scaleY": 0.9996
+      },
+      {
+        "offset": 1.0,
+        "scaleX": 1.0007,
+        "scaleY": 0.9995
+      }
+    ],
+    "stretchEasing": "linear",
+    "launchMaxAgeMs": 2000,
+    "defaultLaunchPadding": {
+      "left": 8,
+      "top": 8
+    },
+    "defaultTargetPadding": {
+      "left": 20,
+      "top": 12
+    },
+    "reducedMotion": "Reveal real bubble immediately; skip decorative flight"
+  },
+  "composerSettle": {
+    "durationMs": 320,
+    "cubicBezier": [
+      0.16,
+      1,
+      0.3,
+      1
+    ],
+    "minimumHeightDifference": 1
+  },
+  "stream": {
+    "batchMs": 48,
+    "lightMs": 1100,
+    "baseCharactersPerSecond": 36,
+    "backlogRateFactor": 2.4,
+    "maximumCharactersPerSecond": 420,
+    "batchSize": "max(1,ceil(min(420,36+UTF16Backlog*2.4)*batchMs/1000))",
+    "indexUnits": "UTF-16 code units",
+    "preserveSurrogatePairs": true,
+    "characterRevealTimestamp": "now-batchMs+codePointIndex*batchMs/codePointCount",
+    "reducedMotion": "Show complete answer and clear reveal timestamps"
+  }
+}

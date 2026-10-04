@@ -1,0 +1,30 @@
+{
+  "package": "@phosphor-icons/react",
+  "version": "2.1.10",
+  "integrity": "sha512-vt8Tvq8GLjheAZZYa+YG/pW7HDbov8El/MANW8pOAz4eGxrwhnbfrQZq0Cp4q8zBEu8NIhHdnr+r8thnfRSNYA==",
+  "tarball": "https://registry.npmjs.org/@phosphor-icons/react/-/react-2.1.10.tgz",
+  "archive_sha256": "08027417baf5fc4818581a63c487c98ad36c80c17816a0069d4fd0805350ee90",
+  "nav_source_sha256": "82c7a85e05d2ee9e795f28a54dfd24755524a83fd3e0a956f29cdbe7a58f3cd2",
+  "names": [
+    "List",
+    "Plus",
+    "ArrowUp",
+    "Stop",
+    "Copy",
+    "Check",
+    "X",
+    "CaretDown",
+    "CaretRight",
+    "NotePencil",
+    "DotsThree",
+    "House",
+    "User",
+    "SlidersHorizontal",
+    "ArrowClockwise",
+    "Eye",
+    "EyeSlash",
+    "ArrowLeft",
+    "Bell"
+  ],
+  "nav_not_phosphor": true
+}
