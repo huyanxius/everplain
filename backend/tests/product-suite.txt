@@ -53,6 +53,7 @@ tests/test_web_research_bootstrap.py
 tests/test_web_responses_pipeline.py
 tests/billing/test_search_billing.py
 tests/test_knowledge_tool_chain.py
+tests/test_hybrid_retriever.py
 tests/test_transcription_provider.py
 tests/test_transcription_policy.py
 tests/test_everplain_research_surface.py

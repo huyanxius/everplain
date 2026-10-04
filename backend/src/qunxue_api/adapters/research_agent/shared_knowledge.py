@@ -60,12 +60,14 @@ class SharedKnowledgeReferences:
                 chunks.append(chunk)
                 coordinates[key] = (doc, segment)
         search = getattr(self.retriever, "search_chunks", None)
-        mode, failure = "lexical", None
+        mode, failure, degraded_reason = "lexical", None, None
         if callable(search) and chunks:
             try:
                 options = {}
                 if "vector_cache" in signature(search).parameters:
                     options["vector_cache"] = self.application.repository.vector_cache(documents)
+                if kb_id is None and "embed_missing_documents" in signature(search).parameters:
+                    options["embed_missing_documents"] = False
                 result = search(
                     query=query,
                     chunks=tuple(chunks),
@@ -77,6 +79,7 @@ class SharedKnowledgeReferences:
                     hit.chunk.chunk_id for hit in result.hits if hit.chunk.chunk_id in coordinates
                 ]
                 mode = result.mode
+                degraded_reason = getattr(result, "degraded_reason", None)
             except RetrievalPipelineUnavailable:
                 selected = []
                 failure = "知识库检索暂时失败，本轮未取得资料依据。"
@@ -125,6 +128,8 @@ class SharedKnowledgeReferences:
                     "excerpt": evidence.excerpt,
                     "locator": segment["locator"],
                     "source_kind": "shared_material",
+                    "retrieval_mode": mode,
+                    "degraded_reason": degraded_reason,
                 }
             )
         tools.select_evidence((*tools.selected_evidence_ids, *selected))
@@ -136,6 +141,7 @@ class SharedKnowledgeReferences:
             ),
             "items": items,
             "retrieval_mode": mode,
+            "degraded_reason": degraded_reason,
             "error": failure,
         }
         # Release any cache writes before model telemetry opens another SQLite writer.

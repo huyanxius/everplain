@@ -136,9 +136,7 @@ class HybridRetriever:
                 chunk_schema_version=self._chunk_schema_version,
             )
         except (RetrievalIndexUnavailable, sqlite3.Error) as error:
-            raise RetrievalPipelineUnavailable(
-                "retrieval index is unavailable"
-            ) from error
+            raise RetrievalPipelineUnavailable("retrieval index is unavailable") from error
 
     def search(
         self,
@@ -165,6 +163,7 @@ class HybridRetriever:
         limit: int,
         retrieval_index_id: str = "external-chunks",
         vector_cache: DocumentVectorCache | None = None,
+        embed_missing_documents: bool = True,
     ) -> HybridRetrievalResult:
         """Run the same lexical/semantic/RRF/reranker pipeline over transient chunks.
 
@@ -189,18 +188,26 @@ class HybridRetriever:
         chunks_by_id = {chunk.chunk_id: chunk for chunk in values}
         lexical = self._lexical_candidates(query=query, chunks=values)
         semantic: list[RetrievalCandidate] = []
+        degraded_reason = None
         embed_documents = getattr(self._embedder, "embed_documents", None)
         if callable(embed_documents):
             try:
-                query_vector = self._embedder.embed_query(query)
+                query_vector = (
+                    self._embedder.embed_query(query) if embed_missing_documents else None
+                )
                 vectors = (
                     vector_cache.get_many(values, self._embedding_model)
                     if vector_cache
                     else [None] * len(values)
                 )
                 missing = [index for index, vector in enumerate(vectors) if vector is None]
-                # Bounded batches keep long attachment sets within provider request limits.
-                for start in range(0, len(missing), 16):
+                if missing and not embed_missing_documents:
+                    # Ordinary library chat is read-only with respect to its index.
+                    # Missing document vectors keep lexical recall; import/index jobs
+                    # own their creation rather than an unbounded chat-time backfill.
+                    degraded_reason = "document_vectors_missing"
+                # Bounded batches retain the existing explicit material/index path.
+                for start in range(0, len(missing) if embed_missing_documents else 0, 16):
                     indexes = missing[start : start + 16]
                     batch = tuple(values[index] for index in indexes)
                     generated = embed_documents([chunk.text for chunk in batch])
@@ -213,30 +220,35 @@ class HybridRetriever:
                     for index, vector in zip(indexes, generated, strict=True):
                         vectors[index] = vector
                 if len(vectors) != len(values):
-                    raise EmbeddingProviderError(
-                        "embedding response count does not match material chunks"
-                    )
-                query_norm = _vector_norm(query_vector)
-                if query_norm == 0:
-                    raise EmbeddingProviderError("query vector must not be zero")
-                scored = []
-                for chunk, vector in zip(values, vectors, strict=True):
-                    score = _cosine_similarity(query_vector, vector)
-                    scored.append(
-                        RetrievalCandidate(
-                            citation_id=chunk.chunk_id,
-                            score=score,
-                            source="semantic",
+                    raise ValueError("embedding response count does not match material chunks")
+                if any(vector is not None for vector in vectors):
+                    if query_vector is None:
+                        query_vector = self._embedder.embed_query(query)
+                    query_norm = _vector_norm(query_vector)
+                    if query_norm == 0:
+                        raise ValueError("query vector must not be zero")
+                    scored = []
+                    for chunk, vector in zip(values, vectors, strict=True):
+                        if vector is None:
+                            continue
+                        score = _cosine_similarity(query_vector, vector)
+                        scored.append(
+                            RetrievalCandidate(
+                                citation_id=chunk.chunk_id,
+                                score=score,
+                                source="semantic",
+                            )
                         )
-                    )
-                semantic = sorted(
-                    scored,
-                    key=lambda item: (-item.score, item.citation_id),
-                )[: self._recall_limit]
+                    semantic = sorted(
+                        scored,
+                        key=lambda item: (-item.score, item.citation_id),
+                    )[: self._recall_limit]
             except EmbeddingProviderError as error:
-                raise RetrievalPipelineUnavailable(
-                    "embedding service is unavailable"
-                ) from error
+                if embed_missing_documents:
+                    raise RetrievalPipelineUnavailable(
+                        "embedding service is unavailable"
+                    ) from error
+                degraded_reason = "embedding_service_unavailable"
             except (TypeError, ValueError) as error:
                 raise RetrievalPipelineUnavailable(
                     "embedding service returned an invalid vector"
@@ -246,14 +258,22 @@ class HybridRetriever:
         fused = rrf_fuse(ranked_lists, limit=self._recall_limit) if ranked_lists else []
         safe_limit = max(1, limit)
         mode = "hybrid" if lexical and semantic else "semantic" if semantic else "lexical"
-        if not fused:
+        if not fused or (not embed_missing_documents and not semantic):
             return HybridRetrievalResult(
                 retrieval_index_id=retrieval_index_id,
                 mode=mode,
                 embedding_model=self._embedding_model,
                 reranker_model=self._reranker_model,
-                degraded_reason=None,
-                hits=(),
+                degraded_reason=degraded_reason,
+                hits=tuple(
+                    HybridRetrievalHit(
+                        chunk=chunks_by_id[item.citation_id],
+                        fused_score=item.score,
+                        retrieval_sources=item.sources,
+                        rerank_score=None,
+                    )
+                    for item in fused[:safe_limit]
+                ),
             )
 
         try:
@@ -263,7 +283,24 @@ class HybridRetriever:
                 top_n=len(fused),
             )
         except RerankerProviderError as error:
-            raise RetrievalPipelineUnavailable("reranker service is unavailable") from error
+            if embed_missing_documents:
+                raise RetrievalPipelineUnavailable("reranker service is unavailable") from error
+            return HybridRetrievalResult(
+                retrieval_index_id=retrieval_index_id,
+                mode=mode,
+                embedding_model=self._embedding_model,
+                reranker_model=self._reranker_model,
+                degraded_reason="reranker_service_unavailable",
+                hits=tuple(
+                    HybridRetrievalHit(
+                        chunk=chunks_by_id[item.citation_id],
+                        fused_score=item.score,
+                        retrieval_sources=item.sources,
+                        rerank_score=None,
+                    )
+                    for item in fused[:safe_limit]
+                ),
+            )
         hits = tuple(
             HybridRetrievalHit(
                 chunk=chunks_by_id[fused[item.index].citation_id],
@@ -279,7 +316,7 @@ class HybridRetriever:
             mode=f"{mode}_reranked",
             embedding_model=self._embedding_model,
             reranker_model=self._reranker_model,
-            degraded_reason=None,
+            degraded_reason=degraded_reason,
             hits=hits,
         )
 

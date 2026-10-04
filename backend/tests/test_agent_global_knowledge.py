@@ -220,7 +220,10 @@ def test_global_search_reuses_existing_document_vectors(plain_client):
         app.repository.commit()
 
     class CachedRetriever:
-        def search_chunks(self, *, query, chunks, limit, vector_cache):
+        def search_chunks(
+            self, *, query, chunks, limit, vector_cache, embed_missing_documents=True
+        ):
+            assert embed_missing_documents is False
             assert {c.chunk_id for c in chunks} == set(cached)
             assert vector_cache.get_many(chunks, "existing-model") == [
                 cached[c.chunk_id] for c in chunks

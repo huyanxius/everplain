@@ -282,3 +282,153 @@ def test_material_vectors_are_reused_across_questions(tmp_path):
         result = retriever.search_chunks(query=question, chunks=chunks, limit=5, vector_cache=cache)
         assert result.hits[0].chunk.text == "紫藤社区有37人参加夜间互助"
     assert document_calls == [("紫藤社区有37人参加夜间互助",)]
+
+
+@pytest.mark.parametrize("cached_count", [0, 1, 2])
+def test_read_only_document_vectors_keep_lexical_gaps_and_real_source_ranking(
+    tmp_path,
+    cached_count,
+):
+    index, _ = _ready_index(tmp_path)
+    query_calls = []
+    chunks = tuple(
+        RetrievalChunk(
+            chunk_id=f"material:doc-{i}:segment-{i}",
+            document_kind="research_material",
+            knowledge_id=None,
+            theory_id=None,
+            content_version=1,
+            content_hash=f"content-{i}",
+            title="Townscaper",
+            text=f"Townscaper is a toy. Source {i}.",
+            source_ids=(f"source-{i}",),
+        )
+        for i in range(3)
+    )
+
+    class Embedder:
+        def embed_query(self, query):
+            query_calls.append(query)
+            return [1.0, 0.0]
+
+        def embed_documents(self, texts):
+            raise AssertionError("Chat must not backfill any document vectors")
+
+    class Cache:
+        def get_many(self, requested, model):
+            assert tuple(requested) == chunks
+            assert model == "existing-model"
+            return [[1.0, 0.0] if i < cached_count else None for i in range(3)]
+
+        def put_many(self, *args):
+            raise AssertionError("Chat must not write vector cache")
+
+    class Reranker:
+        def rerank(self, *, query, documents, top_n):
+            # Pure lexical recall must not call either external provider.
+            assert cached_count > 0
+            # Ranking can select a lexical-only document; do not exclude gaps.
+            return tuple(
+                sorted(
+                    (
+                        RerankScore(index=i, score=0.9 if "Source 2" in text else 0.8)
+                        for i, text in enumerate(documents)
+                    ),
+                    key=lambda hit: -hit.score,
+                )
+            )
+
+    result = HybridRetriever(
+        index=index,
+        embedder=Embedder(),
+        embedding_model="existing-model",
+        chunk_schema_version="1",
+        reranker=Reranker(),
+        reranker_model="test-reranker",
+        min_rerank_score=0,
+    ).search_chunks(
+        query="Townscaper",
+        chunks=chunks,
+        limit=3,
+        vector_cache=Cache(),
+        embed_missing_documents=False,
+    )
+    assert query_calls == (["Townscaper"] if cached_count else [])
+    assert result.degraded_reason == "document_vectors_missing"
+    assert result.mode == ("hybrid_reranked" if cached_count else "lexical")
+    if cached_count:
+        assert result.hits[0].chunk == chunks[2]
+        assert result.hits[0].retrieval_sources == ("lexical",)
+    else:
+        assert all(hit.rerank_score is None for hit in result.hits)
+    assert {hit.chunk.source_ids for hit in result.hits} == {(f"source-{i}",) for i in range(3)}
+    for hit in result.hits:
+        i = int(hit.chunk.chunk_id.split(":")[1].split("-")[1])
+        assert ("semantic" in hit.retrieval_sources) == (i < cached_count)
+
+
+@pytest.mark.parametrize("failure", ["embedding", "reranker", "invalid_vector"])
+def test_read_only_vectors_keep_lexical_on_provider_failure_but_reject_invalid_data(
+    tmp_path,
+    failure,
+):
+    index, _ = _ready_index(tmp_path)
+    chunk = RetrievalChunk(
+        chunk_id="material:owner:segment",
+        document_kind="research_material",
+        knowledge_id=None,
+        theory_id=None,
+        content_version=1,
+        content_hash="current",
+        title="Townscaper",
+        text="Townscaper is a toy.",
+        source_ids=("owner-source",),
+    )
+
+    class Embedder:
+        def embed_query(self, query):
+            if failure == "embedding":
+                raise EmbeddingProviderError("unavailable")
+            return [0.0, 0.0] if failure == "invalid_vector" else [1.0, 0.0]
+
+        def embed_documents(self, texts):
+            raise AssertionError("No document embedding in global chat")
+
+    class Cache:
+        def get_many(self, chunks, model):
+            return [[1.0, 0.0]]
+
+        def put_many(self, *args):
+            raise AssertionError("No index writes in global chat")
+
+    class Reranker:
+        def rerank(self, **kwargs):
+            assert failure == "reranker"
+            raise RerankerProviderError("unavailable")
+
+    retriever = HybridRetriever(
+        index=index,
+        embedder=Embedder(),
+        embedding_model="existing-model",
+        chunk_schema_version="1",
+        reranker=Reranker(),
+        reranker_model="test",
+        min_rerank_score=0,
+    )
+    kwargs = dict(
+        query="Townscaper",
+        chunks=(chunk,),
+        limit=3,
+        vector_cache=Cache(),
+        embed_missing_documents=False,
+    )
+    if failure == "invalid_vector":
+        with pytest.raises(RetrievalPipelineUnavailable, match="invalid vector"):
+            retriever.search_chunks(**kwargs)
+        return
+    result = retriever.search_chunks(**kwargs)
+    assert result.degraded_reason == f"{failure}_service_unavailable"
+    assert result.mode == ("lexical" if failure == "embedding" else "hybrid")
+    assert result.hits[0].chunk == chunk
+    assert "lexical" in result.hits[0].retrieval_sources
+    assert result.hits[0].rerank_score is None
