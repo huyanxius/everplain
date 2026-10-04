@@ -60,6 +60,7 @@ from qunxue_api.adapters.research_agent.research_map_contracts import (
     ResearchMapNodeInput,
     ResearchMapRelationInput,
 )
+from qunxue_api.adapters.research_agent.time_context import current_time_instructions
 from qunxue_api.adapters.research_agent.unconfigured_model import (
     MODEL_API_MOCK_NAME,
     unconfigured_model,
@@ -1094,6 +1095,11 @@ class PydanticAIKnowledgeRunner:
         def planner_memory_instructions(ctx: RunContext) -> str:
             memory = getattr(ctx.deps, "memory", None)
             return memory.context if memory is not None else ""
+
+        # Append volatile context after stable instructions; evaluate on every run,
+        # including resumed conversations, rather than freezing it at construction.
+        self._agent.instructions(current_time_instructions)
+        self._planner_agent.instructions(current_time_instructions)
 
         self._active_tool_event: ContextVar[Callable[[AgentToolEvent], None] | None] = ContextVar(
             f"agent_tool_event_{id(self)}",

@@ -94,3 +94,6 @@ tests/billing/test_unigate_transport.py
 tests/test_retrieval_settings.py
 tests/test_free_retrieval_models.py
 tests/test_retrieval_preflight.py
+
+# Fresh server time on each model run.
+tests/test_agent_time_context.py
