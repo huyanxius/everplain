@@ -87,7 +87,7 @@ function LibraryContent({ userId }: { userId: string | null }) {
       const owned = list.filter(item => item.access === 'owner')
       setLibraryChoices(list.filter(item => item.access === 'owner' || item.access === 'reader'))
       setCourses(owned)
-      if (id || showLibraries) return
+      if (id) return
       await Promise.allSettled(owned.map(async item => {
         try {
           const value = await getCourse(item.id, controller.signal)
@@ -127,7 +127,7 @@ function LibraryContent({ userId }: { userId: string | null }) {
       setMaterialSources(metadata)
     }).catch(() => {})
     return () => { active = false; controller.abort() }
-  }, [id, documentId, reload, showLibraries])
+  }, [id, documentId, reload])
   const materials = (detail ? [detail] : courses).flatMap(course => course.documents.map(document => ({ course, document })))
   const hasImages = materials.some(({ document }) => documentKind(document) === '图片')
   useEffect(() => {
