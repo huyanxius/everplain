@@ -1,7 +1,10 @@
 package app.everplain.android
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -10,10 +13,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.everplain.shared.*
 import kotlin.math.min
@@ -313,11 +320,10 @@ internal fun HomeContents(s: AppState, vm: AppViewModel) {
 }
 
 /**
- * Original Pile geometry/timing: native hit testing, same hand/deck offsets, 600ms overshooting
- * curve.
+ * Original Web Pile: persistent cards, separate transform/size/opacity clocks and 55 ms stagger.
  */
 @Composable
-private fun HomePile(
+internal fun HomePile(
     kind: String,
     count: Int,
     open: Boolean,
@@ -326,63 +332,180 @@ private fun HomePile(
     cover: (@Composable ColumnScope.() -> Unit)? = null,
     content: @Composable ColumnScope.(Int, Boolean) -> Unit,
 ) {
+    BackHandler(enabled = open) { toggle(false) }
     val motion = rememberMotionEnabled()
+    val density = LocalDensity.current.density
+    val dark = MaterialTheme.colorScheme.background.luminance() < .5f
+    val spring = CubicBezierEasing(.22f, 1.28f, .36f, 1f)
+    val sizeEase = CubicBezierEasing(.22f, 1f, .36f, 1f)
+    val cssEase = CubicBezierEasing(.25f, .1f, .25f, 1f)
+    val hover = remember { MutableInteractionSource() }
+    val hovering by hover.collectIsHoveredAsState()
     val t by
         animateFloatAsState(
             if (open) 1f else 0f,
-            tween(if (motion) 600 else 0, easing = CubicBezierEasing(.22f, 1.28f, .36f, 1f)),
-            label = "source pile",
+            tween(if (motion) 600 else 10, easing = spring),
+            label = "pile height",
         )
     val row = if (kind == "hand") 196f else 112f
     val closed = if (kind == "hand") 236f else 152f
     val card = if (kind == "hand") 212f else 138f
     val height = closed + (maxOf(0f, count * (row + 12) - 12) - closed) * t
-    BoxWithConstraints(Modifier.fillMaxWidth().height(height.coerceAtLeast(0f).dp)) {
+    BoxWithConstraints(
+        Modifier.widthIn(max = 400.dp)
+            .fillMaxWidth()
+            .height(height.coerceAtLeast(0f).dp)
+            .hoverable(hover)
+            .onPreviewKeyEvent { event ->
+                if (open && event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
+                    toggle(false)
+                    true
+                } else false
+            }
+    ) {
         val width = maxWidth
-        for (i in (count - 1) downTo 0) {
+        for (i in (count - 1) downTo 0) key(kind, i) {
             val depth = min(i + if (cover != null) 1 else 0, 2)
+            val transform by
+                animateFloatAsState(
+                    if (open) 1f else 0f,
+                    tween(
+                        if (motion) 620 else 10,
+                        delayMillis = if (motion) i * 55 else 0,
+                        easing = spring,
+                    ),
+                    label = "pile card transform $i",
+                )
+            val size by
+                animateFloatAsState(
+                    if (open) 1f else 0f,
+                    tween(
+                        if (motion) 500 else 10,
+                        delayMillis = if (motion) i * 55 else 0,
+                        easing = sizeEase,
+                    ),
+                    label = "pile card size $i",
+                )
+            val contentAlpha by
+                animateFloatAsState(
+                    if (open || (i == 0 && cover == null)) 1f else 0f,
+                    tween(
+                        if (motion) 250 else 10,
+                        delayMillis = if (motion && open) i * 55 + 160 else 0,
+                        easing = cssEase,
+                    ),
+                    label = "pile content $i",
+                )
+            val cardAlpha by
+                animateFloatAsState(
+                    if (open || i + (if (cover != null) 1 else 0) < 3) 1f else 0f,
+                    tween(if (motion) 300 else 10, easing = cssEase),
+                    label = "pile hidden depth $i",
+                )
+            val cardHover = remember { MutableInteractionSource() }
+            val cardHovered by cardHover.collectIsHoveredAsState()
+            val hoverX by
+                animateFloatAsState(
+                    if (!open && hovering && kind == "hand") depth * 8f else 0f,
+                    tween(if (motion) 300 else 10, easing = spring),
+                    label = "pile hover x",
+                )
+            val hoverY by
+                animateFloatAsState(
+                    if (open && cardHovered) -3f
+                    else if (!open && hovering) {
+                        if (depth == 0) -4f else if (kind == "hand" && depth == 1) -2f else 0f
+                    } else 0f,
+                    tween(if (motion) 300 else 10, easing = spring),
+                    label = "pile hover y",
+                )
             val x = if (kind == "hand") depth * 22f else depth * 6f
             val y = if (kind == "hand") depth * 10f else depth * 6f
             Surface(
-                onClick = { if (open) navigate(i) else toggle(true) },
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 2.dp,
+                onClick = { navigate(i) },
+                enabled = open,
+                shape = RoundedCornerShape(EverplainTokens.radiusCard.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
                 modifier =
-                    Modifier.offset((x * (1 - t)).dp, (y * (1 - t) + i * (row + 12) * t).dp)
-                        .width(width - 44.dp * (1 - t))
-                        .height((card + (row - card) * t).dp)
+                    Modifier.zIndex((10 - depth).toFloat())
+                        .offset(
+                            (x * (1 - transform) + hoverX).dp,
+                            (y * (1 - transform) + i * (row + 12) * transform + hoverY).dp,
+                        )
+                        .width((width.value - 44f * (1 - size)).coerceAtLeast(0f).dp)
+                        .height((card + (row - card) * size).coerceAtLeast(0f).dp)
+                        .hoverable(cardHover)
                         .graphicsLayer {
-                            rotationZ = if (kind == "hand") depth * 2.5f * (1 - t) else 0f
+                            rotationZ = if (kind == "hand") depth * 2.5f * (1 - transform) else 0f
                             transformOrigin = androidx.compose.ui.graphics.TransformOrigin(.3f, 1f)
-                            alpha =
-                                if (i + (if (cover != null) 1 else 0) >= 3) t.coerceIn(0f, 1f)
-                                else 1f
-                        },
+                            alpha = cardAlpha
+                        }
+                        .webShadow(
+                            if ((open && cardHovered) || (!open && hovering && depth == 0))
+                                EverplainTokens.shadowFloat(dark)
+                            else EverplainTokens.shadowCard(dark),
+                            EverplainTokens.radiusCard.dp,
+                        )
+                        .then(if (!open) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
                 Column(
-                    Modifier.padding(20.dp).graphicsLayer {
-                        alpha = if (i == 0 && cover == null) 1f else t.coerceIn(0f, 1f)
-                    },
+                    Modifier.padding(
+                            horizontal = 20.dp,
+                            vertical = if (kind == "deck") 16.dp else 20.dp,
+                        )
+                        .graphicsLayer { alpha = contentAlpha },
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     content(i, open)
                 }
             }
         }
-        if (cover != null && t < 1f)
+        // Keep the cover mounted throughout expansion and collapse, just like the Web DOM.
+        if (cover != null) {
+            val transform by
+                animateFloatAsState(
+                    if (open) 1f else 0f,
+                    tween(if (motion) 620 else 10, easing = spring),
+                    label = "pile cover transform",
+                )
+            val size by
+                animateFloatAsState(
+                    if (open) 1f else 0f,
+                    tween(if (motion) 500 else 10, easing = sizeEase),
+                    label = "pile cover size",
+                )
+            val opacity by
+                animateFloatAsState(
+                    if (open) 0f else 1f,
+                    tween(if (motion) 300 else 10, easing = cssEase),
+                    label = "pile cover opacity",
+                )
+            val lift by
+                animateFloatAsState(
+                    if (!open && hovering) -4f else 0f,
+                    tween(if (motion) 300 else 10, easing = spring),
+                    label = "pile cover lift",
+                )
             Surface(
-                onClick = { toggle(true) },
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 2.dp,
+                shape = RoundedCornerShape(EverplainTokens.radiusCard.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
                 modifier =
-                    Modifier.width(width - 44.dp).height(card.dp).graphicsLayer {
-                        alpha = (1 - t).coerceIn(0f, 1f)
-                        translationY = -8 * t
-                        scaleX = 1 - .03f * t
-                        scaleY = scaleX
-                    },
+                    Modifier.zIndex(if (open) 0f else 10f)
+                        .width((width.value - 44f * (1 - size)).coerceAtLeast(0f).dp)
+                        .height((card + (row - card) * size).coerceAtLeast(0f).dp)
+                        .graphicsLayer {
+                            alpha = opacity
+                            translationY = (-8 * transform + lift) * density
+                            scaleX = 1 - .03f * transform
+                            scaleY = scaleX
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(.3f, 1f)
+                        }
+                        .webShadow(
+                            if (!open && hovering) EverplainTokens.shadowFloat(dark)
+                            else EverplainTokens.shadowCard(dark),
+                            EverplainTokens.radiusCard.dp,
+                        )
+                        .then(if (open) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
                 Column(
                     Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
@@ -390,9 +513,11 @@ private fun HomePile(
                     content = cover,
                 )
             }
+        }
         if (!open)
             Box(
                 Modifier.fillMaxSize()
+                    .zIndex(20f)
                     .clickable { toggle(true) }
                     .semantics { contentDescription = if (kind == "hand") "展开研究" else "展开资料" }
             )

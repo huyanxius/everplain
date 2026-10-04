@@ -20,6 +20,7 @@ import androidx.test.uiautomator.UiDevice
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.*
 import org.junit.Test
@@ -92,6 +93,84 @@ class NativeMotionPlaybackTest {
         }
         android.util.Log.i("EverplainMotionQA", "Captured $name")
         return bitmap
+    }
+
+    @Test(timeout = 60000)
+    fun originalPileKeepsCardsMountedAndUsesStaggeredNativeMotion() {
+        val open = mutableStateOf(false)
+        val bounds = AtomicReference(Rect.Zero)
+        val cardY = Array(3) { AtomicReference(Rect.Zero) }
+        val coverMounts = AtomicInteger(0)
+        val cardMounts = Array(3) { AtomicInteger(0) }
+        val navigated = AtomicInteger(-1)
+        motionScene(
+            content = {
+                Text("合成动效验收 · 首页资料牌堆")
+                Box(
+                    Modifier.fillMaxWidth().onGloballyPositioned { bounds.set(it.boundsInRoot()) }
+                ) {
+                    HomePile(
+                        "deck",
+                        3,
+                        open.value,
+                        { open.value = it },
+                        navigated::set,
+                        cover = {
+                            DisposableEffect(Unit) {
+                                coverMounts.incrementAndGet()
+                                onDispose {}
+                            }
+                            Text("3 份资料 · 2 个主题")
+                            Text("阅读札记与研究材料")
+                        },
+                    ) { index, _ ->
+                        DisposableEffect(Unit) {
+                            cardMounts[index].incrementAndGet()
+                            onDispose {}
+                        }
+                        Text(
+                            "合成资料 ${index + 1}",
+                            Modifier.onGloballyPositioned { cardY[index].set(it.boundsInRoot()) },
+                        )
+                        Text("用于核对展开与收起的真实原生帧")
+                    }
+                }
+            }
+        ) {
+            val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+            Thread.sleep(350)
+            val closed = bounds.get()
+            val density = it.resources.displayMetrics.density
+            assertEquals(152f * density, closed.height, 2f)
+            capture("pile-deck-closed").recycle()
+            device.click(closed.center.x.toInt(), (closed.top + 28 * density).toInt())
+            Thread.sleep(250)
+            capture("pile-deck-opening").recycle()
+            Thread.sleep(800)
+            assertTrue(open.value)
+            assertEquals(360f * density, bounds.get().height, 2f)
+            assertEquals(124f * density, cardY[1].get().top - cardY[0].get().top, 2f)
+            assertEquals(124f * density, cardY[2].get().top - cardY[1].get().top, 2f)
+            assertEquals(1, coverMounts.get())
+            assertTrue(cardMounts.all { count -> count.get() == 1 })
+            assertEquals(-1, navigated.get())
+            capture("pile-deck-open").recycle()
+            device.click(
+                bounds.get().center.x.toInt(),
+                (bounds.get().top + (248 + 55) * density).toInt(),
+            )
+            Thread.sleep(100)
+            assertEquals(2, navigated.get())
+            device.pressBack()
+            Thread.sleep(250)
+            capture("pile-deck-closing").recycle()
+            Thread.sleep(800)
+            assertFalse(open.value)
+            assertEquals(152f * density, bounds.get().height, 2f)
+            assertEquals(1, coverMounts.get())
+            assertTrue(cardMounts.all { count -> count.get() == 1 })
+            capture("pile-deck-restored").recycle()
+        }
     }
 
     @Test(timeout = 60000)
