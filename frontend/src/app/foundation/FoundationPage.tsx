@@ -5,10 +5,12 @@ import { AgentAvatar, agentAvatarPresets } from '../../modules/agent-avatar'
 import { Companion } from '../../modules/companion'
 import { ActAgent, AgentCrew } from './AgentCrew'
 import { HeroFilm } from './HeroFilm'
-import { CompanionDemo, GatherDemo, LibraryDemo, MemoryDemo, ModelOrbit } from './ProductDemos'
+import { useRecall } from './HeroRecall'
+import { PlatformWall } from './PlatformWall'
+import { CompanionDemo, LibraryDemo, MemoryDemo, ModelOrbit } from './ProductDemos'
 import './everplain-website.css'
 
-function Composer({ id, authenticated }: { id: string; authenticated: boolean }) {
+function Composer({ id, authenticated, placeholder = '说说你的想法…' }: { id: string; authenticated: boolean; placeholder?: string }) {
   const navigate = useNavigate()
   const [thought, setThought] = useState('')
   const start = () => {
@@ -19,7 +21,7 @@ function Composer({ id, authenticated }: { id: string; authenticated: boolean })
   }
   return <form className="ep-composer" onSubmit={event => { event.preventDefault(); start() }}>
     <label className="ep-visually-hidden" htmlFor={id}>你的想法</label>
-    <textarea id={id} placeholder="说说你的想法…" value={thought} maxLength={4000} rows={1} onChange={event => setThought(event.target.value)} onKeyDown={event => {
+    <textarea id={id} placeholder={placeholder} value={thought} maxLength={4000} rows={1} onChange={event => setThought(event.target.value)} onKeyDown={event => {
       if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); start() }
     }} />
     <button type="submit" aria-label="开始对话" disabled={!thought.trim()}><ArrowUpIcon size={20} aria-hidden="true" /></button>
@@ -75,6 +77,7 @@ function RotatingHeadline() {
  * 七个角色先在定位句下面整排亮相，之后每幕标题旁各站一个，左右交替。
  */
 export function FoundationPage({ authenticated = false }: { authenticated?: boolean }) {
+  const recall = useRecall()
   return <div className="ep-site">
     <a className="ep-skip" href="#main">跳到正文</a>
     <header className="ep-header">
@@ -88,13 +91,15 @@ export function FoundationPage({ authenticated = false }: { authenticated?: bool
         <HeroFilm />
         <div className="ep-hero-copy">
           <RotatingHeadline />
-          <Composer id="ep-thought" authenticated={authenticated} />
-          <a className="ep-text-link" href="#gather">免登录查看静态演示<ArrowUpRightIcon size={16} aria-hidden="true" /></a>
-          <p className="ep-demo-disclosure">下方演示使用预设示例，不读取个人资料，也不调用真实 AI。进入工作台仍需登录。</p>
+          <Composer id="ep-thought" authenticated={authenticated} placeholder={recall.placeholder} />
+          <div className="ep-hero-actions">
+            <a className="ep-hero-action" href="#intro">深入了解</a>
+            <Link className="ep-hero-action ep-hero-action--primary" to={authenticated ? '/app' : '/login'}>{authenticated ? '进入工作台' : '领取你的 Everplain'}<ArrowUpRightIcon size={15} aria-hidden="true" /></Link>
+          </div>
         </div>
       </section>
 
-      <section className="ep-statement" aria-labelledby="ep-statement-title">
+      <section className="ep-statement" id="intro" aria-labelledby="ep-statement-title">
         <h2 id="ep-statement-title"><span>你的知识，</span>你的 AI。</h2>
         <AgentCrew />
       </section>
@@ -105,7 +110,7 @@ export function FoundationPage({ authenticated = false }: { authenticated?: bool
           <h2 id="ep-gather-title">散落各处的，<br />收到一处。</h2>
           <p>聊天里的链接、相册里的截图、收藏夹的视频、下载的论文、备忘录里的一句话。随手一存，都在这里，视频会转写，图里的字会被认出来。</p>
         </div>
-        <GatherDemo />
+        <PlatformWall />
       </section>
 
       <section className="ep-act ep-act-library" id="library" aria-labelledby="ep-library-title">
@@ -130,8 +135,8 @@ export function FoundationPage({ authenticated = false }: { authenticated?: bool
       <section className="ep-models" id="models" aria-labelledby="ep-models-title">
         <ModelOrbit />
         <div className="ep-models-copy">
-          <h2 id="ep-models-title">用 10% 的价格，<br />和全球最顶尖的模型对话。</h2>
-          <p className="ep-price"><span>调用费用</span><strong>10%</strong><span>官方 API 价格</span></p>
+          <h2 id="ep-models-title">用 1/10 的价格，<br />和全球最顶尖的模型对话。</h2>
+          <p className="ep-price"><span>调用费用是官方 API 价格的</span><strong>1/10</strong></p>
           <small>以官方 API 标价为对比基准。当前提供 GPT 6 Luna，图中其他模型仅作展示。</small>
         </div>
       </section>
@@ -140,7 +145,6 @@ export function FoundationPage({ authenticated = false }: { authenticated?: bool
         <ActAgent avatar="you" state="greet" side="center" />
         <h2 id="ep-closing-title">说说你在想的事。</h2>
         <Composer id="ep-thought-closing" authenticated={authenticated} />
-        <a className="ep-text-link" href="#gather">再看静态演示<ArrowUpRightIcon size={16} aria-hidden="true" /></a>
       </section>
     </main>
 

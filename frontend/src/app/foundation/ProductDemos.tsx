@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowCounterClockwiseIcon,
   BooksIcon,
@@ -9,7 +9,6 @@ import {
   HouseIcon,
   ImageIcon,
   LinkSimpleIcon,
-  MagnifyingGlassIcon,
   MicrophoneIcon,
   NotePencilIcon,
   PlayIcon,
@@ -89,57 +88,9 @@ function DemoWindow({ title, active, children, aside }: { title: string; active:
   </div>
 }
 
-/* ---------------- 一、收到一处 ---------------- */
 
 type Kind = 'web' | 'image' | 'audio' | 'video' | 'note' | 'pdf'
 const kindIcon: Record<Kind, Icon> = { web: LinkSimpleIcon, image: ImageIcon, audio: MicrophoneIcon, video: PlayIcon, note: NotePencilIcon, pdf: FileTextIcon }
-const scattered: { from: string; text: string; status: string; kind: Kind }[] = [
-  { from: '聊天记录', text: '朋友转来的一篇长文', status: '已存全文', kind: 'web' },
-  { from: '浏览器', text: '没读完的网页', status: '已存全文', kind: 'web' },
-  { from: '相册', text: '展览里拍下的说明牌', status: '已识别文字', kind: 'image' },
-  { from: '截图', text: '一段课堂板书', status: '已识别文字', kind: 'image' },
-  { from: '语音', text: '路上想到的一句话', status: '已转写', kind: 'audio' },
-  { from: '收藏夹', text: '一个十分钟的讲解视频', status: '已转写', kind: 'video' },
-  { from: '备忘录', text: '「算了，不说了」', status: '已记下', kind: 'note' },
-  { from: '下载', text: '导师发的论文 PDF', status: '已解析', kind: 'pdf' },
-]
-const spaceFilters = ['全部', '文章', '图片', '视频', '文档', '笔记']
-
-export function GatherDemo() {
-  return <LoopingDemo label="收集演示" className="ep-gather">{props => <GatherStage {...props} />}</LoopingDemo>
-}
-
-/*
- * 1-8：各处的东西一条条落进知识库，先是「读取中」的骨架卡片，角上标着它从哪来；
- * 9 停一拍；10 收齐，筛选和计数亮起；11-18 逐条读完，缩略图和状态填上。
- */
-function GatherStage({ active, onDone }: { active: boolean; onDone: () => void }) {
-  const { step, done } = useTimeline(active, [200, 220, 220, 220, 220, 220, 220, 220, 1300, 900, 260, 180, 180, 180, 180, 180, 180, 180])
-  useEffect(() => { if (done) onDone() }, [done, onDone])
-  const gathered = step >= 10
-  const arrived = Math.min(step, scattered.length)
-  return <DemoWindow title="我的知识库" active="library">
-    <header className="ep-pagehead">
-      <h4>我的资料</h4>
-      <span className="ep-count">{gathered ? scattered.length : arrived} 条</span>
-      <span className="ep-search"><MagnifyingGlassIcon size={14} />搜标题、内容、知识点</span>
-    </header>
-    <div className="ep-filters" data-on={gathered}>{spaceFilters.map((filter, index) => <i key={filter} data-on={gathered && index === 0}>{filter}</i>)}</div>
-    <div className="ep-gather-canvas" data-gathered={gathered}>
-      {scattered.map((item, index) => {
-        const read = step >= index + 11
-        const Glyph = kindIcon[item.kind]
-        return <article key={item.text} className="ep-mcard" data-kind={item.kind} data-shown={step >= index + 1} data-read={read} style={{ '--i': index } as CSSProperties}>
-          <span className="ep-mcard__thumb" aria-hidden="true"><Glyph size={18} weight="duotone" /></span>
-          <small className="ep-mcard__from">{item.from}</small>
-          <h5>{item.text}</h5>
-          <em className="ep-mcard__status">{read ? <><CheckIcon size={11} weight="bold" />{item.status}</> : '读取中'}</em>
-        </article>
-      })}
-    </div>
-  </DemoWindow>
-}
-
 /* ---------------- 二、一键建成知识库 ---------------- */
 
 const collection: { id: string; kind: Kind; title: string; status: string }[] = [
@@ -358,14 +309,12 @@ export function ModelOrbit() {
     if (!host) return
     let frame = 0
     let visible = true
+    // 手机上同样转，只是轨道压扁、单独占一块舞台，不再环绕标题（窄屏里卡片会压住字）
     const narrow = window.matchMedia?.('(max-width: 640px)')
     const place = (time: number) => {
-      if (narrow?.matches) {
-        tiles.current.forEach(tile => { if (tile) { tile.style.transform = ''; tile.style.opacity = ''; tile.style.zIndex = '' } })
-        return
-      }
       const { width, height } = host.getBoundingClientRect()
-      const rx = width * 0.4, ry = height * 0.4, cx = width / 2, cy = height * 0.52
+      const flat = narrow?.matches
+      const rx = width * (flat ? 0.34 : 0.4), ry = height * (flat ? 0.34 : 0.4), cx = width / 2, cy = height * (flat ? 0.5 : 0.52)
       tiles.current.forEach((tile, index) => {
         if (!tile) return
         const angle = time / 12000 + (index / models.length) * Math.PI * 2 + Math.PI / 2

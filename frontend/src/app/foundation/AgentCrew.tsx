@@ -17,7 +17,7 @@ export function AgentCrew() {
     const timer = window.setInterval(() => setTick(value => value + 1), CYCLE_MS)
     return () => window.clearInterval(timer)
   }, [shown])
-  return <div className="ep-crew" ref={ref}>
+  return <div className="ep-cast" ref={ref}>
     <ul className="ep-crew-row">
       {agentAvatarPresets.map((preset, index) => {
         const state = agentAvatarStates[(tick + index * 3) % agentAvatarStates.length]
@@ -26,7 +26,6 @@ export function AgentCrew() {
         </li>
       })}
     </ul>
-    <p className="ep-crew-caption">挑一个喜欢的样子，再给它取个名字。</p>
   </div>
 }
 
