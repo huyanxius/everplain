@@ -113,9 +113,11 @@ private class CompanionDrawing(data: JsonObject) {
     fun draw(
         canvas: android.graphics.Canvas,
         time: Float,
+        breatheTime: Float,
         animated: Boolean,
         happy: Boolean,
         happyTime: Float,
+        blushAlpha: Float,
         turn: Float,
         nod: Float,
     ) {
@@ -198,7 +200,7 @@ private class CompanionDrawing(data: JsonObject) {
                                 e,
                             )
                     } else if (!happy) {
-                        val phase = time % 3.8f / 3.8f
+                        val phase = breatheTime % 3.8f / 3.8f
                         ty = sample(phase, listOf(0f to 0f, .5f to -1.5f, 1f to 0f), ease)
                         sx = sample(phase, listOf(0f to 1f, .5f to 1.006f, 1f to 1f), ease)
                         sy = sx
@@ -329,14 +331,19 @@ private class CompanionDrawing(data: JsonObject) {
                     when {
                         "cp-face-shade" in c || "cp-chin-shadow" in c -> .3f
                         "cp-fold" in c -> .45f
-                        "cp-blush" in c -> if (happy) .95f else .85f
+                        "cp-blush" in c -> blushAlpha
                         else -> 1f
                     }
                 paint.alpha = (alpha * 255).roundToInt()
+                // SVG stdDeviation is sigma. Android JNI converts the supplied radius to
+                // sigma with radius*.57735+.5; invert it rather than changing the illustration.
+                // https://android.googlesource.com/platform/frameworks/base/+/d8580f8b6e3a579a4141167b00871478ed9dbd85/libs/hwui/jni/MaskFilter.cpp
                 if ("cp-blush" in c || "cp-face-shade" in c)
-                    paint.maskFilter = BlurMaskFilter(.8f, BlurMaskFilter.Blur.NORMAL)
+                    paint.maskFilter =
+                        BlurMaskFilter((.8f - .5f) / .57735f, BlurMaskFilter.Blur.NORMAL)
                 if ("cp-chin-shadow" in c)
-                    paint.maskFilter = BlurMaskFilter(3f, BlurMaskFilter.Blur.NORMAL)
+                    paint.maskFilter =
+                        BlurMaskFilter((3f - .5f) / .57735f, BlurMaskFilter.Blur.NORMAL)
                 if (node.a.containsKey("clip-path")) canvas.clipPath(clipFace)
                 canvas.drawPath(path, paint)
             }
@@ -384,27 +391,23 @@ internal fun HomeCompanion(
     val time = motionSeconds(enabled)
     var happy by remember { mutableStateOf(false) }
     var happyStart by remember { mutableFloatStateOf(0f) }
+    var breatheStart by remember { mutableFloatStateOf(0f) }
+    val latestTime by rememberUpdatedState(time)
+    val blushAlpha by
+        animateFloatAsState(
+            if (happy) .95f else .85f,
+            tween(300, easing = CubicBezierEasing(.25f, .1f, .25f, 1f)),
+            label = "companion-blush",
+        )
     LaunchedEffect(happy) {
         if (happy) {
             delay(1600)
+            breatheStart = latestTime
             happy = false
         }
     }
-    var turn by remember { mutableFloatStateOf(.2f) }
-    var nod by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(time, enabled) {
-        if (!enabled) {
-            turn = .25f
-            nod = 0f
-        } else {
-            val following = pointer != null && SystemClock.uptimeMillis() - pointer.lastMove < 4000
-            val desired =
-                if (following) pointer!!.turn else sin(time / 2.3f) * .7f + sin(time / .9f) * .12f
-            val desiredNod = if (following) pointer!!.nod else sin(time / 3.1f) * .35f
-            turn += (desired - turn) * .08f
-            nod += (desiredNod - nod) * .08f
-        }
-    }
+    LaunchedEffect(enabled) { if (!enabled) breatheStart = 0f }
+    val gaze = remember { CompanionGaze() }
     val width = if (narrow) 93.dp else 150.dp
     Canvas(
         modifier
@@ -424,7 +427,18 @@ internal fun HomeCompanion(
         canvas.save()
         canvas.scale(size.width / 220, size.width / 220)
         canvas.translate(0f, 10f)
-        drawing.draw(canvas, time, enabled, happy, (time - happyStart).coerceAtLeast(0f), turn, nod)
+        gaze.update(time, enabled, pointer)
+        drawing.draw(
+            canvas,
+            time,
+            (time - breatheStart).coerceAtLeast(0f),
+            enabled,
+            happy,
+            (time - happyStart).coerceAtLeast(0f),
+            blushAlpha,
+            round(gaze.turn * 1000) / 1000,
+            round(gaze.nod * 1000) / 1000,
+        )
         canvas.restore()
     }
 }
@@ -462,3 +476,27 @@ internal fun Modifier.observeCompanionPointer(state: CompanionPointer): Modifier
                 }
             }
         }
+
+/** Advances once per actual frame without launching another coroutine/recomposition each tick. */
+private class CompanionGaze {
+    var turn = .2f
+    var nod = 0f
+    private var lastFrame = -1f
+
+    fun update(time: Float, enabled: Boolean, pointer: CompanionPointer?) {
+        if (!enabled) {
+            turn = .25f
+            nod = 0f
+            lastFrame = -1f
+            return
+        }
+        if (lastFrame == time) return
+        lastFrame = time
+        val following = pointer != null && SystemClock.uptimeMillis() - pointer.lastMove < 4000
+        val desired =
+            if (following) pointer!!.turn else sin(time / 2.3f) * .7f + sin(time / .9f) * .12f
+        val desiredNod = if (following) pointer!!.nod else sin(time / 3.1f) * .35f
+        turn += (desired - turn) * .08f
+        nod += (desiredNod - nod) * .08f
+    }
+}

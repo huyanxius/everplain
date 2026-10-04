@@ -58,3 +58,22 @@ internal fun multipartBoundary(key: String) =
         MessageDigest.getInstance("SHA-256").digest(key.toByteArray()).joinToString("") {
             "%02x".format(it)
         }
+
+/** Uses fixed-size buffers for downloads; callers own/close the selected output. */
+internal fun okhttp3.Response.streamToBounded(output: java.io.OutputStream, maxBytes: Long): Long {
+    require(maxBytes > 0)
+    val payload = body ?: throw IOException("服务未返回文件")
+    if (payload.contentLength() > maxBytes) throw IOException("文件超过允许的下载大小。")
+    val input = payload.byteStream()
+    val bytes = ByteArray(32 * 1024)
+    var total = 0L
+    while (true) {
+        val n = input.read(bytes)
+        if (n < 0) break
+        total += n
+        if (total > maxBytes) throw IOException("文件超过允许的下载大小。")
+        output.write(bytes, 0, n)
+    }
+    output.flush()
+    return total
+}

@@ -53,7 +53,7 @@ open class EverplainApi(val endpoint: Endpoint, private val store: PrivateStore)
     ): T =
         exchange(contractRequest(path, method, body, key, query)) {
             if (!it.isSuccessful) throw failure(it)
-            WireJson.decodeFromString(serializer, it.body?.string() ?: throw IOException("服务未返回数据"))
+            WireJson.decodeFromString(serializer, it.checkedJsonText())
         }
 
     open suspend fun contractUnit(
@@ -161,60 +161,169 @@ open class EverplainApi(val endpoint: Endpoint, private val store: PrivateStore)
     ): T =
         exchange(request(path, method, body, key)) {
             if (!it.isSuccessful) throw failure(it)
-            WireJson.decodeFromString<T>(it.body?.string() ?: throw IOException("服务未返回数据"))
+            WireJson.decodeFromString<T>(it.checkedJsonText())
         }
 
-    open suspend fun uploadLibraryDocument(libraryId: String, file: UploadSnapshot, key: String): SharedDocumentResponse {
-        val body=MultipartBody.Builder(multipartBoundary(key)).setType(MultipartBody.FORM)
-            .addFormDataPart("file",file.filename,file.body()).build()
-        return multipart("/api/shared-knowledge-bases/${UUID.fromString(libraryId)}/documents",body,key,SharedDocumentResponse.serializer())
+    open suspend fun uploadLibraryDocument(
+        libraryId: String,
+        file: UploadSnapshot,
+        key: String,
+    ): SharedDocumentResponse {
+        val body =
+            MultipartBody.Builder(multipartBoundary(key))
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("file", file.filename, file.body())
+                .build()
+        return multipart(
+            "/api/shared-knowledge-bases/${UUID.fromString(libraryId)}/documents",
+            body,
+            key,
+            SharedDocumentResponse.serializer(),
+        )
     }
 
-    open suspend fun uploadResearchDocument(taskId:String,file:UploadSnapshot,key:String):ResearchMaterialResponse {
-        val body=MultipartBody.Builder(multipartBoundary(key)).setType(MultipartBody.FORM)
-            .addFormDataPart("file",file.filename,file.body())
-            .addFormDataPart("material_kind","other")
-            .addFormDataPart("defer_processing","true").build()
-        return multipart("/api/research-tasks/${UUID.fromString(taskId)}/materials",body,key,ResearchMaterialResponse.serializer())
+    open suspend fun uploadResearchDocument(
+        taskId: String,
+        file: UploadSnapshot,
+        key: String,
+    ): ResearchMaterialResponse {
+        val body =
+            MultipartBody.Builder(multipartBoundary(key))
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("file", file.filename, file.body())
+                .addFormDataPart("material_kind", "other")
+                .addFormDataPart("defer_processing", "true")
+                .build()
+        return multipart(
+            "/api/research-tasks/${UUID.fromString(taskId)}/materials",
+            body,
+            key,
+            ResearchMaterialResponse.serializer(),
+        )
     }
 
-    open suspend fun importFiles(sourceType: String, files: List<UploadSnapshot>, key: String, libraryId: String?=null): ImportBatchResponse {
-        require(sourceType in setOf("chrome","markdown","obsidian","enex","notion","flomo","keep","apple_notes","image"))
+    open suspend fun importFiles(
+        sourceType: String,
+        files: List<UploadSnapshot>,
+        key: String,
+        libraryId: String? = null,
+    ): ImportBatchResponse {
+        require(
+            sourceType in
+                setOf(
+                    "chrome",
+                    "markdown",
+                    "obsidian",
+                    "enex",
+                    "notion",
+                    "flomo",
+                    "keep",
+                    "apple_notes",
+                    "image",
+                )
+        )
         require(files.isNotEmpty())
-        val body=MultipartBody.Builder(multipartBoundary(key)).setType(MultipartBody.FORM).addFormDataPart("source_type",sourceType)
-            .apply {
-                if(libraryId!=null)addFormDataPart("library_id",UUID.fromString(libraryId).toString())
-                files.forEach { addFormDataPart("files",it.filename,it.body()) }
-            }.build()
-        return multipart(EverplainEndpoint.createImportBatch,body,key,ImportBatchResponse.serializer())
+        val body =
+            MultipartBody.Builder(multipartBoundary(key))
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("source_type", sourceType)
+                .apply {
+                    if (libraryId != null)
+                        addFormDataPart("library_id", UUID.fromString(libraryId).toString())
+                    files.forEach { addFormDataPart("files", it.filename, it.body()) }
+                }
+                .build()
+        return multipart(
+            EverplainEndpoint.createImportBatch,
+            body,
+            key,
+            ImportBatchResponse.serializer(),
+        )
     }
 
-    private suspend fun <T> multipart(path:String,body:MultipartBody,key:String,serializer:kotlinx.serialization.DeserializationStrategy<T>):T =
-        exchange(request(path,"POST",null,key).newBuilder().post(body).build()) {
-            if(!it.isSuccessful)throw failure(it)
-            WireJson.decodeFromString(serializer,it.body?.string() ?: throw IOException("服务未返回数据"))
+    private suspend fun <T> multipart(
+        path: String,
+        body: MultipartBody,
+        key: String,
+        serializer: kotlinx.serialization.DeserializationStrategy<T>,
+    ): T =
+        exchange(request(path, "POST", null, key).newBuilder().post(body).build()) {
+            if (!it.isSuccessful) throw failure(it)
+            WireJson.decodeFromString(serializer, it.checkedJsonText())
         }
 
-    open suspend fun imageAsset(documentId:String,maxBytes:Long=32L*1024*1024):BinaryPayload =
-        binary("/api/imports/assets/${UUID.fromString(documentId)}",maxBytes=maxBytes,accept="image/*")
+    /** Streams a private data export only through the authenticated, same-origin client. */
+    open suspend fun downloadAccountExport(
+        exportId: String,
+        output: java.io.OutputStream,
+        maxBytes: Long = 512L * 1024 * 1024,
+    ): Long =
+        exchange(
+            request("/api/account/data-exports/${UUID.fromString(exportId)}/download", "GET", null)
+        ) { response ->
+            if (!response.isSuccessful) throw failure(response)
+            response.streamToBounded(output, maxBytes)
+        }
 
-    open suspend fun materialContent(taskId:String,materialId:String,range:String?=null,maxBytes:Long):BinaryPayload =
-        binary("/api/research-tasks/${UUID.fromString(taskId)}/materials/${UUID.fromString(materialId)}/content",range,maxBytes,"*/*")
+    open suspend fun imageAsset(
+        documentId: String,
+        maxBytes: Long = 32L * 1024 * 1024,
+    ): BinaryPayload =
+        binary(
+            "/api/imports/assets/${UUID.fromString(documentId)}",
+            maxBytes = maxBytes,
+            accept = "image/*",
+        )
 
-    private suspend fun binary(path:String,range:String?=null,maxBytes:Long,accept:String):BinaryPayload {
+    open suspend fun materialContent(
+        taskId: String,
+        materialId: String,
+        range: String? = null,
+        maxBytes: Long,
+    ): BinaryPayload =
+        binary(
+            "/api/research-tasks/${UUID.fromString(taskId)}/materials/${UUID.fromString(materialId)}/content",
+            range,
+            maxBytes,
+            "*/*",
+        )
+
+    private suspend fun binary(
+        path: String,
+        range: String? = null,
+        maxBytes: Long,
+        accept: String,
+    ): BinaryPayload {
         require(maxBytes in 1..Int.MAX_VALUE.toLong())
-        require(range==null || Regex("bytes=(?:[0-9]+-[0-9]*|-[0-9]+)").matches(range))
-        val request=request(path,"GET",null).newBuilder().header("Accept",accept).apply { if(range!=null)header("Range",range) }.build()
+        require(range == null || Regex("bytes=(?:[0-9]+-[0-9]*|-[0-9]+)").matches(range))
+        val request =
+            request(path, "GET", null)
+                .newBuilder()
+                .header("Accept", accept)
+                .apply { if (range != null) header("Range", range) }
+                .build()
         return exchange(request) { response ->
-            if(!response.isSuccessful)throw failure(response)
-            val body=response.body ?: throw IOException("服务未返回文件")
-            if(body.contentLength()>maxBytes)throw IOException("文件超过本机读取上限")
-            val output=java.io.ByteArrayOutputStream()
+            if (!response.isSuccessful) throw failure(response)
+            val body = response.body ?: throw IOException("服务未返回文件")
+            if (body.contentLength() > maxBytes) throw IOException("文件超过本机读取上限")
+            val output = java.io.ByteArrayOutputStream()
             body.byteStream().use { input ->
-                val buffer=ByteArray(32*1024);var total=0L
-                while(true) { val n=input.read(buffer);if(n<0)break;total+=n;if(total>maxBytes)throw IOException("文件超过本机读取上限");output.write(buffer,0,n) }
+                val buffer = ByteArray(32 * 1024)
+                var total = 0L
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    total += n
+                    if (total > maxBytes) throw IOException("文件超过本机读取上限")
+                    output.write(buffer, 0, n)
+                }
             }
-            BinaryPayload(output.toByteArray(),body.contentType()?.toString(),response.header("Content-Range"),response.code)
+            BinaryPayload(
+                output.toByteArray(),
+                body.contentType()?.toString(),
+                response.header("Content-Range"),
+                response.code,
+            )
         }
     }
 
@@ -279,7 +388,7 @@ open class EverplainApi(val endpoint: Endpoint, private val store: PrivateStore)
         exchange(request("/api/agent/runs/${UUID.fromString(id)}/stop", "POST", null, key)) {
             if (!it.isSuccessful) throw failure(it)
             if (it.code == 204) AgentRunStopResponse(true, id, "interrupted")
-            else WireJson.decodeFromString(it.body!!.string())
+            else WireJson.decodeFromString(it.checkedJsonText())
         }
 
     open fun stream(body: AgentTurnRequest, key: String): Flow<SseFrame> =
@@ -352,4 +461,17 @@ open class EverplainApi(val endpoint: Endpoint, private val store: PrivateStore)
                 }
             }
             .flowOn(Dispatchers.IO)
+}
+
+/**
+ * Bound control responses before decoding; malformed or oversized JSON cannot consume all memory.
+ */
+internal fun Response.checkedJsonText(maxBytes: Long = 16L * 1024 * 1024): String {
+    require(maxBytes > 0)
+    val payload = body ?: throw IOException("服务未返回数据")
+    if (payload.contentLength() > maxBytes) throw IOException("返回数据超过读取上限，请缩小范围后重试。")
+    val source = payload.source()
+    source.request(maxBytes + 1)
+    if (source.buffer.size > maxBytes) throw IOException("返回数据超过读取上限，请缩小范围后重试。")
+    return payload.string()
 }

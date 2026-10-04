@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.*
@@ -102,7 +103,9 @@ internal fun GraphScreen(
         libraries.source(libraryId, documentId, segment)
     }
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        Modifier.fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(if (LocalConfiguration.current.screenWidthDp <= 720) 16.dp else 32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -541,6 +544,10 @@ private fun NativeGraphCanvas(
     var pan by remember { mutableStateOf(Offset.Zero) }
     var layoutBusy by remember { mutableStateOf(true) }
     val density = LocalDensity.current.density
+    val viewport = LocalConfiguration.current
+    val graphHeight =
+        if (viewport.screenWidthDp <= 720) (viewport.screenHeightDp * .64f).coerceAtLeast(420f).dp
+        else (viewport.screenHeightDp * .72f).coerceIn(420f, 760f).dp
     val scheme = MaterialTheme.colorScheme
     val ink = scheme.onSurface
     val faint = scheme.onSurfaceVariant
@@ -593,7 +600,7 @@ private fun NativeGraphCanvas(
             Offset((point.x * density * zoom).toFloat(), (point.y * density * zoom).toFloat())
     Box(
         Modifier.fillMaxWidth()
-            .height(440.dp)
+            .height(graphHeight)
             .clip(RoundedCornerShape(24.dp))
             .background(surface)
             .onSizeChanged { canvasSize = it }
@@ -770,7 +777,7 @@ private fun NativeGraphCanvas(
                 }
             }
         Column(
-            Modifier.align(Alignment.TopStart).padding(12.dp),
+            Modifier.align(Alignment.BottomStart).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             EpIcon(
@@ -805,7 +812,7 @@ private fun NativeGraphCanvas(
             "浏览节点",
             browse,
             modifier =
-                Modifier.align(Alignment.BottomStart).semantics { contentDescription = "以列表浏览图谱节点" },
+                Modifier.align(Alignment.TopStart).semantics { contentDescription = "以列表浏览图谱节点" },
         )
         if (layoutBusy)
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

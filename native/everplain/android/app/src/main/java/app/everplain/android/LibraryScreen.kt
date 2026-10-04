@@ -15,7 +15,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -43,7 +45,7 @@ internal fun LibraryScreen(controller: LibraryController, origin: String, openGr
     var deleteLibrary by remember { mutableStateOf(false) }
     var options by remember { mutableStateOf(false) }
     var sourceTarget by remember { mutableStateOf<LibraryMaterial?>(null) }
-    FeatureVisibility(controller,controller::enter,controller::leave)
+    FeatureVisibility(controller, controller::enter, controller::leave)
     BackHandler(s.source != null || s.sourceBusy || s.sourceError != null) {
         controller.closeSource()
         sourceTarget = null
@@ -109,7 +111,8 @@ internal fun LibraryScreen(controller: LibraryController, origin: String, openGr
     }
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp),
+        contentPadding =
+            PaddingValues(if (LocalConfiguration.current.screenWidthDp <= 720) 16.dp else 32.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         item {
@@ -255,7 +258,7 @@ internal fun LibraryScreen(controller: LibraryController, origin: String, openGr
                     )
                     EpButton(if (readonly) "共享与邀请" else "共享", { sharing = true })
                 }
-                if(!readonly)KnowledgeViewSwitch(false, {}, openGraph)
+                if (!readonly) KnowledgeViewSwitch(false, {}, openGraph)
                 EpField(
                     if (managing) "搜索知识库" else "搜索资料",
                     query,
@@ -332,6 +335,7 @@ internal fun LibraryScreen(controller: LibraryController, origin: String, openGr
             items(materials, key = { "${it.library.id}:${it.document.id}" }) { material ->
                 LibraryMaterialCard(
                     material,
+                    controller,
                     s.selected == null,
                     s.busy || s.unresolved,
                     open = {
@@ -394,6 +398,7 @@ internal fun LibraryScreen(controller: LibraryController, origin: String, openGr
 @Composable
 private fun LibraryMaterialCard(
     material: LibraryMaterial,
+    controller: LibraryController,
     showLibrary: Boolean,
     busy: Boolean,
     open: () -> Unit,
@@ -485,12 +490,13 @@ private fun LibraryMaterialCard(
                     }
                 }
         }
+        if (kind == "图片") NativeLibraryImage(controller, material.library.id, d.id, d.filename)
         Text(
             d.filename,
             Modifier.then(
                 if (d.status == "ready") Modifier.clickable(onClick = open) else Modifier
             ),
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Serif),
         )
         if (d.status == "processing")
             Text("正在读取内容…", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -500,7 +506,7 @@ private fun LibraryMaterialCard(
                 else d.knowledge?.summary?.takeIf { it.isNotBlank() } ?: "原文已保存，知识摘要将在整理完成后显示。",
                 fontFamily = FontFamily.Serif,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 4,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
         if (states.isNotEmpty()) {
@@ -520,7 +526,7 @@ private fun LibraryMaterialCard(
                 Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         Text(
-            formatLibrarySize(d.sizeBytes) +
+            librarySourceLabel(controller.state.value, material) +
                 (d.knowledge?.let { " · ${it.topics.size} 个知识点" } ?: ""),
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -530,14 +536,17 @@ private fun LibraryMaterialCard(
 
 @Composable
 internal fun LibraryCard(content: @Composable ColumnScope.() -> Unit) {
+    val dark = MaterialTheme.colorScheme.background.luminance() < .5f
     Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(EverplainTokens.radiusCard.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier =
+            Modifier.fillMaxWidth()
+                .webShadow(EverplainTokens.shadowCard(dark), EverplainTokens.radiusCard.dp),
     ) {
         Column(
             Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             content = content,
         )
     }
@@ -851,4 +860,33 @@ internal fun formatLibrarySize(bytes: Long): String {
             else -> 1024L to "KB"
         }
     return "${String.format(Locale.ROOT,"%.1f",bytes.toDouble()/divisor).removeSuffix(".0")} $unit"
+}
+
+private fun librarySourceLabel(state: LibraryUiState, material: LibraryMaterial): String {
+    val id = material.document.id
+    val batch =
+        state.imports.lastOrNull {
+            it.libraryId == material.library.id && it.items.any { item -> item.documentId == id }
+        }
+    val item = batch?.items?.lastOrNull { it.documentId == id }
+    val url = state.imageSources["${material.library.id}:$id"]?.sourceUrl ?: item?.sourceUrl
+    val host =
+        url?.let { runCatching { java.net.URI(it) }.getOrNull() }
+            ?.takeIf { it.scheme in setOf("http", "https") }
+            ?.host
+    if (!host.isNullOrBlank()) return host.removePrefix("www.")
+    val sourceNames =
+        mapOf(
+            "chrome" to "浏览器收藏",
+            "obsidian" to "Obsidian",
+            "markdown" to "Markdown",
+            "apple_notes" to "Apple 备忘录",
+            "enex" to "印象笔记",
+            "notion" to "Notion",
+            "flomo" to "flomo",
+            "keep" to "Google Keep",
+            "bilibili" to "B 站收藏",
+            "image" to "图片与截图",
+        )
+    return sourceNames[batch?.sourceType] ?: formatLibrarySize(material.document.sizeBytes)
 }

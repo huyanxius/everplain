@@ -30,6 +30,7 @@ internal data class LibraryUiState(
     val sourceError: String? = null,
     val saved: Long = 0,
     val canEndUpload: Boolean = false,
+    val imageSources: Map<String, PersonalGraphSource> = emptyMap(),
 ) {
     val selected
         get() = libraries.firstOrNull { it.id == selectedId }
@@ -187,6 +188,23 @@ internal class LibraryController(
                             handle(e)
                             emptyList()
                         }
+                    val imageSources =
+                        if (
+                            successful.any {
+                                it.documents.orEmpty().any { document ->
+                                    materialKind(document) == "图片"
+                                }
+                            }
+                        ) {
+                            try {
+                                api.native.getPersonalGraph().sources.values.associateBy {
+                                    "${it.libraryId}:${it.documentId}"
+                                }
+                            } catch (e: Throwable) {
+                                handle(e)
+                                emptyMap()
+                            }
+                        } else emptyMap()
                     if (current != generation) return@launch
                     loaded = true
                     update {
@@ -201,6 +219,7 @@ internal class LibraryController(
                                 },
                             storage = storage,
                             imports = imports,
+                            imageSources = imageSources,
                             loading = false,
                             catalogError =
                                 if (failed > 0) "有 $failed 个知识库暂时无法读取，其他资料仍可查看。" else null,
@@ -214,6 +233,35 @@ internal class LibraryController(
                 }
             }
     }
+
+    fun previewAsset(libraryId: String, documentId: String): String? {
+        val raw = state.value.imageSources["$libraryId:$documentId"]?.assetUrl ?: return null
+        val resolved = api.endpoint.url.resolve(raw) ?: return null
+        val base = api.endpoint.url
+        if (
+            resolved.scheme != base.scheme ||
+                resolved.host != base.host ||
+                resolved.port != base.port ||
+                resolved.username.isNotEmpty() ||
+                resolved.password.isNotEmpty() ||
+                resolved.query != null ||
+                resolved.fragment != null
+        )
+            return null
+        val id =
+            resolved.pathSegments
+                .takeIf { it.size == 4 && it.take(3) == listOf("api", "imports", "assets") }
+                ?.last() ?: return null
+        return runCatching { java.util.UUID.fromString(id).toString() }.getOrNull()
+    }
+
+    suspend fun imagePreview(asset: String): BinaryPayload =
+        try {
+            api.imageAsset(asset)
+        } catch (e: Throwable) {
+            handle(e)
+            throw e
+        }
 
     private fun schedulePoll() {
         pollJob?.cancel()

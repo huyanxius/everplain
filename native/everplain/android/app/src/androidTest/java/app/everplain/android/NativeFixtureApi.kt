@@ -11,6 +11,11 @@ import kotlinx.serialization.encodeToString
  */
 internal open class NativeFixtureApi(endpoint: Endpoint, store: PrivateStore) :
     EverplainApi(endpoint, store) {
+    override suspend fun account(): AccountResponse = error("Unimplemented synthetic account")
+
+    override suspend fun sessions(): AccountSessionPageResponse =
+        AccountSessionPageResponse(emptyList())
+
     override suspend fun <T> contractJson(
         serializer: DeserializationStrategy<T>,
         path: String,
@@ -22,7 +27,12 @@ internal open class NativeFixtureApi(endpoint: Endpoint, store: PrivateStore) :
         check(method == "GET") { "Unexpected synthetic mutation $method $path" }
         return WireJson.decodeFromString(
             serializer,
-            fixtureHomeJson(path) ?: error("Unimplemented synthetic endpoint $method $path"),
+            when (path) {
+                "/api/account" -> WireJson.encodeToString(account())
+                "/api/account/sessions" -> WireJson.encodeToString(sessions())
+                else ->
+                    fixtureHomeJson(path) ?: error("Unimplemented synthetic endpoint $method $path")
+            },
         )
     }
 }

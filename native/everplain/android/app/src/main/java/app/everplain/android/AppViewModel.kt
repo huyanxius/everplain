@@ -144,6 +144,48 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return agentSettingsDraft!!
     }
 
+    private var channelFeature: ChannelController? = null
+    private var channelIdentity: Pair<String, EverplainApi>? = null
+
+    internal fun channels(): ChannelController {
+        val client = api ?: error("尚未登录")
+        val owner = sessionOwner ?: error("尚未登录")
+        if (channelIdentity != (owner to client)) {
+            channelFeature?.close()
+            channelIdentity = owner to client
+            channelFeature =
+                ChannelController(client, viewModelScope) { error ->
+                    if (sessionOwner == owner && api === client) report(error)
+                }
+        }
+        return channelFeature!!
+    }
+
+    private var accountSettingsFeature: AccountSettingsController? = null
+    private var accountSettingsIdentity: Pair<String, EverplainApi>? = null
+
+    internal fun accountSettings(): AccountSettingsController {
+        val client = api ?: error("尚未登录")
+        val owner = sessionOwner ?: error("尚未登录")
+        if (accountSettingsIdentity != (owner to client)) {
+            accountSettingsFeature?.close()
+            accountSettingsIdentity = owner to client
+            accountSettingsFeature =
+                AccountSettingsController(
+                    client,
+                    viewModelScope,
+                    state.value.account,
+                    { account ->
+                        if (sessionOwner == owner && api === client)
+                            update { it.copy(account = account) }
+                    },
+                    { if (sessionOwner == owner && api === client) logout(localOnly = true) },
+                    { error -> if (sessionOwner == owner && api === client) report(error) },
+                )
+        }
+        return accountSettingsFeature!!
+    }
+
     private var memoryFeature: MemoryController? = null
     private var memoryIdentity: Pair<String, EverplainApi>? = null
 
@@ -440,6 +482,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             memoryIdentity = null
             agentSettingsDraft = null
             agentSettingsDraftOwner = null
+            channelFeature?.close()
+            channelFeature = null
+            channelIdentity = null
+            accountSettingsFeature?.close()
+            accountSettingsFeature = null
+            accountSettingsIdentity = null
             sessionOwner = null
             update {
                 AppState(
@@ -1667,9 +1715,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 graphIdentity = null
                 memoryFeature = null
                 memoryIdentity = null
-                agentSettingsDraft = null
-            agentSettingsDraftOwner = null
-            sessionOwner = null
+                channelFeature?.close()
+                channelFeature = null
+                channelIdentity = null
+                accountSettingsFeature?.close()
+                accountSettingsFeature = null
+                accountSettingsIdentity = null
+                sessionOwner = null
                 profileIntent = null
                 update {
                     AppState(origin = it.origin, appearance = it.appearance, starting = false)

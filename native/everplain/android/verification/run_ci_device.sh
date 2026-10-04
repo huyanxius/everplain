@@ -14,7 +14,7 @@ adb shell cmd package compile -m speed -f app.everplain.android
 adb shell cmd package compile -m speed -f app.everplain.android.test
 sha256sum app/build/outputs/apk/debug/app-debug.apk > verification/ci-results/APK-SHA256.txt
 result=0
-for test in NativeAccountFeatureTest NativeMarkdownMappingTest NativeSmokeTest NativeKeyboardTest NativeFlowTest ScreenshotFixtureTest NativeExpandedFeatureTest NativeMotionPlaybackTest; do
+for test in NativeAccountFeatureTest NativeMarkdownMappingTest NativeSmokeTest NativeKeyboardTest NativeFlowTest ScreenshotFixtureTest NativeAccountSettingsTest NativeExpandedFeatureTest NativeMotionPlaybackTest; do
   timeout 10 adb get-state >/dev/null 2>&1 || { result=1; break; }
   log="verification/ci-results/$test.log"
   timeout 180 adb shell am instrument -w -e class "app.everplain.android.$test" app.everplain.android.test/androidx.test.runner.AndroidJUnitRunner > "$log" 2>&1 || result=1

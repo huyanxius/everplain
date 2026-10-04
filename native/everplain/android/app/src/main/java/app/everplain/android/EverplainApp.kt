@@ -12,6 +12,7 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -327,7 +328,18 @@ private fun MainShell(s: AppState, vm: AppViewModel) {
                     .observeCompanionPointer(companionPointer),
                 contentAlignment = Alignment.TopCenter,
             ) {
-                Column(Modifier.widthIn(max = 840.dp).fillMaxSize()) {
+                Column(
+                    Modifier.widthIn(
+                            max =
+                                when (s.destination) {
+                                    Destination.Graph -> 1280.dp
+                                    Destination.Library,
+                                    Destination.Research -> 1120.dp
+                                    else -> 840.dp
+                                }
+                        )
+                        .fillMaxSize()
+                ) {
                     if (s.stopping) EpButton("结束本次等待", { endWait = true })
                     if (s.busy)
                         LinearProgressIndicator(
@@ -556,20 +568,23 @@ private fun Composer(s: AppState, vm: AppViewModel, home: Boolean = false) {
             s.draft.length > 40 ||
             (availableWidth < with(density) { 480.dp.toPx() } && s.draft.isNotEmpty())
     val panel = narrow || research || multiline || materialState.attached.isNotEmpty()
+    val corner = if (panel) EverplainTokens.radiusPanel.dp else EverplainTokens.radiusPill.dp
+    val shadows =
+        EverplainTokens.shadowComposer(MaterialTheme.colorScheme.background.luminance() < .5f)
     Surface(
         modifier =
-            if (motion)
-                Modifier.animateContentSize(
-                    tween(320, easing = CubicBezierEasing(.16f, 1f, .3f, 1f))
-                )
-            else Modifier,
+            (if (motion)
+                    Modifier.animateContentSize(
+                        tween(320, easing = CubicBezierEasing(.16f, 1f, .3f, 1f))
+                    )
+                else Modifier)
+                .webShadow(shadows, corner),
         shape =
             RoundedCornerShape(
                 if (panel) EverplainTokens.radiusPanel.dp else EverplainTokens.radiusPill.dp
             ),
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shadowElevation = 3.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = .07f)),
+        shadowElevation = 0.dp,
     ) {
         Column(
             Modifier.onSizeChanged { availableWidth = it.width }
@@ -1254,8 +1269,13 @@ private fun dateLabel(value: String): String =
 
 @Composable
 private fun AccountScreen(s: AppState, vm: AppViewModel) {
+    val controller = vm.accountSettings()
+    val settings by controller.state.collectAsStateWithLifecycle()
+    LaunchedEffect(controller) { controller.load() }
     var section by rememberSaveable { mutableStateOf(s.accountSection) }
     LaunchedEffect(s.accountSection) { section = s.accountSection }
+    val accountScroll = rememberLazyListState()
+    LaunchedEffect(section) { accountScroll.scrollToItem(0) }
     var confirmLogout by remember { mutableStateOf(false) }
     var confirmLocal by remember { mutableStateOf(false) }
     var editingName by rememberSaveable { mutableStateOf(false) }
@@ -1295,11 +1315,13 @@ private fun AccountScreen(s: AppState, vm: AppViewModel) {
             },
         )
     LazyColumn(
-        Modifier.fillMaxSize(),
+        Modifier.fillMaxSize().imePadding(),
+        state = accountScroll,
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item { SettingsCategory(section, vm) { section = it } }
+        item { AccountSettingsFeedback(controller) }
         when (section) {
             "个人资料" -> {
                 item {
@@ -1407,6 +1429,8 @@ private fun AccountScreen(s: AppState, vm: AppViewModel) {
                 }
             }
             "使用情况" -> {
+                if (s.credits?.isUnlimited == false)
+                    item { CreditRedemptionField(controller, vm::refresh) }
                 item {
                     SettingColumn("剩余使用额度") {
                         val credits = s.credits
@@ -1515,59 +1539,12 @@ private fun AccountScreen(s: AppState, vm: AppViewModel) {
                     }
                 }
             }
-            "使用偏好" -> {
-                item {
-                    SettingColumn("外观") {
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        ) {
-                            Row(Modifier.fillMaxWidth().padding(4.dp)) {
-                                listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色")
-                                    .forEach { (value, label) ->
-                                        EpButton(
-                                            label,
-                                            { vm.setAppearance(value) },
-                                            selected = s.appearance == value,
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                    }
-                            }
-                        }
-                    }
-                }
-                item {
-                    SettingColumn("界面语言") {
-                        Text(
-                            if (s.account?.preferences?.locale == "en-US") "English" else "简体中文",
-                            fontSize = 14.sp,
-                        )
-                    }
-                }
-                item {
-                    SettingColumn("时区") {
-                        Text(s.account?.preferences?.timezone ?: "暂不可用", fontSize = 14.sp)
-                    }
-                }
-            }
-            "安全" -> {
-                item { Text("登录设备", style = MaterialTheme.typography.titleMedium) }
-                items(s.sessions, key = { it.sessionId }) { session ->
-                    Column(
-                        Modifier.padding(vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text(
-                            session.deviceLabel + if (session.current) " · 当前设备" else "",
-                            fontSize = 14.sp,
-                        )
-                        Text(
-                            "最近使用 ${dateLabel(session.lastSeenAt)}",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+            "使用偏好",
+            "安全",
+            "数据与隐私",
+            "账户状态",
+            "聊天平台" -> {
+                item { AccountAdditionalSection(section, s, vm, controller) }
             }
         }
         item {
@@ -1933,7 +1910,8 @@ private fun SettingsCategory(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
             shape = RoundedCornerShape(EverplainTokens.radiusCard.dp),
         ) {
-            listOf("我的 Agent", "个人资料", "使用情况", "使用偏好", "安全").forEach { label ->
+            listOf("我的 Agent", "聊天平台", "个人资料", "使用情况", "使用偏好", "安全", "数据与隐私", "账户状态").forEach {
+                label ->
                 DropdownMenuItem(
                     text = { Text(label, fontSize = 14.sp) },
                     onClick = {
@@ -2053,6 +2031,7 @@ internal fun EpField(
     showLabel: Boolean = true,
     labelSize: Float = 13f,
     placeholder: String? = null,
+    password: Boolean = false,
 ) {
     val interactions = remember { MutableInteractionSource() }
     val focused by interactions.collectIsFocusedAsState()
@@ -2070,6 +2049,13 @@ internal fun EpField(
             change,
             enabled = enabled,
             singleLine = !multiline,
+            visualTransformation =
+                if (password) PasswordVisualTransformation() else VisualTransformation.None,
+            keyboardOptions =
+                KeyboardOptions(
+                    keyboardType = if (password) KeyboardType.Password else KeyboardType.Text,
+                    autoCorrectEnabled = !password,
+                ),
             minLines = minLines,
             interactionSource = interactions,
             textStyle =
