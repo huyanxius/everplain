@@ -98,4 +98,8 @@ tests/test_retrieval_preflight.py
 
 # Fresh server time on each model run.
 tests/test_agent_time_context.py
+
+# All generative callers use the shared stream transport.
+tests/test_model_streaming.py
+tests/billing/test_buffered_streaming.py
 tests/test_conversation_context.py

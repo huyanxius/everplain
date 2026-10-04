@@ -94,3 +94,18 @@ or printing secret values. A preflight pass still means configuration only.
 At the 2026-10-04 public inspection, the model plaza remained authentication-required,
 public official search yielded no Gemini price row, and no complete live tariff was
 verified. The screenshot amounts alone are not sufficient to fill this configuration.
+
+## Streaming transport
+
+All generative requests use the existing streaming transport, including background
+planning, memory extraction, graph naming, vision and legacy structured outputs.
+Callers needing one complete value drain the stream before returning it. A complete
+stream and final usage are required; a missing receipt does not trigger a nonstream
+retry or an inferred charge. Embedding and reranking APIs retain their own protocols.
+
+Authenticated UniGate checks on 2026-10-05 verified Gemini 3.5 Flash chat, streamed
+usage and a function-call/result round trip at `https://unigate.top/v1`. On a repeated
+prompt, the nonstream receipt omitted cache hits while the streaming receipt included
+`prompt_tokens_details.cached_tokens` and inclusive prompt totals. Streamed receipts
+are therefore required for this route. These upstream checks alone do not establish
+production activation or owner-ledger acceptance.

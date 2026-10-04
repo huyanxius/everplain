@@ -85,8 +85,6 @@ def stream_events(body, *, terminal=True, provisional=False):
 
 
 def http_response(body, stream, *, terminal=True, provisional=False):
-    if not stream:
-        return httpx.Response(200, json=body)
     events = stream_events(body, terminal=terminal, provisional=provisional)
     return httpx.Response(
         200,
@@ -418,8 +416,7 @@ def test_function_tool_round_trip_reserves_the_actual_expanded_input(wallet, str
         calls.append(payload)
         body = first if len(calls) == 1 else response_body()
         body["id"] = f"resp_synthetic_{len(calls)}"
-        if not stream:
-            return httpx.Response(200, json=body)
+        assert payload["stream"] is True
         # A tool invocation must appear as a streamed output item for the SDK.
         events = stream_events(body)
         if len(calls) == 1:
@@ -475,7 +472,7 @@ def test_validation_retry_marks_previous_attempt_nonbillable(wallet):
 
     def reply(request):
         calls.append(json.loads(request.content))
-        return httpx.Response(200, json={**response_body(), "id": f"resp_synthetic_{len(calls)}"})
+        return http_response({**response_body(), "id": f"resp_synthetic_{len(calls)}"}, True)
 
     async def run():
         async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as http:
@@ -509,7 +506,7 @@ def test_responses_output_budget_uses_only_its_wire_cap(wallet):
 
     def reply(request):
         seen.append(request)
-        return httpx.Response(200, json=response_body())
+        return http_response(response_body(), True)
 
     asyncio.run(run_agent(runtime, reply, settings={"extra_body": {"max_completion_tokens": 1}}))
     (row,) = attempt_rows(engine)
@@ -534,11 +531,13 @@ def test_responses_attempt_budget_stops_dispatch(wallet):
 
 
 @pytest.mark.parametrize("status", ["in_progress", "queued", None])
-def test_nonterminal_nonstream_response_is_not_final_usage(wallet, status, monkeypatch):
+def test_buffered_response_without_terminal_event_is_not_final_usage(wallet, status, monkeypatch):
     runtime, engine = wallet
     completions = record_completions(monkeypatch, runtime)
-    with pytest.raises(ModelDeliveryRejected):
-        asyncio.run(run_agent(runtime, lambda r: httpx.Response(200, json=response_body(status))))
+    with pytest.raises(UnknownTokenUsage):
+        asyncio.run(run_agent(runtime, lambda r: http_response(
+            response_body(status), True, terminal=False, provisional=True,
+        )))
     (row,) = attempt_rows(engine)
     assert row["usage_state"] == "unknown"
     assert row["reference_cost_pico"] is None

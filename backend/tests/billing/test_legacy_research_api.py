@@ -1,10 +1,12 @@
 # ruff: noqa: F811
 import json
+from io import BytesIO
 from uuid import uuid4
 
 import pytest
 from conftest import alembic_config  # noqa: F401
 from sqlalchemy import text
+from streaming_test_support import chat_sse
 from test_account_management_api import client, register  # noqa: F401
 
 from qunxue_api.adapters.model import ModelGateway
@@ -64,6 +66,11 @@ def test_existing_extraction_route_meter_owner_persistence_and_replay(client, mo
             pass
 
         def read(self, limit):
+            if not hasattr(self, "_stream"):
+                self._stream = BytesIO(self._body())
+            return self._stream.read(limit)
+
+        def _body(self):
             output = {
                 "status": "ok",
                 "knowledge_release_id": None,
@@ -75,7 +82,7 @@ def test_existing_extraction_route_meter_owner_persistence_and_replay(client, mo
                     "source_ref_ids": [],
                 },
             }
-            return json.dumps(
+            return chat_sse(
                 {
                     "id": "synthetic-extraction",
                     "model": "gpt-6-luna",
@@ -85,10 +92,11 @@ def test_existing_extraction_route_meter_owner_persistence_and_replay(client, mo
                     "usage": {
                         "prompt_tokens": 1000,
                         "completion_tokens": 100,
+                        "total_tokens": 1100,
                         "prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
                     },
                 }
-            ).encode()
+            )
 
     def transport(request, **kwargs):
         calls.append(request)

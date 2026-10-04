@@ -2,12 +2,14 @@
 import json
 from dataclasses import replace
 from datetime import UTC, datetime
+from io import BytesIO
 from types import SimpleNamespace
 from urllib.error import HTTPError
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
+from streaming_test_support import chat_sse
 from test_durable_billing import wallet  # noqa: F401
 from test_theory_matching_service import PHENOMENON, RELEASE, _bundle, _MatchRunRepository
 
@@ -71,6 +73,11 @@ def setup_application(
             pass
 
         def read(self, limit):
+            if not hasattr(self, "_stream"):
+                self._stream = BytesIO(self._body())
+            return self._stream.read(limit)
+
+        def _body(self):
             content = {
                 "status": "ok",
                 "knowledge_release_id": RELEASE.knowledge_release_id,
@@ -88,7 +95,7 @@ def setup_application(
             }
             if len(calls) in failures:
                 content["output"] = {}
-            return json.dumps(
+            return chat_sse(
                 {
                     "id": f"synthetic-research-{len(calls)}",
                     "model": "gpt-6-luna",
@@ -98,10 +105,11 @@ def setup_application(
                     "usage": {
                         "prompt_tokens": 1000,
                         "completion_tokens": 100,
+                        "total_tokens": 1100,
                         "prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
                     },
                 }
-            ).encode()
+            )
 
     def transport(request, **kwargs):
         calls.append(json.loads(request.data))
