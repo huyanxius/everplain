@@ -1,1 +1,16 @@
-*{box-sizing:border-box}body{width:340px;margin:0;padding:27px;background:#f8f7f2;color:#302f2c;font:12px/1.7 system-ui,-apple-system,"PingFang SC",sans-serif}header>span{font-size:8px;letter-spacing:.16em;color:#74736b}h1{font:400 24px/1.5 Georgia,"Songti SC",serif;margin:15px 0 8px}header p{color:#74736b;font-size:11px;margin:0 0 27px}label{display:block;font-size:10px;color:#74736b}input{display:block;width:100%;margin:9px 0 20px;border:1px solid #e0ddd4;border-radius:5px;padding:11px;background:#fffefa;color:#302f2c;font:12px system-ui}button{display:flex;align-items:center;justify-content:space-between;width:100%;border:1px solid #302f2c;border-radius:5px;background:#302f2c;color:#f8f7f2;padding:12px 14px;font:12px system-ui;cursor:pointer;margin-bottom:10px}button.secondary{background:transparent;color:#302f2c;border-color:#ddd9ce}button:disabled{opacity:.5;cursor:wait}#status{font-size:11px;min-height:36px;color:#625f55;margin:19px 0 12px}footer{font-size:9px;color:#8b877c;border-top:1px solid #e0ddd4;padding-top:15px}input:focus-visible,button:focus-visible{outline:2px solid #969783;outline-offset:3px}
+/* Shared --qx-* values are prepended from frontend/src/styles/tokens.css at build time. */
+* { box-sizing: border-box; }
+body { width: 360px; margin: 0; padding: var(--qx-space-6); background: var(--qx-color-surface); color: var(--qx-color-ink); font-family: var(--qx-font-ui); font-size: var(--qx-text-body); line-height: var(--qx-text-body--line-height); }
+header > span, label, footer { font-size: var(--qx-text-meta); line-height: var(--qx-text-meta--line-height); color: var(--qx-color-muted); }
+h1 { font-family: var(--qx-text-section--font-family); font-size: var(--qx-text-section); line-height: var(--qx-text-section--line-height); font-weight: var(--qx-text-section--font-weight); letter-spacing: var(--qx-text-section--letter-spacing); margin: var(--qx-space-4) 0 var(--qx-space-2); }
+header p { color: var(--qx-color-muted); margin: 0 0 var(--qx-space-6); }
+label { display: block; }
+input { display: block; width: 100%; margin: var(--qx-space-2) 0 var(--qx-space-5); border: 1px solid var(--qx-color-rule); border-radius: var(--qx-radius-field); padding: var(--qx-space-3) var(--qx-space-4); background: var(--qx-color-surface-muted); color: var(--qx-color-ink); font: inherit; }
+button { display: flex; align-items: center; justify-content: space-between; width: 100%; border: 1px solid var(--qx-color-accent); border-radius: var(--qx-radius-pill); background: var(--qx-color-accent); color: var(--qx-color-on-accent); padding: var(--qx-space-3) var(--qx-space-4); font: inherit; cursor: pointer; margin-bottom: var(--qx-space-3); }
+button:hover { background: var(--qx-color-accent-hover); }
+button.secondary { background: transparent; color: var(--qx-color-ink); border-color: var(--qx-color-rule); }
+button.secondary:hover { background: var(--qx-color-surface-muted); }
+button:disabled { opacity: .5; cursor: wait; }
+#status { font-size: var(--qx-text-meta); line-height: var(--qx-text-meta--line-height); min-height: var(--qx-space-10); color: var(--qx-color-ink-soft); margin: var(--qx-space-5) 0 var(--qx-space-3); overflow-wrap: anywhere; }
+footer { border-top: 1px solid var(--qx-color-rule); padding-top: var(--qx-space-4); }
+input:focus-visible, button:focus-visible { outline: 2px solid var(--qx-color-accent); outline-offset: var(--qx-space-1); }

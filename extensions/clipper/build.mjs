@@ -11,6 +11,9 @@ await mkdir(dist,{recursive:true})
 await build({ entryPoints:[path.join(root,'src/capture.js')], bundle:true, outfile:path.join(dist,'capture.js'), format:'iife', target:'chrome120', minify:true })
 await build({ entryPoints:[path.join(root,'src/popup.js')], bundle:true, outfile:path.join(dist,'popup.js'), format:'esm', target:'chrome120', minify:true })
 for (const file of ['manifest.json','popup.html','popup.css']) await cp(path.join(root,file),path.join(dist,file))
+// Bundle the exact Web token source locally: no remote CSS or extension CSP exception.
+const tokens = await readFile(path.resolve(root, '../../frontend/src/styles/tokens.css'), 'utf8')
+await writeFile(path.join(dist, 'popup.css'), tokens + '\n' + await readFile(path.join(root, 'popup.css'), 'utf8'))
 await writeFile(path.join(dist,'THIRD_PARTY_LICENSES.txt'), await readFile(path.join(root,'node_modules/defuddle/LICENSE'),'utf8'))
 const downloads = path.resolve(root,'../../frontend/public/downloads')
 await mkdir(downloads,{recursive:true})
@@ -39,3 +42,4 @@ for (const file of ['everplain-clipper-macos.command', 'everplain-clipper-window
 zip(setup, path.join(downloads, 'everplain-clipper-macos.zip'), ['everplain-clipper-macos.command', 'README-macos.txt'], 'everplain-clipper-macos.command')
 zip(setup, path.join(downloads, 'everplain-clipper-windows.zip'), ['everplain-clipper-windows.cmd', 'everplain-clipper-windows.ps1', 'README-windows.txt'])
 console.log('Built extension, SHA-256 list and macOS/Windows setup downloads')
+

@@ -11,3 +11,14 @@ test('official site is the default without changing an existing saved origin', a
   const popup = await readFile(new URL('../src/popup.js', import.meta.url), 'utf8')
   assert.match(popup, /stored\.everplainOrigin \|\| DEFAULT_SERVICE_ORIGIN/)
 })
+
+test('popup uses Web tokens without private color or typography values', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const css = await readFile(new URL('../popup.css', import.meta.url), 'utf8')
+  const build = await readFile(new URL('../build.mjs', import.meta.url), 'utf8')
+  assert.match(build, /frontend\/src\/styles\/tokens\.css/)
+  assert.match(css, /var\(--qx-color-surface\)/)
+  assert.match(css, /var\(--qx-radius-pill\)/)
+  assert.match(css, /var\(--qx-text-meta\)/)
+  assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i)
+})
