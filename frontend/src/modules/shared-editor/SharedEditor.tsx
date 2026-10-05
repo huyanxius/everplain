@@ -82,6 +82,8 @@ export function SharedEditor({
   onSelectionChange,
   saveState = 'saved',
   readOnly = false,
+  bodyPreview,
+  statusContent,
 }: {
   markdown: string
   properties?: Property[]
@@ -94,6 +96,9 @@ export function SharedEditor({
   onSelectionChange?: (selection: MarkdownSelection) => void
   saveState?: 'saved' | 'dirty' | 'saving' | 'error'
   readOnly?: boolean
+  /** A reversible host preview. It never replaces the live editor or its history. */
+  bodyPreview?: ReactNode
+  statusContent?: ReactNode
 }) {
   const initial = useRef(splitMarkdown(markdown))
   const raw = useRef(markdown)
@@ -393,7 +398,7 @@ export function SharedEditor({
       <input ref={imageInput} hidden type="file" accept="image/*" onChange={event => { const file = event.currentTarget.files?.[0]; if (file && editor) insertImage(file, editor); event.currentTarget.value = '' }} />
       {imageError && <p className="qx-notice qx-notice--danger" role="alert">{imageError}</p>}
       {selectionError && <p className="qx-notice qx-notice--danger" role="alert">{selectionError}</p>}
-      <div className="se-toolbar" role="toolbar" aria-label="编辑工具">
+      <div className="se-toolbar" role="toolbar" aria-label="编辑工具" inert={Boolean(bodyPreview)}>
         <T label="撤销" kbd="⌘Z" onClick={() => editor.chain().focus().undo().run()}><ArrowCounterClockwiseIcon /></T>
         <T label="重做" kbd="⇧⌘Z" onClick={() => editor.chain().focus().redo().run()}><ArrowClockwiseIcon /></T>
         <span className="se-gap" />
@@ -429,7 +434,7 @@ export function SharedEditor({
         </div>
       </div>
 
-      {find ? (
+      {find && !bodyPreview ? (
         <div className="se-find" role="search">
           <div className="se-find__row">
             <label className="qx-search se-find__field"><MagnifyingGlassIcon />
@@ -451,7 +456,7 @@ export function SharedEditor({
         </div>
       ) : null}
 
-      {inTable && source === null ? (
+      {inTable && source === null && !bodyPreview ? (
         <div className="se-tablebar" role="toolbar" aria-label="表格">
           <span>表格</span>
           <button type="button" className="qx-btn qx-btn--ghost" onMouseDown={(e) => e.preventDefault()} onClick={() => run('addRowAfter')}><RowsPlusBottomIcon /> 加一行</button>
@@ -464,15 +469,18 @@ export function SharedEditor({
 
       <div className="se-scroll" ref={shell}>
         <div className="se-page">
+          {bodyPreview}
+          <div hidden={Boolean(bodyPreview)}>
           {source === null && (propertySourceOnly ? <button type="button" className="qx-btn qx-btn--ghost" onClick={toSource}>在源码中编辑属性（保留完整 YAML）</button> : <Properties props={props} onChange={updateProperties} />)}
           {source !== null ? (
             <textarea className="se-source" onSelect={event => { const el = event.currentTarget; reportSelection(el.selectionStart < el.selectionEnd ? { start: el.selectionStart, end: el.selectionEnd, text: el.value.slice(el.selectionStart, el.selectionEnd) } : null) }} value={source} spellCheck={false} readOnly={readOnly} onChange={(e) => { const el = e.currentTarget; setSource(el.value); raw.current = el.value; callback.current?.(el.value); reportSelection(el.selectionStart < el.selectionEnd ? { start: el.selectionStart, end: el.selectionEnd, text: el.value.slice(el.selectionStart, el.selectionEnd) } : null) }} aria-label="Markdown 源码" />
           ) : (
             <EditorContent editor={editor} />
           )}
+          </div>
         </div>
 
-        {menu && items.length && source === null ? (
+        {menu && items.length && source === null && !bodyPreview ? (
           <div className="se-pop se-suggest" style={{ left: menu.x, top: menu.y }} role="listbox" onMouseDown={(e) => e.preventDefault()}>
             {menu.kind === 'wiki' ? <p className="se-pop__label">链接到笔记</p> : null}
             {menu.kind === 'wiki'
@@ -490,7 +498,7 @@ export function SharedEditor({
           </div>
         ) : null}
 
-        {link ? (
+        {link && !bodyPreview ? (
           <form className="se-pop se-linkpop" style={{ left: link.x, top: link.y }} onSubmit={(e) => { e.preventDefault(); applyLink(link.href) }}>
             <LinkIcon />
             <input autoFocus placeholder="粘贴链接，回车确认" value={link.href} onChange={(e) => setLink({ ...link, href: e.target.value })} onKeyDown={(e) => e.key === 'Escape' && setLink(null)} />
@@ -499,9 +507,9 @@ export function SharedEditor({
         ) : null}
       </div>
 
-      {source !== null && sourceSelection && 'start' in sourceSelection && selectionActions.length > 0 && <div className="se-source-bubble se-bubble" role="toolbar" aria-label="源码选区操作">{selectionActions.map(action => <button key={action.id} type="button" className="qx-btn qx-btn--ghost se-bubble__text" disabled={action.disabled} onMouseDown={event => event.preventDefault()} onClick={() => action.run(editor, sourceSelection.text, sourceSelection)}>{action.icon}{action.label}</button>)}</div>}
+      {source !== null && !bodyPreview && sourceSelection && 'start' in sourceSelection && selectionActions.length > 0 && <div className="se-source-bubble se-bubble" role="toolbar" aria-label="源码选区操作">{selectionActions.map(action => <button key={action.id} type="button" className="qx-btn qx-btn--ghost se-bubble__text" disabled={action.disabled} onMouseDown={event => event.preventDefault()} onClick={() => action.run(editor, sourceSelection.text, sourceSelection)}>{action.icon}{action.label}</button>)}</div>}
 
-      <BubbleMenu editor={editor} shouldShow={({ editor: ed, state }) => !state.selection.empty && !ed.isActive('codeBlock') && !ed.isActive('image') && source === null} options={{ placement: 'top', offset: 10 }}>
+      <BubbleMenu editor={editor} shouldShow={({ editor: ed, state }) => !bodyPreview && !state.selection.empty && !ed.isActive('codeBlock') && !ed.isActive('image') && source === null} options={{ placement: 'top', offset: 10 }}>
         <div className="se-bubble">
           <button type="button" aria-label="加粗" aria-pressed={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><TextBIcon /></button>
           <button type="button" aria-label="斜体" aria-pressed={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}><TextItalicIcon /></button>
@@ -520,6 +528,7 @@ export function SharedEditor({
         <span>{words.toLocaleString()} 字</span>
         <span>{editor.storage.characterCount.characters().toLocaleString()} 字符</span>
         <span>约 {Math.max(1, Math.round(words / 400))} 分钟</span>
+        {statusContent}
         <span className="se-spacer" />
         {source !== null ? <span className="se-status__mode">源码模式 · Markdown</span> : focusMode ? <span className="se-status__mode">专注模式</span> : null}
         <span className="se-status__save" data-state={saveState}>{saveState === 'saving' ? '保存中…' : saveState === 'dirty' ? '尚未保存' : saveState === 'error' ? '保存失败，修改仍在' : '已保存'}</span>
