@@ -27,14 +27,21 @@ export function isProcessing(document: SharedDocument) {
 
 const genericBookmarkTitle = /^(?:bookmark(?:[-_]\d+)?|网页收藏|untitled)(?:\.(?:md|markdown|html?))?$/i
 
+function meaningfulWebTitle(value?: string | null) {
+  const title = value?.trim()
+  if (!title || genericBookmarkTitle.test(title) || /^(?:new tab|new page|新标签页|新建标签页|新分頁|新分页|无标题|未命名|about:blank)$/i.test(title)) return undefined
+  if (/^(?:https?:\/\/\S+|www\.\S+|(?:[a-z\d-]+\.)+[a-z]{2,}(?:[/:?#]\S*)?)$/i.test(title)) return undefined
+  return title
+}
+
 export function documentTitle(document: SharedDocument, source?: WebMaterialSource) {
   if (!webSourceUrl(source) || !genericBookmarkTitle.test(document.filename.trim())) return document.filename
-  const title = source?.title?.trim()
-  if (title && !genericBookmarkTitle.test(title)) return title
-  const topic = document.knowledge?.topics.find(item => item.title.trim() && !genericBookmarkTitle.test(item.title.trim()))?.title.trim()
+  const title = meaningfulWebTitle(source?.title)
+  if (title) return title
+  const topic = document.knowledge?.topics.map(item => meaningfulWebTitle(item.title)).find(Boolean)
   if (topic) return topic
   const summary = document.knowledge?.summary?.trim().split(/[。！？\n]/)[0]?.replace(/^[#*\s]+/, '').trim()
-  return summary ? summary.slice(0, 80) : webSourceUrl(source)!.hostname.replace(/^www\./, '')
+  return meaningfulWebTitle(summary)?.slice(0, 80) || webSourceUrl(source)!.hostname.replace(/^www\./, '')
 }
 
 export function siteIconUrl(source?: WebMaterialSource) {

@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+import pytest
 from test_research_material_api import _authenticate
 
 
@@ -176,33 +177,49 @@ def test_clip_preserves_url_identity_and_deduplicates_repeated_capture(plain_cli
     assert batch["duplicates"] == 1
 
 
-def test_public_bilibili_discovery_expands_durable_batch_and_imports_transcript(plain_client):
-    from qunxue_api.adapters.media_import import FavoritesReport, ImportItem, ImportResult
+@pytest.mark.parametrize("description", ["A video about public knowledge.", ""])
+def test_public_bilibili_imports_metadata_without_media_processing(
+    plain_client, monkeypatch, description
+):
+    from qunxue_api.adapters.media_import import (
+        BilibiliTemporaryAudioProvider,
+        FavoritesReport,
+        ImportItem,
+        VideoImportAdapter,
+        YtDlpSubtitleProvider,
+    )
+    from qunxue_api.adapters.transcription import (
+        DashScopeTranscriptionProvider,
+        OpenAICompatibleTranscriptionProvider,
+    )
 
     c = plain_client
     c.app.state.import_worker_enabled = False
     _authenticate(c)
     item = ImportItem(
-        source_key="bilibili:BV123",
+        source_key="bilibili:BV1234567890",
         title="Public video",
         filename="video.txt",
         content=b"metadata only",
-        source_url="https://www.bilibili.com/video/BV123",
+        source_url="https://www.bilibili.com/video/BV1234567890",
         relative_path="video",
+        metadata={"text_source": "metadata", "description": description},
     )
 
     class Favorites:
         def enumerate_public_favorites(self, uid):
             return FavoritesReport(items=(item,))
 
-    class Video:
-        def import_video(self, url):
-            from dataclasses import replace
-
-            return ImportResult(item=replace(item, content=b"Real subtitle fixture text."))
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Bilibili favorites must not fetch video, subtitles or audio")
 
     c.app.state.media_import_gateway.favorites = Favorites()
-    c.app.state.media_import_gateway.video = Video()
+    monkeypatch.setattr(VideoImportAdapter, "import_video", forbidden)
+    monkeypatch.setattr(YtDlpSubtitleProvider, "fetch", forbidden)
+    monkeypatch.setattr(BilibiliTemporaryAudioProvider, "download", forbidden)
+    monkeypatch.setattr(DashScopeTranscriptionProvider, "transcribe", forbidden)
+    monkeypatch.setattr(OpenAICompatibleTranscriptionProvider, "transcribe", forbidden)
+    c.app.state.import_fetch_text = forbidden
     created = c.post(
         "/api/imports/bilibili", json={"uid": "123"}, headers={"Idempotency-Key": str(uuid4())}
     )
@@ -213,8 +230,87 @@ def test_public_bilibili_discovery_expands_durable_batch_and_imports_transcript(
     source = c.get(
         f"/api/shared-knowledge-bases/{batch['library_id']}/documents/{batch['items'][0]['document_id']}/source"
     ).json()
-    assert "Real subtitle fixture" in str(source["segments"])
-    assert "metadata only" not in str(source["segments"])
+    text = str(source["segments"])
+    assert "Public video" in text and item.source_url in text
+    assert "资料范围：视频标题与简介" in text
+    if description:
+        assert description in text and "简介" in text
+    assert "Real subtitle fixture" not in text
+    library = c.get("/api/shared-knowledge-bases/" + batch["library_id"]).json()
+    assert library["documents"][0]["filename"] == "Public video.md"
+
+    second = c.post(
+        "/api/imports/bilibili", json={"uid": "123"}, headers={"Idempotency-Key": str(uuid4())}
+    ).json()
+    drain(c)
+    duplicate = c.get("/api/imports/" + second["id"]).json()
+    assert duplicate["duplicates"] == 1 and duplicate["imported"] == 0
+
+    document_id = batch["items"][0]["document_id"]
+    assert c.delete(
+        f"/api/shared-knowledge-bases/{batch['library_id']}/documents/{document_id}",
+        headers={"Idempotency-Key": str(uuid4())},
+    ).status_code == 204
+    third = c.post(
+        "/api/imports/bilibili", json={"uid": "123"}, headers={"Idempotency-Key": str(uuid4())}
+    ).json()
+    drain(c)
+    restored = c.get("/api/imports/" + third["id"]).json()
+    assert restored["imported"] == 1
+    assert restored["items"][0]["document_id"] != document_id
+
+
+def test_old_bilibili_empty_content_failure_retries_from_saved_metadata(plain_client):
+    from sqlalchemy import select
+
+    from qunxue_api.adapters.media_import import FavoritesReport, ImportItem
+    from qunxue_api.adapters.sqlite.knowledge_import import ImportItemRow, ImportSourceRow
+
+    c = plain_client
+    c.app.state.import_worker_enabled = False
+    _authenticate(c)
+    item = ImportItem(
+        source_key="bilibili:BV1234567890",
+        title="Recovered video",
+        filename="BV1234567890.txt",
+        content=b"",
+        source_url="https://www.bilibili.com/video/BV1234567890",
+        metadata={"text_source": "metadata", "description": "Saved video description"},
+    )
+
+    class Favorites:
+        def enumerate_public_favorites(self, uid):
+            return FavoritesReport(items=(item,))
+
+    c.app.state.media_import_gateway.favorites = Favorites()
+    created = c.post(
+        "/api/imports/bilibili", json={"uid": "123"}, headers={"Idempotency-Key": str(uuid4())}
+    ).json()
+    assert c.app.state.run_import_once()
+    with c.app.state.knowledge_import_scope() as app:
+        row = app.repository.session.scalar(
+            select(ImportItemRow).where(ImportItemRow.batch_id == created["id"])
+        )
+        row.status, row.attempts = "failed", 1
+        row.error = "Subtitle or temporary audio processing failed."
+        item_id = row.id
+        app.repository.session.commit()
+    assert c.post(
+        f"/api/imports/{created['id']}/items/{item_id}/retry",
+        headers={"Idempotency-Key": str(uuid4())},
+    ).status_code == 200
+    drain(c)
+    result = c.get("/api/imports/" + created["id"]).json()
+    assert result["imported"] == 1 and result["failed"] == 0
+    assert result["items"][0]["attempts"] == 2
+    with c.app.state.knowledge_import_scope() as app:
+        saved = app.repository.session.scalar(select(ImportSourceRow))
+        assert saved.details["metadata"]["text_source"] == "metadata"
+    source = c.get(
+        f"/api/shared-knowledge-bases/{result['library_id']}/documents/"
+        f"{result['items'][0]['document_id']}/source"
+    ).json()
+    assert "Saved video description" in str(source["segments"])
 
 
 def test_fifty_bookmarks_keep_failed_items_and_continue_importing(plain_client):

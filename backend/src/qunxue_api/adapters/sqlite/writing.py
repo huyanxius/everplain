@@ -69,6 +69,8 @@ class WritingRevisionRow(Base):
     after_markdown: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20))
     warnings: Mapped[list] = mapped_column(JSON)
+    selection_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    selection_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[str] = mapped_column(String)
 
 
@@ -123,6 +125,8 @@ def revision_dict(row):
             "after_markdown",
             "status",
             "warnings",
+            "selection_start",
+            "selection_end",
             "created_at",
         )
     }
@@ -281,7 +285,8 @@ class SqliteWritingRepository:
             )
         ]
 
-    def add_revision(self, user_id, document, *, action, after_markdown, warnings):
+    def add_revision(self, user_id, document, *, action, after_markdown, warnings,
+                     selection_start=None, selection_end=None):
         latest = self.get(user_id, document["document_id"])
         status = "pending" if latest["version"] == document["version"] else "stale"
         row = WritingRevisionRow(
@@ -294,6 +299,8 @@ class SqliteWritingRepository:
             after_markdown=after_markdown,
             status=status,
             warnings=warnings,
+            selection_start=selection_start,
+            selection_end=selection_end,
             created_at=now(),
         )
         self.session.add(row)

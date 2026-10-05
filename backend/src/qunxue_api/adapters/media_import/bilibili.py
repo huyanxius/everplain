@@ -14,6 +14,13 @@ _FOLDER_PATH = "/x/v3/fav/folder/created/list-all"
 _RESOURCE_PATH = "/x/v3/fav/resource/list"
 
 
+def metadata_content(title: str, url: str, description: str = "") -> bytes:
+    text = f"# {title}\n\n来源：{url}\n\n资料范围：视频标题与简介\n"
+    if description.strip():
+        text += f"\n## 简介\n\n{description.strip()}\n"
+    return text.encode("utf-8")
+
+
 class BilibiliFavoritesAdapter:
     def __init__(
         self,
@@ -204,19 +211,20 @@ def _append_media(
     seen.add(key)
     title = str(media.get("title") or video_id)
     url = f"https://www.bilibili.com/video/{video_id}"
+    description = str(media.get("intro") or "")
     items.append(
         ImportItem(
             key,
             title,
             f"{video_id}.txt",
-            f"# {title}\n\n{url}\n".encode(),
+            metadata_content(title, url, description),
             source_url=url,
             relative_path=f"bilibili/{video_id}.txt",
             metadata={
                 "uid": uid,
                 "folder_ids": [folder_id],
                 "text_source": "metadata",
-                "description": str(media.get("intro") or ""),
+                "description": description,
                 "duration": media.get("duration"),
                 "pages": media.get("page"),
             },

@@ -24,10 +24,8 @@ from qunxue_api.adapters.empty_catalog import EmptyKnowledgeCatalog
 from qunxue_api.adapters.import_sources.fetch import fetch_bookmark
 from qunxue_api.adapters.media_import import (
     BilibiliFavoritesAdapter,
-    BilibiliTemporaryAudioProvider,
     ImageImportAdapter,
     OpenAICompatibleVisionProvider,
-    VideoImportAdapter,
 )
 from qunxue_api.adapters.media_import.integration import MediaImportGateway, parse_files
 from qunxue_api.adapters.model import (
@@ -804,12 +802,6 @@ def create_app(
         )
     app.state.media_import_gateway = MediaImportGateway(
         BilibiliFavoritesAdapter(),
-        VideoImportAdapter(
-            audio=BilibiliTemporaryAudioProvider(),
-            transcription=_build_transcription_provider(resolved_settings)
-            if resolved_settings.runtime_mode != "mock"
-            else None,
-        ),
         ImageImportAdapter(provider=vision),
     )
     app.state.knowledge_import_scope = knowledge_import_scope

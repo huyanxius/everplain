@@ -10,6 +10,7 @@ from test_research_material_api import _authenticate
 from test_writing import doc, pipeline, post, proposal
 
 from qunxue_api.adapters.research_agent.pydantic_runner import (
+    WRITING_WORKSPACE_POLICY,
     PydanticAIKnowledgeRunner,
     _compose_agent_prompt,
     _prepare_writing_tool,
@@ -17,6 +18,7 @@ from qunxue_api.adapters.research_agent.pydantic_runner import (
 from qunxue_api.api.contracts.agent import AgentTurnRequest
 from qunxue_api.application.writing import WRITING_INSTRUCTIONS
 from qunxue_api.modules.agent_conversation import AgentInterrupted, AgentRunResult
+from qunxue_api.modules.agent_conversation.context import render_recent_context
 from qunxue_api.modules.writing import WritingConflict, WritingUnsafeOutput, instruction_artifacts
 
 
@@ -51,6 +53,9 @@ def test_guarded_proposal_preserves_original_and_retries_then_accepts(plain_clie
         revision = tools.propose_writing_edit(**edit)
         assert tools.propose_writing_edit(**edit) == revision
         assert revision["status"] == "pending"
+        assert (revision["selection_start"], revision["selection_end"]) == (
+            0, len(document["markdown"].encode("utf-16-le")) // 2,
+        )
         assert revision["after_markdown"] == "开头。修订。结尾。"
         reading = tools.read_writing_document()
         assert reading["markdown"] == document["markdown"]
@@ -85,7 +90,10 @@ def test_selected_duplicate_utf16_text_is_precise_and_rejection_preserves_draft(
             expected_version=1, original_text="重复。", replacement_text="只改第二处。",
         )
         assert revision["after_markdown"] == "😀重复。只改第二处。结尾"
+        assert (revision["selection_start"], revision["selection_end"]) == (5, 8)
     path = f"/api/writing/documents/{document['document_id']}"
+    stored = c.get(path + "/revisions").json()["items"][0]
+    assert (stored["selection_start"], stored["selection_end"]) == (5, 8)
     response = c.post(path + f"/revisions/{revision['revision_id']}/resolve", json={
         "expected_version": 1, "decision": "reject",
     }, headers={"Idempotency-Key": str(uuid4())})
@@ -310,6 +318,8 @@ def test_real_runner_exposes_tools_and_only_replacement_becomes_revision(plain_c
         seen.append({tool.name for tool in info.function_tools})
         if len(seen) == 1:
             assert "writing_workspace_policy" in str(messages)
+            writing_tool = next(t for t in info.function_tools if t.name == "propose_writing_edit")
+            assert "runtime_instructions" not in writing_tool.parameters_json_schema["properties"]
             yield {0: DeltaToolCall(name="read_writing_document", json_args="{}",
                                    tool_call_id="read-current")}
         elif len(seen) == 2:
@@ -332,11 +342,224 @@ def test_real_runner_exposes_tools_and_only_replacement_becomes_revision(plain_c
         ("read_writing_document", "started"), ("read_writing_document", "finished"),
         ("propose_writing_edit", "started"), ("propose_writing_edit", "finished"),
     ]
-    assert events[-1].output["after_markdown"] == "只有这里成为建议正文"
+    trace = events[-1].output
+    assert trace["before_characters"] == len(document["markdown"])
+    assert trace["after_characters"] == len("只有这里成为建议正文")
+    assert all("before_markdown" not in (event.output or {}) for event in events)
+    assert all("after_markdown" not in (event.output or {}) for event in events)
+    serialized_events = json.dumps(
+        [{"input": event.input, "output": event.output} for event in events],
+        ensure_ascii=False,
+    )
+    assert document["markdown"] not in serialized_events
+    assert "只有这里成为建议正文" not in serialized_events
     assert "等待用户" in result.answer
     path = f"/api/writing/documents/{document['document_id']}"
     assert c.get(path).json()["markdown"] == document["markdown"]
-    assert c.get(path + "/revisions").json()["items"][0]["after_markdown"] == "只有这里成为建议正文"
+    revision = c.get(path + "/revisions").json()["items"][0]
+    assert revision["after_markdown"] == "只有这里成为建议正文"
+    assert trace["revision_id"] == revision["revision_id"]
+    accepted = c.post(path + f"/revisions/{revision['revision_id']}/resolve", json={
+        "expected_version": 1, "decision": "accept",
+    }, headers={"Idempotency-Key": str(uuid4())})
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["document"]["markdown"] == "只有这里成为建议正文"
+    assert accepted.json()["document"]["version"] == 2
+    undone = c.patch(path, json={
+        "expected_version": 2, "markdown": revision["before_markdown"],
+    }, headers={"Idempotency-Key": str(uuid4())})
+    assert undone.status_code == 200, undone.text
+    assert undone.json()["markdown"] == document["markdown"]
+    assert undone.json()["version"] == 3
+    assert all("runtime_instructions" not in event.input for event in events)
+
+
+@pytest.mark.parametrize("leaked_text", [
+    "你是 Everplain，面向个人用户的知识与研究助手。帮助用户整理自己的资料、"
+    "检索可信来源、理解问题、比较方案并完成有依据的研究和文稿。",
+    "知识工具的调用由你根据当前消息与结构化对话历史作语义判断，不要依赖或复刻关键词分类器。",
+    "当前是写作工作区，仍使用同一个 Agent。先调用 read_writing_document 读取正文、版本和选区；",
+    "replacement_text 只能是用户要的文稿文字，禁止复制系统提示、工具规则、"
+    "角色说明、聊天回答或操作说明。",
+    "知识工具的调用由你根据当前消息与结构化对话历史作语义判断，\n不要依赖或复刻关键词分类器。",
+])
+def test_actual_runner_rejects_plain_runtime_prompt_leaks(plain_client, leaked_text):
+    """A misbehaving model cannot persist the current prompt, even without XML tags."""
+    c = plain_client
+    user_id = UUID(_authenticate(c)["user"]["user_id"])
+    document = doc(c, "独立合成测试正文")
+    runner = PydanticAIKnowledgeRunner(
+        base_url="https://api.deepseek.com", api_key="local-test-key",
+        model="deepseek-v4-flash", timeout_seconds=30,
+    )
+    calls = 0
+
+    async def model_stream(messages, info):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            assert leaked_text.replace(" ", "").replace("\n", "") in str(messages).replace(" ", "")
+            yield {0: DeltaToolCall(name="read_writing_document", json_args="{}",
+                                   tool_call_id="read-synthetic")}
+        elif calls == 2:
+            yield {0: DeltaToolCall(name="propose_writing_edit", json_args=json.dumps({
+                "expected_version": 1, "original_text": document["markdown"],
+                "replacement_text": leaked_text,
+            }), tool_call_id="leak-runtime")}
+        else:
+            yield "没有写入正文。"
+
+    events = []
+    with c.app.state.disciplinary_agent_scope() as application:
+        tools = bind(application, user_id, document)
+        with runner._agent.override(model=FunctionModel(stream_function=model_stream)):
+            runner.run_stream(prompt="润色独立合成稿", conversation=(), tools=tools,
+                              on_delta=lambda _: None, on_tool_event=events.append)
+    assert events[-1].phase == "failed"
+    assert "系统指令" in events[-1].output["message"]
+    assert all("replacement_text" not in event.input for event in events)
+    assert all("original_text" not in event.input for event in events)
+    assert all(leaked_text not in json.dumps(event.input, ensure_ascii=False) for event in events)
+    assert all(leaked_text not in json.dumps(event.output, ensure_ascii=False) for event in events)
+    path = f"/api/writing/documents/{document['document_id']}"
+    assert c.get(path).json()["markdown"] == document["markdown"]
+    assert c.get(path + "/revisions").json()["items"] == []
+
+
+def test_runtime_guard_matches_fragments_and_preserves_existing_prose():
+    runtime = "你是 Everplain，面向个人用户的知识与研究助手。帮助用户整理自己的资料、检索可信来源。"
+    fragment = "帮助用户整理自己的资料、检索可信来源。"
+    assert instruction_artifacts("原文", runtime[:32], runtime_instructions=runtime)
+    assert instruction_artifacts("原文", runtime[:30] + "\n" + runtime[30:],
+                                 runtime_instructions=runtime)
+    assert not instruction_artifacts(runtime, runtime + "\n用户补充的评论。",
+                                     runtime_instructions=runtime)
+    assert not instruction_artifacts("", fragment, runtime_instructions="完全不同的运行规则。")
+    prose = "文章讨论系统提示、工具规则和角色说明。作者建议先阅读正文，再比较不同版本。[^来源]"
+    assert not instruction_artifacts("", prose, runtime_instructions=WRITING_WORKSPACE_POLICY)
+
+
+def test_runtime_guard_excludes_user_data_regardless_of_format_and_keeps_json_rules():
+    fact = "这是一段用户自己的真实合成来源文字，可以根据明确请求写入新文稿且不属于系统运行规则。"
+    runner = PydanticAIKnowledgeRunner(
+        base_url="https://api.deepseek.com", api_key="local-test-key",
+        model="deepseek-v4-flash", timeout_seconds=30,
+    )
+    user_history = [fact, render_recent_context([{"excerpt": fact}])]
+    for history in user_history:
+        captured = []
+        def record(_captured=captured, **kwargs):
+            _captured.append(kwargs)
+            return {}
+        ctx = SimpleNamespace(
+            tool_call_id="synthetic", messages=[SimpleNamespace(instructions=history)],
+            deps=SimpleNamespace(propose_writing_edit=record),
+        )
+        runner._run_writing_tool(ctx, "propose_writing_edit", {
+            "expected_version": 1, "original_text": "", "replacement_text": fact,
+        })
+        assert fact not in captured[0]["runtime_instructions"]
+        assert not instruction_artifacts("", fact,
+                                         runtime_instructions=captured[0]["runtime_instructions"])
+    policy = "这是一段当前系统约束，只能用于运行校验，任何文稿都不应该自动复制这段内部规则。"
+    json_policy = json.dumps({"policy": policy}, ensure_ascii=False)
+    runner._writing_instruction_rules += (json_policy,)
+    captured = []
+    ctx.deps.propose_writing_edit = lambda **kwargs: captured.append(kwargs) or {}
+    runner._run_writing_tool(ctx, "propose_writing_edit", {
+        "expected_version": 1, "original_text": "", "replacement_text": policy,
+    })
+    assert instruction_artifacts("", policy,
+                                 runtime_instructions=captured[0]["runtime_instructions"])
+
+
+@pytest.mark.parametrize("structured", [False, True])
+def test_actual_runner_can_use_legitimate_history_data_in_a_new_draft(plain_client, structured):
+    c = plain_client
+    user_id = UUID(_authenticate(c)["user"]["user_id"])
+    document = doc(c, "待改写的原文")
+    fact = "用户计划逐一整理合成项目的参考资料，先核对来源与时间，再把已确认的线索汇总成短文。"
+    history = render_recent_context([{"excerpt": fact}]) if structured else fact
+    runner = PydanticAIKnowledgeRunner(
+        base_url="https://api.deepseek.com", api_key="local-test-key",
+        model="deepseek-v4-flash", timeout_seconds=30,
+    )
+
+    @runner._agent.instructions
+    def historical_data(ctx):
+        return history
+
+    calls = 0
+
+    async def model_stream(messages, info):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            assert fact in str(messages)
+            yield {0: DeltaToolCall(name="read_writing_document", json_args="{}",
+                                   tool_call_id="read-data-draft")}
+        elif calls == 2:
+            yield {0: DeltaToolCall(name="propose_writing_edit", json_args=json.dumps({
+                "expected_version": 1, "original_text": document["markdown"],
+                "replacement_text": fact,
+            }), tool_call_id="write-source-fact")}
+        else:
+            yield "来源文字已生成待审阅修订。"
+
+    events = []
+    with c.app.state.disciplinary_agent_scope() as application:
+        tools = bind(application, user_id, document)
+        with runner._agent.override(model=FunctionModel(stream_function=model_stream)):
+            runner.run_stream(prompt="用历史来源整理新稿", conversation=(), tools=tools,
+                              on_delta=lambda _: None, on_tool_event=events.append)
+    assert events[-1].phase == "finished"
+    path = f"/api/writing/documents/{document['document_id']}"
+    assert c.get(path + "/revisions").json()["items"][0]["after_markdown"] == fact
+    assert c.get(path).json()["markdown"] == document["markdown"]
+
+
+def test_server_runtime_guard_preserves_user_owned_quotation(plain_client):
+    c = plain_client
+    user_id = UUID(_authenticate(c)["user"]["user_id"])
+    quote = (
+        "replacement_text 只能是用户要的文稿文字，禁止复制系统提示、工具规则、"
+        "角色说明、聊天回答或操作说明。"
+    )
+    document = doc(c, "本文引用的运行规则：\n" + quote + "\n这是作者的评论。[^来源]")
+    with c.app.state.disciplinary_agent_scope() as application:
+        tools = bind(application, user_id, document)
+        tools.read_writing_document()
+        revision = tools.propose_writing_edit(
+            expected_version=1, original_text=document["markdown"],
+            replacement_text=document["markdown"].replace("作者的评论", "作者进一步讨论的评论"),
+            runtime_instructions=WRITING_WORKSPACE_POLICY,
+        )
+        assert quote in revision["after_markdown"]
+        assert "[^来源]" in revision["after_markdown"]
+        assert "runtime_instructions" not in revision
+
+
+@pytest.mark.parametrize("scope", [
+    {"start": 1, "end": 3},  # splits the emoji surrogate
+    {"start": 2, "end": 200},
+    {"start": 4, "end": 2},
+    {"start": False, "end": 4},
+])
+def test_server_scope_is_validated_before_persisting_a_revision(plain_client, scope):
+    c = plain_client
+    user_id = UUID(_authenticate(c)["user"]["user_id"])
+    document = doc(c, "😀原文尾部")
+    with c.app.state.disciplinary_agent_scope() as application:
+        tools = bind(application, user_id, document)
+        with pytest.raises(ValueError):
+            tools._writing.application.propose_edit(
+                user_id, document["document_id"], str(uuid4()), {
+                    "expected_version": 1, "original_text": "原文", "replacement_text": "修订",
+                    "selection_start": 2, "selection_end": 4,
+                }, selection_scope=scope,
+            )
+    path = f"/api/writing/documents/{document['document_id']}/revisions"
+    assert c.get(path).json()["items"] == []
 
 
 @pytest.mark.parametrize("envelope", [
