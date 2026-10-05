@@ -1,5 +1,5 @@
 /** Public product IDs; provider names and URLs are resolved only by the server. */
-export type ReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export type ModelDefinition = {
   readonly id: string

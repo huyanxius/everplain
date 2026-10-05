@@ -488,6 +488,7 @@ def create_app(
     app.state.model_router = model_router
     app.state.model_attempt_recorder = model_attempt_recorder
     from qunxue_api.adapters.research_agent.model_selection import (
+        registered_agent_effort_settings,
         registered_agent_models,
         selectable_agent_model,
     )
@@ -1210,6 +1211,9 @@ def create_app(
                     timeout_seconds=route_endpoint.timeout_seconds,
                     extra_headers=route_endpoint.extra_headers,
                     reasoning_effort=selection.reasoning_effort,
+                    reasoning_settings=registered_agent_effort_settings(
+                        resolved_settings, selection,
+                    ),
                     protocol=route_protocol,
                     route_executor=route_executor,
                     model_capacities=resolved_settings.agent_model_capacities,

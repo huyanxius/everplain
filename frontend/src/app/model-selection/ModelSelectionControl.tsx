@@ -28,6 +28,7 @@ export type ModelSelectionControlProps = {
 
 const effortLabels: Record<ReasoningEffort, readonly [string, string]> = {
   none: ['无', 'None'],
+  minimal: ['极低', 'Minimal'],
   low: ['低', 'Low'],
   medium: ['中', 'Medium'],
   high: ['高', 'High'],

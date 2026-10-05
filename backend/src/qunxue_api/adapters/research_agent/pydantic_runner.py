@@ -81,6 +81,7 @@ from qunxue_api.modules.agent_conversation import (
 )
 from qunxue_api.modules.billing import BillingFailure
 from qunxue_api.modules.shared_knowledge import KnowledgeIndexChoiceRequired
+from qunxue_api.settings import AgentModelEffortSettings
 
 WRITING_WORKSPACE_POLICY = (
     "当前是写作工作区，仍使用同一个 Agent。先调用 read_writing_document 读取正文、"
@@ -836,13 +837,14 @@ class PydanticAIKnowledgeRunner:
         timeout_seconds: float,
         extra_headers: Mapping[str, str] | None = None,
         reasoning_effort: ReasoningEffort | None = None,
+        reasoning_settings: AgentModelEffortSettings | None = None,
         route_executor: ModelRouteExecutor | None = None,
         model_api_mock: bool = False,
         require_billing: bool = False,
         protocol: Literal["chat_completions", "responses"] = "chat_completions",
         model_capacities: Mapping[str, AgentModelCapacityMetadata] | None = None,
     ) -> None:
-        if protocol == "responses" and fallback_endpoints:
+        if (protocol == "responses" or reasoning_settings is not None) and fallback_endpoints:
             raise ValueError("explicit model selections require strict-model routing")
         self._model = MODEL_API_MOCK_NAME if model_api_mock else model
         self.runtime_identity = AgentRuntimeIdentity(
@@ -869,9 +871,15 @@ class PydanticAIKnowledgeRunner:
                 endpoint_settings["openai_store"] = False
             if extra_headers:
                 endpoint_settings["extra_headers"] = dict(extra_headers)
-            if reasoning_effort is not None:
+            if reasoning_settings is not None:
+                # Native controls are the exact server-registered wire for this level.
+                # Never also send a generic effort or the legacy DeepSeek-off override.
+                endpoint_settings.update(cast(
+                    OpenAIChatModelSettings, reasoning_settings.model_dump(exclude_none=True),
+                ))
+            elif reasoning_effort is not None:
                 endpoint_settings["openai_reasoning_effort"] = reasoning_effort
-            if _is_deepseek_flash(
+            if reasoning_settings is None and _is_deepseek_flash(
                 base_url=endpoint_url,
                 model=endpoint_model,
             ):

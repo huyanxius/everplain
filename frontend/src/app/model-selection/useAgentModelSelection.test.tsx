@@ -88,7 +88,7 @@ describe('owner-scoped live model catalog', () => {
     expect(result.current.selection).toBeNull()
   })
 
-  it.each([undefined, { runtimeMode: 'base', models: [{ ...catalog.models[0], reasoningEfforts: ['minimal'] }] }, { ...catalog, models: [{ ...catalog.models[0], defaultReasoningEffort: 'max' }] }])('does not replace a malformed server response with the static catalog', async value => {
+  it.each([undefined, { runtimeMode: 'base', models: [{ ...catalog.models[0], reasoningEfforts: ['ultra'] }] }, { ...catalog, models: [{ ...catalog.models[0], defaultReasoningEffort: 'max' }] }])('does not replace a malformed server response with the static catalog', async value => {
     loadCatalog.mockResolvedValue(value)
     const { result } = renderHook(() => useAgentModelSelection('owner'))
     await waitFor(() => expect(result.current.status).toBe('error'))
@@ -132,4 +132,18 @@ it.each([
   const { result } = renderHook(() => useAgentModelSelection('owner'))
   await waitFor(() => expect(result.current.status).toBe('error'))
   expect(result.current.requestFields()).toEqual({})
+})
+
+it('accepts native minimal only when the live server catalog advertises it and revalidates saved selection', async () => {
+  const gemini = { id: 'gemini-fixture', label: 'Gemini fixture', reasoningEfforts: ['minimal', 'low', 'medium', 'high'], defaultReasoningEffort: 'medium' }
+  loadCatalog.mockResolvedValueOnce({ runtimeMode: 'base', models: [gemini] })
+  const first = renderHook(() => useAgentModelSelection('native-owner'))
+  await waitFor(() => expect(first.result.current.status).toBe('ready'))
+  act(() => first.result.current.onChange({ modelId: gemini.id, reasoningEffort: 'minimal' }))
+  expect(first.result.current.requestFields()).toEqual({ model_id: gemini.id, reasoning_effort: 'minimal' })
+  first.unmount()
+  loadCatalog.mockResolvedValueOnce({ runtimeMode: 'base', models: [{ ...gemini, reasoningEfforts: ['low', 'medium', 'high'] }] })
+  const second = renderHook(() => useAgentModelSelection('native-owner'))
+  await waitFor(() => expect(second.result.current.status).toBe('ready'))
+  expect(second.result.current.requestFields()).toEqual({ model_id: gemini.id, reasoning_effort: 'medium' })
 })

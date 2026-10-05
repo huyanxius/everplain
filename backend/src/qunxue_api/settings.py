@@ -5,7 +5,15 @@ from pathlib import Path
 from typing import Annotated, Literal, cast
 from urllib.parse import parse_qs, urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -126,23 +134,60 @@ class AgentModelCapacitySettings(BaseModel):
         return self
 
 
+class AgentModelEffortSettings(BaseModel):
+    """Server-only, explicit SDK settings for one verified upstream reasoning level."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    openai_reasoning_effort: (
+        Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None
+    ) = None
+    extra_body: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def require_wire_control(self):
+        if self.openai_reasoning_effort is None and not self.extra_body:
+            raise ValueError("reasoning level needs an explicit upstream wire control")
+        if set(self.extra_body) - {"thinking", "reasoning_effort", "output_config", "extra_body"}:
+            raise ValueError("effort settings may only contain upstream reasoning controls")
+        if self.openai_reasoning_effort is not None and "reasoning_effort" in self.extra_body:
+            raise ValueError("reasoning effort must not be supplied twice")
+        return self
+
+
 class AgentSelectableModelSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     model_id: str = Field(min_length=1, max_length=120)
     label: str = Field(min_length=1, max_length=120)
     provider: str = Field(min_length=1, max_length=80)
     model: str = Field(min_length=1, max_length=120)
-    reasoning_efforts: tuple[Literal["none", "low", "medium", "high", "xhigh", "max"], ...] = ()
-    default_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] | None = None
+    reasoning_efforts: tuple[
+        Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"], ...
+    ] = ()
+    default_reasoning_effort: (
+        Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None
+    ) = None
+    effort_settings: dict[
+        Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+        AgentModelEffortSettings,
+    ] = Field(default_factory=dict)
     capabilities: tuple[Literal["chat", "tools", "vision", "reasoning"], ...] = ("chat",)
 
     @model_validator(mode="after")
     def validate_reasoning(self):
+        if len(set(self.reasoning_efforts)) != len(self.reasoning_efforts):
+            raise ValueError("reasoning levels must be unique")
         if self.reasoning_efforts:
             if self.default_reasoning_effort not in self.reasoning_efforts:
                 raise ValueError("reasoning default must be an explicitly supported effort")
         elif self.default_reasoning_effort is not None:
             raise ValueError("models without reasoning controls must omit the reasoning default")
+        if set(self.effort_settings) != set(self.reasoning_efforts):
+            raise ValueError("wire settings must cover exactly the advertised reasoning levels")
+        if self.effort_settings:
+            controls = [value.model_dump(exclude_none=True)
+                        for value in self.effort_settings.values()]
+            if any(value in controls[:index] for index, value in enumerate(controls)):
+                raise ValueError("reasoning levels must not advertise duplicate wire controls")
         return self
 
 

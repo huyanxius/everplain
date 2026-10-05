@@ -7,8 +7,10 @@ from qunxue_api.adapters.model import ModelEndpoint
 from qunxue_api.modules.agent_conversation import (
     LUNA_REASONING_EFFORTS,
     AgentModelChoice,
+    AgentModelSelection,
     AgentReasoningEffort,
 )
+from qunxue_api.settings import AgentModelEffortSettings
 
 
 def selectable_agent_model(
@@ -76,3 +78,16 @@ def registered_agent_models(settings):
             api_key=secret, timeout_seconds=settings.model_timeout_seconds, provider=entry.provider,
         ), provider.protocol)
     return tuple(choices), routes
+
+
+def registered_agent_effort_settings(settings, selection: AgentModelSelection):
+    """Keep upstream controls on the server and scoped to the selected strict route."""
+    entry = next((item for item in settings.agent_selectable_models
+                  if item.model_id == selection.model_id), None)
+    if entry is None or not entry.effort_settings:
+        return None  # Legacy Luna and models with no advertised controls retain their wire.
+    if selection.reasoning_effort not in entry.effort_settings:
+        raise ValueError("selected reasoning level has no registered upstream wire control")
+    return AgentModelEffortSettings.model_validate(
+        entry.effort_settings[selection.reasoning_effort].model_dump()
+    )
