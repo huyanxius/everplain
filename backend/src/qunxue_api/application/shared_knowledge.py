@@ -45,8 +45,26 @@ class SharedKnowledgeApplication(SharedKnowledgeService):
             "max_document_characters": self.max_document_characters,
         }
 
-    def upload(self, user_id, kb_id, *, filename, media_type, content, request_key):
+    def upload(
+        self,
+        user_id,
+        kb_id,
+        *,
+        filename,
+        media_type,
+        content,
+        request_key,
+        replace_document_id=None,
+        commit=True,
+    ):
         self.require_manage(user_id, kb_id)
+        original = None
+        if replace_document_id is not None:
+            owned = self.repository.owned_document(user_id, replace_document_id)
+            if owned is None:
+                raise SharedKnowledgeValidationError("原资料已删除，请重新导入。")
+            original = owned[1]
+        replaced_bytes = original.size_bytes if original else 0
         # Retrying an old upload cannot reattach a removed file.
         key = hashlib.sha256(f"{kb_id}:{request_key}".encode()).hexdigest()
         previous = self.repository.find_upload(user_id, key)
@@ -61,9 +79,14 @@ class SharedKnowledgeApplication(SharedKnowledgeService):
             return previous
         if len(content) > self.max_file_bytes:
             raise SharedKnowledgeValidationError("文件超过单份上传限制。")
-        if self.repository.storage_usage(user_id) + len(content) > self.max_storage_bytes:
+        if (
+            self.repository.storage_usage(user_id) + len(content) - replaced_bytes
+            > self.max_storage_bytes
+        ):
             raise SharedKnowledgeValidationError("知识库存储空间不足，请先删除不再需要的资料。")
-        if len(self.repository.documents(kb_id)) >= self.max_documents_per_library:
+        documents = self.repository.documents(kb_id)
+        already_attached = original and any(doc.id == original.id for doc in documents)
+        if not already_attached and len(documents) >= self.max_documents_per_library:
             raise SharedKnowledgeValidationError(
                 f"每个知识库最多保存 {self.max_documents_per_library} 份文件。"
             )
@@ -73,7 +96,7 @@ class SharedKnowledgeApplication(SharedKnowledgeService):
             raise SharedKnowledgeValidationError("文件格式不支持或与扩展名不一致。") from exc
         if material_format.is_media:
             raise SharedKnowledgeValidationError("知识库支持 PDF、DOCX、PPTX、Markdown 和 TXT。")
-        document_id, parse_id = uuid4(), uuid4()
+        document_id, parse_id = original.id if original else uuid4(), uuid4()
         error, segments, warnings = None, (), ()
         try:
             parsed = self._parser(
@@ -105,6 +128,8 @@ class SharedKnowledgeApplication(SharedKnowledgeService):
                 )
         except MaterialParseError as exc:
             error = str(exc)
+        if original and (error or not segments):
+            raise SharedKnowledgeValidationError(error or "正文解析失败，请检查内容后重试。")
         doc = SharedDocument(
             document_id,
             user_id,
@@ -126,14 +151,31 @@ class SharedKnowledgeApplication(SharedKnowledgeService):
             if previous.content_hash != doc.content_hash or previous.filename != doc.filename:
                 raise SharedKnowledgeValidationError("相同请求标识不能上传不同文件。")
             return previous
-        if self.repository.storage_usage(user_id) + len(content) > self.max_storage_bytes:
+        if (
+            self.repository.storage_usage(user_id) + len(content) - replaced_bytes
+            > self.max_storage_bytes
+        ):
             raise SharedKnowledgeValidationError("知识库存储空间不足，请先删除不再需要的资料。")
-        if len(self.repository.documents(kb_id)) >= self.max_documents_per_library:
+        documents = self.repository.documents(kb_id)
+        already_attached = original and any(doc.id == original.id for doc in documents)
+        if not already_attached and len(documents) >= self.max_documents_per_library:
             raise SharedKnowledgeValidationError(
                 f"每个知识库最多保存 {self.max_documents_per_library} 份文件。"
             )
-        saved = self.repository.save_document(doc, content=content, request_key=key, kb_id=kb_id)
+        if original:
+            saved = self.repository.replace_document(
+                doc,
+                content=content,
+                request_key=key,
+                kb_id=kb_id,
+                expected_parse_id=original.parse_id,
+            )
+        else:
+            saved = self.repository.save_document(
+                doc, content=content, request_key=key, kb_id=kb_id
+            )
         if saved.content_hash != doc.content_hash or saved.filename != doc.filename:
             raise SharedKnowledgeValidationError("相同请求标识不能上传不同文件。")
-        self.repository.commit()
+        if commit:
+            self.repository.commit()
         return saved

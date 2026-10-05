@@ -1,0 +1,7 @@
+.ep-source-attachments { display: grid; gap: var(--qx-space-3); margin: var(--qx-space-5) 0; padding: var(--qx-space-4); background: var(--qx-color-surface-muted); border-radius: var(--qx-radius-item); }
+.ep-source-attachments h2 { margin: 0; }
+.ep-source-attachments ul { display: grid; gap: var(--qx-space-3); padding: 0; margin: 0; list-style: none; }
+.ep-source-attachments li { display: grid; gap: var(--qx-space-1); overflow-wrap: anywhere; }
+.ep-source-attachments a { color: inherit; text-decoration: underline; text-underline-offset: var(--qx-space-1); }
+.ep-source-attachments summary { width: fit-content; color: var(--qx-color-ink-soft); cursor: pointer; font-size: var(--qx-text-control); }
+.ep-source-attachments img { display: block; max-width: 100%; max-height: min(60dvh, 640px); object-fit: contain; margin-top: var(--qx-space-2); border-radius: var(--qx-radius-item); }

@@ -1,6 +1,7 @@
 import { apiClient } from '../../api/client'
 import { createMultipartBody } from '../../api/multipart'
 import { createImportBatch, createBilibiliImport, listImportBatches, retryImportItem } from '../../api/generated'
+import { prepareNoteFolderFiles } from './noteFolder'
 
 function value<T>(response: { data?: T; error?: unknown }): T {
   if (response.error || !response.data) {
@@ -11,7 +12,8 @@ function value<T>(response: { data?: T; error?: unknown }): T {
 }
 export async function readImportBatches() { return value(await listImportBatches({ client: apiClient })).items }
 export async function importFiles(source: 'chrome' | 'markdown' | 'obsidian' | 'enex' | 'notion' | 'flomo' | 'keep' | 'apple_notes' | 'image', files: File[], libraryId?: string) {
-  const named = files.map(file => file.webkitRelativePath ? new File([file], file.webkitRelativePath, { type: file.type }) : file)
+  const selected = source === 'obsidian' && files.some(file => file.webkitRelativePath || file.name.includes('/')) ? prepareNoteFolderFiles(files).files : files
+  const named = selected.map(file => file.webkitRelativePath ? new File([file], file.webkitRelativePath, { type: file.type }) : file)
   const parts = await createMultipartBody([{ name: 'source_type', value: source }, ...named.map(file => ({ name: 'files', file })), ...(libraryId ? [{ name: 'library_id', value: libraryId }] : [])])
   return value(await createImportBatch({ client: apiClient, body: { source_type: source, files: named, library_id: libraryId },
     headers: { 'Idempotency-Key': crypto.randomUUID(), 'Content-Type': parts.contentType }, bodySerializer: () => parts.body }))

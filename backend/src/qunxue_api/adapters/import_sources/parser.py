@@ -3,13 +3,15 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import mimetypes
+import posixpath
 import re
 import stat
 import zipfile
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import PurePosixPath
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 from xml.etree import ElementTree as ET
 
 from markdown_it import MarkdownIt
@@ -18,6 +20,88 @@ MAX_FILE_BYTES = 16 * 1024 * 1024
 MAX_TOTAL_BYTES = 64 * 1024 * 1024
 MAX_FILES = 2000
 MAX_ZIP_DEPTH = 2
+ATTACHMENT_SUFFIXES = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+    ".pdf",
+    ".docx",
+    ".pptx",
+    ".csv",
+    ".mp3",
+    ".m4a",
+    ".mp4",
+    ".wav",
+    ".ogg",
+}
+
+
+def _private_path(path):
+    return any(
+        part.startswith(".") or part.lower() in {"node_modules", "__macosx"}
+        for part in PurePosixPath(path).parts
+    ) or PurePosixPath(path).name.lower() in {"thumbs.db", "desktop.ini", "icon\r"}
+
+
+def _local_attachments(item, files):
+    """Resolve references only against supplied bytes, never the filesystem or web."""
+    text = item["content"].decode("utf-8")
+    references = []
+    for token in MarkdownIt("commonmark").parse(text):
+        for child in token.children or ():
+            if child.type in {"image", "link_open"}:
+                target = child.attrGet("src" if child.type == "image" else "href")
+                if target:
+                    references.append((target, False))
+            if child.type == "text":
+                references.extend(
+                    (ref.strip(), True) for ref in re.findall(r"!?\[\[([^\]|#]+)", child.content)
+                )
+    attachments = {}
+    parent = str(PurePosixPath(item["input_path"]).parent)
+    root = PurePosixPath(item["input_path"]).parts[0] if "/" in item["input_path"] else ""
+    for reference, wiki in references:
+        try:
+            parsed = urlsplit(reference)
+        except ValueError:
+            continue
+        if parsed.scheme or parsed.netloc:
+            continue
+        target = unquote(parsed.path).replace("\\", "/")
+        if not target or target.startswith("/") or "\x00" in target:
+            continue
+        path = posixpath.normpath(posixpath.join(parent, target))
+        if path.startswith("../") or _private_path(path):
+            continue
+        if path not in files and wiki:
+            candidates = [
+                candidate
+                for candidate in files
+                if (not root or candidate.startswith(root + "/"))
+                and (candidate == target or candidate.endswith("/" + target))
+            ]
+            if len(candidates) == 1:
+                path = candidates[0]
+        if path not in files or PurePosixPath(path).suffix.lower() not in ATTACHMENT_SUFFIXES:
+            continue
+        attachment = attachments.setdefault(
+            path,
+            {
+                "relative_path": path,
+                "filename": PurePosixPath(path).name,
+                "media_type": mimetypes.guess_type(path)[0] or "application/octet-stream",
+                "content": files[path],
+                "references": [],
+            },
+        )
+        # MarkdownIt's URL normalization percent-encodes Unicode. Return decoded
+        # local targets so the source reader can match the untouched note text.
+        reference = unquote(reference)
+        if reference not in attachment["references"]:
+            attachment["references"].append(reference)
+    return list(attachments.values())
 
 
 class ImportParseError(ValueError):
@@ -380,6 +464,8 @@ def parse_import(source_type: str, files: list[tuple[str, bytes]]) -> list[dict]
         budget[1] += len(data)
         if budget[0] > MAX_FILES or len(data) > MAX_FILE_BYTES or budget[1] > MAX_TOTAL_BYTES:
             raise ValueError("import size/count limit exceeded")
+        if _private_path(path):
+            return
         if PurePosixPath(path).suffix.lower() != ".zip":
             expanded.append((path, data))
             return
@@ -401,7 +487,7 @@ def parse_import(source_type: str, files: list[tuple[str, bytes]]) -> list[dict]
                     raise ValueError("archive expanded size limit exceeded")
             prefix = str(PurePosixPath(path).with_suffix(""))
             for member in members:
-                if member.is_dir():
+                if member.is_dir() or _private_path(member.filename):
                     continue
                 expand(prefix + "/" + member.filename, z.read(member), depth + 1)
 
@@ -435,6 +521,8 @@ def parse_import(source_type: str, files: list[tuple[str, bytes]]) -> list[dict]
             continue  # Takeout emits two representations of the same note.
         try:
             parsed = list(_notes(source, path, data))
+            for item in parsed:
+                item["input_path"] = path
             items.extend(parsed)
             if source == "keep" and suffix == ".json" and any("error" not in i for i in parsed):
                 successful_json.add(path)
@@ -452,4 +540,9 @@ def parse_import(source_type: str, files: list[tuple[str, bytes]]) -> list[dict]
             p = PurePosixPath(path)
             item["relative_path"] = str(p.with_name(p.stem + "-" + item["source_key"] + p.suffix))
             item["filename"] = PurePosixPath(item["relative_path"]).name
+    if source == "markdown":
+        supplied = dict(expanded)
+        for item in items:
+            if "error" not in item:
+                item["attachments"] = _local_attachments(item, supplied)
     return items

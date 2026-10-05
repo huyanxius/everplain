@@ -246,6 +246,7 @@ def source(
         knowledge_base_id=kb_id,
         knowledge_base_name=application.require_read(current.user.user_id, kb_id).name,
         segments=list(doc.segments),
+        attachments=application.repository.source_attachments(current.user.user_id, document_id),
     )
 
 

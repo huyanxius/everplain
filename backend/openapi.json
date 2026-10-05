@@ -7559,6 +7559,61 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "ImportAttachmentResponse": {
+        "properties": {
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "references": {
+            "description": "Percent-decoded local targets in the original note",
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Owner-authenticated relative asset URL; null until the note is imported",
+            "title": "Url"
+          }
+        },
+        "required": [
+          "id",
+          "relative_path",
+          "filename",
+          "media_type",
+          "size_bytes",
+          "references",
+          "url"
+        ],
+        "title": "ImportAttachmentResponse",
+        "type": "object"
+      },
       "ImportBatchListResponse": {
         "properties": {
           "items": {
@@ -7577,6 +7632,18 @@
       },
       "ImportBatchResponse": {
         "properties": {
+          "attachment_bytes": {
+            "default": 0,
+            "description": "Bytes of referenced attachments across items",
+            "title": "Attachment Bytes",
+            "type": "integer"
+          },
+          "attachment_count": {
+            "default": 0,
+            "description": "Referenced attachments across batch items",
+            "title": "Attachment Count",
+            "type": "integer"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -7629,6 +7696,11 @@
           "total": {
             "title": "Total",
             "type": "integer"
+          },
+          "updated": {
+            "default": 0,
+            "title": "Updated",
+            "type": "integer"
           }
         },
         "required": [
@@ -7649,6 +7721,13 @@
       },
       "ImportItemResponse": {
         "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/ImportAttachmentResponse"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
           "attempts": {
             "title": "Attempts",
             "type": "integer"
@@ -7703,6 +7782,7 @@
               "queued",
               "running",
               "imported",
+              "updated",
               "duplicate",
               "failed"
             ],
@@ -15470,6 +15550,13 @@
       },
       "SharedDocumentSourceResponse": {
         "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/ImportAttachmentResponse"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
           "document": {
             "$ref": "#/components/schemas/SharedDocumentResponse"
           },
@@ -22405,6 +22492,57 @@
           }
         },
         "summary": "Get Asset",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/api/imports/assets/{document_id}/attachments/{attachment_id}": {
+      "get": {
+        "operationId": "get_import_attachment_asset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Document Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attachment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attachment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Attachment Asset",
         "tags": [
           "imports"
         ]

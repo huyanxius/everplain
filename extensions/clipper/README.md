@@ -11,7 +11,20 @@
 
 历史准备脚本只作为兼容文件保留，下载界面不再推荐，也不需要用户运行。
 
-官网已预填；已有保存地址保持不变，自建站仍可填写自己的 HTTPS 地址。本机开发支持 localhost。首次点击收藏才申请目标站点权限并读取当前页，只有点击导入全部书签才申请书签权限。通过目标应用页面同源会话提交；无密码、Cookie、令牌或配对码流程。
+官网已预填；已有保存地址保持不变，自建站仍可填写自己的 HTTPS 地址。本机开发支持 localhost。首次点击收藏才申请目标站点权限并读取当前页，只有点击“选择书签或文件夹”才申请书签权限并读取书签。通过目标应用页面同源会话提交；无密码、Cookie、令牌或配对码流程。
+
+## 无需先导出的书签导入
+
+1. 点击“选择书签或文件夹”，允许浏览器的可选书签权限。初始不勾选任何内容，不会自动提交。
+2. 勾选单条书签，或勾选一个文件夹中的全部可导入书签（包括子文件夹）。可按标题或网址搜索；搜索隐藏的已选内容保持选中。“全选可导入书签”会选中整个列表。
+3. 点击“导入所选书签”。仅所选 HTTP(S) 书签及其目录结构会发送到你填写的 Everplain 站点，不需要先导出 HTML。浏览器内部链接、无效网址及网址中带账号/密码的链接不会提交。
+4. 弹窗显示服务器返回的批次编号、后台处理数量、新增/更新/重复/失败数量。点击“查看本批导入进度”打开 `/imports?batch=编号`。提交成功不代表正文已读取完；失败条目在 Everplain 中单独重试。
+
+收起或 Escape 不会提交，也不会清空本次弹窗的选择。未登录时打开同一浏览器的 Everplain 完成登录，再返回提交；权限拒绝不会读取书签或提交资料。
+
+同一弹窗会阻止并发提交；请求键、SHA-256 摘要与接收确认状态只暂存在浏览器内存 `storage.session`，不保存书签正文或登录凭据。已打开的 Everplain 文档内保留按当前账号隔离的请求回执，同一次请求的并发操作共用提交结果。网络中断或不完整响应会提示“提交结果尚未确认”，再次提交仍复用本次请求键；服务端按账号隔离的幂等记录避免创建第二个批次。确认接收成功后，下次主动点击会使用新的请求键，允许检查所选网页正文是否变化；相同资料仍由服务端去重。目标站点刷新/导航或浏览器重启后内存回执不再存在，服务端记录仍以自己的状态为准。
+
+API 使用依据：[Chrome 书签树](https://developer.chrome.com/docs/extensions/reference/api/bookmarks)、[点击时申请可选权限](https://developer.chrome.com/docs/extensions/reference/api/permissions)、[仅内存的会话存储](https://developer.chrome.com/docs/extensions/reference/api/storage)、[隔离世界脚本注入](https://developer.chrome.com/docs/extensions/reference/api/scripting)。不增加自动内容脚本、后台读取、Cookie 权限或长期认证信息。
 
 Windows 默认执行策略、下载标记或组织管理可能阻止脚本；macOS Gatekeeper/文件权限也可能阻止。macOS 脚本未签名/公证；用户核对官方下载来源后，可在“系统设置 → 隐私与安全”中针对该脚本手动选择“仍要打开/强制打开”（[Apple 官方说明](https://support.apple.com/102445)）。这不是安全保证。不愿运行或被组织策略限制时回退普通扩展 ZIP，不更改执行策略、不移除隔离标记、不绕过管理限制。Windows 使用正常 `PowerShell -NoProfile -File`；无需管理员权限、额外运行时或注册表修改。Mac 仅用系统 Bash、curl、unzip、shasum 等工具。
 
@@ -41,7 +54,7 @@ Windows 默认执行策略、下载标记或组织管理可能阻止脚本；mac
 
 ## 验证
 
-- `npm test`：来源/书签与默认地址回归。
+- `npm test`：来源、所选书签/目录、默认地址、批次进度、弹窗 DOM 交互、登录中断、权限拒绝、重复点击与未知提交结果回归。DOM/API fixture 不等于真实 Chrome 权限弹窗、侧载或线上导入验收。
 - `python3 test/setup.test.py`：Bash 准备逻辑及恶意 ZIP，使用临时目录，不实际安装。
 - `powershell -NoProfile -File test/setup-windows.test.ps1`：Windows原生环境可运行。Linux的 `pwsh -NoProfile -File` 仅验证 PowerShell/.NET 核心逻辑，不能声称 Windows 5.1、Explorer、Edge/Chrome 或执行策略已端到端验证。
 - 原生 macOS Finder、Gatekeeper、Bash3 与实际浏览器加载也需目标系统验收；Linux Bash 测试不能替代它。

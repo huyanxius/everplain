@@ -6,7 +6,7 @@ import { importBilibili, importFiles, readImportBatches, retryImport } from '../
 import { createCourse, getCourse, readKnowledgeStorage, uploadCourseDocument, type SharedCourse, type SharedDocument } from '../../modules/shared-knowledge'
 import { LibraryAddDialog, type LibraryAddDialogProps } from './LibraryAddDialog'
 
-vi.mock('../../modules/knowledge-import', () => ({ readImportBatches: vi.fn(), importFiles: vi.fn(), importBilibili: vi.fn(), retryImport: vi.fn() }))
+vi.mock('../../modules/knowledge-import', async importOriginal => ({ ...await importOriginal<typeof import('../../modules/knowledge-import')>(), readImportBatches: vi.fn(), importFiles: vi.fn(), importBilibili: vi.fn(), retryImport: vi.fn() }))
 vi.mock('../../modules/shared-knowledge', () => ({ COURSE_DOCUMENT_ACCEPT: '.pdf,.docx,.pptx,.txt,.md,.markdown', createCourse: vi.fn(), getCourse: vi.fn(), readKnowledgeStorage: vi.fn(), uploadCourseDocument: vi.fn() }))
 vi.mock('../ui/AgentLoading', () => ({ AgentLoading: ({ message }: { message: string }) => <p>{message}</p> }))
 const descriptors = Object.getOwnPropertyDescriptors(HTMLDialogElement.prototype)
@@ -145,6 +145,16 @@ it('shows real batch progress, counts, destination, refresh and item retry', asy
   await waitFor(() => expect(retryImport).toHaveBeenCalledWith('batch', 'failed'))
   await waitFor(() => expect(screen.getByRole('button', { name: '刷新' })).not.toBeDisabled())
   const calls = vi.mocked(readImportBatches).mock.calls.length; fireEvent.click(screen.getByRole('button', { name: '刷新' })); await waitFor(() => expect(readImportBatches).toHaveBeenCalledTimes(calls + 1))
+})
+
+it('shows changed-note results and preserved attachments in the focused receipt', async () => {
+  vi.mocked(readImportBatches).mockResolvedValue([{ id: 'changed', library_id: 'my-materials', source_type: 'obsidian', status: 'completed', total: 1, finished: 1, imported: 0, updated: 1, duplicates: 0, failed: 0, attachment_count: 1, items: [{ id: 'note', title: 'Updated note', status: 'updated', attachments: [{ id: 'asset', filename: 'photo.png', relative_path: 'Vault/photo.png', media_type: 'image/png', size_bytes: 1024, references: ['photo.png'], url: '/api/imports/assets/doc/attachments/asset' }] }] }] as never)
+  mount({ initialSource: 'records', initialBatchId: 'changed' })
+  expect(await screen.findByText('0 条已入库 · 0 条重复 · 1 条已更新 · 1 个附件')).toBeVisible()
+  fireEvent.click(screen.getByText('查看条目'))
+  expect(screen.getByText('已更新')).toBeVisible()
+  expect(screen.getByRole('link', { name: 'photo.png' })).toHaveAttribute('href', '/api/imports/assets/doc/attachments/asset')
+  expect(globalThis.document.getElementById('library-import-changed')?.firstElementChild).toHaveAttribute('data-current', 'true')
 })
 
 it('only creates a missing personal library when files are chosen', async () => {

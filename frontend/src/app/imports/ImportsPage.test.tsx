@@ -7,7 +7,7 @@ import { importBilibili, importFiles, readImportBatches, retryImport } from '../
 import { ImportsPage } from './ImportsPage'
 
 vi.mock('../ui/PageShell', () => ({ PageShell: ({ children }: PropsWithChildren) => children, PageContent: ({ children }: PropsWithChildren) => children }))
-vi.mock('../../modules/knowledge-import', () => ({ readImportBatches: vi.fn(), importFiles: vi.fn(), importBilibili: vi.fn(), retryImport: vi.fn() }))
+vi.mock('../../modules/knowledge-import', async importOriginal => ({ ...await importOriginal<typeof import('../../modules/knowledge-import')>(), readImportBatches: vi.fn(), importFiles: vi.fn(), importBilibili: vi.fn(), retryImport: vi.fn() }))
 const dialogMethods = Object.getOwnPropertyDescriptors(HTMLDialogElement.prototype)
 const showModal = vi.fn(function (this: HTMLDialogElement) { this.setAttribute('open', '') })
 const closeDialog = vi.fn(function (this: HTMLDialogElement) { this.removeAttribute('open') })

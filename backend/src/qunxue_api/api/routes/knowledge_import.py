@@ -1,4 +1,5 @@
 from typing import Annotated, Literal
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
@@ -55,7 +56,7 @@ def create_batch(
             raise HTTPException(413, "单文件最多16MB，每批最多64MB")
         values.append((file.filename or "未命名.txt", content))
     try:
-        return app.start(current.user.user_id, source_type, values, library_id)
+        return app.start(current.user.user_id, source_type, values, library_id, _key)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -83,7 +84,7 @@ def import_clip(
 ):
     try:
         return app.start_clip(
-            current.user.user_id, payload.url, payload.title, payload.html, payload.library_id
+            current.user.user_id, payload.url, payload.title, payload.html, payload.library_id, _key
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -106,7 +107,10 @@ def import_bilibili(
     app: Application,
     _key: IdempotencyKey,
 ):
-    return app.start_bilibili(current.user.user_id, payload.uid, payload.library_id)
+    try:
+        return app.start_bilibili(current.user.user_id, payload.uid, payload.library_id, _key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.get("/assets/{document_id}", operation_id="get_import_image_asset")
@@ -119,6 +123,44 @@ def get_asset(document_id: UUID, current: CurrentSessionDependency, app: Applica
         content,
         media_type=media_type,
         headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.get(
+    "/assets/{document_id}/attachments/{attachment_id}",
+    operation_id="get_import_attachment_asset",
+)
+def get_attachment_asset(
+    document_id: UUID,
+    attachment_id: UUID,
+    current: CurrentSessionDependency,
+    app: Application,
+):
+    try:
+        content, media_type, filename = app.asset(current.user.user_id, document_id, attachment_id)
+    except ImportUnavailable as exc:
+        raise HTTPException(404, str(exc)) from exc
+    # Active documents are downloads, not a same-origin HTML/script execution surface.
+    disposition = (
+        "inline"
+        if media_type
+        in {
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "image/gif",
+        }
+        else "attachment"
+    )
+    return Response(
+        content,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename, safe='')}",
+        },
     )
 
 
