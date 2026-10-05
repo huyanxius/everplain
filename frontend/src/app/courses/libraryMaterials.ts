@@ -11,12 +11,12 @@ export function webSourceUrl(source?: WebMaterialSource) {
 }
 
 export function documentKind(document: SharedDocument, source?: WebMaterialSource) {
-  if (webSourceUrl(source)) return '网页'
   const extension = document.filename.split('.').pop()?.toLocaleLowerCase()
   if (extension === 'pdf' || document.mediaType === 'application/pdf') return 'PDF'
   if (extension === 'docx') return 'Word'
   if (extension === 'pptx') return '演示文稿'
   if (document.mediaType?.startsWith('image/')) return '图片'
+  if (webSourceUrl(source)) return '网页'
   if (extension === 'html' || extension === 'htm') return '网页'
   return '笔记'
 }
