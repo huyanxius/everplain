@@ -144,34 +144,36 @@ def test_user_avatar_revision_upgrades_from_the_integrated_predecessor(tmp_path,
 
 
 def test_0570_to_0590_copy_preserves_old_readers_writers_and_reset_fence(
-    plain_client, tmp_path, monkeypatch, alembic_config
+    tmp_path, monkeypatch, alembic_config
 ):
     """A candidate-copy upgrade leaves the original DB and legacy columns intact."""
     import sqlite3
     from uuid import uuid4
 
     import pytest
-    from test_research_material_api import _authenticate
+    from legacy_migration_support import STAMP, create_legacy_database, seed_user
 
-    client = plain_client
-    _authenticate(client)
-    owner = client.get("/api/session").json()["user"]["user_id"]
-    saved = client.patch(
-        "/api/agent-profile",
-        headers={"Idempotency-Key": str(uuid4())},
-        json={
-            "expected_version": 0,
-            "name": "旧伙伴",
-            "soul_text": "保留的人格",
-            "setup_step": 4,
-            "questionnaire": {"occupation": "研究者", "goals": ["整理资料"]},
-        },
-    )
-    assert saved.status_code == 200, saved.text
-    _authenticate(client)
-    second_owner = client.get("/api/session").json()["user"]["user_id"]
-    original_path = client.app.state.database.engine.url.database
-    command.downgrade(alembic_config, "20261005_0570")
+    original_path = tmp_path / "avatar-source-0570.db"
+    create_legacy_database(original_path, "20261005_0570", monkeypatch, alembic_config)
+    with sqlite3.connect(original_path) as source:
+        owner, second_owner = str(seed_user(source)), str(seed_user(source))
+        memory = str(uuid4())
+        source.execute(
+            "INSERT INTO agent_memory_scopes(user_id,scope_key,version,use_memory,learn_memory) "
+            "VALUES (?,'',1,1,1)", (owner,),
+        )
+        source.execute(
+            "INSERT INTO agent_memories(memory_id,user_id,scope_key,key,content,origin,version,"
+            "created_at,updated_at,deleted) VALUES (?,?,'','occupation','研究者','user',1,?,?,0)",
+            (memory, owner, STAMP, STAMP),
+        )
+        source.execute(
+            "INSERT INTO agent_profiles(user_id,name,avatar_id,color,speaking_style,setup_step,"
+            "setup_completed,questionnaire,memory_ids,version,soul_text) "
+            "VALUES (?,'旧伙伴','nian','#b8bfa6','warm',2,0,?,?,8,'保留的人格')",
+            (owner, json.dumps({"occupation": "研究者", "goals": ["整理资料"]}, ensure_ascii=False),
+             json.dumps({"occupation": memory})),
+        )
     candidate_path = tmp_path / "avatar-candidate.db"
     schema = Path(__file__).parent / "fixtures/billing_reset_schema.sql"
     columns = (

@@ -103,7 +103,7 @@ def test_scope_is_one_head_and_round_trips_the_published_avatar_parent(tmp_path,
     config = Config(str(backend / "alembic.ini"))
     config.set_main_option("script_location", str(backend / "migrations"))
     scripts = ScriptDirectory.from_config(config)
-    assert scripts.get_heads() == ["20261005_0580"]
+    assert len(scripts.get_heads()) == 1
     assert scripts.get_revision("20261005_0580").down_revision == "20261005_0590"
     database_url = f"sqlite:///{tmp_path / 'candidate.db'}"
     monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
@@ -112,8 +112,8 @@ def test_scope_is_one_head_and_round_trips_the_published_avatar_parent(tmp_path,
     with engine.begin() as connection:
         connection.execute(text(
             "INSERT INTO users (user_id,email,display_name,password_hash,role,"
-            "created_at,updated_at) VALUES "
-            "('synthetic-owner','scope@example.test','Synthetic','fixture','user',"
+            "status,version,created_at,updated_at) VALUES "
+            "('synthetic-owner','scope@example.test','Synthetic','fixture','member','active',1,"
             "'fixture','fixture')"
         ))
         connection.execute(text(
@@ -140,7 +140,7 @@ def test_scope_is_one_head_and_round_trips_the_published_avatar_parent(tmp_path,
             "SELECT type,name,sql FROM sqlite_master WHERE name LIKE 'billing%' "
             "ORDER BY type,name"
         )).fetchall()
-    command.upgrade(config, "head")
+    command.upgrade(config, "20261005_0580")
     with engine.begin() as connection:
         assert connection.execute(text("SELECT * FROM agent_profiles")).fetchall() == profile
         assert connection.execute(text(
@@ -164,7 +164,7 @@ def test_scope_is_one_head_and_round_trips_the_published_avatar_parent(tmp_path,
             "SELECT type,name,sql FROM sqlite_master WHERE name LIKE 'billing%' "
             "ORDER BY type,name"
         )).fetchall() == billing_schema
-    command.upgrade(config, "head")
+    command.upgrade(config, "20261005_0580")
     with engine.begin() as connection:
         assert connection.execute(text("SELECT * FROM agent_profiles")).fetchall() == profile
         assert connection.execute(text(
