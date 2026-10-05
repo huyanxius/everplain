@@ -118,7 +118,8 @@ describe('per-turn model selection API', () => {
       expect(subscription).not.toHaveProperty('body')
     }
     expect(events.mock.calls.map(([event]) => event)).toEqual([
-      { type: 'turn_snapshot', run: snapshot },
+      // The wire contract normalizes absent document previews, without altering model selection.
+      { type: 'turn_snapshot', run: { ...snapshot, writing_previews: [] } },
       { type: 'turn_interrupted', code: 'interrupted', message: 'synthetic', event_id: 'run-1:8' },
     ])
     expect(events.mock.calls[0][0].run.request).toEqual(originalRequest)

@@ -173,6 +173,7 @@ class AgentRun:
     output_attempts: tuple[AgentOutputAttempt, ...] = ()
     delivery_state: dict[str, object] = field(default_factory=dict)
     last_event_sequence: int = 0
+    writing_previews: tuple[dict[str, object], ...] = ()
     output_redacted: bool = False
     updated_at: datetime = field(default_factory=_now)
     cancel_requested: bool = False

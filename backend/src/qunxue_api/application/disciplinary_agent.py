@@ -23,6 +23,7 @@ from qunxue_api.modules.agent_conversation import (
     AgentToolContext,
     AgentToolEvent,
     AgentTurn,
+    AgentWritingPreviewEvent,
     Conversation,
     ConversationNotFound,
     ConversationService,
@@ -265,6 +266,7 @@ class DisciplinaryAgentApplication:
         on_run_started: Callable[[UUID, UUID, bool], None] | None = None,
         on_delta: Callable[[str], None] | None = None,
         on_tool_event: Callable[[AgentToolEvent], None] | None = None,
+        on_writing_preview: Callable[[AgentWritingPreviewEvent], None] | None = None,
         on_research_event: Callable[[AgentResearchEvent], None] | None = None,
         is_cancelled: Callable[[], bool] | None = None,
     ) -> AgentTurnExecution:
@@ -717,6 +719,9 @@ class DisciplinaryAgentApplication:
                 tools.bind_writing_context(
                     user_id=user_id, agent_run_id=run.run_id, context=writing_context,
                 )
+                bind_fence = getattr(tools, "bind_writing_execution_fence", None)
+                if callable(bind_fence):
+                    bind_fence(run.lease_token)
             if callable(bind_research_material_scope):
                 bind_research_material_scope(run.material_attachments)
             if workspace == "research":
@@ -968,6 +973,10 @@ class DisciplinaryAgentApplication:
                 if "is_cancelled" in __import__("inspect").signature(stream_runner).parameters:
                     runner_kwargs["is_cancelled"] = cancelled
                 parameters = signature(stream_runner).parameters
+                if "on_writing_preview" in parameters and on_writing_preview is not None:
+                    runner_kwargs["on_writing_preview"] = lambda event: on_writing_preview(
+                        replace(event, run_id=str(run.run_id)),
+                    )
                 if "on_checkpoint" in parameters:
                     runner_kwargs["on_checkpoint"] = safe_checkpoint
                 if "can_cancel" in parameters:

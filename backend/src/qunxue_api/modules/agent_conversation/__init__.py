@@ -30,6 +30,7 @@ from qunxue_api.modules.agent_conversation.ports import (
     AgentRuntimeIdentity,
     AgentToolContext,
     AgentToolEvent,
+    AgentWritingPreviewEvent,
     SubjectAgentRunner,
 )
 from qunxue_api.modules.agent_conversation.research_map import (
@@ -52,8 +53,10 @@ from .model_selection import (
     AgentReasoningEffort,
     resolve_agent_model_selection,
 )
+from .writing_preview import validated_writing_preview
 
 __all__ = [
+    "validated_writing_preview",
     "excerpt",
     "ContextSummaryBatch",
     "ContextSummaryGenerationFailure",
@@ -81,6 +84,7 @@ __all__ = [
     "AgentResearchEvent",
     "AgentToolContext",
     "AgentToolEvent",
+    "AgentWritingPreviewEvent",
     "AgentConversationError",
     "AgentInterrupted",
     "ConversationTaskBindingConflict",

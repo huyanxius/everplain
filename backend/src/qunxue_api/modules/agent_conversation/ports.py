@@ -67,6 +67,23 @@ class AgentToolEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class AgentWritingPreviewEvent:
+    """An ephemeral, bound replacement snapshot; never a persisted tool trace."""
+
+    call_id: str
+    document_id: str
+    base_version: int
+    selection_start: int
+    selection_end: int
+    sequence: int
+    replacement_text: str
+    state: Literal["streaming", "ready", "invalidated"]
+    revision_id: str | None = None
+    error_code: str | None = None
+    run_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class AgentResearchEvent:
     """Model-authored research UX state exposed as a safe, structured event."""
 
@@ -136,6 +153,7 @@ class SubjectAgentRunner(Protocol):
         tools: AgentToolContext,
         on_delta: Callable[[str], None],
         on_tool_event: Callable[[AgentToolEvent], None] | None = None,
+        on_writing_preview: Callable[[AgentWritingPreviewEvent], None] | None = None,
         is_cancelled: Callable[[], bool] | None = None,
     ) -> AgentRunResult: ...
 

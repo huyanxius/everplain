@@ -912,6 +912,12 @@ export type AgentRunLookupResponse = {
      * Updated At
      */
     updated_at: string;
+    /**
+     * Writing Previews
+     */
+    writing_previews?: Array<{
+        [key: string]: unknown;
+    }>;
 };
 
 /**

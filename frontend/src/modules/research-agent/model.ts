@@ -186,6 +186,7 @@ export type AgentStreamResume = { runId: string; after: number }
 
 export type AgentRunLookup = AgentRunStopResult & {
   output_persistence_failed?: boolean
+  writing_previews?: import('./writingPreview').WritingPreviewEvent[]
   conversation_id: string
   idempotency_key: string
   partial_answer: string
@@ -197,6 +198,7 @@ export type AgentRunLookup = AgentRunStopResult & {
 export type AgentEvent = AgentEventData & { event_id?: string; attempt_id?: string }
 
 type AgentEventData =
+  | import('./writingPreview').WritingPreviewEvent
   | { type: 'turn_started'; conversation_id: string; run_id: string; replayed: boolean; runtime_mode?: AgentRuntimeMode; attempt_id?: string; output_attempts?: AgentOutputAttempt[] }
   | { type: 'turn_snapshot'; run: AgentRunLookup }
   | { type: 'agent_delivery_state'; delivery_state: AgentDeliveryState }

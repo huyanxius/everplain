@@ -31,7 +31,8 @@ export function WritingRevisionPreview({ editor, before, after, animate = false 
       }
     }
     const set = DecorationSet.create(documents.after, decorations)
-    const view = new EditorView(host.current, { state: EditorState.create({ schema: editor.schema, doc: documents.after }), editable: () => false, attributes: { class: 'se-prose writing-revision-prose', 'aria-label': animate ? '已同意的修改动画' : '正文修改预览' }, decorations: () => set, dispatchTransaction: () => {} })
+    const view = new EditorView(host.current, { state: EditorState.create({ schema: editor.schema, doc: documents.after }), editable: () => false, nodeViews: { image: node => { const dom = window.document.createElement('span'); dom.textContent = `图片：${node.attrs.alt || '待确认'}`; return { dom } } }, markViews: { link: () => { const dom = window.document.createElement('span'); return { dom, contentDOM: dom } } }, attributes: { class: 'se-prose writing-revision-prose', 'aria-label': animate ? '已同意的修改动画' : '正文修改预览' }, decorations: () => set, dispatchTransaction: () => {} })
+    for (const control of view.dom.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button')) control.disabled = true
     for (const element of view.dom.querySelectorAll<HTMLElement>('.writing-revision-deleted')) { const box = element.getBoundingClientRect(); element.style.maxWidth = `${box.width}px`; element.style.maxHeight = `${box.height}px` }
     return () => view.destroy()
   }, [editor, documents, animate])
@@ -43,7 +44,10 @@ function RevisionBlock({ editor, node }: { editor: Editor; node: ProseMirrorNode
   const host = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!host.current) return
-    host.current.replaceChildren(node ? DOMSerializer.fromSchema(editor.schema).serializeFragment(Fragment.from(node)) : window.document.createTextNode('此处无段落'))
+    const serializer = DOMSerializer.fromSchema(editor.schema)
+    const inert = new DOMSerializer({ ...serializer.nodes, image: image => ['span', `图片：${image.attrs.alt || '待确认'}`] }, { ...serializer.marks, link: () => ['span', 0] })
+    host.current.replaceChildren(node ? inert.serializeFragment(Fragment.from(node)) : window.document.createTextNode('此处无段落'))
+    for (const control of host.current.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button')) control.disabled = true
   }, [editor, node])
   return <div ref={host} className="se-prose writing-compare-prose" data-empty={!node} />
 }

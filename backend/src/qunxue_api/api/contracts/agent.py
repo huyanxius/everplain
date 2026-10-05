@@ -289,6 +289,7 @@ class AgentRunLookupResponse(BaseModel):
     output_attempts: list[AgentOutputAttemptResponse] = Field(default_factory=list)
     delivery_state: dict[str, object] = Field(default_factory=dict)
     last_event_sequence: int = 0
+    writing_previews: list[dict[str, object]] = Field(default_factory=list)
     request: AgentTurnRequest | None
     updated_at: datetime
     turn_id: UUID | None

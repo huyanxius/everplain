@@ -37,6 +37,10 @@ function CitationLink({ href, children: label, title, className, style }: Compon
 }
 
 const markdownComponents = { a: CitationLink }
+const inertMarkdownComponents = {
+  a: ({ children }: ComponentProps<'a'>) => <span>{children}</span>,
+  img: ({ alt }: ComponentProps<'img'>) => <span>图片：{alt || '待确认'}</span>,
+}
 
 export function AgentAnswerMarkdown({
   children,
@@ -44,18 +48,20 @@ export function AgentAnswerMarkdown({
   onSelectCitation,
   progress = false,
   reveal,
+  inertResources = false,
 }: {
   children: string
   citations: readonly AgentCitation[]
   onSelectCitation: (citation: AgentCitation) => void
   progress?: boolean
   reveal?: StreamReveal
+  inertResources?: boolean
 }) {
   return <CitationContext.Provider value={{ citations, onSelectCitation }}>
     <ReactMarkdown
       remarkPlugins={[remarkGfm, ...(progress ? [remarkProgressParagraphs] : []), [remarkAgentCitations, { citations }]]}
       rehypePlugins={reveal?.revealedAt.length ? [[rehypeStreamReveal, reveal]] : []}
-      components={markdownComponents}
+      components={inertResources ? inertMarkdownComponents : markdownComponents}
     >{children}</ReactMarkdown>
   </CitationContext.Provider>
 }
