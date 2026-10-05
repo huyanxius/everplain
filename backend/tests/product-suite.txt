@@ -90,6 +90,10 @@ tests/test_channel_gateway_migration.py
 # Private writing workspace
 tests/test_writing.py
 tests/test_writing_agent_tools.py
+tests/test_writing_preview_stream.py
+tests/test_writing_preview_native_protocol.py
+tests/test_writing_preview_journal.py
+tests/test_writing_preview_cancellation.py
 tests/test_writing_evidence.py
 tests/test_writing_import_preview.py
 tests/test_writing_account_data.py

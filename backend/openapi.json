@@ -1675,6 +1675,14 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "writing_previews": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Writing Previews",
+            "type": "array"
           }
         },
         "required": [

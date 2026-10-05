@@ -553,3 +553,41 @@ describe('cursor subscription recovery', () => {
     expect(fetch.mock.calls[0][1]?.method).toBeUndefined()
   })
 })
+
+describe('dedicated document draft event recovery', () => {
+  const draft = { run_id: 'run-1', attempt_id: 'attempt-1', call_id: 'call-1', document_id: 'doc', base_version: 1, selection_start: 0, selection_end: 2, sequence: 2, replacement_text: '新😀', state: 'streaming' }
+  const frame = (id: number, name: string, body: unknown) => `id: run-1:${id}\nevent: ${name}\ndata: ${JSON.stringify(body)}\n\n`
+  const ended = frame(10, 'turn_interrupted', { code: 'stop', message: 'stop' })
+  it('parses replacement snapshots without exposing raw tool fields', () => {
+    const events = parseAgentEventStream(frame(2, 'writing_preview', { ...draft, thinking: 'private', original_text: 'private', arguments: { secret: 'private' } }))
+    expect(events).toEqual([{ type: 'writing_preview', ...draft, event_id: 'run-1:2' }])
+  })
+  it('replays cursor events once and never concatenates repeated writing snapshots', async () => {
+    const received: string[] = []
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(frame(1, 'turn_started', { run_id: 'run-1', attempt_id: 'attempt-1', conversation_id: 'c' }) + frame(2, 'writing_preview', draft)))
+      .mockResolvedValueOnce(new Response(frame(2, 'writing_preview', draft) + frame(3, 'writing_preview', { ...draft, sequence: 3, replacement_text: '新😀稿' }) + ended))
+    vi.stubGlobal('fetch', fetch)
+    await streamAgentTurn({ message: 'write', idempotencyKey: 'key' }, event => { if (event.type === 'writing_preview') received.push(event.replacement_text) })
+    expect(received).toEqual(['新😀', '新😀稿'])
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
+  })
+  it('recovers exact preview state after lost initial headers, excluding other attempts and unsafe payloads', async () => {
+    const snapshot = { run_id: 'run-1', conversation_id: 'c', idempotency_key: 'key', status: 'running', partial_answer: '', last_event_sequence: 7,
+      output_attempts: [{ attempt_id: 'attempt-1', ordinal: 1, status: 'running', answer: '', created_at: '2026-10-05T00:00:00Z' }],
+      writing_previews: [draft, { ...draft, attempt_id: 'old', replacement_text: '旧稿' }, { ...draft, run_id: 'foreign', replacement_text: 'foreign' }, { ...draft, replacement_text: '\uD83D' }] }
+    const fetch = vi.fn().mockRejectedValueOnce(new TypeError('lost')).mockResolvedValueOnce(new Response(JSON.stringify(snapshot))).mockResolvedValueOnce(new Response(ended))
+    vi.stubGlobal('fetch', fetch)
+    const events = vi.fn()
+    await streamAgentTurn({ message: 'write', idempotencyKey: 'key' }, events)
+    const restored = events.mock.calls.find(([event]) => event.type === 'turn_snapshot')![0]
+    expect(restored.run.writing_previews).toEqual([{ type: 'writing_preview', ...draft }])
+    expect(fetch.mock.calls[2][0]).toContain('/events?after=7')
+  })
+  it('drops late previews from an earlier model attempt', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(frame(1, 'turn_started', { run_id: 'run-1', attempt_id: 'attempt-new', conversation_id: 'c' }) + frame(2, 'writing_preview', draft) + ended)))
+    const events = vi.fn()
+    await streamAgentTurn({ message: 'write', idempotencyKey: 'key' }, events)
+    expect(events.mock.calls.filter(([event]) => event.type === 'writing_preview')).toHaveLength(0)
+  })
+})

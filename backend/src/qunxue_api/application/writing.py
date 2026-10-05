@@ -15,6 +15,7 @@ from qunxue_api.modules.writing import (
     features,
     instruction_artifacts,
     output_issues,
+    preview_safe_prefix,
     redact_style_contacts,
     retrieve_samples,
     sample_import_preview,
@@ -223,8 +224,70 @@ class WritingApplication:
         self.repository.complete(operation, result)
         return result
 
+    def preview_edit_target(self, user_id, document_id, request, replacement, complete,
+                            *, runtime_instructions="", selection_scope=None, revision=None):
+        """Read-only proof for an ephemeral preview, using the same owner/scope guards."""
+        document = self.repository.get(user_id, document_id)
+        version = request["expected_version"]
+        if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+            raise WritingConflict("invalid_preview_version")
+        if document["version"] != version:
+            raise WritingConflict("stale_preview_context")
+        pending = [item for item in self.repository.revisions(user_id, document_id)
+                   if item["status"] == "pending"]
+        if revision is None and pending:
+            raise WritingConflict("pending_preview_revision")
+        original = request["original_text"]
+        if not isinstance(original, str):
+            raise WritingConflict("invalid_preview_original")
+        start, end = request.get("selection_start"), request.get("selection_end")
+        if start is None and end is None:
+            position = document["markdown"].find(original)
+            if (not original or position < 0
+                    or document["markdown"].find(original, position + 1) >= 0):
+                raise WritingConflict("ambiguous_preview_anchor")
+            prefix, _, suffix = document["markdown"].partition(original)
+            start = len(prefix.encode("utf-16-le")) // 2
+            end = start + len(original.encode("utf-16-le")) // 2
+        else:
+            prefix, selected, suffix = utf16_slice(document["markdown"], start, end,
+                                                  allow_empty=True)
+            if selected != original:
+                raise WritingConflict("preview_original_mismatch")
+        scope_start, scope_end = (
+            (selection_scope["start"], selection_scope["end"])
+            if selection_scope is not None else
+            (0, len(document["markdown"].encode("utf-16-le")) // 2)
+        )
+        utf16_slice(document["markdown"], scope_start, scope_end, allow_empty=True)
+        if not scope_start <= start <= end <= scope_end:
+            raise WritingConflict("preview_outside_scope")
+        safe = preview_safe_prefix(
+            original, replacement, self.repository.style_samples(user_id),
+            runtime_instructions=WRITING_INSTRUCTIONS + "\n" + runtime_instructions,
+            complete=complete,
+        )
+        if revision is not None:
+            persisted = next((item for item in pending
+                              if item["revision_id"] == revision.get("revision_id")), None)
+            if (persisted is None or persisted != revision
+                    or str(revision.get("document_id")) != str(document_id)
+                    or revision.get("base_version") != version
+                    or revision.get("before_markdown") != document["markdown"]
+                    or revision.get("after_markdown") != prefix + replacement + suffix):
+                raise WritingConflict("unpersisted_preview_revision")
+        return {"document_id": str(document_id), "base_version": version,
+                "selection_start": start, "selection_end": end,
+                "safe_replacement_text": safe}
+
+    def discard_agent_proposal(self, user_id, document_id, run_id, revision, expected_fence=None):
+        """Reject only this run's pending proposal after an abandoned delivery."""
+        return self.repository.discard_agent_revision(
+            user_id, document_id, run_id, revision, expected_fence,
+        )
+
     def propose_edit(self, user_id, document_id, key, request, *, runtime_instructions="",
-                     selection_scope=None):
+                     selection_scope=None, execution_fence=None, creation_observer=None):
         """Save a precise Agent-authored suggestion without another model call.
 
         Only replacement_text becomes document content. Conversation, prompts and
@@ -241,9 +304,13 @@ class WritingApplication:
         ).encode()).hexdigest()
         old = self.repository.operation(user_id, key, digest)
         if old:
-            return old.result
+            if execution_fence is not None:
+                self.repository.require_agent_execution(user_id, execution_fence)
+            return {key: value for key, value in old.result.items() if not key.startswith("_")}
         operation = self.repository.start(user_id, key, digest, target)
         try:
+            if execution_fence is not None:
+                self.repository.require_agent_execution(user_id, execution_fence)
             # start acquires the write transaction before checking the version
             # and pending revision, serializing concurrent proposal writers.
             document = self.repository.get(user_id, document_id)
@@ -303,8 +370,14 @@ class WritingApplication:
                 warnings=["Agent 提议尚未写入正文。请复核事实、语义及引用后接受或撤回。"],
                 selection_start=scope_start, selection_end=scope_end,
             )
-            self.repository.complete(operation, result)
+            if execution_fence is not None:
+                self.repository.require_agent_execution(user_id, execution_fence)
+            stored = ({**result, "_agent_provenance": dict(execution_fence)}
+                      if execution_fence is not None else result)
+            self.repository.complete(operation, stored)
             self.repository.commit()
+            if creation_observer is not None:
+                creation_observer(result)
             return result
         except Exception:
             self.repository.fail(operation)

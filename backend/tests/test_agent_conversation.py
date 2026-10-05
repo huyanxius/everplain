@@ -699,7 +699,8 @@ def test_sqlite_failed_key_retry_refreshes_pre_run_identity() -> None:
     assert failed.knowledge_release_id == "release-new"
 
 
-def test_sqlite_agent_run_persists_and_restores_material_attachment_snapshots() -> None:
+@pytest.mark.parametrize("available", [True, False])
+def test_sqlite_agent_run_persists_and_restores_material_attachment_snapshots(available) -> None:
     conversation_id = UUID("00000000-0000-0000-0000-000000000081")
     user_id = UUID("00000000-0000-0000-0000-000000000082")
     attachment = agent_domain.AgentMaterialAttachment(
@@ -730,10 +731,17 @@ def test_sqlite_agent_run_persists_and_restores_material_attachment_snapshots() 
             "parse_id": str(attachment.parse_id),
         }
     ]
-    session.scalar.side_effect = [stored]
+    # Restoring an attachment-only run now verifies source ownership/liveness too.
+    session.scalar.side_effect = [stored, SimpleNamespace(current_research_task_id=None)]
+    session.scalars.side_effect = lambda query: (
+        [str(attachment.material_id)]
+        if available and query.column_descriptions[0]["name"] == "material_id" else []
+    )
     restored = repository.find_run(user_id=user_id, idempotency_key="material-attachments")
     assert restored is not None
     assert restored.material_attachments == (attachment,)
+    assert restored.output_redacted is not available
+    assert restored.writing_previews == ()
 
 
 def test_sqlite_insert_race_does_not_return_the_other_running_run() -> None:

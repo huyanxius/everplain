@@ -2620,3 +2620,29 @@ it('keeps a complete canonical answer visible while its receipt is unsaved', asy
   expect(await screen.findByText('已经完整收到的回答。')).toBeVisible()
   expect(screen.getByText('用量记录未保存。正文仍保留，请等待 receipt。')).toBeVisible()
 })
+
+it('routes actual document chunks and recovery snapshots separately from assistant narration', async () => {
+  const received = vi.fn(), ended = vi.fn(), finished = vi.fn()
+  let controller!: ReadableStreamDefaultController<Uint8Array>
+  const stream = new ReadableStream<Uint8Array>({ start(value) { controller = value } }), encoder = new TextEncoder()
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const path = urlFor(input).pathname
+    if (path === '/api/agent/models') return json({ runtime_mode: 'base', items: [{ model_id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoning_efforts: ['none'], default_reasoning_effort: 'none' }] })
+    if (path === '/api/agent/turns') return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } })
+    return json({ items: [], tasks: [] })
+  }))
+  render(<MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" writingDocumentId="writing-doc" prepareWritingContext={async () => ({ document_id: 'writing-doc', document_version: 1 })} writingAction={{ id: 'writing-ui:rewrite:draft-live', text: '直接修改' }} onWritingPreview={received} onWritingPreviewEnded={ended} onWritingActionFinished={finished} /></MemoryRouter>)
+  await screen.findByRole('textbox', { name: '问 Everplain' })
+  const draft = { run_id: 'draft-run', attempt_id: 'attempt-1', call_id: 'tool-call', document_id: 'writing-doc', base_version: 1, selection_start: 0, selection_end: 0, sequence: 2, replacement_text: '真正正文😀', state: 'streaming' }
+  await act(async () => { controller.enqueue(encoder.encode(eventStream([
+    ['turn_started', { conversation_id: 'writing-live', run_id: 'draft-run', attempt_id: 'attempt-1', replayed: false }],
+    ['assistant_delta', { delta: '这是聊天解释。' }],
+    ['writing_preview', { ...draft, original_text: 'private', thinking: 'private' }],
+  ]))) })
+  await waitFor(() => expect(received).toHaveBeenCalledWith({ type: 'writing_preview', ...draft }))
+  expect(received).toHaveBeenCalledTimes(1); expect(ended).not.toHaveBeenCalled(); expect(finished).not.toHaveBeenCalled()
+  await act(async () => { controller.enqueue(encoder.encode(eventStream([['turn_snapshot', { run_id: 'draft-run', conversation_id: 'writing-live', idempotency_key: 'key', status: 'running', partial_answer: '这是聊天解释。', last_event_sequence: 3, output_attempts: [{ attempt_id: 'attempt-1', ordinal: 1, status: 'running', answer: '这是聊天解释。', created_at: '2026-10-05T00:00:00Z' }], writing_previews: [{ ...draft, sequence: 3, replacement_text: '真正正文😀继续' }] }]]))) })
+  await waitFor(() => expect(received).toHaveBeenLastCalledWith({ type: 'writing_preview', ...draft, sequence: 3, replacement_text: '真正正文😀继续' }))
+  await act(async () => { controller.enqueue(encoder.encode(eventStream([['turn_interrupted', { code: 'stop', message: 'stopped' }]]))); controller.close() })
+  await waitFor(() => expect(ended).toHaveBeenCalledTimes(1))
+})

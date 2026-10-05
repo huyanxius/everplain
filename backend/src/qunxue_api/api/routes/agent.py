@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 from collections.abc import AsyncIterator, Iterator
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID, uuid4
@@ -55,6 +56,7 @@ from qunxue_api.modules.agent_conversation import (
     AgentModelSelectionUnavailable,
     AgentOutputStorageFailure,
     AgentToolEvent,
+    AgentWritingPreviewEvent,
     CanvasEditConflict,
     ConversationNotFound,
     ConversationTaskBindingConflict,
@@ -586,6 +588,11 @@ def stream_agent_turn(
                 and isinstance(event.output, dict) and event.output.get("schema_version") == 1):
             publish("canvas_patch", event.output)
 
+    def on_writing_preview(event: AgentWritingPreviewEvent) -> None:
+        publish("writing_preview", {"type": "writing_preview", **{
+            key: value for key, value in asdict(event).items() if value is not None
+        }})
+
     def run_agent() -> None:
         try:
             with request.app.state.disciplinary_agent_scope() as app:
@@ -605,7 +612,7 @@ def stream_agent_turn(
                     deep_research_action=payload.deep_research_action,
                     deep_research_selection=payload.deep_research_selection,
                     on_run_started=on_run_started, on_delta=on_delta,
-                    on_tool_event=on_tool_event,
+                    on_tool_event=on_tool_event, on_writing_preview=on_writing_preview,
                     on_research_event=lambda event: publish(
                         f"research_{event.kind}", dict(event.payload)),
                     is_cancelled=cancel_event.is_set,
@@ -904,6 +911,7 @@ def _run_snapshot(run) -> dict[str, object]:
         "attempt_id": run.lease_token, "status": run.status,
         "partial_answer": run.partial_answer, "last_event_sequence": run.last_event_sequence,
         "delivery_state": run.delivery_state,
+        "writing_previews": list(run.writing_previews),
         "output_attempts": [_output_attempt(item).model_dump(mode="json")
                             for item in run.output_attempts],
     }
@@ -979,6 +987,7 @@ def lookup_agent_run(
         output_attempts=[_output_attempt(item) for item in run.output_attempts],
         delivery_state=run.delivery_state,
         last_event_sequence=run.last_event_sequence,
+        writing_previews=list(run.writing_previews),
         request=original_request,
         updated_at=run.updated_at,
         turn_id=run.turn_id,

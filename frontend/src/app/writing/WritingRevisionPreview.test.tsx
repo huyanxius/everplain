@@ -76,3 +76,11 @@ describe('paired paragraph comparison', () => {
     fireEvent.keyDown(document, { key: 'Escape' }); expect(onClose).toHaveBeenCalledTimes(1); expect(editor.state).toBe(state)
   })
 })
+
+it('never loads proposed external images or exposes clickable links before agreement', () => {
+  const before = '原文', after = '![图](https://example.com/private?q=secret) [链接](https://example.com)', editor = create(before)
+  const view = render(<WritingRevisionPreview editor={editor} before={before} after={after} />)
+  expect(view.container.querySelector('img, a[href]')).not.toBeInTheDocument()
+  view.rerender(<WritingRevisionComparison editor={editor} before={before} after={after} onClose={() => {}} />)
+  expect(view.container.querySelector('img, a[href]')).not.toBeInTheDocument()
+})
