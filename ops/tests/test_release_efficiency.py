@@ -126,7 +126,9 @@ class ReleaseEfficiencyTests(unittest.TestCase):
         build = (ROOT / "ops/cd/build.sh").read_text()
         self.assertIn('"$(git rev-parse HEAD)" == "$GITHUB_SHA"', build)
         self.assertIn('--build-arg "RELEASE_REVISION=$GITHUB_SHA"', build)
-        self.assertEqual(build.count('--label "org.opencontainers.image.revision=$GITHUB_SHA"'), 2)
+        self.assertEqual(build.count('--label "org.opencontainers.image.revision=$GITHUB_SHA"'), 3)
+        self.assertIn('-f gateway/Dockerfile', build)
+        self.assertIn('--gateway-image "$gateway_id"', build)
         self.assertIn('python ops/cd/artifact.py "$GITHUB_SHA"', build)
 
 

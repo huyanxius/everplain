@@ -57,7 +57,9 @@ class ChannelDispatchRequest(ChannelContract):
 
 class ChannelDispatchResponse(ChannelContract):
     event_key: str
-    text: str
+    text: str | None = None
+    state: Literal["complete", "processing", "retryable"] = "complete"
+    cursor: int = Field(default=0, ge=0)
 
 
 class ChannelDeliveryResponse(ChannelContract):
