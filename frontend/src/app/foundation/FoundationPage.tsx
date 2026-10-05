@@ -83,7 +83,7 @@ export function FoundationPage({ authenticated = false, checkingSession = false 
     <header className="ep-header">
       <Link className="ep-brand" to="/welcome" aria-label="Everplain 首页"><span className="ep-brand-mark" aria-hidden="true" /><span>Everplain</span></Link>
       <nav aria-label="官网导航"><a href="#gather">收集</a><a href="#library">知识库</a><a href="#your-ai">你的 AI</a><a href="#models">模型与价格</a></nav>
-      {checkingSession ? <span className="ep-login" role="status">确认登录中…</span> : <Link className="ep-login" to={authenticated ? '/app' : '/login'}>{authenticated ? '继续' : '登录'}<ArrowUpRightIcon size={15} aria-hidden="true" /></Link>}
+      <div className="ep-header-actions"><Link className="ep-docs-link" to="/docs">Docs</Link>{checkingSession ? <span className="ep-login" role="status">确认登录中…</span> : <Link className="ep-login" to={authenticated ? '/app' : '/login'}>{authenticated ? '继续' : '登录'}<ArrowUpRightIcon size={15} aria-hidden="true" /></Link>}</div>
     </header>
 
     <main id="main">
@@ -137,7 +137,7 @@ export function FoundationPage({ authenticated = false, checkingSession = false 
         <div className="ep-models-copy">
           <h2 id="ep-models-title">用 1/10 的价格，<br />和全球最顶尖的模型对话。</h2>
           <p className="ep-price"><span>调用费用是官方 API 价格的</span><strong>1/10</strong></p>
-          <small>以官方 API 标价为对比基准。当前提供 GPT 6 Luna，图中其他模型仅作展示。</small>
+          <small>以官方 API 标价为对比基准，可选模型与能力以服务端目录为准。<Link to="/docs#models">查看模型与积分说明</Link></small>
         </div>
       </section>
 
@@ -157,6 +157,7 @@ export function FoundationPage({ authenticated = false, checkingSession = false 
       </div>
       <nav className="ep-footer__column" aria-labelledby="ep-footer-code-title">
         <h2 id="ep-footer-code-title">下载与代码</h2>
+        <Link to="/docs">Docs · 使用指南</Link>
         <div><a href="https://huyan-android-downloads.pages.dev/downloads/everplain-0.1.0-debug-cd1fd15.apk">安卓测试版 · Cloudflare 主下载</a></div>
         <div><a href="https://github.com/huyanxius/everplain/releases/download/android-v0.1.0-test-cd1fd15/everplain-0.1.0-debug-cd1fd15.apk">GitHub 备用下载</a></div>
         <small>Android 原生测试版 0.1.0 · debug 签名，研究工作区仍在完善。<a href="https://github.com/huyanxius/everplain/releases/tag/android-v0.1.0-test-cd1fd15">安装说明</a></small>

@@ -28,7 +28,8 @@ describe('Everplain product website', () => {
     expect(screen.queryByRole('link', { name: '免登录查看静态演示' })).not.toBeInTheDocument()
     expect(screen.queryByText(/下方演示使用预设示例/)).not.toBeInTheDocument()
     expect(screen.getByText('1/10')).toBeVisible()
-    expect(screen.getByText(/当前提供 GPT 6 Luna/)).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Docs' })).toHaveAttribute('href', '/docs')
+    expect(screen.getByRole('link', { name: '查看模型与积分说明' })).toHaveAttribute('href', '/docs#models')
     expect(requests).toEqual([])
   })
 
@@ -57,7 +58,7 @@ describe('Everplain product website', () => {
     expect(within(contact).getByRole('link', { name: 'huyanxius@gmail.com' })).toHaveAttribute('href', 'mailto:huyanxius@gmail.com')
     expect(within(footer).getByRole('link', { name: 'Everplain' })).toHaveAttribute('href', '/welcome')
     expect(within(footer).getByText('© 2026 Everplain')).toBeVisible()
-    expect(within(footer).getAllByRole('link')).toHaveLength(6)
+    expect(within(footer).getAllByRole('link')).toHaveLength(7)
   })
 
   it('offers fixed Android test APK mirrors and keeps the release boundary visible', () => {

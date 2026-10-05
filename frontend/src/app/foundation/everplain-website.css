@@ -489,3 +489,7 @@
   .ep-closing { padding: var(--qx-space-16) 24px; }
   .ep-models { padding-inline: 24px; }
 }
+
+/* Docs remains reachable on small screens where the section navigation is hidden. */
+.ep-header-actions { justify-self: end; display: flex; align-items: center; gap: var(--qx-space-4); }
+.ep-docs-link { display: inline-flex; align-items: center; min-height: var(--qx-control-height); font-size: var(--qx-text-control); }
