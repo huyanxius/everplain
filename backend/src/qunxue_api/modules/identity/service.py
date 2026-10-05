@@ -8,6 +8,7 @@ from urllib.parse import unquote, urlsplit
 from uuid import UUID, uuid4
 
 from qunxue_api.modules.identity.domain import (
+    AccountLoginMode,
     AccountStatus,
     AuthenticatedSession,
     FederatedIdentity,
@@ -150,7 +151,10 @@ class IdentityService:
     ) -> SessionGrant:
         normalized_email = email.strip().casefold()
         user = self._repository.get_user_by_email(normalized_email)
-        oauth_only = user is not None and user.password_hash == _OAUTH_ONLY_PASSWORD_HASH
+        oauth_only = user is not None and (
+            user.login_mode is AccountLoginMode.FEDERATED
+            or user.password_hash == _OAUTH_ONLY_PASSWORD_HASH
+        )
         password_hash = (
             user.password_hash
             if user is not None and not oauth_only
@@ -174,6 +178,7 @@ class IdentityService:
         provider: str,
         subject: str,
         verified_email: str,
+        display_name: str | None = None,
         user_agent: str | None = None,
         ip_address: str | None = None,
     ) -> SessionGrant:
@@ -187,17 +192,17 @@ class IdentityService:
             user = self._repository.record_login(user.user_id, now)
         else:
             email = self._normalize_email(verified_email)
-            # Email is contact data, never evidence that two identities are the same.
-            if self._repository.get_user_by_email(email) is not None:
-                raise FederatedIdentityConflict
+            # A provider email is contact data, never a local login credential
+            # or evidence that two distinct provider subjects share an account.
             user = self._repository.add_user(
                 User(
                     user_id=self._id_factory(),
-                    email=email,
+                    email=None,
                     password_hash=_OAUTH_ONLY_PASSWORD_HASH,
-                    display_name=None,
+                    display_name=display_name.strip()[:80] if display_name else None,
                     created_at=now,
                     updated_at=now,
+                    login_mode=AccountLoginMode.FEDERATED,
                 )
             )
             self._repository.add_federated_identity(
@@ -206,11 +211,19 @@ class IdentityService:
                     subject=subject,
                     user_id=user.user_id,
                     created_at=now,
+                    verified_email=email,
                 )
             )
         return self._grant(user, now, user_agent=user_agent, ip_address=ip_address)
 
-    def link_federated(self, current: AuthenticatedSession, *, provider: str, subject: str) -> None:
+    def link_federated(
+        self,
+        current: AuthenticatedSession,
+        *,
+        provider: str,
+        subject: str,
+        verified_email: str | None = None,
+    ) -> None:
         identity = self._repository.get_federated_identity(provider, subject)
         existing = self._repository.get_user_provider_identity(current.user.user_id, provider)
         if identity is not None and identity.user_id != current.user.user_id:
@@ -224,6 +237,9 @@ class IdentityService:
                     subject=subject,
                     user_id=current.user.user_id,
                     created_at=self._clock(),
+                    verified_email=self._normalize_email(verified_email)
+                    if verified_email
+                    else None,
                 )
             )
 

@@ -918,12 +918,13 @@ def test_alembic_head_matches_orm_metadata(
                 database.engine,
             )
             if table_name == "users":
-                # The account migration adds these columns in place on SQLite
-                # to avoid rebuilding the users table and cascading existing
-                # sessions/tasks. The service validates the same values at
-                # write time; the old table cannot gain these checks in place.
+                # The original account migration added these three fields in
+                # place without SQLite checks. 0630 preserves that historical
+                # schema while adding real login-mode/credential checks, which
+                # must remain in this comparison.
+                historical_checks = {"ck_users_role", "ck_users_status", "ck_users_version"}
                 metadata_checks = {
-                    item for item in metadata_checks if not item[0].startswith("ck_users_")
+                    item for item in metadata_checks if item[0] not in historical_checks
                 }
             assert database_checks == metadata_checks
 

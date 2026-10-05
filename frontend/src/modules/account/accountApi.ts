@@ -31,6 +31,7 @@ function toAccountSession(response: SessionResponse): AccountSession {
     user: {
       userId: response.user.user_id,
       email: response.user.email,
+      loginMode: response.user.login_mode,
       displayName: response.user.display_name,
     },
     expiresAt: response.expires_at,

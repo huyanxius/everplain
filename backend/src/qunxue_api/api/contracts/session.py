@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from qunxue_api.modules.identity import AccountLoginMode
+
 
 class SessionStatus(StrEnum):
     ACTIVE = "active"
@@ -39,7 +41,8 @@ class LoginSessionRequest(BaseModel):
 
 class SessionUserResponse(BaseModel):
     user_id: UUID
-    email: str
+    email: str | None
+    login_mode: AccountLoginMode = AccountLoginMode.EMAIL_PASSWORD
     display_name: str | None
 
 

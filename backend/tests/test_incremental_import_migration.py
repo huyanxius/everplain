@@ -1,80 +1,54 @@
+"""Real pre-receipt 0610 SQL rows survive 0615 without current-head user columns."""
+
+import sqlite3
+
 from alembic import command
-from sqlalchemy import MetaData, inspect, select, text
-from test_knowledge_import import drain, start
-from test_research_material_api import _authenticate
+from oauth_legacy_migration_support import seed_account, seed_imports
+from sqlalchemy import inspect
+from test_oauth_forward_migration import snapshot
 
 from qunxue_api.adapters.sqlite.database import Database
 
 
 def test_import_upgrade_preserves_legacy_batches_items_sources_and_documents(
-    plain_client,
-    tmp_path,
-    monkeypatch,
-    alembic_config,
+    tmp_path, monkeypatch, alembic_config
 ):
-    c = plain_client
-    c.app.state.import_worker_enabled = False
-    _authenticate(c)
-    ready = start(c, [("Vault/A.md", b"# A\noriginal source")], "obsidian")
-    drain(c)
-    queued = start(c, [("Vault/B.md", b"# B\nqueued source")], "obsidian")
-    tables = [
-        "users",
-        "shared_knowledge_bases",
-        "shared_documents",
-        "import_batches",
-        "import_items",
-        "import_sources",
-    ]
-    snapshot = {}
-    with c.app.state.database.engine.connect() as connection:
-        metadata = MetaData()
-        metadata.reflect(bind=connection, only=tables)
-        for name in tables:
-            snapshot[name] = [
-                dict(row) for row in connection.execute(select(metadata.tables[name])).mappings()
-            ]
-    legacy_url = f"sqlite:///{tmp_path / 'legacy-import.db'}"
-    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", legacy_url)
+    path = tmp_path / "legacy-import.db"
+    url = f"sqlite:///{path}"
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", url)
     command.upgrade(alembic_config, "20261005_0610")
-    database = Database(legacy_url)
+    with sqlite3.connect(path) as connection:
+        connection.execute("PRAGMA foreign_keys=ON")
+        owner = seed_account(connection)
+        imports = seed_imports(connection, owner["owner"])
+        assert "login_mode" not in {
+            column[1] for column in connection.execute("PRAGMA table_info(users)")
+        }
+        assert "request_key" not in {
+            column[1] for column in connection.execute("PRAGMA table_info(import_batches)")
+        }
+        assert not imports["assets"]
+    before = snapshot(path)
+    command.upgrade(alembic_config, "20261005_0615")
+    after = snapshot(path)
+    assert not after["foreign_key_violations"] and after["integrity"] == "ok"
+    assert after["rows"].keys() - before["rows"].keys() == {"import_attachments"}
+    for name, rows in before["rows"].items():
+        if name == "alembic_version":
+            expected = [["20261005_0615"]]
+        elif name == "import_batches":
+            expected = [row + [None, None] for row in rows]
+        else:
+            expected = rows
+        assert after["rows"][name] == expected, name
+    assert after["rows"]["import_attachments"] == []
+    with sqlite3.connect(path) as connection:
+        for batch in imports["batches"]:
+            assert connection.execute(
+                "SELECT status FROM import_items WHERE batch_id=?", (batch["id"],)
+            ).fetchone() == (batch["status"],)
+    database = Database(url)
     try:
-        legacy = MetaData()
-        legacy.reflect(bind=database.engine, only=tables)
-        with database.engine.begin() as connection:
-            for name in tables:
-                for row in snapshot[name]:
-                    old = {key: value for key, value in row.items() if key in legacy.tables[name].c}
-                    connection.execute(legacy.tables[name].insert().values(**old))
-        command.upgrade(alembic_config, "20261005_0615")
-        upgraded = MetaData()
-        upgraded.reflect(bind=database.engine, only=tables + ["import_attachments"])
-        with database.engine.connect() as connection:
-            assert not connection.execute(text("PRAGMA foreign_key_check")).all()
-            for name in tables:
-                actual = [
-                    dict(row)
-                    for row in connection.execute(select(upgraded.tables[name])).mappings()
-                ]
-                expected = snapshot[name]
-                if name == "import_batches":
-                    expected = [
-                        row | {"request_key": None, "fingerprint": None} for row in expected
-                    ]
-                assert actual == expected, name
-            assert connection.execute(select(upgraded.tables["import_attachments"])).all() == []
-            assert (
-                connection.execute(
-                    text("SELECT status FROM import_items WHERE batch_id=:id"), {"id": queued["id"]}
-                ).scalar()
-                == "queued"
-            )
-            assert (
-                connection.execute(
-                    text("SELECT status FROM import_items WHERE batch_id=:id"), {"id": ready["id"]}
-                ).scalar()
-                == "imported"
-            )
         index = next(
             index
             for index in inspect(database.engine).get_indexes("import_batches")

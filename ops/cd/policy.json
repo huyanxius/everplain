@@ -27,6 +27,10 @@
     {
       "from": "2ddaa00235b10b91873a22cc9e7e761301c957296bb4c719740607b4ed2cd228",
       "to": "1f4abbe6fa943bb3b94bc7b57f189c40028b19e416a15c4f83e389dd29faf8d8"
+    },
+    {
+      "from": "1f4abbe6fa943bb3b94bc7b57f189c40028b19e416a15c4f83e389dd29faf8d8",
+      "to": "677d1908068c46c5d23aa2bd2018fc906c133e7b16a3f1878b5a967350703b65"
     }
   ],
   "reviewed_migration_transitions": [

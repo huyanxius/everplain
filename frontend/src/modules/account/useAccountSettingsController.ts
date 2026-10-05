@@ -258,7 +258,7 @@ export function useAccountSettingsController({
         onAccountDeactivated?.()
       }, text('账户已停用。', 'Account deactivated.'))
     } else {
-      if (!deletion.password || deletion.email.trim().toLowerCase() !== state.account.email.toLowerCase()) return
+      if (!state.account.email || !deletion.password || deletion.email.trim().toLowerCase() !== state.account.email.toLowerCase()) return
       const intent = { currentPassword: deletion.password, confirmationEmail: deletion.email.trim() }
       void perform('delete', () => api.deleteAccount({ ...intent, idempotencyKey: intents.current.keyFor('delete', intent) }), () => {
         setConfirmation(null)
