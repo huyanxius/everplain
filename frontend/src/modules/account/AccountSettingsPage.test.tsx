@@ -530,6 +530,32 @@ describe('AccountSettingsPage', () => {
     expect(screen.getByText(/3,000.*6,000.*3,000/)).toBeInTheDocument()
   })
 
+  it('shows the server-capped RESET expiry instead of promising seven more days', async () => {
+    const redeemCredits = vi.fn(async () => ({ action: 'bank_reset' as const, redeemedPoints: 50, balance: 50, quotaPeriodExpiresAt: '2026-01-03T12:00:00Z' }))
+    render(<AccountSettingsPage api={createApi({ redeemCredits })} />)
+    await screen.findByRole('heading', { name: '账户设置' })
+    openPartition('使用情况')
+    expect(screen.getByText(/支持 Plus、PRO、Max 会员码和 bank RESET 码/)).toHaveTextContent('通常开启 7 天周期；剩余会员期不足 7 天时，以会员到期时间为准，不延长会员有效期')
+    fireEvent.change(screen.getByLabelText('兑换码'), { target: { value: 'QX-RESET-TWO-DAYS' } })
+    fireEvent.click(screen.getByRole('button', { name: '兑换' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('额度截止时间：2026/01/03')
+    expect(screen.getByRole('status')).not.toHaveTextContent('7 天')
+  })
+
+  it('explains membership and RESET codes and reports scheduled membership without changing the current plan', async () => {
+    const redeemCredits = vi.fn(async () => ({ action: 'membership' as const, planId: 'pro', redeemedPoints: 100, balance: 1200, membershipStartsAt: '2099-10-29T12:00:00Z', membershipExpiresAt: '2099-11-26T12:00:00Z' }))
+    render(<AccountSettingsPage api={createApi({ redeemCredits })} />)
+    await screen.findByRole('heading', { name: '账户设置' })
+    openPartition('使用情况')
+    expect(screen.getByText(/支持 Plus、PRO、Max 会员码和 bank RESET 码/)).toHaveTextContent('当前额度不变')
+    fireEvent.change(screen.getByLabelText('兑换码'), { target: { value: 'QX-PRO-MEMBERSHIP' } })
+    fireEvent.click(screen.getByRole('button', { name: '兑换' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('PRO 会员已安排在当前会员到期后生效，当前额度保持不变')
+    expect(screen.getByRole('status')).toHaveTextContent('生效时间：2099/10/29')
+    expect(screen.getByRole('status')).toHaveTextContent('到期时间：2099/11/26')
+    expect(screen.getByLabelText('兑换码')).toHaveValue('')
+  })
+
   it('shows an unlimited balance for the provisioned administrator', async () => {
     const api = createApi({
       getCreditSummary: async () => ({

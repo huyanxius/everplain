@@ -547,11 +547,14 @@ def create_admin_credit_redemption_codes(
         batch_id=idempotency_key,
         count=payload.count,
         expires_in_days=payload.expires_in_days,
+        plan_id=payload.plan_id,
     )
     return CreditCodeBatchResponse(
         codes=list(batch.codes),
         points=batch.points,
         expires_at=batch.expires_at,
+        action=batch.action,
+        plan_id=batch.plan_id,
     )
 
 

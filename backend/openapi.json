@@ -5306,6 +5306,22 @@
             "minimum": 1.0,
             "title": "Expires In Days",
             "type": "integer"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "enum": [
+                  "plus",
+                  "pro",
+                  "max"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
           }
         },
         "required": [
@@ -5318,8 +5334,11 @@
       "CreditCodeBatchResponse": {
         "properties": {
           "action": {
-            "const": "bank_reset",
             "default": "bank_reset",
+            "enum": [
+              "bank_reset",
+              "membership"
+            ],
             "title": "Action",
             "type": "string"
           },
@@ -5334,6 +5353,17 @@
             "format": "date-time",
             "title": "Expires At",
             "type": "string"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
           },
           "points": {
             "exclusiveMinimum": 0.0,
@@ -5565,8 +5595,11 @@
       "CreditRedemptionResponse": {
         "properties": {
           "action": {
-            "const": "bank_reset",
             "default": "bank_reset",
+            "enum": [
+              "bank_reset",
+              "membership"
+            ],
             "title": "Action",
             "type": "string"
           },
@@ -5579,6 +5612,41 @@
             "default": 0,
             "title": "Delta Points",
             "type": "integer"
+          },
+          "membership_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Membership Expires At"
+          },
+          "membership_starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Membership Starts At"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
           },
           "quota_period_expires_at": {
             "anyOf": [
@@ -16352,6 +16420,18 @@
               }
             ],
             "title": "Current Period End"
+          },
+          "current_period_start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Period Start"
           },
           "plan_id": {
             "anyOf": [

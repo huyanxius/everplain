@@ -85,12 +85,21 @@ export type AccountSystemHealth = {
   status: 'ok'
 }
 
+export type MembershipPlanId = 'plus' | 'pro' | 'max'
+
 export type CreditRedemption = {
+  action?: 'bank_reset' | 'membership'
+  planId?: string | null
+  membershipStartsAt?: string | null
+  membershipExpiresAt?: string | null
+  quotaPeriodExpiresAt?: string | null
   redeemedPoints: number
   balance: number
 }
 
 export type CreditRedemptionCodeBatch = {
+  action?: 'bank_reset' | 'membership'
+  planId?: string | null
   codes: string[]
   points: number
   expiresAt: string
@@ -163,6 +172,7 @@ export type AccountManagementApi = {
   createCreditRedemptionCodes(input: MutationIntent & {
     count: number
     expiresInDays: number
+    planId?: MembershipPlanId | null
   }): Promise<CreditRedemptionCodeBatch>
   updateProfile(input: MutationIntent & {
     displayName: string

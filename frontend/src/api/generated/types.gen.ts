@@ -2870,6 +2870,10 @@ export type CreditCodeBatchCreateRequest = {
      * Expires In Days
      */
     expires_in_days: number;
+    /**
+     * Plan Id
+     */
+    plan_id?: 'plus' | 'pro' | 'max' | null;
 };
 
 /**
@@ -2879,7 +2883,7 @@ export type CreditCodeBatchResponse = {
     /**
      * Action
      */
-    action?: 'bank_reset';
+    action?: 'bank_reset' | 'membership';
     /**
      * Codes
      */
@@ -2888,6 +2892,10 @@ export type CreditCodeBatchResponse = {
      * Expires At
      */
     expires_at: string;
+    /**
+     * Plan Id
+     */
+    plan_id?: string | null;
     /**
      * Points
      */
@@ -3007,7 +3015,7 @@ export type CreditRedemptionResponse = {
     /**
      * Action
      */
-    action?: 'bank_reset';
+    action?: 'bank_reset' | 'membership';
     /**
      * Balance
      */
@@ -3016,6 +3024,18 @@ export type CreditRedemptionResponse = {
      * Delta Points
      */
     delta_points?: number;
+    /**
+     * Membership Expires At
+     */
+    membership_expires_at?: string | null;
+    /**
+     * Membership Starts At
+     */
+    membership_starts_at?: string | null;
+    /**
+     * Plan Id
+     */
+    plan_id?: string | null;
     /**
      * Quota Period Expires At
      */
@@ -9062,6 +9082,10 @@ export type SubscriptionResponse = {
      * Current Period End
      */
     current_period_end: string | null;
+    /**
+     * Current Period Start
+     */
+    current_period_start?: string | null;
     /**
      * Plan Id
      */

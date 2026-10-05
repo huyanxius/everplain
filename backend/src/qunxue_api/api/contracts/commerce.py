@@ -50,6 +50,7 @@ class SubscriptionResponse(BaseModel):
     plan_id: str | None
     status: str
     current_period_end: datetime | None
+    current_period_start: datetime | None = None
     cancel_at_period_end: bool
 
 

@@ -108,6 +108,7 @@ def install_account_management(
                     plan_limits=app.state.settings.billing_plan_weekly_points),
                 exempt_user_ids=credit_exempt_user_ids,
                 code_signing_secret=code_signing_secret,
+                plan_limits=app.state.settings.billing_plan_weekly_points,
             )
 
     app.state.account_management_service_scope = service_scope

@@ -101,19 +101,20 @@ def get_model_catalog(request: Request, current: CurrentSessionDependency):
     response_model=SubscriptionOverviewResponse,
     operation_id="get_subscription",
 )
-def get_subscription(request: Request, current: CurrentSessionDependency, app: Application):
+def get_subscription(current: CurrentSessionDependency, app: Application):
     value = app.get(current.user.user_id)
     return {
         "available": app.unavailable_reason is None,
         "unavailable_reason": app.unavailable_reason,
         "plans": [
-            _public_plan(p, request.app.state.settings.billing_plan_weekly_points)
+            _public_plan(p, app.plan_limits)
             for p in app.plans
         ],
         "subscription": {
             "plan_id": value.plan_id,
             "status": value.status,
             "current_period_end": value.current_period_end,
+            "current_period_start": value.current_period_start,
             "cancel_at_period_end": value.cancel_at_period_end,
         }
         if value

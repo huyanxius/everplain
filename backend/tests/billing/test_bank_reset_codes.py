@@ -115,7 +115,7 @@ def test_missing_paid_quota_rolls_back_code_consumption(account_client):
             text(
                 "INSERT INTO subscriptions(provider_id,user_id,customer_id,plan_id,status,"
                 "current_period_end,cancel_at_period_end,created_at) "
-                "VALUES('sub',:u,'customer','plus','active',NULL,0,:now)"
+                "VALUES('sub',:u,'customer','unconfigured-paid','active',NULL,0,:now)"
             ),
             {"u": str(user), "now": now.isoformat()},
         )
@@ -129,7 +129,9 @@ def test_missing_paid_quota_rolls_back_code_consumption(account_client):
         )
         assert s.scalar(text("SELECT count(*) FROM credit_quota_periods")) == 0
     with db.session() as s:
-        reset = CreditService(SqliteCreditRepository(s, plan_limits={"plus": 75})).redeem(
+        reset = CreditService(
+            SqliteCreditRepository(s, plan_limits={"unconfigured-paid": 75})
+        ).redeem(
             user_id=user, code=code
         )
     assert reset.balance == 75 and reset.redeemed_points == 75
