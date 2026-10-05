@@ -2,6 +2,8 @@
 
 from base64 import urlsafe_b64encode
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from copy import copy
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from time import time
@@ -475,3 +477,160 @@ def test_partial_configuration_stays_disabled_and_https_needs_secure_cookies():
                 oauth_google_client_secret=SecretStr("synthetic"),
             )
         )
+
+
+def test_existing_admin_reset_can_set_an_oauth_only_password_without_bypassing_checks(
+    plain_client, monkeypatch
+):
+    mock = Provider(plain_client)
+    state, code = mock.start(plain_client)
+    mock.finish(plain_client, state, code)
+    user_id = plain_client.get("/api/session").json()["user"]["user_id"]
+    oauth_cookie = plain_client.cookies.get("everplain_session")
+    # A signed-in member cannot issue their own administrator reset grant.
+    assert (
+        plain_client.post(
+            f"/api/admin/users/{user_id}/password-reset-links",
+            headers={"Idempotency-Key": str(uuid4())},
+        ).status_code
+        == 403
+    )
+    assert (
+        plain_client.post(
+            "/api/account/password/change",
+            headers={"Idempotency-Key": str(uuid4())},
+            json={
+                "current_password": "guessed-password",
+                "new_password": "new-password-for-oauth",
+                "revoke_other_sessions": True,
+            },
+        ).status_code
+        == 401
+    )
+    original_scope = plain_client.app.state.account_management_service_scope
+
+    @contextmanager
+    def synthetic_signing_scope():
+        with original_scope() as service:
+            service._password_reset_signing_secret = b"synthetic-reset-signing-only"
+            yield service
+
+    monkeypatch.setattr(
+        plain_client.app.state, "account_management_service_scope", synthetic_signing_scope
+    )
+    plain_client.cookies.clear()
+    admin = register(plain_client, "synthetic-admin@example.com")
+    with plain_client.app.state.database.session() as db:
+        db.get(UserRow, admin["user"]["user_id"]).role = "admin"
+    issued = plain_client.post(
+        f"/api/admin/users/{user_id}/password-reset-links",
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert issued.status_code == 201
+    token = issued.json()["reset_token"]
+    plain_client.cookies.clear()
+    assert (
+        plain_client.post(
+            "/api/account/password-resets/consume",
+            headers={"Idempotency-Key": str(uuid4())},
+            json={"token": "wrong-token" * 5, "new_password": "new-password-for-oauth"},
+        ).status_code
+        == 410
+    )
+    consumed = plain_client.post(
+        "/api/account/password-resets/consume",
+        headers={"Idempotency-Key": str(uuid4())},
+        json={"token": token, "new_password": "new-password-for-oauth"},
+    )
+    assert consumed.status_code == 200
+    assert (
+        plain_client.post(
+            "/api/account/password-resets/consume",
+            headers={"Idempotency-Key": str(uuid4())},
+            json={"token": token, "new_password": "changed-password-again"},
+        ).status_code
+        == 410
+    )
+    plain_client.cookies.set("everplain_session", oauth_cookie)
+    assert plain_client.get("/api/session").status_code == 401
+    plain_client.cookies.clear()
+    login = plain_client.post(
+        "/api/session/login",
+        headers={"Idempotency-Key": str(uuid4())},
+        json={"email": "oauth@example.com", "password": "new-password-for-oauth"},
+    )
+    assert login.status_code == 200
+    assert login.json()["user"]["user_id"] == user_id
+    assert plain_client.get("/api/session/oauth/linked").json() == {"providers": ["google"]}
+    changed = plain_client.post(
+        "/api/account/password/change",
+        headers={"Idempotency-Key": str(uuid4())},
+        json={
+            "current_password": "new-password-for-oauth",
+            "new_password": "next-password-for-oauth",
+            "revoke_other_sessions": True,
+        },
+    )
+    assert changed.status_code == 200
+    plain_client.cookies.clear()
+    state, code = mock.start(plain_client)
+    assert mock.finish(plain_client, state, code).headers["location"] == "/library"
+    assert plain_client.get("/api/session").json()["user"]["user_id"] == user_id
+
+
+def test_https_oauth_cookie_is_host_bound_and_plain_cookie_cannot_satisfy_state(plain_client):
+    mock = Provider(plain_client)
+    origin = "https://testserver"
+    clients = OAuthClients(
+        Settings(
+            _env_file=None,
+            oauth_public_origin=origin,
+            session_cookie_secure=True,
+            oauth_google_client_id="synthetic-google-client",
+            oauth_google_client_secret=SecretStr("synthetic-test-only"),
+        )
+    )
+    clients.client("google").client_kwargs["transport"] = httpx.MockTransport(mock.http)
+    plain_client.app.state.oauth_clients = clients
+    plain_client.base_url = origin
+    started = plain_client.post(
+        "/api/session/oauth/google/start", headers={"Origin": origin}, json={}
+    )
+    assert started.status_code == 200
+    cookie = started.headers["set-cookie"]
+    assert cookie.startswith("__Host-everplain_oauth_google=")
+    assert "Path=/;" in cookie and "Secure" in cookie and "HttpOnly" in cookie
+    assert "SameSite=lax" in cookie and "Domain=" not in cookie
+    state = parse_qs(urlsplit(started.json()["authorization_url"]).query)["state"][0]
+    browser = plain_client.cookies.get("__Host-everplain_oauth_google")
+    original_cookie = copy(
+        next(
+            cookie
+            for cookie in plain_client.cookies.jar
+            if cookie.name == "__Host-everplain_oauth_google"
+        )
+    )
+    plain_client.cookies.clear()
+    # A transplanted legacy unprefixed cookie is never used in HTTPS mode.
+    plain_client.cookies.set("everplain_oauth_google", browser, path="/")
+    rejected = plain_client.get(
+        "/api/session/oauth/google/callback",
+        params={"state": state, "error": "access_denied"},
+        follow_redirects=False,
+    )
+    assert "invalid_flow" in rejected.headers["location"]
+    assert rejected.headers["set-cookie"].startswith("__Host-everplain_oauth_google=")
+    assert "Path=/;" in rejected.headers["set-cookie"]
+    assert "Secure" in rejected.headers["set-cookie"]
+    with plain_client.app.state.database.session() as db:
+        assert db.scalar(select(func.count()).select_from(OAuthTransactionRow)) == 1
+    plain_client.cookies.jar.set_cookie(original_cookie)
+    accepted = plain_client.get(
+        "/api/session/oauth/google/callback",
+        params={"state": state, "error": "access_denied"},
+        follow_redirects=False,
+    )
+    assert "cancelled" in accepted.headers["location"]
+    with plain_client.app.state.database.session() as db:
+        assert db.scalar(select(func.count()).select_from(OAuthTransactionRow)) == 0
+    assert not mock.exchanges

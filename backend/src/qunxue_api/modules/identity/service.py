@@ -30,6 +30,7 @@ _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _VERIFICATION_TTL = timedelta(minutes=5)
 _VERIFICATION_COOLDOWN = timedelta(seconds=60)
 _VERIFICATION_ATTEMPTS = 5
+_OAUTH_ONLY_PASSWORD_HASH = "!oauth-only"
 
 
 class IdentityService:
@@ -148,9 +149,14 @@ class IdentityService:
     ) -> SessionGrant:
         normalized_email = email.strip().casefold()
         user = self._repository.get_user_by_email(normalized_email)
-        password_hash = user.password_hash if user is not None else self._invalid_password_hash
+        oauth_only = user is not None and user.password_hash == _OAUTH_ONLY_PASSWORD_HASH
+        password_hash = (
+            user.password_hash
+            if user is not None and not oauth_only
+            else self._invalid_password_hash
+        )
         valid = self._password_hasher.verify(password_hash, password)
-        if not valid or user is None or user.status is not AccountStatus.ACTIVE:
+        if not valid or user is None or oauth_only or user.status is not AccountStatus.ACTIVE:
             raise InvalidCredentials
         now = self._clock()
         user = self._repository.record_login(user.user_id, now)
@@ -187,7 +193,7 @@ class IdentityService:
                 User(
                     user_id=self._id_factory(),
                     email=email,
-                    password_hash="!oauth-only",
+                    password_hash=_OAUTH_ONLY_PASSWORD_HASH,
                     display_name=None,
                     created_at=now,
                     updated_at=now,

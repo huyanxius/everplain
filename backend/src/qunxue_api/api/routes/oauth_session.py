@@ -28,12 +28,19 @@ router = APIRouter(prefix="/api/session/oauth", tags=["session"])
 _PRIVATE_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 
-def _cookie_name(provider: str) -> str:
-    return f"everplain_oauth_{provider}"
+def _secure_oauth_cookie(request: Request) -> bool:
+    origin = request.app.state.oauth_clients.origin
+    return bool(origin and origin.startswith("https://"))
 
 
-def _cookie_path(provider: str) -> str:
-    return f"/api/session/oauth/{provider}"
+def _cookie_name(provider: str, request: Request) -> str:
+    prefix = "__Host-" if _secure_oauth_cookie(request) else ""
+    return f"{prefix}everplain_oauth_{provider}"
+
+
+def _cookie_path(provider: str, request: Request) -> str:
+    # __Host- requires Path=/ and no Domain; browsers reject sibling-domain tossing.
+    return "/" if _secure_oauth_cookie(request) else f"/api/session/oauth/{provider}"
 
 
 def _require_origin(request: Request) -> None:
@@ -98,11 +105,11 @@ async def _start(
         raise HTTPException(status_code=503, detail="OAuth provider unavailable") from None
     response.headers.update(_PRIVATE_HEADERS)
     response.set_cookie(
-        _cookie_name(provider),
+        _cookie_name(provider, request),
         browser,
         max_age=OAUTH_TTL_SECONDS,
-        path=_cookie_path(provider),
-        secure=clients.origin.startswith("https://"),
+        path=_cookie_path(provider, request),
+        secure=_secure_oauth_cookie(request),
         httponly=True,
         samesite="lax",
     )
@@ -128,12 +135,9 @@ async def start_link(
 def _redirect(provider: str, target: str, request: Request) -> RedirectResponse:
     response = RedirectResponse(target, status_code=303, headers=_PRIVATE_HEADERS)
     response.delete_cookie(
-        _cookie_name(provider),
-        path=_cookie_path(provider),
-        secure=bool(
-            request.app.state.oauth_clients.origin
-            and request.app.state.oauth_clients.origin.startswith("https://")
-        ),
+        _cookie_name(provider, request),
+        path=_cookie_path(provider, request),
+        secure=_secure_oauth_cookie(request),
         httponly=True,
         samesite="lax",
     )
@@ -153,7 +157,7 @@ async def callback(provider: OAuthProvider, request: Request):
         transaction = OAuthTransactions(request.app.state.database).consume(
             provider=provider,
             state=request.query_params.get("state", ""),
-            browser=request.cookies.get(_cookie_name(provider), ""),
+            browser=request.cookies.get(_cookie_name(provider, request), ""),
         )
         if transaction is None:
             raise OAuthIdentityInvalid("invalid flow")

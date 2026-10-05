@@ -195,6 +195,7 @@ function SecurityPanel({ controller: c, onOAuthNavigate, oauthError }: PanelProp
   return <div className="ep-settings-fields">
     <form onSubmit={c.changePassword} noValidate>
       <fieldset className="ep-settings-password"><legend className="qx-heading">{c.text('登录密码', 'Sign-in password')}</legend>
+        <p className="qx-meta">{c.text('使用第三方注册且还没有本地密码？请联系管理员在核验身份后获取一次性密码重设链接。设置后可使用邮箱和密码登录；重设会撤销所有旧会话。', 'Signed up with Google or GitHub and have no local password? Contact an administrator to verify your identity and obtain a one-time password reset link. You can then sign in with email and password. Resetting signs out all existing sessions.')}</p>
         {fields.map(([key, zh, en]) => <SettingRow key={key} label={c.text(zh, en)}><input className="qx-input" type="password" aria-label={c.text(zh, en)} value={c.password[key]} onChange={event => c.setPassword(current => ({ ...current, [key]: event.target.value }))} autoComplete={key === 'current' ? 'current-password' : 'new-password'} minLength={key === 'current' ? undefined : 12} maxLength={128} required /></SettingRow>)}
       </fieldset>
       <label className="ep-settings-check"><input type="checkbox" checked={c.password.revokeOtherSessions} onChange={event => c.setPassword(current => ({ ...current, revokeOtherSessions: event.target.checked }))} /><span>{c.text('撤销其他设备的会话', 'Sign out other devices')}<small className="qx-meta">{c.text('当前设备不会退出。', 'Your current device stays signed in.')}</small></span></label>

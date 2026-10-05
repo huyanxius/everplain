@@ -4,7 +4,12 @@
 
 这是后端 Authlib 授权码流程与前端入口，不含第三方应用创建或生产凭据。
 未完整配置的提供方不会显示登录按钮，邮箱验证码注册和邮箱密码登录保持原流程。
-OAuth-only 新用户不自动获得可猜测的本地密码；可继续使用已绑定的第三方登录。
+OAuth-only 新用户不自动获得可猜测的本地密码；首次登录不强制额外设置密码。
+现有管理员辅助重设路径可在身份核验后为这类用户设置本地密码，并撤销旧会话，保留第三方绑定。
+设置页提供此路线的说明。管理员在既有用户管理页创建一次性链接，用户在现有重设页自行输入新密码。
+系统目前没有公开的“忘记密码”或邮箱验证码自助重设接口，不把注册验证码当作密码恢复凭证。
+管理员签发能力依赖既有部署管理员配置；不得新增无需管理员或未核验身份的签发入口。
+改密码、停用和删除仍遵守原有当前密码校验；第三方重新认证后的高影响账户操作未在本轮实现。
 
 当前已核实生产浏览器 origin 为 `https://e.qunxue.xyz`。精确回调：
 
@@ -33,7 +38,10 @@ EVERPLAIN_OAUTH_GITHUB_CLIENT_SECRET=<GitHub OAuth App client secret>
 可只启用一个提供方。origin、对应 client ID、非空 secret 缺一则该入口关闭。
 生产 origin 仅允许 HTTPS；本机开发可使用 loopback HTTP，并配置对应独立回调。
 不要从 Host 或 X-Forwarded-Host 动态生成回调。现有 CORS 列表应包含实际浏览器 origin。
-API 必须经过同站点反向代理，OAuth state cookie 不设置跨域 Domain。
+API 必须经过同站点反向代理。HTTPS OAuth state cookie 使用 __Host- 前缀、Secure、Path=/，
+不设置 Domain，以防同父域其他子域植入 cookie。loopback HTTP 开发保留普通名称和限定路径。
+既有应用会话也建议经正常配置审批使用 EVERPLAIN_SESSION_COOKIE_NAME=__Host-everplain_session，
+Path=/、Secure、无 Domain 已由服务器设置满足。更名会使旧会话退出，应作为上线决策明确告知用户。
 
 正式 Google 应用需完成其官方 consent screen 所要求的品牌、联系信息、网站与隐私信息，
 并按实际发布状态配置测试用户或发布；控制台完成不等于用户登录已验收。
