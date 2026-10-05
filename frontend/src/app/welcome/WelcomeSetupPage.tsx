@@ -5,7 +5,7 @@ import { ArrowLeftIcon, CheckIcon } from '@phosphor-icons/react'
 import { Link, Navigate, useLocation } from 'react-router'
 import { AgentAvatar, agentAvatarPresets } from '../../modules/agent-avatar'
 import { readAgentProfile } from '../../modules/agent-profile'
-import { PEOPLE, UserAvatar } from '../../modules/user-avatar'
+import { AvatarCustomizer, PEOPLE, UserAvatar, type UserAvatarCustom, type UserAvatarId } from '../../modules/user-avatar'
 import { libraryImportSources, type ImportSourceDescriptor } from '../imports/importSources'
 import { ErrorState, LoadingState } from '../ui/States'
 import { agentColors, documentFailed, documentProcessing, goalOptions, occupations, speakingStyles, useWelcomeSetup } from './useWelcomeSetup'
@@ -83,15 +83,21 @@ function CompanionStep({ flow }: { flow: SetupFlow }) {
 }
 
 function UserAvatarStep({ flow }: { flow: SetupFlow }) {
+  const [customizing, setCustomizing] = useState(false)
   const selected = flow.draft.userAvatar
-  return <StepBody flow={flow} title="你在这里的样子" action={selected ? '继续' : '先不选'}>
-    <p className="setup-flow__lead">会待在工作台右下角的小窗里。不想选也可以，之后随时能换。</p>
-    <div className="setup-people" role="group" aria-label="你的形象">
-      {PEOPLE.map((person, index) => <button key={person.id} type="button" disabled={Boolean(flow.busy)} aria-pressed={selected?.id === person.id} aria-label={`形象 ${index + 1}`} onClick={() => flow.patch({ userAvatar: selected?.id === person.id ? null : { id: person.id } })}>
-        <UserAvatar id={person.id} custom={selected?.id === person.id ? selected : undefined} variant="head" mood={selected?.id === person.id ? 'happy' : 'idle'} size={150} />
-      </button>)}
-    </div>
-  </StepBody>
+  const [customById, setCustomById] = useState<Partial<Record<UserAvatarId, UserAvatarCustom>>>(() => selected ? { [selected.id]: selected } : {})
+  return <>
+    <StepBody flow={flow} title="你在这里的样子" action={selected ? '继续' : '先不选'}>
+      <p className="setup-flow__lead">会待在工作台右下角的小窗里。不想选也可以，之后随时能换。</p>
+      <div className="setup-people" role="group" aria-label="你的形象">
+        {PEOPLE.map((person, index) => <button key={person.id} type="button" disabled={Boolean(flow.busy)} aria-pressed={selected?.id === person.id} aria-label={`形象 ${index + 1}`} onClick={() => flow.patch({ userAvatar: selected?.id === person.id ? null : { ...customById[person.id], id: person.id } })}>
+          <UserAvatar id={person.id} custom={selected?.id === person.id ? selected : customById[person.id]} variant="head" mood={selected?.id === person.id ? 'happy' : 'idle'} size={150} />
+        </button>)}
+      </div>
+      {selected && <button className="qx-btn qx-btn--secondary" type="button" disabled={Boolean(flow.busy)} onClick={() => setCustomizing(true)}>定制 TA 的外观</button>}
+    </StepBody>
+    {customizing && selected && <AvatarCustomizer id={selected.id} custom={selected} onChange={custom => { setCustomById(current => ({ ...current, [selected.id]: custom })); flow.patch({ userAvatar: { id: selected.id, ...custom } }) }} onClose={() => setCustomizing(false)} />}
+  </>
 }
 
 function ImportStep({ flow }: { flow: SetupFlow }) {

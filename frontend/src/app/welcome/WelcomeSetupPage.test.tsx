@@ -85,6 +85,25 @@ describe('six-step additions', () => {
     expect(screen.getByRole('button', { name: '形象 1' })).toHaveAttribute('aria-pressed', 'false')
   })
 
+  it('opens the real customizer, keeps the four allowed overrides and closes before saving', async () => {
+    profile.setup_step = 2
+    Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value() { this.setAttribute('open', '') } })
+    Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value() { this.removeAttribute('open') } })
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })))
+    show()
+    await screen.findByRole('heading', { name: '你在这里的样子' })
+    fireEvent.click(screen.getByRole('button', { name: '形象 3' }))
+    fireEvent.click(screen.getByRole('button', { name: '定制 TA 的外观' }))
+    const customizer = await screen.findByRole('dialog', { name: '定制外观' })
+    fireEvent.click(within(customizer).getByRole('button', { name: '#8a5a3c' }))
+    fireEvent.click(within(customizer).getByRole('switch', { name: '腮红' }))
+    fireEvent.keyDown(customizer, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
+    await screen.findByRole('heading', { name: '先把你收藏过的东西带进来' })
+    expect(profile.user_avatar).toEqual({ id: 'silver', hair: '#8a5a3c', blush: false })
+  })
+
   it('keeps unsaved name choices when moving back to the partner stage', async () => {
     profile.setup_step = 1
     show()
