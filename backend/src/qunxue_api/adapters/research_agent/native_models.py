@@ -1,5 +1,7 @@
 """Composition of exact, operator-registered native model protocols."""
 
+from urllib.parse import urlsplit
+
 import httpx
 import httpx2
 from anthropic import AsyncAnthropic
@@ -57,6 +59,11 @@ def build_native_agent_model(
         )
         wire.client = http
         provider = GoogleProvider(api_key=api_key, base_url=base_url, http_client=http)
+        route = urlsplit(base_url)
+        if (route.hostname in {"api.qnaigc.com", "api.modelink.ai"}
+                and route.path.rstrip("/") == "/bypass/vertex"):
+            # Modelink publishes /bypass/vertex/v1, while the SDK defaults to v1beta.
+            provider.client._api_client._http_options.api_version = "v1"
         provider.client._api_client._http_options.retry_options = HttpRetryOptions(attempts=1)
         native = MeteredNativeGoogleModel(model, provider=provider, settings=settings)
     elif protocol == "anthropic_messages":

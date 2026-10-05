@@ -137,22 +137,37 @@ def test_native_bearer_auth_is_explicit_and_does_not_mix_credential_headers(
     _run_case(wallet, protocol, "high", stream, missing=False, authentication="bearer")
 
 
-def _run_case(wallet, protocol, effort, stream, *, missing, invalid=False, authentication="native"):
+def test_modelink_google_sdk_uses_published_v1_route(wallet):
+    _run_case(
+        wallet, "gemini_generate_content", "medium", False, missing=False,
+        authentication="bearer", base_url="https://api.qnaigc.com/bypass/vertex",
+        model_name="gemini-3.8-flash",
+    )
+
+
+def _run_case(
+    wallet, protocol, effort, stream, *, missing, invalid=False, authentication="native",
+    base_url=None, model_name=None,
+):
 
     pending = missing or invalid
     runtime, engine = wallet
     runtime.billing_policy = "actual_usage_v2"
-    model = "gemini-3.5-flash" if protocol == "gemini_generate_content" else "claude-sonnet-5-5"
+    model = model_name or (
+        "gemini-3.5-flash" if protocol == "gemini_generate_content" else "claude-sonnet-5-5"
+    )
     runtime.book = replace(runtime.book, aliases={model: "gpt-6.1-sol"})
     calls = []
     library = httpx if protocol == "gemini_generate_content" else httpx2
-    base = (
+    base = base_url or (
         "https://synthetic.invalid"
         if protocol == "gemini_generate_content"
         else ("https://synthetic.invalid/bypass/anthropic")
     )
 
     def reply(request):
+        if base_url is not None:
+            assert request.url.path == f"/bypass/vertex/v1/models/{model}:generateContent"
         payload = json.loads(request.content)
         if authentication == "bearer":
             assert request.headers["authorization"] == "Bearer synthetic"
@@ -160,6 +175,8 @@ def _run_case(wallet, protocol, effort, stream, *, missing, invalid=False, authe
             assert "x-api-key" not in request.headers
         calls.append(payload)
         value = receipt(protocol, len(calls) == 1, len(calls), missing=missing)
+        if protocol == "gemini_generate_content":
+            value["modelVersion"] = model
         if invalid:
             if protocol == "gemini_generate_content":
                 value["usageMetadata"].update(thoughtsTokenCount=True, totalTokenCount=24)
