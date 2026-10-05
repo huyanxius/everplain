@@ -2453,6 +2453,45 @@ it('keeps ready-only coverage visible when a saved answer is reopened', async ()
   expect(await screen.findByText('本轮仅覆盖已就绪的 9 / 12 份资料，其余 3 份未参与检索。')).toBeVisible()
 })
 
+it('waits for the current stream to release before enabling a readiness continuation', async () => {
+  const status = { state: 'missing_index', embedding_model: 'embedding', total_count: 2, ready_count: 1, missing_count: 1, processing_count: 0, failed_count: 1,
+    ready_document_ids: ['ready'], ready_documents: [{ knowledge_base_id: 'kb', document_id: 'ready', parse_id: 'ready-parse', filename: 'ready.pdf', index_status: 'ready' }],
+    missing_documents: [{ knowledge_base_id: 'kb', document_id: 'failed', parse_id: 'failed-parse', filename: 'failed.pdf', index_status: 'failed', index_error: '索引服务不可用' }] }
+  let turnRequests = 0
+  let closeStream!: () => void
+  const completed = conversationFixture({ id: 'delayed-choice', prompt: '检索我的资料', answer: '仅根据已就绪资料回答。' })
+  const stream = new ReadableStream({ start(controller) {
+    controller.enqueue(new TextEncoder().encode(eventStream([
+      ['turn_started', { conversation_id: 'delayed-choice', run_id: 'delayed-run', replayed: false }],
+      ['knowledge_index_choice_required', { status }],
+    ])))
+    closeStream = () => controller.close()
+  } })
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = urlFor(input)
+    if (url.pathname === '/api/agent/turns') {
+      turnRequests += 1
+      return turnRequests === 1 ? new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } }) : streamResponse(completed)
+    }
+    if (url.pathname === '/api/agent/conversations/delayed-choice') return json({ ...completed, turns: [], turn_count: 0 })
+    if (url.pathname === '/api/agent/models') return json({ runtime_mode: 'base', items: [{ model_id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoning_efforts: ['medium'], default_reasoning_effort: 'medium' }] })
+    return json({ items: [] })
+  }))
+  renderPage()
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  fireEvent.change(input, { target: { value: '检索我的资料' } })
+  fireEvent.submit(input.closest('form')!)
+  const choice = await screen.findByRole('region', { name: '知识库还未整理完全，确定现在开始吗？' })
+  const skip = within(choice).getByRole('button', { name: '直接开始，忽略未就绪资料' })
+  expect(skip).toBeDisabled()
+  fireEvent.click(skip)
+  expect(turnRequests).toBe(1)
+  await act(async () => closeStream())
+  await waitFor(() => expect(skip).toBeEnabled())
+  fireEvent.click(skip)
+  await waitFor(() => expect(turnRequests).toBe(2))
+})
+
 it.each([true, false])('executes a writing shortcut without a second send and preserves chat draft (existing=%s)', async existing => {
   const completed = conversationFixture({ id: 'writing-existing', prompt: '直接优化', answer: '已提出待定修订。' })
   const requests: Record<string, unknown>[] = []

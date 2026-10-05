@@ -78,6 +78,7 @@ from qunxue_api.modules.agent_conversation import (
     AgentToolEvent,
     AgentTurn,
 )
+from qunxue_api.modules.billing import BillingFailure
 from qunxue_api.modules.shared_knowledge import KnowledgeIndexChoiceRequired
 
 
@@ -1147,8 +1148,18 @@ class PydanticAIKnowledgeRunner:
                     usage_limits=UsageLimits(request_limit=2, tool_calls_limit=0),
                 )
                 decision = _run_cancellable(operation, is_cancelled).output
-            except AgentInterrupted:
+            except (AgentInterrupted, AgentModelRouteFailure, BillingFailure):
                 raise
+            except (ModelHTTPError, ModelAPIError) as error:
+                # Keep raw SDK failures inside the same safe application boundary
+                # as routed provider failures; neither is a semantic plan failure.
+                log_model_failure(error)
+                raise AgentModelRouteError.from_attempt(
+                    ModelAttemptFailure(
+                        code=_model_attempt_failure_code(error),
+                        retryable=_is_retryable_model_error(error),
+                    )
+                ) from None
             except Exception:
                 # Planning must not make the regular Agent unavailable. The fallback keeps
                 # the contract valid and lets the main run apply the normal evidence policy.
