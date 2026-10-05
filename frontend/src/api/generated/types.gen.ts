@@ -610,7 +610,7 @@ export type AgentModelChoiceResponse = {
     /**
      * Default Reasoning Effort
      */
-    default_reasoning_effort: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
+    default_reasoning_effort: 'none' | 'enabled' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
     /**
      * Label
      */
@@ -622,7 +622,7 @@ export type AgentModelChoiceResponse = {
     /**
      * Reasoning Efforts
      */
-    reasoning_efforts: Array<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
+    reasoning_efforts: Array<'none' | 'enabled' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
 };
 
 /**
@@ -1070,7 +1070,7 @@ export type AgentTurnRequest = {
     /**
      * Reasoning Effort
      */
-    reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
+    reasoning_effort?: 'none' | 'enabled' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
     /**
      * Reference Knowledge Base Id
      */

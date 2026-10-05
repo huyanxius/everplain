@@ -106,7 +106,7 @@ export type AgentConversationSummary = {
 }
 
 // 恢复时使用接受问题时的完整上下文，避免入口或编辑位置变化改变原轮次。
-export type AgentReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export type AgentReasoningEffort = 'none' | 'enabled' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export type AgentModelCatalog = {
   runtimeMode: 'mock' | 'base' | 'sft'

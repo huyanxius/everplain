@@ -14,7 +14,7 @@ type SelectionState = {
 const emptyState = (owner: string | null): SelectionState => ({
   owner, status: owner ? 'loading' : 'unavailable', catalog: [], runtimeMode: null, selection: null,
 })
-const knownEfforts = new Set(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+const knownEfforts = new Set(['none', 'enabled', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
 const preferenceKey = (owner: string) => `everplain.agent-model-selection.v1.${encodeURIComponent(owner)}`
 
 function savedSelection(owner: string, catalog: readonly ModelDefinition[]): ModelSelection | null {

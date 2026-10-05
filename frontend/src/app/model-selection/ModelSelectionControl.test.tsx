@@ -356,3 +356,15 @@ it('renders only the native server stops including minimal without a fabricated 
   expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '高')
   expect(screen.queryByText('无')).not.toBeInTheDocument()
 })
+
+it('shows the server binary thinking stops with a truthful on label', () => {
+  const catalog: readonly ModelDefinition[] = [
+    { id: 'binary-thinking-fixture', label: 'Binary fixture', reasoningEfforts: ['none', 'enabled'], defaultReasoningEffort: 'enabled' },
+  ]
+  const { container } = render(<ControlledSelection catalog={catalog} initial={{ modelId: catalog[0].id, reasoningEffort: 'enabled' }} />)
+  expect(container.querySelectorAll('.model-selection__tick')).toHaveLength(2)
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '开启')
+  fireEvent.keyDown(screen.getByRole('slider'), { key: 'Home' })
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '无')
+  expect(screen.queryByText('高')).not.toBeInTheDocument()
+})

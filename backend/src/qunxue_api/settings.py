@@ -221,13 +221,13 @@ class AgentSelectableModelSettings(BaseModel):
     provider: str = Field(min_length=1, max_length=80)
     model: str = Field(min_length=1, max_length=120)
     reasoning_efforts: tuple[
-        Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"], ...
+        Literal["none", "enabled", "minimal", "low", "medium", "high", "xhigh", "max"], ...
     ] = ()
     default_reasoning_effort: (
-        Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None
+        Literal["none", "enabled", "minimal", "low", "medium", "high", "xhigh", "max"] | None
     ) = None
     effort_settings: dict[
-        Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+        Literal["none", "enabled", "minimal", "low", "medium", "high", "xhigh", "max"],
         AgentModelEffortSettings,
     ] = Field(default_factory=dict)
     capabilities: tuple[Literal["chat", "tools", "vision", "reasoning"], ...] = ("chat",)

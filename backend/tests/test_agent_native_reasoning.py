@@ -150,6 +150,28 @@ CASES = [
     for level in ("low", "medium", "high", "xhigh", "max")
 ]
 
+# This current gateway capability is binary; enabled is not labeled high.
+CASES += [
+    ("deepseek/deepseek-v4.1-flash", "chat_completions", level,
+     {"extra_body": {"thinking": {"type": mode}}}, {"thinking": {"type": mode}})
+    for level, mode in (("none", "disabled"), ("enabled", "enabled"))
+]
+
+
+def test_binary_thinking_has_a_truthful_public_catalog_and_unchanged_luna_validation():
+    binary = AgentSelectableModelSettings(**entry(
+        reasoning_efforts=["none", "enabled"], default_reasoning_effort="enabled",
+        effort_settings={"none": {"extra_body": {"thinking": {"type": "disabled"}}},
+                         "enabled": {"extra_body": {"thinking": {"type": "enabled"}}}},
+    ))
+    assert binary.reasoning_efforts == ("none", "enabled")
+    assert AgentTurnRequest(message="hello", model_id=binary.model_id,
+                            reasoning_effort="enabled").reasoning_effort == "enabled"
+    from qunxue_api.modules.agent_conversation.model_selection import MOCK_AGENT_MODEL_CHOICES
+
+    with pytest.raises(AgentModelSelectionUnavailable):
+        resolve_agent_model_selection("gpt-6-luna", "enabled", MOCK_AGENT_MODEL_CHOICES)
+
 
 def reply(request):
     model = json.loads(request.content)["model"]

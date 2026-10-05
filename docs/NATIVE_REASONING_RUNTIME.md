@@ -71,8 +71,14 @@ all other providers, key references, model IDs, prices and Luna defaults intact.
   enabled/disabled/auto, but that alone does not prove per-model strength support.
   Exact model metadata reviewed on the Mac reports capacities, not a strength enum.
   The model description proves thinking enabled/disabled; multi-strength activation
-  remains unverified. Do not label enabled as high. A separately reviewed minimal
-  on/off catalog contract can follow this runtime checkpoint.
+  remains unverified. The follow-on contract adds explicit `enabled` (shown as On),
+  alongside `none`; it never labels enabled as high. The partial example in
+  `ops/native-deepseek-toggle.example.json` supplies only reasoning fields for the
+  existing model ID. Merge them into that one model, preserving its actual provider,
+  path, model ID, capacity, price and every other registered model. The candidate
+  default is enabled; the publisher must preserve the account’s verified intended
+  default when activating. The binary SDK fixtures prove exact disabled/enabled wire,
+  not a live generation probe.
 
 Sources: [Qiniu Chat](https://developer.qiniu.com/aitokenapi/13390/chat-completions),
 [Modelink dated Chat OpenAPI](https://docs.modelink.ai/openapi/chat.openapi.json),

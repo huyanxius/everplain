@@ -147,3 +147,16 @@ it('accepts native minimal only when the live server catalog advertises it and r
   await waitFor(() => expect(second.result.current.status).toBe('ready'))
   expect(second.result.current.requestFields()).toEqual({ model_id: gemini.id, reasoning_effort: 'medium' })
 })
+
+it('accepts binary enabled only from the current catalog and clears unsupported saved state', async () => {
+  const model = { id: 'binary-fixture', label: 'Binary fixture', reasoningEfforts: ['none', 'enabled'], defaultReasoningEffort: 'enabled' }
+  loadCatalog.mockResolvedValueOnce({ runtimeMode: 'base', models: [model] })
+  const first = renderHook(() => useAgentModelSelection('binary-owner'))
+  await waitFor(() => expect(first.result.current.status).toBe('ready'))
+  expect(first.result.current.requestFields()).toEqual({ model_id: model.id, reasoning_effort: 'enabled' })
+  first.unmount()
+  loadCatalog.mockResolvedValueOnce({ runtimeMode: 'base', models: [{ ...model, reasoningEfforts: ['none'], defaultReasoningEffort: 'none' }] })
+  const second = renderHook(() => useAgentModelSelection('binary-owner'))
+  await waitFor(() => expect(second.result.current.status).toBe('ready'))
+  expect(second.result.current.requestFields()).toEqual({ model_id: model.id, reasoning_effort: 'none' })
+})
