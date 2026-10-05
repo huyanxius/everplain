@@ -1,5 +1,6 @@
 """Source-linked, model-generated recent activity; never durable user facts."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
@@ -39,11 +40,14 @@ class ContextSummaryBatch:
     sources: tuple[dict, ...]
     usage_day: str
     omitted_messages: int = 0
+    reserved_tokens: int = 24000
+    reservation_kind: str = "legacy_fixed"
 
 
 class ContextSummaryRepository(Protocol):
     def claim(
-        self, *, idle_seconds: int, daily_calls: int, daily_tokens: int
+        self, *, idle_seconds: int, daily_calls: int, daily_tokens: int,
+        reservation_estimator: Callable[[tuple[dict, ...], int], int] | None = None,
     ) -> ContextSummaryBatch | None: ...
 
     def complete(
@@ -54,3 +58,5 @@ class ContextSummaryRepository(Protocol):
         self, batch: ContextSummaryBatch, *, terminal: bool = False, code: str = "summary_failed",
         release_reservation: bool = False,
     ) -> None: ...
+
+    def reconcile_failed_usage(self, batch: ContextSummaryBatch) -> bool: ...

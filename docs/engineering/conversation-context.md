@@ -87,3 +87,17 @@
 `test_conversation_summary_recovery.py` 在合成SQLite上重现预算48k时新来源清错后永久pending、15分钟退避到期、在途lease/预算竞态、终止尝试、60秒防抖与5分钟最大等待。真实OpenAI SDK/Pydantic结构输出/计量适配器通过合成HTTP SSE返回验证两段会话的3张有精确引文卡片进入唯一共享缓存，10条完整超长消息仍如实计为未纳入。这是离线链路证据，不是截图中10条消息的真实成因，也不是生产或真实provider通过。
 
 16KB整体源预算会排除装不下的完整长消息，本原子修复仍有这个覆盖限制。不能以3张卡片或准确遗漏计数宣称完整历史已总结。后续完整覆盖方案需要以消息内容哈希和chunk游标缓存真实分块模型摘要，优先最新内容，在既有预留/日预算内渐进处理；最终合成仍核对精确原文引文和所有权，明示实际处理进度，来源删除/权限变更/更正使相关chunk失效。不能单纯扩大输入越过已核模型能力、把截断原文冒充摘要，或用模板填补未读内容。新派生缓存的兼容与恢复验收需单独验证。
+
+### 动态摘要准入与逐lease用量回执
+
+实际摘要生成器改按本次instructions、选中来源JSON、omitted计数和ActivitySummary结构输出schema计算调度预留：复用现有o200k近似上下文估计（25%余量及4096开销），加实际1800输出上限。这是对当前代理模型的estimate，不是已核provider tokenizer或费用；不改变模型、协议、源码16KB范围、输出上限、共享8calls/64k配置或最终wire现金/风险门。GET状态、候选预算检查和最终原子reserve CAS使用同一计算；没有估计器的历史/注入生成器保留24k兼容路径。
+
+批次携带reserved_tokens/kind；已有summary JSON的私有audit按lease保存owner/day/来源fingerprint/精确预留及状态，无新表、迁移或队列。读取API不暴露技术回执，模型不能写入。已关闭回执最多保留64个，未解决回执保留；成功、失效及空历史处理保持既有审计。完成发布及空历史水位写入前取得SQLite写锁，避免并发旧lease结算被陈旧JSON覆盖。
+
+发布资格与消耗计数独立：输出结构失败、来源更正/权限关闭/租约过期/替换或发布存储失败仍可能已产生真实用量。仅匹配精确owner/run/operation payload fingerprint且operation在success/error/cancelled/refunded终态，并检查全部attempt，才可结算：所有已知用量有usage_confirmed和合法非负整数时求和；权威not_sent与无attempt的本批已关闭operation证明本批未调用。active/paused、缺operation、未知/legacy/prepared/dispatch_started用量不减少预留；没有记录不证明历史聚合预留未出网。
+
+回执状态CAS和MemoryUsage原子增量同事务：已知零用量结为零，超估计实际用量增加budget_tokens，真实调用保留call；严格证明未调用才减少自己的call/预留。旧lease结算只动自己的回执及日计数，不清新lease。当前未过期、精确审计匹配的缺phase/runtime前置失败仍可释放本批可变预留并保留退避。不会重写billing operation/attempt、余额、账本或现金风险记录；它们仍由既有计量结算维护。
+
+`ops/inspect_summary_budget.py`在已安装后端环境、已核DB路径上使用SQLite mode=ro和query_only，仅选择唯一active admin，计算与运行时相同公式，输出数值/fit布尔和来源数量，不输出原文/账号ID/指纹/凭据。它不启动app、调用模型、claim、写库或释放旧预算。脚本的合成read-only字节hash及公式相等测试不等于真实生成验收。
+
+`test_summary_adaptive_budget.py`覆盖calls2/48k旧未知预留不动、新估计可进入剩16k后通过真实SDK合成响应形成摘要+3张引用卡片；无效输出/发布失败的实际用量；已知零/超估计；新旧lease交错；终态/全部attempt证据拒绝；混合known/not_sent/unknown；精确前置释放；回执与计数回滚；持有历史48k时并发发布不得复活旧回执偷扣预算；账本不变及回执有界。模型HTTP均为离线fixture，不声称真实provider/生产已完成。
