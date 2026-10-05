@@ -2411,14 +2411,20 @@ it('shows readiness only after a real tool decision, preserves scope and submits
     missing_documents: [{ knowledge_base_id: 'kb', document_id: 'failed', parse_id: 'failed-parse', filename: 'failed.pdf', index_status: 'failed', index_error: '索引服务不可用' }] }
   let turnRequests = 0
   const completed = conversationFixture({ id: 'choice-conversation', prompt: '检索我的资料', answer: '仅根据已就绪的资料回答。' })
+  // Explicitly release EOF so route/scope effects settle before the continuation click.
+  let closeChoiceStream!: () => void
+  const choiceStream = new ReadableStream({ start(controller) {
+    controller.enqueue(new TextEncoder().encode(eventStream([
+      ['turn_started', { conversation_id: 'choice-conversation', run_id: 'choice-run', replayed: false }],
+      ['knowledge_index_choice_required', { status }],
+    ])))
+    closeChoiceStream = () => controller.close()
+  } })
   const fetch = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = urlFor(input)
     if (url.pathname === '/api/agent/turns') {
       turnRequests += 1
-      return turnRequests === 1 ? new Response(eventStream([
-        ['turn_started', { conversation_id: 'choice-conversation', run_id: 'choice-run', replayed: false }],
-        ['knowledge_index_choice_required', { status }],
-      ]), { headers: { 'Content-Type': 'text/event-stream' } }) : streamResponse(completed)
+      return turnRequests === 1 ? new Response(choiceStream, { headers: { 'Content-Type': 'text/event-stream' } }) : streamResponse(completed)
     }
     if (url.pathname === '/api/agent/conversations/choice-conversation') return json({ ...completed, turns: [], turn_count: 0 })
     if (url.pathname === '/api/agent/models') return json({ runtime_mode: 'base', items: [{ model_id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoning_efforts: ['medium'], default_reasoning_effort: 'medium' }] })
@@ -2433,8 +2439,11 @@ it('shows readiness only after a real tool decision, preserves scope and submits
   fireEvent.submit(input.closest('form')!)
   const choice = await screen.findByRole('region', { name: '知识库还未整理完全，确定现在开始吗？' })
   expect(choice).toHaveTextContent('索引服务不可用')
-  await waitFor(() => expect(within(choice).getByRole('button', { name: '直接开始，忽略未就绪资料' })).toBeEnabled())
-  fireEvent.click(within(choice).getByRole('button', { name: '直接开始，忽略未就绪资料' }))
+  expect(within(choice).getByRole('button', { name: '直接开始，忽略未就绪资料' })).toBeDisabled()
+  await act(async () => closeChoiceStream())
+  const currentChoice = await screen.findByRole('region', { name: '知识库还未整理完全，确定现在开始吗？' })
+  await waitFor(() => expect(within(currentChoice).getByRole('button', { name: '直接开始，忽略未就绪资料' })).toBeEnabled())
+  await act(async () => fireEvent.click(within(currentChoice).getByRole('button', { name: '直接开始，忽略未就绪资料' })))
   await waitFor(() => expect(turnRequests).toBe(2))
   const requests = fetch.mock.calls.filter(([input]) => urlFor(input).pathname === '/api/agent/turns')
   expect(JSON.parse(String(requests[1][1]?.body))).toMatchObject({ message: '检索我的资料', conversation_id: 'choice-conversation', knowledge_index_action: 'skip_missing' })

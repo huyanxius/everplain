@@ -1363,7 +1363,10 @@ class PydanticAIKnowledgeRunner:
             )
             return result
 
-        @self._agent.tool(prepare=_prepare_knowledge_tool)
+        # These tools share the run's SQLite Session. Pydantic dispatches sync
+        # tools in worker threads, so knowledge batches must never race that
+        # Session/connection. Pure web-only batches keep their parallel policy.
+        @self._agent.tool(prepare=_prepare_knowledge_tool, sequential=True)
         def search_knowledge(
             ctx: RunContext[KnowledgeToolRegistry], query: str
         ) -> list[dict[str, object]] | dict[str, object]:
@@ -1795,7 +1798,7 @@ class PydanticAIKnowledgeRunner:
                 candidate=True,
             )
 
-        @self._agent.tool(prepare=_prepare_knowledge_tool)
+        @self._agent.tool(prepare=_prepare_knowledge_tool, sequential=True)
         def read_knowledge_entry(
             ctx: RunContext[KnowledgeToolRegistry], knowledge_id: str
         ) -> dict[str, object]:
@@ -1859,7 +1862,7 @@ class PydanticAIKnowledgeRunner:
             )
             return result
 
-        @self._agent.tool(prepare=_prepare_knowledge_tool)
+        @self._agent.tool(prepare=_prepare_knowledge_tool, sequential=True)
         def read_sources(
             ctx: RunContext[KnowledgeToolRegistry], source_ids: list[str]
         ) -> list[dict[str, object]] | dict[str, object]:
@@ -1915,7 +1918,7 @@ class PydanticAIKnowledgeRunner:
             )
             return result
 
-        @self._agent.tool(prepare=_prepare_knowledge_tool)
+        @self._agent.tool(prepare=_prepare_knowledge_tool, sequential=True)
         def browse_knowledge_directory(
             ctx: RunContext[KnowledgeToolRegistry],
             query: str | None = None,
