@@ -337,6 +337,20 @@ type StreamingTurn = {
   interrupted?: boolean
   failure?: string
 }
+// Server snapshots cannot contain a tail that failed to save. Preserve only
+// this run's explicitly unsaved local versions; the server owns saved versions.
+function mergeOutputAttempts(current: StreamingTurn, runId: string, incoming?: AgentOutputAttempt[], redacted = false): AgentOutputAttempt[] {
+  const local = current.runId === runId ? current.outputAttempts ?? [] : []
+  const merged = new Map((incoming ?? local).map(output => [output.attempt_id, output]))
+  for (const output of local) {
+    if (output.status === 'unsaved' && !merged.has(output.attempt_id)) merged.set(output.attempt_id, output)
+  }
+  // The existing recovery contract represents deleted sources with a tombstone.
+  // A local unsaved archive must never restore text hidden by that projection.
+  const hidden = redacted || incoming?.some(output => output.answer === DELETED_MATERIAL_ANSWER)
+  return [...merged.values()].map(output => hidden ? { ...output, answer: DELETED_MATERIAL_ANSWER } : output)
+}
+
 type PendingTurnAttempt = {
   question: string
   idempotencyKey: string
@@ -2094,9 +2108,8 @@ export function ResearchAgentConversationPage({
             setStreamingTurn((current) => current ? { ...current, runId: event.run_id,
               attemptId: event.attempt_id,
               answer: current.attemptId && event.attempt_id && current.attemptId !== event.attempt_id ? '' : current.answer,
-              outputAttempts: [...(event.output_attempts ?? current.outputAttempts ?? []),
-                ...(current.outputAttempts ?? []).filter(output => output.status === 'unsaved'
-                  && !(event.output_attempts ?? []).some(saved => saved.attempt_id === output.attempt_id))],
+              outputAttempts: mergeOutputAttempts(current, event.run_id, event.output_attempts,
+                Boolean(redactedStreamingMaterialIds.current.size) || current.citations.some(citation => citation.deleted)),
             } : current)
             persistPendingTurnAttempt(storageScope.current, startedAttempt)
             setConversations((current) => current.some((item) => item.conversation_id === event.conversation_id) ? current : [{
@@ -2130,13 +2143,19 @@ export function ResearchAgentConversationPage({
             activeRunId.current = run.status === 'running' ? run.run_id : null
             pendingConversationId.current = run.conversation_id
             activeTurnAttempt.current = { ...attempt, runId: run.run_id, conversationId: run.conversation_id }
-            setStreamingTurn(current => current ? { ...current, runId: run.run_id,
-              attemptId: run.output_attempts?.at(-1)?.attempt_id,
-              answer: run.output_persistence_failed ? run.partial_answer : run.output_attempts?.at(-1)?.answer ?? run.partial_answer,
-              outputPersistenceFailed: run.output_persistence_failed ?? current.outputPersistenceFailed,
-              outputAttempts: run.output_attempts?.length ? run.output_attempts : current.outputAttempts,
-              deliveryState: run.delivery_state,
-            } : current)
+            setStreamingTurn(current => {
+              if (!current) return current
+              const redacted = run.partial_answer === DELETED_MATERIAL_ANSWER
+                || (current.runId === run.run_id && current.answer === DELETED_MATERIAL_ANSWER)
+                || Boolean(redactedStreamingMaterialIds.current.size) || current.citations.some(citation => citation.deleted)
+              return { ...current, runId: run.run_id,
+                attemptId: run.output_attempts?.at(-1)?.attempt_id,
+                answer: redacted ? DELETED_MATERIAL_ANSWER : run.output_persistence_failed ? run.partial_answer : run.output_attempts?.at(-1)?.answer ?? run.partial_answer,
+                outputPersistenceFailed: run.output_persistence_failed ?? current.outputPersistenceFailed,
+                outputAttempts: mergeOutputAttempts(current, run.run_id, run.output_attempts, redacted),
+                deliveryState: run.delivery_state,
+              }
+            })
           } else if (event.type === 'agent_delivery_state') {
             setStreamingTurn(current => current ? { ...current, deliveryState: event.delivery_state } : current)
           } else if (event.type === 'agent_status') {
