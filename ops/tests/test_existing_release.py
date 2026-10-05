@@ -112,12 +112,17 @@ class RegistryReleaseTests(unittest.TestCase):
         self.assertTrue(release.check_existing_migration_transition(previous, candidate, policy))
         with self.assertRaisesRegex(ValueError, "rollback compatibility"):
             release.check_compatible(previous, candidate, policy)
+        # Isolate the OAuth review when proving it cannot authorize the earlier
+        # import transition, which has its own separately tested shipped review.
+        oauth_review_only = {**policy, "reviewed_forward_only_migration_transitions": [
+            {"from": previous["migration_tree"], "to": candidate["migration_tree"]},
+        ]}
         for old, new in ((candidate, previous), (journal, candidate), (journal, previous),
                          (previous, {"migration_tree": "0" * 64}),
                          ({"migration_tree": "0" * 64}, candidate)):
             with self.subTest(old=old, new=new), \
                  self.assertRaisesRegex(ValueError, "rollback compatibility"):
-                release.check_existing_migration_transition(old, new, policy)
+                release.check_existing_migration_transition(old, new, oauth_review_only)
         for changed_file in (
             "migrations/versions/20261005_0620_federated_login.py",
             "migrations/versions/20261005_0615_incremental_import_attachments.py",
