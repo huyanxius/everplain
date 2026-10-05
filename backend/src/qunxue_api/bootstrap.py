@@ -42,6 +42,7 @@ from qunxue_api.adapters.model import (
     SqliteModelInvocationRecorder,
     create_deterministic_mock_provider,
 )
+from qunxue_api.adapters.oauth import OAuthClients
 from qunxue_api.adapters.research_agent import (
     DeterministicKnowledgeRunner,
     OpenAICompatibleEmbeddingProvider,
@@ -88,6 +89,7 @@ from qunxue_api.adapters.sqlite.identity_repository import SqliteIdentityReposit
 from qunxue_api.adapters.sqlite.knowledge_import import SqliteImportRepository
 from qunxue_api.adapters.sqlite.material_vector_cache import SqliteMaterialVectorCache
 from qunxue_api.adapters.sqlite.memory_learning_repository import SqliteMemoryLearningRepository
+from qunxue_api.adapters.sqlite.oauth_transactions import OAuthTransactions
 from qunxue_api.adapters.sqlite.personal_graph import SqlitePersonalGraphRepository
 from qunxue_api.adapters.sqlite.phenomenon_repository import SqlitePhenomenonRepository
 from qunxue_api.adapters.sqlite.professional_material_repository import (
@@ -148,6 +150,7 @@ from qunxue_api.api.routes.health import router as health_router
 from qunxue_api.api.routes.knowledge_import import router as knowledge_import_router
 from qunxue_api.api.routes.memories import MemoryValidationError
 from qunxue_api.api.routes.memories import router as memories_router
+from qunxue_api.api.routes.oauth_session import router as oauth_session_router
 from qunxue_api.api.routes.personal_graph import router as personal_graph_router
 from qunxue_api.api.routes.phenomena import material_router as material_intakes_router
 from qunxue_api.api.routes.phenomena import router as phenomena_router
@@ -187,6 +190,7 @@ from qunxue_api.application.external_agents import ExternalAgentApplication
 from qunxue_api.application.knowledge_import import KnowledgeImportApplication
 from qunxue_api.application.memory_learning import MemoryLearningWorker
 from qunxue_api.application.memory_overview import MemoryOverview
+from qunxue_api.application.oauth_login import OAuthLoginApplication
 from qunxue_api.application.personal_graph import PersonalGraphApplication
 from qunxue_api.application.shared_knowledge import SharedKnowledgeApplication
 from qunxue_api.application.subscriptions import SubscriptionApplication
@@ -202,6 +206,8 @@ from qunxue_api.modules.identity import (
     IdentityService,
     InvalidEmail,
     InvalidVerificationCode,
+    OAuthClientConfiguration,
+    OAuthProviderCredentials,
     Unauthenticated,
     VerificationCodeRateLimited,
 )
@@ -265,6 +271,22 @@ def _build_transcription_provider(settings: Settings) -> TranscriptionProvider:
         model=settings.transcription_model or "",
         processing_location=ProcessingLocation(settings.transcription_processing_location),
         timeout_seconds=settings.transcription_timeout_seconds,
+    )
+
+
+def oauth_client_configuration(settings: Settings) -> OAuthClientConfiguration:
+    return OAuthClientConfiguration(
+        origin=settings.oauth_public_origin,
+        secure_session_cookie=settings.session_cookie_secure,
+        providers=tuple(
+            OAuthProviderCredentials(
+                provider=provider,
+                client_id=getattr(settings, f"oauth_{provider}_client_id"),
+                client_secret=(secret.get_secret_value() if secret else None),
+            )
+            for provider in ("google", "github")
+            for secret in (getattr(settings, f"oauth_{provider}_client_secret"),)
+        ),
     )
 
 
@@ -536,24 +558,38 @@ def create_app(
     password_hasher = Argon2PasswordHasher()
     invalid_password_hash = password_hasher.hash("invalid-account-password")
 
+    def build_identity_service(session) -> IdentityService:
+        return IdentityService(
+            SqliteIdentityRepository(
+                session,
+                on_user_created=lambda user: SqliteCreditRepository(session).ensure_welcome_grant(
+                    user_id=user.user_id, points=SIGNUP_GRANT, now=user.created_at,
+                ),
+            ),
+            password_hasher,
+            invalid_password_hash=invalid_password_hash,
+            session_ttl=timedelta(seconds=resolved_settings.session_ttl_seconds),
+            email_provider=app.state.email_provider,
+            require_email_verification=app.state.require_email_verification,
+        )
+
     @contextmanager
     def identity_service_scope() -> Iterator[IdentityService]:
         with resolved_database.session() as session:
-            yield IdentityService(
-                SqliteIdentityRepository(
-                    session,
-                    on_user_created=lambda user: (
-                        SqliteCreditRepository(session).ensure_welcome_grant(
-                        user_id=user.user_id, points=SIGNUP_GRANT, now=user.created_at,
-                        )
-                    ),
-                ),
-                password_hasher,
-                invalid_password_hash=invalid_password_hash,
-                session_ttl=timedelta(seconds=resolved_settings.session_ttl_seconds),
-                email_provider=app.state.email_provider,
-                require_email_verification=app.state.require_email_verification,
-            )
+            yield build_identity_service(session)
+
+    app.state.build_identity_service = build_identity_service
+    app.state.oauth_clients = OAuthClients(oauth_client_configuration(resolved_settings))
+    oauth_transactions = OAuthTransactions(
+        resolved_database,
+        identity_factory=lambda session: app.state.build_identity_service(session),
+    )
+    app.state.oauth_application = OAuthLoginApplication(
+        clients=lambda: app.state.oauth_clients,
+        transactions=oauth_transactions,
+        identities=oauth_transactions.identities,
+        atomic_identities=oauth_transactions.atomic_identities,
+    )
 
     @contextmanager
     def research_task_service_scope() -> Iterator[ResearchTaskService]:
@@ -1511,6 +1547,7 @@ def create_app(
     app.state.identity_service_scope = identity_service_scope
     app.include_router(health_router)
     app.include_router(session_router)
+    app.include_router(oauth_session_router)
     app.include_router(research_tasks_router)
     app.include_router(research_documents_router)
     app.include_router(research_materials_router)

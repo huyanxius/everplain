@@ -135,6 +135,14 @@ function openPartition(name: string) {
 }
 
 describe('AccountSettingsPage', () => {
+  it('explains the existing administrator-assisted password setup without inventing self-service recovery', async () => {
+    render(<AccountSettingsPage api={createApi()} initialSection="security" />)
+    await screen.findByRole('heading', { name: '安全' })
+    expect(screen.getByText(/使用第三方注册且还没有本地密码/)).toHaveTextContent('核验身份后获取一次性密码重设链接')
+    expect(screen.getByText(/使用第三方注册且还没有本地密码/)).toHaveTextContent('撤销所有旧会话')
+    expect(screen.getByLabelText('当前密码')).toBeRequired()
+  })
+
   it('uses the shared liquid Bot while the settings page is pending, then removes it', async () => {
     const result = deferred<AccountProfile>()
     const { container } = render(<AccountSettingsPage api={createApi({ getAccount: () => result.promise })} />)

@@ -7,6 +7,9 @@ export type LoginPageProps = {
   onAuthenticated(): void
   registerHref: string
   sessionExpired?: boolean
+  returnPath?: string
+  oauthError?: string | null
+  onOAuthNavigate?(url: string): void
 }
 
 export type RegisterPageProps = {
@@ -14,6 +17,9 @@ export type RegisterPageProps = {
   onSendRegistrationCode(email: string): Promise<{ resendAfterSeconds: number }>
   onAuthenticated(): void
   loginHref: string
+  returnPath?: string
+  oauthError?: string | null
+  onOAuthNavigate?(url: string): void
 }
 
 const validEmail = (email: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) && email.length <= 320

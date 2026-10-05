@@ -1,32 +1,65 @@
 """用户身份、密码验证与服务端会话边界。"""
 
 from qunxue_api.modules.identity.domain import (
+    OAUTH_TTL_SECONDS,
     AccountRole,
     AccountStatus,
     AuthenticatedSession,
+    FederatedIdentity,
+    OAuthClientConfiguration,
+    OAuthCompletion,
+    OAuthProviderCredentials,
+    OAuthStart,
+    OAuthTransaction,
     RegistrationVerification,
     SessionGrant,
     User,
     UserSession,
+    VerifiedOAuthIdentity,
 )
 from qunxue_api.modules.identity.errors import (
     EmailAlreadyRegistered,
     EmailDeliveryUnavailable,
+    FederatedIdentityConflict,
     IdentityError,
     InvalidCredentials,
     InvalidEmail,
     InvalidVerificationCode,
+    OAuthIdentityInvalid,
+    OAuthProviderUnavailable,
+    OAuthStorageUnavailable,
     Unauthenticated,
     VerificationCodeRateLimited,
 )
-from qunxue_api.modules.identity.ports import EmailProvider, IdentityRepository, PasswordHasher
-from qunxue_api.modules.identity.service import IdentityService
+from qunxue_api.modules.identity.ports import (
+    EmailProvider,
+    IdentityRepository,
+    OAuthProviderClient,
+    OAuthTransactionStore,
+    PasswordHasher,
+)
+from qunxue_api.modules.identity.service import IdentityService, safe_oauth_return_path
 
 __all__ = [
+    "OAUTH_TTL_SECONDS",
+    "OAuthClientConfiguration",
+    "OAuthCompletion",
+    "OAuthProviderCredentials",
+    "OAuthStart",
+    "OAuthTransaction",
+    "VerifiedOAuthIdentity",
+    "OAuthIdentityInvalid",
+    "OAuthProviderUnavailable",
+    "OAuthStorageUnavailable",
+    "OAuthProviderClient",
+    "OAuthTransactionStore",
+    "safe_oauth_return_path",
     "AccountRole",
     "AccountStatus",
     "AuthenticatedSession",
     "EmailAlreadyRegistered",
+    "FederatedIdentity",
+    "FederatedIdentityConflict",
     "EmailDeliveryUnavailable",
     "EmailProvider",
     "IdentityError",
