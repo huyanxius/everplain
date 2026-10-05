@@ -68,7 +68,7 @@ Telegram 操作员按[官方 setWebhook](https://core.telegram.org/bots/api#setw
 - outbox 崩溃后 Telegram 标为 ambiguous，飞书在固定 UUID 窗口内恢复。已送达文本与已完成 inbox 输入被擦除；幂等 digest 留存。失败输入/未发送文本保留供限期排障，绑定码本身十分钟即失效。
 - dead（达到八次/一天、永久错误）和 ambiguous 会出现在健康计数；inbox 重试耗尽会另发固定失败提示。运维必须告警；单靠进程活着不代表队列正常。
 - ambiguous 必须先在平台确认是否已送达，不能直接重复投递或重新运行模型。终止分片会阻止其后续分片，避免把缺头答案当成成功。撤销的回答所有待发送片同时 suppressed。
-- 网关只运行一个 inbox worker 与一个 outbox worker；长生成不会阻塞 webhook 或进度/结果投递。首期吞吐是受控预览级，不宣称多实例/高可用能力。
+- 网关运行一个普通 inbox worker、一个独立取消控制 worker 与一个 outbox worker；长生成不会阻塞 webhook 或进度/结果投递。首期吞吐是受控预览级，不宣称多实例/高可用能力。
 - 平台有各自保留窗口，不能承诺无限离线补偿。定期按用户数据保留政策处理已终结收据/失败内容；本期未提供自动清理或 dead-letter 操作控制台。
 
 ## 确定性验收
@@ -101,6 +101,10 @@ cd frontend && npm run typecheck
 cd gateway && uv run pytest integration/test_http_contract.py
 ```
 
-fixture必须设置专用测试开关且只监听loopback，不可用作生产服务。测试临时创建的账号、密钥和平台记录都是无真实用户资料的合成数据。受限环境若配置SOCKS代理，需要仅在测试环境安装官方httpx可选socksio支持。
+fixture必须设置专用测试开关且只监听loopback，不可用作生产服务。测试临时创建的账号、密钥和平台记录都是无真实用户资料的合成数据。测试子进程明确移除继承的HTTP/SOCKS代理，不要求为本地loopback安装代理支持。
 
 `gateway/browser/`使用GitHub Runner隔离浏览器检查真实设置界面，服务均由测试自建，不借用运行中的预览、真实session或平台secret；关闭截图、trace、video。此测试准备不代表浏览器已通过，须看精确PR head的CI结果。
+
+## 2026-10-05 主线接入
+
+异步 admission、只读 durable GETcursor、运行中重启恢复与私聊 `/cancel` 已实现；生产发布新增不可变 gateway 镜像、独立持久目录和精确 webhook 接线。详见 [DEPLOYMENT.md](DEPLOYMENT.md)。平台凭据、安全审批与本人试点白名单尚需在授权环境核实；它们不在源码交付内。

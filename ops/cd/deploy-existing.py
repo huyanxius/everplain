@@ -23,6 +23,7 @@ import urllib.request
 from pathlib import Path
 
 from artifact import MAX_BYTES, digest, tree_hash, unpack, validate_manifest
+from channel_gateway import GatewayRelease, backend_environment, configuration, nginx_routes
 from deploy import Controller, atomic_bytes, check_compatible, copy_index, expected_runtime_mode
 from release_identity import (
     SHA,
@@ -412,7 +413,7 @@ def classify_pull_failure(error):
 
 def pull_registry_image(reference, private, role, report):
     """Retry only explicit transport failures, within the existing 600-second pull budget."""
-    require(role in {"api", "web"})
+    require(role in {"api", "web", "gateway"})
     require(bool(re.fullmatch(r"ghcr\.io/huyanxius/everplain-" + role + r"@sha256:[0-9a-f]{64}",
                               reference)))
     command = ["docker", "--config", private, "pull", "--platform", "linux/amd64", reference]
@@ -713,6 +714,7 @@ class ExistingRelease:
         self.stopped = False
         self.renamed = []
         self.images = {}
+        self.gateway = None
         self.report = {
             name: False
             for name in (
@@ -819,6 +821,9 @@ class ExistingRelease:
                     if attempt == 11:
                         raise RuntimeError("previous service readiness failed") from None
                     time.sleep(2)
+        if self.gateway is not None:
+            self.gateway.recover(api_kept_running=self.report.get(
+                "candidate_local_acceptance_verified", False))
         self.record()
 
     def activate_web_only(self, manifest, api, web, network):
@@ -908,7 +913,8 @@ class ExistingRelease:
                 release.parent.mkdir()
                 manifest = unpack(frozen, release, REVISION, ARCHIVE_SHA256)
         self.old_names = {role: NAMES[role] + "-before-" + self.stage.name for role in NAMES}
-        require(manifest["images"] == {"api": API_IMAGE, "web": WEB_IMAGE})
+        require(manifest["images"].get("api") == API_IMAGE
+                and manifest["images"].get("web") == WEB_IMAGE)
         validate_provenance(manifest, REVISION, RUN_ID, RUN_ATTEMPT)
         self.state_path = self.base / "pipeline-state.json"
         self.previous_state = read_state(self.state_path, os.geteuid())
@@ -923,6 +929,10 @@ class ExistingRelease:
         policy = json.loads((release / "ops/cd/policy.json").read_text())
         verify_live_overlays(api, policy)
         env = configure_billing_policy(old_env, policy, self.report)
+        channel_values = configuration() if "gateway" in manifest["images"] else None
+        self.report["channel_configured"] = channel_values is not None
+        if channel_values is not None:
+            env = backend_environment(env, channel_values)
         self.expected_billing_policy = env.get("EVERPLAIN_BILLING_PHASE_POLICIES")
         self.report["forward_only_migration_review_verified"] = check_existing_migration_transition(
             {"migration_tree": self.baseline["api"]["migration_tree"]}, manifest, policy,
@@ -931,7 +941,7 @@ class ExistingRelease:
         self.report["artifact_verified"] = True
         registry = "registry_images" in manifest
         web_only = (registry and manifest["runtime_identity"]["api"] == self.baseline["api"]
-                    and env == old_env)
+                    and env == old_env and channel_values is None)
         image_bytes = (sum(manifest["image_sizes"].values()) if registry else sum(
             (release / "images" / (role + ".tar")).stat().st_size for role in ("api", "web")
         ))
@@ -943,12 +953,14 @@ class ExistingRelease:
         self.report["stage_load_budget_verified"] = True
         require(shutil.disk_usage(docker_root).free > remaining_budget)
         self.report["docker_load_budget_verified"] = True
+        roles = ("api", "web", "gateway") if channel_values is not None else ("api", "web")
         if registry:
             self.images = pull_registry_images(manifest, self.stage, self.report,
-                                               ("web",) if web_only else ("api", "web"))
+                                               ("web",) if web_only else roles)
             if web_only:
                 self.images["api"] = api["Image"]
-        for role, image in (() if registry else (("api", API_IMAGE), ("web", WEB_IMAGE))):
+        for role, image in (() if registry else
+                            ((role, manifest["images"][role]) for role in roles)):
             archive_path = release / "images" / (role + ".tar")
             archive_config = inspect_image_archive(archive_path, image, self.report, role)
             self.report[role + "_load_started"] = True
@@ -962,6 +974,12 @@ class ExistingRelease:
             require(info["Architecture"] == "amd64" and info["Os"] == "linux")
             require(info["Config"]["Labels"].get("org.opencontainers.image.revision") == REVISION)
             self.report[role + "_image_verified"] = True
+        if channel_values is not None:
+            self.gateway = GatewayRelease(values=channel_values, image=self.images["gateway"],
+                                          revision=REVISION, stage=self.stage, network=network,
+                                          run=run, metadata=metadata, atomic=atomic_bytes,
+                                          report=self.report)
+            self.gateway.prepare()
         if web_only:
             return self.activate_web_only(manifest, api, web, network)
         env.update(EVERPLAIN_RELEASE_REVISION=REVISION, EVERPLAIN_MIGRATIONS_MANAGED="1")
@@ -1034,6 +1052,8 @@ class ExistingRelease:
             # Only these exact Everplain containers are stopped; old containers/config stay intact.
             self.stopped = True
             self.report["service_stop_started"] = True
+            if self.gateway is not None:
+                self.gateway.stop()
             run(["docker", "stop", "--time", "45", NAMES["web"], NAMES["api"]])
             self.record()
             backups, data = self.stage / "backups", self.stage / "data"
@@ -1120,6 +1140,8 @@ class ExistingRelease:
             require(re.fullmatch(r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}", address))
             nginx = Path(__file__).resolve().parents[1] / "nginx.conf"
             config = nginx.read_text()
+            if self.gateway is not None:
+                config = nginx_routes(config, self.gateway.start())
             require(config.count("proxy_pass http://api:8297;") == 1)
             atomic_bytes(
                 self.stage / "nginx.conf",

@@ -1,12 +1,7 @@
 name: Channel gateway contracts
 
 on:
-  pull_request:
-    paths:
-      - "gateway/**"
-      - "backend/**"
-      - "docs/architecture/channel-gateway-integration.md"
-      - ".github/workflows/channel-gateway.yml"
+  workflow_call:
 
 permissions:
   contents: read

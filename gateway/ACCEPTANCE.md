@@ -39,17 +39,17 @@ application refuses to start without at least one fully configured platform.
   capacity and principal limits, private-message filtering, FIFO/restart recovery,
   Unicode splits, Telegram topics, stable Feishu UUIDs, bounded retries and
   ambiguous-send handling.
-- Ten two-process HTTP cases: duplicate delivery and process restarts; SDK 429
+- Eleven two-process HTTP cases: duplicate delivery and process restarts; SDK 429
   and ambiguous response; revoked multipart output; encrypted Feishu callbacks
   with business rate limiting; committed runtime result replaced by a synthetic
   HTTP 503; committed runtime result with a real truncated HTTP response body; revoked queued
   input and unclaimed code; permanent Telegram 403; >30-second model silence;
-  revocation while that long run is active.
+  revocation while that long run is active; active async GETcursor restart and private cancellation.
 - Frontend unit tests cover consent, code lifecycle, owner change, repeated
   actions, late responses, cancellation and generated-client calls. Browser
   acceptance is prepared under `gateway/browser` and remains unexecuted until
   run in an authorized isolated browser environment.
-- Migration head is `20261003_0540`, after writing `20261003_0530`. The migration
+- Channel migration is `20261003_0540`; the merged main also includes Agent output journal `20261005_0610`. The channel migration
   regression upgrades, preserves existing writing data, downgrades only the
   gateway tables, then upgrades again.
 
@@ -121,3 +121,7 @@ before an operator recovery decision. Feishu's stable UUID automatic retries sto
 before its one-hour deduplication window. Neither retry path may rerun the model.
 Group chat, external-site embedding, QQ, WeChat, attachments and live platform
 long connections remain outside this first implementation.
+
+## Current deployment contract
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the current release wiring, secure one-time input, mandatory pilot subject allowlists and live stop/restart/cursor checks. A missing secure file explicitly means channels are not deployed. Keep platform configuration and live acceptance pending until individually verified.
