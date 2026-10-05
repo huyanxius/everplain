@@ -84,7 +84,7 @@ describe('shared cached conversation suggestions', () => {
   })
 
   it('labels assistant statements as unverified and discloses partial source coverage', async () => {
-    const assistant = { role: 'assistant' as const, conversation_id: 'assistant-history', message_id: 'assistant-1', title: '迁移助手答复', quote: '可以考虑保留一个旧入口。' }
+    const assistant = { sequence: 1, role: 'assistant' as const, conversation_id: 'assistant-history', message_id: 'assistant-1', title: '迁移助手答复', quote: '可以考虑保留一个旧入口。' }
     vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, omitted_messages: 2, summary_sources: [assistant], cards: [{ ...ready.cards[0], sources: [assistant] }] })
     render(surface(client(), 'reader-1'))
     const summarySources = await screen.findByRole('list', { name: '近况依据' })
