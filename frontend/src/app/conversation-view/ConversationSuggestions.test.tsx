@@ -25,26 +25,12 @@ describe('ConversationSuggestions', () => {
     expect(onSelect.mock.calls[0][0]).toContain('原文位置')
     expect(onSubmit).not.toHaveBeenCalled()
   })
-  it('keeps ordinary Chat separate from research projects, conversations and files', () => {
-    const result = buildConversationSuggestions({ mode: 'chat', projects: [{ task_id: 'r1', project_title: '机密研究', status: 'active' }], conversations: [conversation('机密研究对话', 'r1'), conversation('挑选电脑', null)], attachedMaterials: [material('研究文献.pdf')] }, 'zh-CN')
-    expect(JSON.stringify(result)).toContain('挑选电脑')
-    expect(JSON.stringify(result)).not.toMatch(/机密研究|研究文献/)
-    expect(result.cards.every(card => card.prompt.includes('只把标题当作主题线索'))).toBe(true)
-  })
-  it('excludes a newer private-library conversation from ordinary Chat suggestions', () => {
-    const result = buildConversationSuggestions({ mode: 'chat', conversations: [
-      conversation('公开演讲准备', null, '2026-10-01'),
-      { ...conversation('私库客户保密问答', null, '2026-10-03'), reference_knowledge_base_id: 'private-library-1' },
-    ] }, 'zh-CN')
-    expect(result.cards.every(card => card.prompt.includes('公开演讲准备'))).toBe(true)
-    expect(JSON.stringify(result)).not.toContain('私库客户保密问答')
-  })
-  it('uses general Chat suggestions when only private-library history is available', () => {
-    const result = buildConversationSuggestions({ mode: 'chat', conversations: [
-      { ...conversation('私库中的医疗记录', null), reference_knowledge_base_id: 'private-library-2' },
-    ] }, 'zh-CN')
-    expect(result.label).toBe('通用起步建议')
-    expect(JSON.stringify(result)).not.toContain('私库中的医疗记录')
+  it('never invents standard Chat cards from conversation titles or generic templates', () => {
+    const result = buildConversationSuggestions({ mode: 'chat', projects: [{ task_id: 'r1', project_title: '机密研究', status: 'active' }], conversations: [conversation('挑选电脑', null), { ...conversation('私库客户问答', null), reference_knowledge_base_id: 'library-1' }], attachedMaterials: [material('研究文献.pdf')] }, 'zh-CN')
+    expect(result.cards).toEqual([])
+    expect(JSON.stringify(result)).not.toMatch(/挑选电脑|机密研究|研究文献|私库客户问答|理清下一步/)
+    render(<ConversationSuggestions mode="chat" onSelect={vi.fn()} />)
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
   it('uses the current project and does not leak another project conversation', () => {
     const result = buildConversationSuggestions({ mode: 'research', taskId: 'r2', projects: [{ task_id: 'r1', project_title: '其他项目', status: 'active' }, { task_id: 'r2', project_title: '城市交通', status: 'active' }], conversations: [conversation('隔离会话甲', 'r1')] }, 'zh-CN')
@@ -68,7 +54,7 @@ describe('ConversationSuggestions', () => {
   })
   it('stays deterministic and does not reorder the input history', () => {
     const conversations = [conversation('较早话题', null, '2026-10-01'), conversation('最近话题', null, '2026-10-03')]
-    const context = { mode: 'chat' as const, conversations }
+    const context = { mode: 'research' as const, conversations: conversations.map(item => ({ ...item, task_id: 'r1' })) }
     expect(buildConversationSuggestions(context, 'zh-CN')).toEqual(buildConversationSuggestions(context, 'zh-CN'))
     expect(buildConversationSuggestions(context, 'zh-CN').cards[0].prompt).toContain('最近话题')
     expect(conversations[0].title).toBe('较早话题')

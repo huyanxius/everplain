@@ -4139,6 +4139,147 @@
         "title": "ConversationExcerptResponse",
         "type": "object"
       },
+      "ConversationSuggestionResponse": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationSummarySourceResponse"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "prompt",
+          "sources"
+        ],
+        "title": "ConversationSuggestionResponse",
+        "type": "object"
+      },
+      "ConversationSummaryResponse": {
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationSuggestionResponse"
+            },
+            "title": "Cards",
+            "type": "array"
+          },
+          "omitted_messages": {
+            "title": "Omitted Messages",
+            "type": "integer"
+          },
+          "scope": {
+            "const": "conversation_messages",
+            "title": "Scope",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "pending",
+              "empty",
+              "disabled",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "summary_sources": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationSummarySourceResponse"
+            },
+            "title": "Summary Sources",
+            "type": "array"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "summary_sources",
+          "cards",
+          "updated_at",
+          "scope",
+          "omitted_messages"
+        ],
+        "title": "ConversationSummaryResponse",
+        "type": "object"
+      },
+      "ConversationSummarySourceResponse": {
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 0.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "sequence",
+          "conversation_id",
+          "message_id",
+          "quote",
+          "title"
+        ],
+        "title": "ConversationSummarySourceResponse",
+        "type": "object"
+      },
       "CourseKnowledgeResponse": {
         "properties": {
           "relations": {
@@ -19331,6 +19472,57 @@
         "summary": "Update Profile",
         "tags": [
           "agent-profile"
+        ]
+      }
+    },
+    "/api/agent/context-summary": {
+      "get": {
+        "operationId": "read_conversation_summary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Read Conversation Summary",
+        "tags": [
+          "agent"
         ]
       }
     },

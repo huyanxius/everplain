@@ -1,5 +1,5 @@
 import { isKnowledgeIndexStatus } from './knowledgeIndexReadiness'
-import { getAgentKnowledgeIndexStatus, repairAgentKnowledgeIndex, editAgentCanvasNode, listAgentModels, type AgentCanvasNodeEditRequest } from '../../api/generated'
+import { getAgentKnowledgeIndexStatus, repairAgentKnowledgeIndex, editAgentCanvasNode, listAgentModels, readConversationSummary, type AgentCanvasNodeEditRequest } from '../../api/generated'
 import { apiClient } from '../../api/client'
 import type {
   AgentResearchJourneyResponse,
@@ -8,6 +8,7 @@ import type {
 } from '../../api/generated'
 import type {
   RecentConversationContext,
+  ConversationContextSummary,
   KnowledgeIndexStatus,
   KnowledgeIndexRepair,
   AgentModelCatalog,
@@ -465,6 +466,37 @@ export async function listRecentConversationContext(signal?: AbortSignal): Promi
   })
   if (!response.ok) throw new Error('无法加载最近对话')
   return ((await response.json()) as { items: RecentConversationContext[] }).items
+}
+
+export async function getConversationContextSummary(signal?: AbortSignal): Promise<ConversationContextSummary> {
+  const result = await readConversationSummary({ client: apiClient, signal, credentials: 'include', cache: 'no-store' })
+  if (result.error || !result.data) throw new Error('无法读取最近对话建议')
+  const data: unknown = result.data
+  if (!isConversationContextSummary(data)) throw new Error('最近对话建议暂时不可用')
+  return data
+}
+
+function isConversationContextSummary(value: unknown): value is ConversationContextSummary {
+  if (!value || typeof value !== 'object') return false
+  const data = value as Record<string, unknown>
+  return ['ready', 'pending', 'empty', 'disabled', 'failed'].includes(String(data.status))
+    && data.scope === 'conversation_messages' && typeof data.summary === 'string'
+    && Number.isInteger(data.omitted_messages) && Number(data.omitted_messages) >= 0
+    && validSources(data.summary_sources)
+    && (data.updated_at === null || typeof data.updated_at === 'string')
+    && Array.isArray(data.cards) && data.cards.length <= 3
+    && data.cards.every(card => {
+      if (!card || typeof card !== 'object') return false
+      return [card.title, card.description, card.prompt].every(text => typeof text === 'string' && Boolean(text.trim()))
+        && validSources(card.sources) && card.sources.length > 0
+    })
+}
+
+function validSources(value: unknown): value is ConversationContextSummary['summary_sources'] {
+  return Array.isArray(value) && value.every(source => source && typeof source === 'object'
+    && Number.isInteger(source.sequence) && Number(source.sequence) >= 0
+    && (source.role === 'user' || source.role === 'assistant')
+    && [source.conversation_id, source.message_id, source.quote, source.title].every(text => typeof text === 'string' && Boolean(text.trim())))
 }
 
 export async function readKnowledgeIndexStatus(referenceKnowledgeBaseId?: string | null, signal?: AbortSignal, purpose: 'search' | 'graph' = 'search'): Promise<KnowledgeIndexStatus> {
