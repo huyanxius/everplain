@@ -67,15 +67,31 @@ def normalized_usage(raw: object) -> RequestUsage:
 class UsageSnapshot:
     """One attempt's cumulative snapshots with provider terminal evidence."""
 
-    def __init__(self, continuous=False):
+    def __init__(self, continuous=False, *, tolerate=True):
+        self.tolerate = tolerate
         self.continuous = continuous
         self.latest = None
         self.final = None
         self.final_response = None
         self.finish_reason = None
         self.content_after_snapshot = False
+        self.usage_error = None
+        self.receipt = None
 
     def accept(self, chunk):
+        self.receipt = {key: getattr(chunk, key, None) for key in ("id", "model", "service_tier")}
+        try:
+            self._accept(chunk)
+        except UnknownTokenUsage as error:
+            if not self.tolerate:
+                raise
+            # Accounting uncertainty must never interrupt content delivery. Once
+            # contradictory, the attempt needs an authoritative later receipt.
+            self.usage_error = str(error)
+        if self.usage_error:
+            self.final = None
+
+    def _accept(self, chunk):
         for choice in chunk.choices:
             if choice.finish_reason:
                 if self.finish_reason and self.finish_reason != choice.finish_reason:
@@ -95,6 +111,8 @@ class UsageSnapshot:
         )
         if self.final is not None and content:
             raise UnknownTokenUsage("stream contains new content after final usage")
+        if finished:
+            self.final_response = chunk
         if chunk.usage is not None:
             snapshot = normalized_usage(chunk.usage)
             if self.final is not None and snapshot != self.final:
@@ -123,9 +141,11 @@ class UsageSafeOpenAIStreamedResponse(OpenAIStreamedResponse):
             if self._snapshot.final is not None:
                 self._usage = self._snapshot.final
             yield event
-        if self._snapshot.final is None:
-            raise UnknownTokenUsage("stream ended without final token usage")
-        self._usage = self._snapshot.final
+        if self._snapshot.final is not None:
+            self._usage = self._snapshot.final
+        self.provider_details = {**(self.provider_details or {}),
+                                 "usage_status": "known" if self._snapshot.final else "pending",
+                                 "usage_failure": self._snapshot.usage_error}
 
     def _map_usage(self, chunk):
         self._snapshot.accept(chunk)
@@ -175,14 +195,26 @@ class ResponsesUsageSnapshot:
 
     terminal_statuses = {"completed", "incomplete", "failed", "cancelled"}
 
-    def __init__(self):
+    def __init__(self, *, tolerate=True):
+        self.tolerate = tolerate
         self.final_response = None
         self.final = None
         self.finish_reason = None
         self.receipt = None
         self.refused = False
+        self.usage_error = None
 
     def accept_response(self, response):
+        try:
+            self._accept_response(response)
+        except UnknownTokenUsage as error:
+            if not self.tolerate:
+                raise
+            self.usage_error = str(error)
+        if self.usage_error:
+            self.final = None
+
+    def _accept_response(self, response):
         self.receipt = {
             key: response_value(response, key) for key in ("id", "model", "service_tier")
         }
@@ -196,11 +228,23 @@ class ResponsesUsageSnapshot:
         self.final = normalized_usage(response_value(response, "usage"))
 
     def accept(self, event):
+        try:
+            self._accept(event)
+        except UnknownTokenUsage as error:
+            if not self.tolerate:
+                raise
+            self.usage_error = str(error)
+        if self.usage_error:
+            self.final = None
+
+    def _accept(self, event):
         if self.final_response is not None:
             raise UnknownTokenUsage("stream contains events after terminal Responses usage")
         event_type = response_value(event, "type", "")
         if event_type in {"error", "response.error"}:
-            raise ModelDeliveryRejected("Responses stream reported an error")
+            if not self.tolerate:
+                raise ModelDeliveryRejected("Responses stream reported an error")
+            raise UnexpectedModelBehavior("Responses stream reported an upstream error")
         if event_type in {"response.refusal.delta", "response.refusal.done"}:
             self.refused = True
         response = response_value(event, "response")
@@ -224,11 +268,11 @@ class UsageSafeOpenAIResponsesStreamedResponse(OpenAIResponsesStreamedResponse):
             if self._snapshot.final is not None:
                 self._usage = self._snapshot.final
             yield event
-        if self._snapshot.final is None:
-            raise UnknownTokenUsage("stream ended without final Responses token usage")
-        self._usage = self._snapshot.final
-        if self._snapshot.finish_reason != "completed" or self.finish_reason == "content_filter":
-            raise ModelDeliveryRejected("Responses output was not completed")
+        if self._snapshot.final is not None:
+            self._usage = self._snapshot.final
+        self.provider_details = {**(self.provider_details or {}),
+                                 "usage_status": "known" if self._snapshot.final else "pending",
+                                 "usage_failure": self._snapshot.usage_error}
 
     def _map_usage(self, response):
         self._snapshot.accept_response(response)
@@ -239,11 +283,14 @@ class UsageSafeOpenAIResponsesStreamedResponse(OpenAIResponsesStreamedResponse):
 
 class UsageSafeOpenAIResponsesModel(_BufferedStreamRequest, OpenAIResponsesModel):
     def _process_response(self, response, model_settings, model_request_parameters):
-        usage = normalized_usage(response.usage)
-        if responses_finish_reason(response) != "completed":
-            raise ModelDeliveryRejected("Responses output was not completed")
+        try:
+            usage = normalized_usage(response.usage)
+            usage_status = "known"
+        except UnknownTokenUsage:
+            usage, usage_status = RequestUsage(), "pending"
         result = super()._process_response(response, model_settings, model_request_parameters)
         result.usage = usage
+        result.provider_details = {**(result.provider_details or {}), "usage_status": usage_status}
         return result
 
     async def _process_streamed_response(self, response, model_settings, model_request_parameters):
