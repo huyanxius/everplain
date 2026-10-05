@@ -115,7 +115,8 @@ def install_account_management(
     @app.exception_handler(QuotaConfigurationUnavailable)
     async def handle_quota_unavailable(_request: Request, _error):
         return JSONResponse(status_code=503, content={"error": {
-            "code": ErrorCode.QUOTA_CONFIGURATION_UNAVAILABLE, "message": "当前套餐用量额度尚未配置。",
+            "code": ErrorCode.QUOTA_CONFIGURATION_UNAVAILABLE,
+            "message": "当前套餐用量额度尚未配置。",
             "trace_id": str(uuid4()),
         }})
 
