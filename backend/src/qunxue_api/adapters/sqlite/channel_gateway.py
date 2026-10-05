@@ -187,10 +187,26 @@ class SqliteChannelGatewayRepository:
     def event(self, key):
         return self.session.get(ChannelEventRow, key, populate_existing=True)
 
-    def reserve(self, event, binding, now):
+    def active_event(self, scope_key):
+        scope = self.session.get(ChannelScopeRow, scope_key, populate_existing=True)
+        return scope.active_event if scope else None
+
+    def request_stop(self, event_key):
+        changed = self.session.execute(
+            update(ChannelEventRow).where(
+                ChannelEventRow.event_key == event_key,
+                ChannelEventRow.state.in_(("processing", "cancel_requested")),
+            ).values(state="cancel_requested")
+        ).rowcount
+        self.commit()
+        return bool(changed)
+
+    def reserve(self, event, binding, now, *, control=False):
         # INSERT obtains a SQLite write transaction before checking leases, including
         # concurrent first deliveries. The whole reservation commits atomically.
-        scope_key = event.scope_key(binding.binding_id) if binding is not None else None
+        scope_key = (
+            event.scope_key(binding.binding_id) if binding is not None and not control else None
+        )
         self.session.execute(
             insert(ChannelEventRow)
             .values(
@@ -235,7 +251,8 @@ class SqliteChannelGatewayRepository:
             scope.active_event = row.event_key
             scope.lease_until = now + 45
             conversation_id = scope.conversation_id
-        row.state = "processing"
+        if row.state != "cancel_requested":
+            row.state = "processing"
         row.lease_token = str(uuid4())
         row.lease_until = now + 45
         self.commit()
@@ -247,7 +264,7 @@ class SqliteChannelGatewayRepository:
             .where(
                 ChannelEventRow.event_key == key,
                 ChannelEventRow.lease_token == token,
-                ChannelEventRow.state == "processing",
+                ChannelEventRow.state.in_(("processing", "cancel_requested")),
                 ChannelEventRow.lease_until > now,
             )
             .values(lease_until=now + 45)
@@ -284,7 +301,7 @@ class SqliteChannelGatewayRepository:
             .where(
                 ChannelEventRow.event_key == key,
                 ChannelEventRow.lease_token == token,
-                ChannelEventRow.state == "processing",
+                ChannelEventRow.state.in_(("processing", "cancel_requested")),
                 ChannelEventRow.lease_until > int(time.time()),
             )
             .values(**values)

@@ -14,7 +14,7 @@ if [[ "$publish" == true ]]; then
   printf '%s' "$EVERPLAIN_REGISTRY_TOKEN" | docker login ghcr.io -u huyanxius --password-stdin >/dev/null 2>&1
   unset EVERPLAIN_REGISTRY_TOKEN
   # Cache tags are build inputs only; the release pins immutable registry digests.
-  for role in api web; do
+  for role in api web gateway; do
     docker pull "ghcr.io/huyanxius/everplain-$role:build-cache" >/dev/null 2>&1 || true
   done
   docker pull ghcr.io/huyanxius/everplain-web:builder-cache >/dev/null 2>&1 || true
@@ -38,6 +38,11 @@ docker build --platform linux/amd64 -f ops/api.Dockerfile \
   --build-arg "PYTHON_IMAGE=$python_image" \
   --label "org.opencontainers.image.revision=$GITHUB_SHA" \
   -t "everplain-api:$GITHUB_SHA" .
+docker build --platform linux/amd64 -f gateway/Dockerfile \
+  --cache-from ghcr.io/huyanxius/everplain-gateway:build-cache \
+  --build-arg BUILDKIT_INLINE_CACHE=1 --build-arg "PYTHON_IMAGE=$python_image" \
+  --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+  -t "everplain-gateway:$GITHUB_SHA" gateway
 web_build=(--platform linux/amd64 -f ops/web.Dockerfile
   --cache-from ghcr.io/huyanxius/everplain-web:build-cache
   --cache-from ghcr.io/huyanxius/everplain-web:builder-cache
@@ -55,7 +60,7 @@ docker build "${web_build[@]}" \
   --label "org.opencontainers.image.revision=$GITHUB_SHA" \
   -t "everplain-web:$GITHUB_SHA" .
 if [[ "$publish" == true ]]; then
-  for role in api web; do
+  for role in api web gateway; do
     name="ghcr.io/huyanxius/everplain-$role"
     docker tag "everplain-$role:$GITHUB_SHA" "$name:$GITHUB_SHA"
     docker push "$name:$GITHUB_SHA"
@@ -67,7 +72,7 @@ if [[ "$publish" == true ]]; then
 import json,sys
 from pathlib import Path
 p=Path(sys.argv[1]); references={}; sizes={}
-for role in ('api','web'):
+for role in ('api','web','gateway'):
     image=json.loads((p/(role+'-image.json')).read_text())[0]
     references[role]=next(r for r in image['RepoDigests'] if r.startswith('ghcr.io/huyanxius/everplain-'+role+'@'))
     sizes[role]=image['Size']
@@ -77,6 +82,7 @@ PY
 else
   docker save "everplain-api:$GITHUB_SHA" -o "$prepared/images/api.tar"
   docker save "everplain-web:$GITHUB_SHA" -o "$prepared/images/web.tar"
+  docker save "everplain-gateway:$GITHUB_SHA" -o "$prepared/images/gateway.tar"
 fi
 # Read built bytes without starting a container or running application/model code.
 web_container="$(docker create "everplain-web:$GITHUB_SHA")"
@@ -86,8 +92,9 @@ docker rm "$web_container" >/dev/null
 web_container=""
 api_id="$(docker image inspect "everplain-api:$GITHUB_SHA" --format '{{.Id}}')"
 web_id="$(docker image inspect "everplain-web:$GITHUB_SHA" --format '{{.Id}}')"
+gateway_id="$(docker image inspect "everplain-gateway:$GITHUB_SHA" --format '{{.Id}}')"
+bash gateway/scripts/verify-container.sh "$gateway_id" "$GITHUB_SHA"
 python ops/cd/release_identity.py probe-image "$api_id" > "$prepared/api-identity.json"
 python ops/cd/artifact.py "$GITHUB_SHA" --prepared "$prepared" --output dist/release \
-  --api-image "$api_id" --web-image "$web_id" \
+  --api-image "$api_id" --web-image "$web_id" --gateway-image "$gateway_id" \
   --python-base "$python_image" --node-base "$node_image" --nginx-base "$nginx_image"
-

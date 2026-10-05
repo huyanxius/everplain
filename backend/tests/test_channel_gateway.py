@@ -508,23 +508,50 @@ def test_channel_keeps_real_runtime_lease_alive_beyond_thirty_seconds(channels):
         assert reply.result(timeout=10).status_code == 200
 
 
-def test_feishu_tenant_is_in_authenticated_binding_and_event_identity(channels):
+def test_feishu_tenant_is_in_authenticated_binding_and_event_identity(channels, monkeypatch):
     gateway_id = "feishu:cli_test:tenant_test"
     headers = {**HEADERS, "X-Everplain-Gateway": gateway_id}
+    grant = code(channels, gateway_id)
+    # Receive /bind just before a second boundary and activate just after it.
+    # A later message must not inherit the command's pre-binding occurrence time.
+    received_at_ms = (int(time.time()) + 2) * 1000 + 999
+    activated_at_ms = received_at_ms + 1
+    original_scope = channels.client.app.state.channel_gateway_scope
+
+    @contextmanager
+    def gateway_scope():
+        with original_scope() as gateway:
+            gateway.clock = lambda: activated_at_ms / 1000
+            yield gateway
+
+    monkeypatch.setattr(channels.client.app.state, "channel_gateway_scope", gateway_scope)
     payload = event(
         platform="feishu",
         bot_id="cli_test",
         tenant_id="tenant_test",
-        text="/bind " + code(channels, gateway_id),
+        text="/bind " + grant,
+        occurred_at=received_at_ms // 1000,
+        received_at_ms=received_at_ms,
     )
     assert dispatch(channels, payload, headers).status_code == 200
+    binding = channels.client.get("/api/channels/bindings").json()[0]
+    assert binding["created_at"] == activated_at_ms // 1000
     message = {
         **payload,
         "event_id": "same-provider-id",
         "text": "tenant private question",
-        "received_at_ms": int(time.time() * 1000),
+        "occurred_at": activated_at_ms // 1000,
+        "received_at_ms": activated_at_ms + 1,
     }
-    assert dispatch(channels, message, headers).status_code == 200
+    stale = {
+        **message,
+        "event_id": "pre-binding-provider-id",
+        "occurred_at": payload["occurred_at"],
+    }
+    assert dispatch(channels, stale, headers).status_code == 403
+    assert channels.calls == []
+    response = dispatch(channels, message, headers)
+    assert response.status_code == 200, response.json()
     other = {**message, "tenant_id": "other_tenant"}
     assert dispatch(channels, other, headers).status_code == 403
     assert dispatch(channels, {**message, "tenant_id": ""}, headers).status_code == 422
@@ -612,3 +639,134 @@ def test_revoke_invalidates_unclaimed_codes_for_same_owner_and_bot(channels):
     )
     assert dispatch(channels, event(text="/bind " + outstanding)).status_code == 403
     assert channels.client.get("/api/channels/bindings").json() == []
+
+
+def test_async_post_cursor_is_read_only_and_cancel_uses_private_scope(channels):
+    import threading
+
+    responses = channels.client.app.openapi()["paths"][PATH]["post"]["responses"]
+    assert "202" in responses and "200" in responses
+
+    bind(channels)
+    emitted, release = threading.Event(), threading.Event()
+    calls = []
+
+    class GatedRunner:
+        def run_stream(self, *, on_delta, on_checkpoint, is_cancelled, **kwargs):
+            calls.append(True)
+            on_checkpoint()
+            on_delta("durable private prefix")
+            emitted.set()
+            assert release.wait(10)
+            on_checkpoint()
+            from qunxue_api.modules.agent_conversation import AgentInterrupted
+            if is_cancelled():
+                raise AgentInterrupted()
+            return AgentRunResult(answer="complete", citations=(), release_id="",
+                                  provider="test", model="test")
+
+    @contextmanager
+    def runtime():
+        with channels.runtime() as app:
+            app._runner = GatedRunner()
+            yield app
+
+    channels.client.app.state.disciplinary_agent_scope = runtime
+    payload = event(text="async private question")
+    response = dispatch(channels, payload, {**HEADERS, "Prefer": "respond-async"})
+    assert response.status_code == 202, response.json()
+    key = response.json()["event_key"]
+    try:
+        assert emitted.wait(5)
+        path = f"/api/channel-gateway/events/{key}"
+        output = channels.client.get(path, headers=HEADERS).json()
+        assert output["state"] == "processing" and output["cursor"] > 0
+        assert output["text"] is None
+        cursor = output["cursor"]
+        wrong = {**HEADERS, "X-Everplain-Gateway": "telegram:456"}
+        assert channels.client.get(path, headers=wrong).status_code == 404
+        assert channels.client.get(path).status_code == 401
+        for _ in range(3):
+            replayed_output = channels.client.get(path, headers=HEADERS, params={"after": cursor})
+            assert replayed_output.json()["cursor"] == cursor
+        assert len(calls) == 1
+        cancellation = dispatch(channels, event(text="/cancel"))
+        assert cancellation.status_code == 200 and "请求停止" in cancellation.json()["text"]
+        assert len(calls) == 1
+    finally:
+        release.set()
+    for _ in range(100):
+        output = channels.client.get(path, headers=HEADERS).json()
+        if output["state"] == "complete":
+            break
+        time.sleep(0.02)
+    assert output["state"] == "complete"
+    assert "durable private prefix" in output["text"] and "已停止" in output["text"]
+    replay = dispatch(channels, payload, {**HEADERS, "Prefer": "respond-async"})
+    assert replay.status_code == 200 and replay.json()["text"] == output["text"]
+    assert len(calls) == 1
+
+
+def test_cancel_after_admission_before_model_start_is_durable(channels):
+    bind(channels)
+    payload = event(text="must not reach model")
+    typed = ChannelEvent(**payload)
+    with channels.client.app.state.channel_gateway_scope() as gateway:
+        prepared = gateway.prepare(typed, runtime_scope=channels.runtime)
+        pending = channels.client.get(
+            f"/api/channel-gateway/events/{typed.event_key}", headers=HEADERS
+        )
+        assert pending.status_code == 200
+        assert pending.json()["state"] == "processing" and pending.json()["text"] is None
+        assert channels.calls == []
+        cancellation = dispatch(channels, event(text="/cancel"))
+        assert cancellation.status_code == 200
+        assert "请求停止" in cancellation.json()["text"]
+        answer = gateway.dispatch(
+            typed, gateway_scope=channels.client.app.state.channel_gateway_scope,
+            runtime_scope=channels.runtime, prepared=prepared)
+    assert "已停止" in answer
+    assert channels.calls == []
+
+
+def test_cached_private_reply_rechecks_runtime_redaction_and_missing_run(channels):
+    from dataclasses import replace
+
+    _, bound = bind(channels)
+    payload = event(text="cached private source answer")
+    reply = dispatch(channels, payload)
+    assert reply.status_code == 200
+    key = reply.json()["event_key"]
+    original = channels.client.app.state.disciplinary_agent_scope
+    unavailable = ["redacted"]
+
+    @contextmanager
+    def runtime():
+        with original() as app:
+            find = app.find_run
+
+            def protected(**kwargs):
+                run = find(**kwargs)
+                if kwargs.get("idempotency_key") == f"channel:{key}" and run is not None:
+                    return (
+                        replace(run, output_redacted=True, partial_answer="safe redacted answer")
+                        if unavailable[0] == "redacted" else None
+                    )
+                return run
+
+            app.find_run = protected
+            yield app
+
+    channels.client.app.state.disciplinary_agent_scope = runtime
+    path = f"/api/channel-gateway/events/{key}"
+    for state in ("redacted", "missing"):
+        unavailable[0] = state
+        output = channels.client.get(path, headers=HEADERS)
+        assert output.status_code == 200
+        assert "cached private source answer" not in output.json()["text"]
+        allowed = channels.client.get(path + "/delivery", headers=HEADERS)
+        assert allowed.json() == {"allowed": False}
+        assert dispatch(channels, payload).status_code == 403
+    binding_key = ChannelEvent(**bound).event_key
+    assert channels.client.get(f"/api/channel-gateway/events/{binding_key}/delivery",
+                               headers=HEADERS).json() == {"allowed": True}
