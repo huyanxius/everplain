@@ -33,3 +33,6 @@
 @media (max-width: 600px) {
   .auth-stage__back { top: var(--qx-space-4); left: var(--qx-space-4); }
 }
+
+.auth-stage__oauth { display: grid; gap: var(--qx-space-3); width: min(100%, 400px); }
+.auth-stage__oauth-divider { text-align: center; padding-block: var(--qx-space-2); }

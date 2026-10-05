@@ -50,3 +50,10 @@ class EmailDeliveryUnavailable(IdentityError):
 
     def __init__(self) -> None:
         super().__init__("验证码暂时无法发送，请稍后再试。")
+
+
+class FederatedIdentityConflict(IdentityError):
+    code = "federated_identity_conflict"
+
+    def __init__(self) -> None:
+        super().__init__("请先用现有方式登录，再在账户安全设置中绑定第三方账号。")

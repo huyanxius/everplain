@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from qunxue_api.modules.identity.domain import (
     AccountStatus,
     AuthenticatedSession,
+    FederatedIdentity,
     RegistrationVerification,
     SessionGrant,
     User,
@@ -16,6 +17,7 @@ from qunxue_api.modules.identity.domain import (
 )
 from qunxue_api.modules.identity.errors import (
     EmailAlreadyRegistered,
+    FederatedIdentityConflict,
     InvalidCredentials,
     InvalidEmail,
     InvalidVerificationCode,
@@ -28,6 +30,7 @@ _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _VERIFICATION_TTL = timedelta(minutes=5)
 _VERIFICATION_COOLDOWN = timedelta(seconds=60)
 _VERIFICATION_ATTEMPTS = 5
+_OAUTH_ONLY_PASSWORD_HASH = "!oauth-only"
 
 
 class IdentityService:
@@ -146,9 +149,14 @@ class IdentityService:
     ) -> SessionGrant:
         normalized_email = email.strip().casefold()
         user = self._repository.get_user_by_email(normalized_email)
-        password_hash = user.password_hash if user is not None else self._invalid_password_hash
+        oauth_only = user is not None and user.password_hash == _OAUTH_ONLY_PASSWORD_HASH
+        password_hash = (
+            user.password_hash
+            if user is not None and not oauth_only
+            else self._invalid_password_hash
+        )
         valid = self._password_hasher.verify(password_hash, password)
-        if not valid or user is None or user.status is not AccountStatus.ACTIVE:
+        if not valid or user is None or oauth_only or user.status is not AccountStatus.ACTIVE:
             raise InvalidCredentials
         now = self._clock()
         user = self._repository.record_login(user.user_id, now)
@@ -158,6 +166,65 @@ class IdentityService:
             user_agent=user_agent,
             ip_address=ip_address,
         )
+
+    def login_federated(
+        self,
+        *,
+        provider: str,
+        subject: str,
+        verified_email: str,
+        user_agent: str | None = None,
+        ip_address: str | None = None,
+    ) -> SessionGrant:
+        """Called only after the provider adapter has validated the identity."""
+        identity = self._repository.get_federated_identity(provider, subject)
+        now = self._clock()
+        if identity is not None:
+            user = self._repository.get_user(identity.user_id)
+            if user is None or user.status is not AccountStatus.ACTIVE:
+                raise InvalidCredentials
+            user = self._repository.record_login(user.user_id, now)
+        else:
+            email = self._normalize_email(verified_email)
+            # Email is contact data, never evidence that two identities are the same.
+            if self._repository.get_user_by_email(email) is not None:
+                raise FederatedIdentityConflict
+            user = self._repository.add_user(
+                User(
+                    user_id=self._id_factory(),
+                    email=email,
+                    password_hash=_OAUTH_ONLY_PASSWORD_HASH,
+                    display_name=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            self._repository.add_federated_identity(
+                FederatedIdentity(
+                    provider=provider,
+                    subject=subject,
+                    user_id=user.user_id,
+                    created_at=now,
+                )
+            )
+        return self._grant(user, now, user_agent=user_agent, ip_address=ip_address)
+
+    def link_federated(self, current: AuthenticatedSession, *, provider: str, subject: str) -> None:
+        identity = self._repository.get_federated_identity(provider, subject)
+        existing = self._repository.get_user_provider_identity(current.user.user_id, provider)
+        if identity is not None and identity.user_id != current.user.user_id:
+            raise FederatedIdentityConflict
+        if existing is not None and existing.subject != subject:
+            raise FederatedIdentityConflict
+        if identity is None:
+            self._repository.add_federated_identity(
+                FederatedIdentity(
+                    provider=provider,
+                    subject=subject,
+                    user_id=current.user.user_id,
+                    created_at=self._clock(),
+                )
+            )
 
     def authenticate(self, credential: str | None) -> AuthenticatedSession:
         if not credential:

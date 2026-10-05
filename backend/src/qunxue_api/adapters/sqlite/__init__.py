@@ -58,6 +58,7 @@ from qunxue_api.adapters.sqlite.knowledge_import import (
 )
 from qunxue_api.adapters.sqlite.model_attempt_model import ModelRouteAttemptRow
 from qunxue_api.adapters.sqlite.model_invocation_model import ModelInvocationRow
+from qunxue_api.adapters.sqlite.oauth_model import FederatedIdentityRow, OAuthTransactionRow
 from qunxue_api.adapters.sqlite.personal_graph import PersonalGraphRow
 from qunxue_api.adapters.sqlite.professional_material_model import (
     LiteratureEntryRow,
@@ -156,6 +157,8 @@ from qunxue_api.adapters.sqlite.writing import (
 )
 
 __all__ = [
+    "FederatedIdentityRow",
+    "OAuthTransactionRow",
     "ChannelBindingRow", "ChannelEventRow", "ChannelLinkCodeRow", "ChannelScopeRow",
     "WritingDocumentRow", "WritingOperationRow", "WritingRevisionRow", "WritingSampleRow",
     "ExternalAgentConnectionRow",
