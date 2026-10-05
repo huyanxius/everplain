@@ -842,7 +842,10 @@ class DurableBilling:
                     not provider_request_id or row["provider_host"] != provider_host
                     or row["provider_request_id"] != provider_request_id
                     or row["dispatch_state"] == "not_sent"
-                    or row["api_type"] not in {"chat_completions", "responses"}
+                    or row["api_type"] not in {
+                        "chat_completions", "responses",
+                        "gemini_generate_content", "anthropic_messages",
+                    }
                 ):
                     raise BillingReplayBlocked("receipt does not identify the persisted attempt")
                 duplicates = conn.scalar(text(

@@ -9,7 +9,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-OutputTokenParameter = Literal["max_tokens", "max_completion_tokens", "max_output_tokens"]
+OutputTokenParameter = Literal[
+    "max_tokens", "max_completion_tokens", "max_output_tokens", "maxOutputTokens"
+]
 
 
 class AgentModelCapacityMetadata(Protocol):

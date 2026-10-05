@@ -5,7 +5,15 @@ from pathlib import Path
 from typing import Annotated, Literal, cast
 from urllib.parse import parse_qs, urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -94,8 +102,11 @@ class AgentProviderSettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     base_url: str
-    protocol: Literal["chat_completions", "responses"]
+    protocol: Literal[
+        "chat_completions", "responses", "gemini_generate_content", "anthropic_messages"
+    ]
     api_key_env: str = Field(pattern=r"^EVERPLAIN_[A-Z0-9_]+_API_KEY$")
+    native_authentication: Literal["native", "bearer"] = "native"
 
     @field_validator("base_url")
     @classmethod
@@ -109,7 +120,9 @@ class AgentModelCapacitySettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
     context_window_tokens: int = Field(gt=0, strict=True)
     max_output_tokens: int = Field(gt=0, strict=True)
-    output_token_parameter: Literal["max_tokens", "max_completion_tokens", "max_output_tokens"]
+    output_token_parameter: Literal[
+        "max_tokens", "max_completion_tokens", "max_output_tokens", "maxOutputTokens"
+    ]
     source: str = Field(min_length=1, max_length=1000)
 
     @field_validator("source")
@@ -126,23 +139,123 @@ class AgentModelCapacitySettings(BaseModel):
         return self
 
 
+class AgentModelEffortSettings(BaseModel):
+    """Server-only, explicit SDK settings for one verified upstream reasoning level."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    openai_reasoning_effort: (
+        Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None
+    ) = None
+    extra_body: dict[str, JsonValue] = Field(default_factory=dict)
+    google_thinking_level: Literal["minimal", "low", "medium", "high"] | None = None
+    anthropic_effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    anthropic_thinking: Literal["adaptive", "between_tools"] | None = None
+
+    @model_validator(mode="after")
+    def require_wire_control(self):
+        native = self.google_thinking_level is not None or self.anthropic_effort is not None
+        if native:
+            if self.openai_reasoning_effort is not None or self.extra_body:
+                raise ValueError("native SDK controls cannot mix OpenAI wire settings")
+            if self.google_thinking_level is not None and (
+                self.anthropic_effort is not None or self.anthropic_thinking is not None
+            ):
+                raise ValueError("native reasoning controls must target one protocol")
+            if self.anthropic_effort is not None and self.anthropic_thinking is None:
+                raise ValueError("native Anthropic effort requires an explicit thinking mode")
+            if (self.anthropic_thinking == "between_tools"
+                and self.anthropic_effort in {"xhigh", "max"}):
+                raise ValueError("between-tools thinking supports only low, medium and high")
+            return self
+        if self.anthropic_thinking is not None:
+            raise ValueError("native thinking mode requires an effort")
+        if self.openai_reasoning_effort is None and not self.extra_body:
+            raise ValueError("reasoning level needs an explicit upstream wire control")
+        if set(self.extra_body) - {"thinking", "reasoning_effort", "output_config", "extra_body"}:
+            raise ValueError("effort settings may only contain upstream reasoning controls")
+        if self.openai_reasoning_effort is not None and "reasoning_effort" in self.extra_body:
+            raise ValueError("reasoning effort must not be supplied twice")
+        if "reasoning_effort" in self.extra_body:
+            effort = self.extra_body["reasoning_effort"]
+            if not ((isinstance(effort, str) and effort in {
+                "none", "minimal", "low", "medium", "high", "xhigh", "max",
+            }) or (type(effort) is int and 1 <= effort <= 100)):
+                raise ValueError("raw reasoning effort needs an explicit native level")
+        thinking = self.extra_body.get("thinking")
+        if "thinking" in self.extra_body and (
+            not isinstance(thinking, dict) or set(thinking) != {"type"}
+            or not isinstance(thinking["type"], str)
+            or thinking["type"] not in {"enabled", "disabled", "adaptive", "between_tools"}
+        ):
+            raise ValueError("thinking controls must use an explicit native dynamic mode")
+        output = self.extra_body.get("output_config")
+        if "output_config" in self.extra_body and (
+            not isinstance(output, dict) or set(output) != {"effort"}
+            or not isinstance(output["effort"], str) or not output["effort"]
+        ):
+            raise ValueError("native output_config may only set an explicit reasoning effort")
+        envelope = self.extra_body.get("extra_body")
+        google_level = None
+        if "extra_body" in self.extra_body:
+            google = envelope.get("google") if isinstance(envelope, dict) else None
+            config = google.get("thinking_config") if isinstance(google, dict) else None
+            if (not isinstance(envelope, dict) or set(envelope) != {"google"}
+                or not isinstance(google, dict) or set(google) != {"thinking_config"}
+                or not isinstance(config, dict) or set(config) != {"thinking_level"}
+                or not isinstance(config["thinking_level"], str)
+                or config["thinking_level"] not in {"minimal", "low", "medium", "high"}):
+                raise ValueError("Google native envelope may only set its explicit thinking level")
+            google_level = config["thinking_level"]
+        selectors = (self.openai_reasoning_effort is not None,
+                     "reasoning_effort" in self.extra_body, output is not None,
+                     google_level is not None)
+        if sum(selectors) > 1:
+            raise ValueError("reasoning settings must not mix competing effort controls")
+        return self
+
+
 class AgentSelectableModelSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     model_id: str = Field(min_length=1, max_length=120)
     label: str = Field(min_length=1, max_length=120)
     provider: str = Field(min_length=1, max_length=80)
     model: str = Field(min_length=1, max_length=120)
-    reasoning_efforts: tuple[Literal["none", "low", "medium", "high", "xhigh", "max"], ...] = ()
-    default_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] | None = None
+    reasoning_efforts: tuple[
+        Literal["none", "enabled", "minimal", "low", "medium", "high", "xhigh", "max"], ...
+    ] = ()
+    default_reasoning_effort: (
+        Literal["none", "enabled", "minimal", "low", "medium", "high", "xhigh", "max"] | None
+    ) = None
+    effort_settings: dict[
+        Literal["none", "enabled", "minimal", "low", "medium", "high", "xhigh", "max"],
+        AgentModelEffortSettings,
+    ] = Field(default_factory=dict)
     capabilities: tuple[Literal["chat", "tools", "vision", "reasoning"], ...] = ("chat",)
 
     @model_validator(mode="after")
     def validate_reasoning(self):
+        if len(set(self.reasoning_efforts)) != len(self.reasoning_efforts):
+            raise ValueError("reasoning levels must be unique")
         if self.reasoning_efforts:
             if self.default_reasoning_effort not in self.reasoning_efforts:
                 raise ValueError("reasoning default must be an explicitly supported effort")
         elif self.default_reasoning_effort is not None:
             raise ValueError("models without reasoning controls must omit the reasoning default")
+        if set(self.effort_settings) != set(self.reasoning_efforts):
+            raise ValueError("wire settings must cover exactly the advertised reasoning levels")
+        if self.effort_settings:
+            controls = [
+                {**value.extra_body, **({"reasoning_effort": value.openai_reasoning_effort}
+                 if value.openai_reasoning_effort is not None else {}),
+                 **({"google_thinking_level": value.google_thinking_level}
+                    if value.google_thinking_level is not None else {}),
+                 **({"anthropic_effort": value.anthropic_effort,
+                     "anthropic_thinking": value.anthropic_thinking}
+                    if value.anthropic_effort is not None else {})}
+                for value in self.effort_settings.values()
+            ]
+            if any(value in controls[:index] for index, value in enumerate(controls)):
+                raise ValueError("reasoning levels must not advertise duplicate wire controls")
         return self
 
 
@@ -379,13 +492,18 @@ class Settings(BaseSettings):
         normalized = {}
         for key, capacity in value.items():
             parts = key.split("|")
-            if len(parts) != 3 or parts[1] not in {"chat_completions", "responses"}:
+            if len(parts) != 3 or parts[1] not in {
+                "chat_completions", "responses", "gemini_generate_content", "anthropic_messages"
+            }:
                 raise ValueError("capacity keys must be base URL | protocol | model")
             base_url, protocol, model = parts
-            if (
-                (protocol == "responses")
-                != (capacity.output_token_parameter == "max_output_tokens")
-            ):
+            expected = {
+                "responses": {"max_output_tokens"},
+                "chat_completions": {"max_tokens", "max_completion_tokens"},
+                "anthropic_messages": {"max_tokens"},
+                "gemini_generate_content": {"maxOutputTokens"},
+            }
+            if capacity.output_token_parameter not in expected[protocol]:
                 raise ValueError("native output token parameter must match the route protocol")
             route = "|".join((
                 _normalize_model_base_url(base_url), protocol, _normalize_model_name(model),
@@ -491,6 +609,25 @@ class Settings(BaseSettings):
     def validate_model_fallback_runtime(self):
         if self.allow_model_fallback and self.runtime_mode != "base":
             raise ValueError("model fallback requires runtime_mode=base")
+        return self
+
+    @model_validator(mode="after")
+    def validate_native_agent_protocols(self):
+        for model in self.agent_selectable_models:
+            provider = self.agent_providers.get(model.provider)
+            if provider is None:
+                continue  # Registry resolution reports missing providers as before.
+            for effort in model.effort_settings.values():
+                google = effort.google_thinking_level is not None
+                anthropic = effort.anthropic_effort is not None
+                if google != (provider.protocol == "gemini_generate_content") or anthropic != (
+                    provider.protocol == "anthropic_messages"
+                ):
+                    raise ValueError("reasoning controls must match the provider protocol")
+            if provider.protocol == "anthropic_messages":
+                key = f"{provider.base_url}|{provider.protocol}|{model.model}"
+                if key not in self.agent_model_capacities:
+                    raise ValueError("Anthropic requires a verified explicit max_tokens capacity")
         return self
 
     @field_validator("model_base_url")
