@@ -333,7 +333,7 @@ const graphStyle = (): cytoscape.StylesheetJson => [
   },
 ]
 
-const workspaceGraphStyle = (): cytoscape.StylesheetJson => [
+const workspaceGraphStyle = (motion = 0): cytoscape.StylesheetJson => [
   ...graphStyle().map((rule) => {
     if (
       !('style' in rule)
@@ -343,7 +343,7 @@ const workspaceGraphStyle = (): cytoscape.StylesheetJson => [
       ...rule,
       style: {
         ...rule.style,
-        'transition-duration': 0,
+        'transition-duration': motion,
       },
     }
   }),
@@ -398,6 +398,10 @@ const workspaceGraphStyle = (): cytoscape.StylesheetJson => [
       'border-color': graphColor('rule-strong'),
       'text-opacity': 1,
     },
+  },
+  {
+    selector: 'node.is-grabbed',
+    style: { 'underlay-color': graphColor('faint'), 'underlay-opacity': 0.2, 'underlay-padding': 6, 'border-color': graphColor('rule-strong') },
   },
   {
     selector: 'node.is-entering',
@@ -516,6 +520,8 @@ export function ObsidianKnowledgeGraph({
   const { fullscreenRef, isFullscreen, mode, notice, enterFullscreen, exitFullscreen } = useGraphFullscreen<HTMLElement>()
   const canvasRef = useRef<HTMLDivElement>(null)
   const graphRef = useRef<Core | undefined>(undefined)
+  const focusNodeIdRef = useRef(focusNodeId)
+  focusNodeIdRef.current = focusNodeId
   const onExpandNodeRef = useRef(onExpandNode)
   const onSelectEdgeRef = useRef(onSelectEdge)
   const onSelectKnowledgeRef = useRef(onSelectKnowledge)
@@ -532,8 +538,8 @@ export function ObsidianKnowledgeGraph({
   }>()
   const activationTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const elements = useMemo(
-    () => graphElements(projection, focusNodeId),
-    [focusNodeId, projection],
+    () => graphElements(projection),
+    [projection],
   )
   const cacheKey = useMemo(() => layoutCacheKey(projection, `${layoutScope}:${personal ? 'personal' : variant}`), [projection, layoutScope, personal, variant])
   const hasEdges = projection.edges.length > 0
@@ -546,9 +552,16 @@ export function ObsidianKnowledgeGraph({
     if (activationTimerRef.current) clearTimeout(activationTimerRef.current)
   }, [])
 
+  const motionDuration = useCallback(() => {
+    if (reduceMotion || !canvasRef.current) return 0
+    const token = getComputedStyle(canvasRef.current).getPropertyValue('--qx-motion-base').trim()
+    const value = Number.parseFloat(token) * (token.endsWith('ms') ? 1 : 1000)
+    return Number.isFinite(value) ? value : 240
+  }, [reduceMotion])
+
   const fit = useCallback(() => {
-    if (graphRef.current) fitView(graphRef.current, focusNodeId, variant === 'preview')
-  }, [focusNodeId, variant])
+    if (graphRef.current) fitView(graphRef.current, focusNodeId, variant === 'preview', motionDuration())
+  }, [focusNodeId, variant, motionDuration])
 
   const relayout = useCallback(() => {
     const graph = graphRef.current
@@ -566,6 +579,9 @@ export function ObsidianKnowledgeGraph({
   useEffect(() => {
     if (!canvasRef.current || elements.length === 0) return
     const canvas = canvasRef.current
+    const motionToken = getComputedStyle(canvas).getPropertyValue('--qx-motion-base').trim()
+    const motionMs = Number.parseFloat(motionToken) * (motionToken.endsWith('ms') ? 1 : 1000)
+    const motion = reduceMotion ? 0 : (Number.isFinite(motionMs) ? motionMs : 240)
     setUnavailable(false)
     setTourLabel('')
     let graph: Core | undefined
@@ -579,6 +595,7 @@ export function ObsidianKnowledgeGraph({
     let revealStarted = false
     let revealComplete = variant !== 'preview' || reduceMotion
     let pointerInside = false
+    let dragging = false
     let inViewport = variant !== 'preview'
     let documentVisible = typeof document === 'undefined'
       || document.visibilityState !== 'hidden'
@@ -595,7 +612,7 @@ export function ObsidianKnowledgeGraph({
     const canTour = () => (
       variant === 'preview'
       && !reduceMotion
-      && !focusNodeId
+      && !focusNodeIdRef.current
       && revealComplete
       && inViewport
       && documentVisible
@@ -716,7 +733,7 @@ export function ObsidianKnowledgeGraph({
       documentVisible = document.visibilityState !== 'hidden'
       if (documentVisible) {
         graph?.resize()
-        if (graph) fitView(graph, focusNodeId, variant === 'preview')
+        if (graph) fitView(graph, focusNodeIdRef.current, variant === 'preview')
         scheduleTour(1000)
       }
       else clearTourSchedule()
@@ -732,11 +749,11 @@ export function ObsidianKnowledgeGraph({
         layout: { name: 'preset', fit: false, animate: false },
         maxZoom: 3.2,
         minZoom: 0.01,
-        style: personal ? [...workspaceGraphStyle(),
+        style: personal ? [...workspaceGraphStyle(motion),
           { selector: 'node.node--self', style: { width: 70, height: 70, 'background-opacity': 0, 'border-width': 0, 'background-image': 'data(image)', 'background-fit': 'contain', 'text-margin-y': -5 } },
           { selector: 'node.node--topic', style: { width: 18, height: 18, 'background-color': graphColor('faint'), 'font-size': 12 } },
           { selector: 'node.node--knowledge', style: { width: 6, height: 6, 'background-color': graphColor('faint'), 'font-size': 9 } },
-        ] : variant === 'preview' ? previewGraphStyle() : workspaceGraphStyle(),
+        ] : variant === 'preview' ? previewGraphStyle() : workspaceGraphStyle(motion),
         userPanningEnabled: true,
         userZoomingEnabled: variant === 'workspace',
       })
@@ -745,14 +762,14 @@ export function ObsidianKnowledgeGraph({
       // Register before run: non-animated layouts emit layoutstop synchronously.
       activeGraph.one('layoutstop', () => {
         if (variant === 'workspace') saveLayout(cacheKey, activeGraph)
-        fitView(activeGraph, focusNodeId, variant === 'preview')
+        fitView(activeGraph, focusNodeIdRef.current, variant === 'preview')
       })
       activeGraph.on('dragfree', 'node', () => saveLayout(cacheKey, activeGraph))
-      if (!saved) activeGraph.layout(layoutOptions(Boolean(focusNodeId), hasEdges, animateLayout, layoutDuration, personal)).run()
-      else fitView(activeGraph, focusNodeId, variant === 'preview')
+      if (!saved) activeGraph.layout(layoutOptions(Boolean(focusNodeIdRef.current), hasEdges, animateLayout, layoutDuration, personal)).run()
+      else fitView(activeGraph, focusNodeIdRef.current, variant === 'preview')
       if (variant === 'preview') {
         if (!reduceMotion) graph.elements().addClass?.('is-awaiting-reveal')
-        graph.one('layoutstop', () => fitView(graph!, focusNodeId, true))
+        graph.one('layoutstop', () => fitView(graph!, focusNodeIdRef.current, true))
       } else if (!reduceMotion) {
         graph.elements().addClass?.('is-entering')
         entryTimer = setTimeout(() => {
@@ -779,14 +796,29 @@ export function ObsidianKnowledgeGraph({
         event.target.select()
         onSelectEdgeRef.current?.(event.target.id())
       })
+      graph.on('grab', 'node', (event) => {
+        dragging = true
+        activeGraph.stop()
+        canvas.style.cursor = 'grabbing'
+        event.target.addClass('is-grabbed')
+      })
+      graph.on('free', 'node', (event) => {
+        dragging = false
+        canvas.style.cursor = 'pointer'
+        event.target.removeClass('is-grabbed')
+      })
       graph.on('mouseover', 'node', (event) => {
+        if (dragging) return
         const neighborhood = event.target.closedNeighborhood()
         canvas.style.cursor = 'pointer'
-        graph?.elements().addClass('is-dimmed')
-        neighborhood.removeClass('is-dimmed').addClass('is-hovered')
+        activeGraph.batch(() => {
+          activeGraph.elements().addClass('is-dimmed')
+          neighborhood.removeClass('is-dimmed').addClass('is-hovered')
+        })
         setHoveredLabel(event.target.data('label') ?? '')
       })
       graph.on('mouseout', 'node', () => {
+        if (dragging) return
         canvas.style.cursor = ''
         graph?.elements().removeClass('is-dimmed is-hovered')
         setHoveredLabel('')
@@ -797,13 +829,13 @@ export function ObsidianKnowledgeGraph({
       canvas.addEventListener('pointerleave', resumeAfterPointer)
       document.addEventListener('visibilitychange', handleVisibilityChange)
       frame = globalThis.requestAnimationFrame?.(() => {
-        if (graph) fitView(graph, focusNodeId, variant === 'preview')
+        if (graph) fitView(graph, focusNodeIdRef.current, variant === 'preview')
       }) ?? 0
       if (typeof ResizeObserver !== 'undefined') {
         resizeObserver = new ResizeObserver(() => {
           if (!graph || canvas.clientWidth <= 0 || canvas.clientHeight <= 0) return
           graph.resize()
-          fitView(graph, focusNodeId, variant === 'preview')
+          fitView(graph, focusNodeIdRef.current, variant === 'preview')
         })
         resizeObserver.observe(canvas)
       }
@@ -844,7 +876,6 @@ export function ObsidianKnowledgeGraph({
     cacheKey,
     personal,
     elements,
-    focusNodeId,
     hasEdges,
     layoutDuration,
     projection,
@@ -852,10 +883,32 @@ export function ObsidianKnowledgeGraph({
     variant,
   ])
 
+  useEffect(() => {
+    const graph = graphRef.current
+    if (!graph || variant === 'preview') return
+    const nodeClasses = graphElements(projection, focusNodeId)
+    graph.batch(() => {
+      for (const element of nodeClasses) {
+        const target = graph.getElementById(String(element.data.id))
+        target.classes(element.classes as string)
+      }
+    })
+    fitView(graph, focusNodeId, false, motionDuration())
+  }, [focusNodeId, projection, variant, motionDuration])
+
   const zoomBy = (factor: number) => {
     const graph = graphRef.current
     if (!graph) return
-    graph.zoom({ level: Math.min(graph.maxZoom(), Math.max(graph.minZoom(), graph.zoom() * factor)), renderedPosition: { x: graph.width() / 2, y: graph.height() / 2 } })
+    const level = Math.min(graph.maxZoom(), Math.max(graph.minZoom(), graph.zoom() * factor))
+    const center = { x: graph.width() / 2, y: graph.height() / 2 }
+    if (reduceMotion) {
+      graph.zoom({ level, renderedPosition: center })
+      return
+    }
+    const ratio = level / graph.zoom()
+    const pan = graph.pan()
+    const duration = motionDuration()
+    graph.stop().animate({ zoom: level, pan: { x: center.x - (center.x - pan.x) * ratio, y: center.y - (center.y - pan.y) * ratio } }, { duration: Number.isFinite(duration) ? duration : 240, easing: 'ease-out-cubic', queue: false })
   }
   const visibleLabel = hoveredLabel || tourLabel
 
