@@ -24,6 +24,7 @@ import {
   useAccount,
 } from '../modules/account'
 import { ResearchTaskNavigationRoute } from './ResearchTaskNavigationRoute'
+import { AdminApiCostsPage } from '../modules/api-costs'
 import { ResearchAgentPage } from './agent/ResearchAgentPage'
 import { NewResearchWorkspacePage } from './agent/NewResearchWorkspacePage'
 import { ExistingResearchEntryPage } from './research/ExistingResearchEntryPage'
@@ -184,6 +185,20 @@ function AdminOperationsRoute() {
   )
 }
 
+function AdminApiCostsRoute() {
+  const navigate = useNavigate()
+  return (
+    <PageShell wide>
+      <PageContent>
+        <AdminApiCostsPage
+          onForbidden={() => navigate('/settings', { replace: true })}
+          onSessionExpired={() => navigate('/login?redirect=%2Fadmin%2Fapi-costs', { replace: true })}
+        />
+      </PageContent>
+    </PageShell>
+  )
+}
+
 function PasswordResetRoute() {
   const { token = '' } = useParams<{ token: string }>()
   return (
@@ -329,6 +344,7 @@ export function AppRoutes({
       <Route path="/settings" element={protectedRoute(<AccountSettingsRoute />)} />
       <Route path="/admin/users" element={protectedRoute(<AdminUsersRoute />)} />
       <Route path="/admin/operations" element={protectedRoute(<AdminOperationsRoute />)} />
+      <Route path="/admin/api-costs" element={protectedRoute(<AdminApiCostsRoute />)} />
         </Routes>
       </RouteMotionSurface>
       {settingsOpen ? <Routes><Route path="/settings" element={protectedRoute(<AccountSettingsRoute />)} /></Routes> : null}

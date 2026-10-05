@@ -143,6 +143,7 @@ from qunxue_api.adapters.transcription import (
 from qunxue_api.api.contracts.common import ErrorCode, ErrorDetail, ErrorResponse
 from qunxue_api.api.routes.agent import router as agent_router
 from qunxue_api.api.routes.agent_profile import router as agent_profile_router
+from qunxue_api.api.routes.api_costs import router as api_costs_router
 from qunxue_api.api.routes.channel_gateway import router as channel_gateway_router
 from qunxue_api.api.routes.commerce import router as commerce_router
 from qunxue_api.api.routes.external_agents import router as external_agents_router
@@ -471,6 +472,9 @@ def create_app(
     app.state.matching_start_lock = Lock()
     app.state.research_start_lock = Lock()
     app.state.database = resolved_database
+    from qunxue_api.adapters.sqlite.api_cost_reporting import SqliteApiCostReporting
+
+    app.state.api_cost_reporting = SqliteApiCostReporting(resolved_database.engine)
     app.state.knowledge_catalog = EmptyKnowledgeCatalog(
         resolved_database,
         knowledge_root=KNOWLEDGE_ROOT,
@@ -1599,6 +1603,7 @@ def create_app(
     app.state.external_agents_scope = external_agents_scope
     app.include_router(external_agents_router)
     app.include_router(commerce_router)
+    app.include_router(api_costs_router)
     app.include_router(personal_graph_router)
     app.include_router(knowledge_import_router)
     app.include_router(agent_profile_router)

@@ -1389,6 +1389,288 @@ export type AnalysisMemoResponse = {
 export type AnalysisRecordStatus = 'candidate' | 'confirmed' | 'rejected';
 
 /**
+ * ApiCostFilters
+ */
+export type ApiCostFilters = {
+    /**
+     * Endpoint Id
+     */
+    endpoint_id: string | null;
+    /**
+     * Model
+     */
+    model: string | null;
+    /**
+     * Provider Host
+     */
+    provider_host: string | null;
+    /**
+     * User Id
+     */
+    user_id: string | null;
+};
+
+/**
+ * ApiCostGroupResponse
+ */
+export type ApiCostGroupResponse = {
+    /**
+     * Active Reserved Attempts
+     */
+    active_reserved_attempts: number;
+    /**
+     * Active Reserved Cost Pico
+     */
+    active_reserved_cost_pico: string;
+    /**
+     * Actual Procurement Cost Pico
+     *
+     * Unavailable: current ledger has no verifiable procurement receipts
+     */
+    actual_procurement_cost_pico?: null;
+    /**
+     * Attempt Count
+     */
+    attempt_count: number;
+    /**
+     * Cache Read Reported Attempts
+     */
+    cache_read_reported_attempts: number;
+    /**
+     * Cache Read Tokens
+     */
+    cache_read_tokens: number | null;
+    /**
+     * Cache Write Reported Attempts
+     */
+    cache_write_reported_attempts: number;
+    /**
+     * Cache Write Tokens
+     */
+    cache_write_tokens: number | null;
+    /**
+     * Confirmed Token Attempts
+     */
+    confirmed_token_attempts: number;
+    /**
+     * Confirmed Usage Attempts
+     */
+    confirmed_usage_attempts: number;
+    /**
+     * Group Value
+     */
+    group_value: string | null;
+    /**
+     * Input Tokens
+     */
+    input_tokens: number;
+    /**
+     * Missing Token Attempts
+     */
+    missing_token_attempts: number;
+    /**
+     * Not Sent Attempts
+     */
+    not_sent_attempts: number;
+    /**
+     * Output Tokens
+     */
+    output_tokens: number;
+    /**
+     * Pending Unknown Attempts
+     */
+    pending_unknown_attempts: number;
+    /**
+     * Pending Unknown Cost Pico
+     */
+    pending_unknown_cost_pico: string;
+    /**
+     * Reasoning Reported Attempts
+     */
+    reasoning_reported_attempts: number;
+    /**
+     * Reasoning Tokens
+     */
+    reasoning_tokens: number | null;
+    /**
+     * Reference Cost Pico
+     *
+     * Persisted reference picoUSD; never invoice cost
+     */
+    reference_cost_pico: string;
+    /**
+     * Unknown Usage Attempts
+     */
+    unknown_usage_attempts: number;
+    /**
+     * Unpriced Attempts
+     */
+    unpriced_attempts: number;
+    /**
+     * Unverified Procurement Attempts
+     */
+    unverified_procurement_attempts: number;
+};
+
+/**
+ * ApiCostMetrics
+ */
+export type ApiCostMetrics = {
+    /**
+     * Active Reserved Attempts
+     */
+    active_reserved_attempts: number;
+    /**
+     * Active Reserved Cost Pico
+     */
+    active_reserved_cost_pico: string;
+    /**
+     * Actual Procurement Cost Pico
+     *
+     * Unavailable: current ledger has no verifiable procurement receipts
+     */
+    actual_procurement_cost_pico?: null;
+    /**
+     * Attempt Count
+     */
+    attempt_count: number;
+    /**
+     * Cache Read Reported Attempts
+     */
+    cache_read_reported_attempts: number;
+    /**
+     * Cache Read Tokens
+     */
+    cache_read_tokens: number | null;
+    /**
+     * Cache Write Reported Attempts
+     */
+    cache_write_reported_attempts: number;
+    /**
+     * Cache Write Tokens
+     */
+    cache_write_tokens: number | null;
+    /**
+     * Confirmed Token Attempts
+     */
+    confirmed_token_attempts: number;
+    /**
+     * Confirmed Usage Attempts
+     */
+    confirmed_usage_attempts: number;
+    /**
+     * Input Tokens
+     */
+    input_tokens: number;
+    /**
+     * Missing Token Attempts
+     */
+    missing_token_attempts: number;
+    /**
+     * Not Sent Attempts
+     */
+    not_sent_attempts: number;
+    /**
+     * Output Tokens
+     */
+    output_tokens: number;
+    /**
+     * Pending Unknown Attempts
+     */
+    pending_unknown_attempts: number;
+    /**
+     * Pending Unknown Cost Pico
+     */
+    pending_unknown_cost_pico: string;
+    /**
+     * Reasoning Reported Attempts
+     */
+    reasoning_reported_attempts: number;
+    /**
+     * Reasoning Tokens
+     */
+    reasoning_tokens: number | null;
+    /**
+     * Reference Cost Pico
+     *
+     * Persisted reference picoUSD; never invoice cost
+     */
+    reference_cost_pico: string;
+    /**
+     * Unknown Usage Attempts
+     */
+    unknown_usage_attempts: number;
+    /**
+     * Unpriced Attempts
+     */
+    unpriced_attempts: number;
+    /**
+     * Unverified Procurement Attempts
+     */
+    unverified_procurement_attempts: number;
+};
+
+/**
+ * ApiCostReportResponse
+ */
+export type ApiCostReportResponse = {
+    /**
+     * Coverage
+     */
+    coverage: 'durable_billing_attempts_only';
+    /**
+     * Currency
+     */
+    currency: 'USD';
+    /**
+     * Date Basis
+     */
+    date_basis: 'attempt_created_at';
+    /**
+     * End Date
+     */
+    end_date: string;
+    filters: ApiCostFilters;
+    /**
+     * Generated At
+     */
+    generated_at: string;
+    /**
+     * Group By
+     */
+    group_by: 'day' | 'model' | 'provider_host' | 'endpoint_id' | 'user_id';
+    /**
+     * Items
+     */
+    items: Array<ApiCostGroupResponse>;
+    /**
+     * Key Attribution Available
+     */
+    key_attribution_available: false;
+    /**
+     * Next Cursor
+     */
+    next_cursor: number | null;
+    /**
+     * Procurement Evidence Status
+     */
+    procurement_evidence_status: 'unavailable';
+    /**
+     * Start Date
+     */
+    start_date: string;
+    summary: ApiCostMetrics;
+    /**
+     * Timezone
+     */
+    timezone: 'UTC';
+    /**
+     * Total Groups
+     */
+    total_groups: number;
+};
+
+/**
  * AuditActorType
  */
 export type AuditActorType = 'user' | 'agent' | 'system';
@@ -10737,6 +11019,76 @@ export type RevokeAccountSessionResponses = {
 };
 
 export type RevokeAccountSessionResponse = RevokeAccountSessionResponses[keyof RevokeAccountSessionResponses];
+
+export type GetAdminApiCostsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Start Date
+         */
+        start_date?: string | null;
+        /**
+         * End Date
+         */
+        end_date?: string | null;
+        /**
+         * Group By
+         */
+        group_by?: 'day' | 'model' | 'provider_host' | 'endpoint_id' | 'user_id';
+        /**
+         * Model
+         */
+        model?: string | null;
+        /**
+         * Provider Host
+         */
+        provider_host?: string | null;
+        /**
+         * Endpoint Id
+         */
+        endpoint_id?: string | null;
+        /**
+         * User Id
+         */
+        user_id?: string | null;
+        /**
+         * Cursor
+         */
+        cursor?: number;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/admin/api-costs';
+};
+
+export type GetAdminApiCostsErrors = {
+    /**
+     * Authentication required
+     */
+    401: unknown;
+    /**
+     * Active administrator required
+     */
+    403: unknown;
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetAdminApiCostsError = GetAdminApiCostsErrors[keyof GetAdminApiCostsErrors];
+
+export type GetAdminApiCostsResponses = {
+    /**
+     * Successful Response
+     */
+    200: ApiCostReportResponse;
+};
+
+export type GetAdminApiCostsResponse = GetAdminApiCostsResponses[keyof GetAdminApiCostsResponses];
 
 export type ListAccountAuditEventsData = {
     body?: never;

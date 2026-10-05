@@ -10,6 +10,7 @@ const defaultSourceRoot = path.resolve(path.dirname(scriptPath), '../src')
 export const defaultBoundaryPolicy = Object.freeze({
   moduleDependencies: Object.freeze({
     account: Object.freeze(['agent-avatar', 'agent-profile', 'user-avatar', 'channel-gateway']),
+    'api-costs': Object.freeze([]),
     'agent-avatar': Object.freeze([]),
     'channel-gateway': Object.freeze([]),
     writing: Object.freeze([]),
@@ -41,6 +42,7 @@ export const defaultBoundaryPolicy = Object.freeze({
     'api/researchWorkspace.ts',
     'api/system.ts',
     'modules/account/accountApi.ts',
+    'modules/api-costs/apiCostsApi.ts',
     'modules/agent-profile/agentProfileApi.ts',
     'modules/channel-gateway/channelGatewayApi.ts',
     'modules/writing/writingApi.ts',
@@ -65,6 +67,7 @@ export const defaultBoundaryPolicy = Object.freeze({
   ]),
   moduleApiAdapters: Object.freeze([
     'modules/account/accountApi.ts',
+    'modules/api-costs/apiCostsApi.ts',
     'modules/agent-profile/agentProfileApi.ts',
     'modules/channel-gateway/channelGatewayApi.ts',
     'modules/writing/writingApi.ts',

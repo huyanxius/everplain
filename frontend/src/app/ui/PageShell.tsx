@@ -65,6 +65,7 @@ function AdminNavigation({ userId }: { userId: string }) {
   return <nav className="application-navigation" aria-label={text('管理导航', 'Administration')}>
     <NavLink className="qx-item" to="/admin/users" title={text('用户管理', 'Users')}><NavIcon name="users" /><span className="application-navigation__label">{text('用户管理', 'Users')}</span></NavLink>
     <NavLink className="qx-item" to="/admin/operations" title={text('运行管理', 'Operations')}><NavIcon name="shield" /><span className="application-navigation__label">{text('运行管理', 'Operations')}</span></NavLink>
+    <NavLink className="qx-item" to="/admin/api-costs" title={text('API 成本统计', 'API costs')}><NavIcon name="card" /><span className="application-navigation__label">{text('API 成本统计', 'API costs')}</span></NavLink>
   </nav>
 }
 
