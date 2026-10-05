@@ -20,7 +20,7 @@ def billing_error(error):
     if isinstance(error, CreditsDepleted) or (
         isinstance(error, BillingBudgetExceeded) and error.reason == "credits_depleted"
     ):
-        return 402, ErrorCode.CREDITS_DEPLETED, "积分不足，请前往账户设置查看用量。"
+        return 402, ErrorCode.CREDITS_DEPLETED, "额度已用尽，请等待 receipt"
     if isinstance(error, CreditRunInProgress) or (
         isinstance(error, BillingBudgetExceeded) and error.reason == "credits_frozen"
     ):

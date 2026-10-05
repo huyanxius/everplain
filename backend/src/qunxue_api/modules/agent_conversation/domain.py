@@ -49,6 +49,26 @@ class AgentMessage:
 
 
 @dataclass(frozen=True, slots=True)
+class AgentOutputAttempt:
+    """One execution generation. Its original output survives later attempts."""
+
+    attempt_id: str
+    ordinal: int
+    status: str
+    answer: str = ""
+    created_at: datetime = field(default_factory=_now)
+
+
+@dataclass(frozen=True, slots=True)
+class AgentOutputEvent:
+    run_id: UUID
+    attempt_id: str
+    sequence: int
+    name: str
+    payload: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
 class AgentTurn:
     turn_id: UUID
     user_message: AgentMessage
@@ -56,6 +76,8 @@ class AgentTurn:
     evidence_ids: frozenset[str]
     tool_summary: tuple[dict[str, object], ...] = ()
     canvas_patches: tuple[dict[str, object], ...] = ()
+    output_attempts: tuple[AgentOutputAttempt, ...] = ()
+    delivery_state: dict[str, object] = field(default_factory=dict)
 
     @classmethod
     def create(
@@ -148,6 +170,10 @@ class AgentRun:
     # A run is a durable request. Partial output is deliberately outside completed turns.
     request_snapshot: dict[str, object] = field(default_factory=dict)
     partial_answer: str = ""
+    output_attempts: tuple[AgentOutputAttempt, ...] = ()
+    delivery_state: dict[str, object] = field(default_factory=dict)
+    last_event_sequence: int = 0
+    output_redacted: bool = False
     updated_at: datetime = field(default_factory=_now)
     cancel_requested: bool = False
     lease_expires_at: datetime | None = field(

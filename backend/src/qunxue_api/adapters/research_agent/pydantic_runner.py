@@ -6,7 +6,6 @@ from asyncio import sleep as async_sleep
 from collections.abc import AsyncGenerator, AsyncIterable, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
 from contextvars import ContextVar
-from dataclasses import asdict
 from typing import Annotated, Any, Literal, cast
 from uuid import UUID, uuid4
 
@@ -38,7 +37,6 @@ from pydantic_ai.models.openai import (
     OpenAIResponsesModel,
     OpenAIResponsesModelSettings,
 )
-from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings, merge_model_settings
 from pydantic_ai.usage import UsageLimits
@@ -56,6 +54,7 @@ from qunxue_api.adapters.model.metering import MeteredOpenAIChatModel, MeteredOp
 from qunxue_api.adapters.research_agent.catalog_tools import (
     KnowledgeToolRegistry,
 )
+from qunxue_api.adapters.research_agent.model_capacity import resolve_agent_model_capacity
 from qunxue_api.adapters.research_agent.research_map_contracts import (
     ResearchMapNodeInput,
     ResearchMapRelationInput,
@@ -79,6 +78,7 @@ from qunxue_api.modules.agent_conversation import (
 )
 from qunxue_api.modules.billing import BillingFailure
 from qunxue_api.modules.shared_knowledge import KnowledgeIndexChoiceRequired
+from qunxue_api.settings import AgentModelCapacitySettings
 
 WRITING_WORKSPACE_POLICY = (
     "当前是写作工作区，仍使用同一个 Agent。先调用 read_writing_document 读取正文、"
@@ -124,26 +124,29 @@ class VisibleTextStream:
         self._drain()
 
     def finish(self) -> None:
-        if not self._in_thinking and self._buffer:
-            self._on_text(self._buffer)
-        self._buffer = ""
+        remaining, self._buffer = self._buffer, ""
+        if not self._in_thinking and remaining:
+            self._on_text(remaining)
 
     def _drain(self) -> None:
         while self._buffer:
             marker = self._CLOSE if self._in_thinking else self._OPEN
             index = self._buffer.find(marker)
             if index >= 0:
-                if not self._in_thinking and index:
-                    self._on_text(self._buffer[:index])
+                visible = self._buffer[:index] if not self._in_thinking else ""
                 self._buffer = self._buffer[index + len(marker) :]
                 self._in_thinking = not self._in_thinking
+                if visible:
+                    self._on_text(visible)
                 continue
-            keep = len(marker) - 1
-            if self._in_thinking:
-                self._buffer = self._buffer[-keep:] if keep else ""
-            elif len(self._buffer) > keep:
-                self._on_text(self._buffer[:-keep])
-                self._buffer = self._buffer[-keep:] if keep else ""
+            # Hold only a real split-marker prefix, not an arbitrary nine
+            # characters of ordinary body on every stream/error boundary.
+            keep = next((size for size in range(len(marker) - 1, 0, -1)
+                         if self._buffer.endswith(marker[:size])), 0)
+            visible = self._buffer[:-keep] if keep else self._buffer
+            self._buffer = self._buffer[-keep:] if keep else ""
+            if not self._in_thinking and visible:
+                self._on_text(visible)
             break
 
 
@@ -506,10 +509,12 @@ class _RetryingOpenAIChatModel(MeteredOpenAIChatModel):
         *args,
         route_executor: ModelRouteExecutor | None,
         fallback_models: Mapping[str, OpenAIChatModel] | None = None,
+        native_output_parameters: Mapping[str, str] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
         self._route_executor = route_executor
+        self._native_output_parameters = dict(native_output_parameters or {})
         self._endpoint_models = {"primary": self, **(fallback_models or {})}
 
     async def request(
@@ -588,29 +593,17 @@ class _RetryingOpenAIChatModel(MeteredOpenAIChatModel):
                 OpenAIChatModelSettings,
                 merge_model_settings(model.settings, runtime_overrides) or {},
             )
-            if self._route_executor.max_input_tokens is not None:
-                # Match the outgoing Chat shape, not internal history bytes.
-                # Chinese UTF-8 bytes are not model tokens; instructions in the
-                # internal history also repeat across steps before SDK mapping.
-                mapped_messages = await model._map_messages(
-                    messages, model_request_parameters, model_settings=endpoint_settings,
-                )
-                tools, _ = model._get_tool_choice(endpoint_settings, model_request_parameters)
-                payload = {"messages": mapped_messages, "tools": tools}
-                if model_request_parameters.output_mode == "native":
-                    payload["response_format"] = model._map_json_schema(
-                        model_request_parameters.output_object
-                    )
-                serialized = json.dumps(payload, default=str, ensure_ascii=False)
-                if _responses_input_token_estimate(serialized) > (
-                    self._route_executor.max_input_tokens
-                ):
-                    raise ModelAttemptFailure(code="model_input_limit", retryable=False)
-            if self._route_executor.max_output_tokens is not None:
-                endpoint_settings["max_tokens"] = min(
-                    endpoint_settings.get("max_tokens") or self._route_executor.max_output_tokens,
-                    self._route_executor.max_output_tokens,
-                )
+            if (
+                self._native_output_parameters.get(endpoint.endpoint_id) == "max_tokens"
+                and "max_tokens" in endpoint_settings
+            ):
+                # PydanticAI maps its max_tokens setting to max_completion_tokens.
+                # Send the parameter documented by this exact upstream instead,
+                # without emitting conflicting legacy and modern caps together.
+                native_cap = endpoint_settings.pop("max_tokens")
+                endpoint_settings["extra_body"] = {
+                    **(endpoint_settings.get("extra_body") or {}), "max_tokens": native_cap,
+                }
             try:
                 value = await MeteredOpenAIChatModel._completions_create(
                     model,
@@ -645,7 +638,7 @@ class _RetryingOpenAIChatModel(MeteredOpenAIChatModel):
 
 
 def _responses_input_token_estimate(serialized: str) -> int:
-    """Conservative Chat/Responses context estimate; no provider count request.
+    """Context observation only; never an Agent admission veto.
 
     The image preloads the public o200k encoding. The 25% margin and 4096-token
     overhead tolerate model/serialization differences. Usage and cash billing
@@ -747,27 +740,6 @@ class _RetryingOpenAIResponsesModel(MeteredOpenAIResponsesModel):
                 OpenAIResponsesModelSettings,
                 merge_model_settings(model.settings, runtime_overrides) or {},
             )
-            if self._route_executor.max_input_tokens is not None:
-                # Count the actual Responses request shape, not Pydantic's
-                # internal history (which repeats instructions on every turn).
-                # This context estimate is independent from the unchanged final
-                # wire-body cash reservation in the metering boundary.
-                request_params = await model._build_responses_request_params(
-                    messages, endpoint_settings, model_request_parameters,
-                    OpenAIModelProfile.from_profile(model.profile),
-                )
-                serialized = json.dumps(
-                    asdict(request_params), default=str, ensure_ascii=False
-                )
-                if _responses_input_token_estimate(serialized) > (
-                    self._route_executor.max_input_tokens
-                ):
-                    raise ModelAttemptFailure(code="model_input_limit", retryable=False)
-            if self._route_executor.max_output_tokens is not None:
-                endpoint_settings["max_tokens"] = min(
-                    endpoint_settings.get("max_tokens") or self._route_executor.max_output_tokens,
-                    self._route_executor.max_output_tokens,
-                )
             try:
                 value = await MeteredOpenAIResponsesModel._responses_create(
                     model,
@@ -866,6 +838,7 @@ class PydanticAIKnowledgeRunner:
         model_api_mock: bool = False,
         require_billing: bool = False,
         protocol: Literal["chat_completions", "responses"] = "chat_completions",
+        model_capacities: Mapping[str, AgentModelCapacitySettings] | None = None,
     ) -> None:
         if protocol == "responses" and fallback_endpoints:
             raise ValueError("explicit model selections require strict-model routing")
@@ -881,8 +854,15 @@ class PydanticAIKnowledgeRunner:
         ) -> OpenAIChatModelSettings:
             endpoint_settings: OpenAIChatModelSettings = {
                 "timeout": timeout_seconds,
-                "max_tokens": 2400,
             }
+            capacity = resolve_agent_model_capacity(
+                base_url=endpoint_url, model=endpoint_model, protocol=protocol,
+                configured=model_capacities,
+            )
+            if capacity is not None:
+                # Use the real upstream maximum, including reasoning tokens.
+                # Unknown defaults are not proof that omission opens the full cap.
+                endpoint_settings["max_tokens"] = capacity.max_output_tokens
             if protocol == "responses":
                 endpoint_settings["openai_store"] = False
             if extra_headers:
@@ -896,6 +876,9 @@ class PydanticAIKnowledgeRunner:
                 endpoint_settings["extra_body"] = {"thinking": {"type": "disabled"}}
             return endpoint_settings
 
+        self.model_capacity = resolve_agent_model_capacity(
+            base_url=base_url, model=model, protocol=protocol, configured=model_capacities,
+        )
         primary_model_settings = settings_for(base_url, model)
         self._usage_limits = UsageLimits(request_limit=12, tool_calls_limit=20)
         self._deep_research_usage_limits = UsageLimits(
@@ -927,6 +910,10 @@ class PydanticAIKnowledgeRunner:
             model_instance = unconfigured_model()
         else:
             fallback_models: dict[str, OpenAIChatModel] = {}
+            native_output_parameters = (
+                {"primary": self.model_capacity.output_token_parameter}
+                if self.model_capacity is not None else {}
+            )
             for index, fallback in enumerate(fallback_endpoints, start=1):
                 endpoint_url, endpoint_key = fallback[:2]
                 endpoint_model = fallback[2] if len(fallback) == 3 else model
@@ -935,6 +922,12 @@ class PydanticAIKnowledgeRunner:
                     endpoint_key,
                     endpoint_model,
                 )
+                capacity = resolve_agent_model_capacity(
+                    base_url=endpoint_url, model=endpoint_model, protocol=protocol,
+                    configured=model_capacities,
+                )
+                if capacity is not None:
+                    native_output_parameters[f"fallback-{index}"] = capacity.output_token_parameter
             expected_endpoint_ids = ("primary", *fallback_models)
             if route_executor is not None and route_executor.endpoint_ids != expected_endpoint_ids:
                 raise ValueError("Agent model endpoints must match the shared route executor")
@@ -955,6 +948,8 @@ class PydanticAIKnowledgeRunner:
                 settings=primary_model_settings,
                 route_executor=route_executor,
                 fallback_models=fallback_models,
+                **({"native_output_parameters": native_output_parameters}
+                   if protocol == "chat_completions" else {}),
                 require_billing=require_billing,
             )
         self._writing_model = model_instance
@@ -2695,9 +2690,14 @@ class PydanticAIKnowledgeRunner:
                 usage=_result_usage(result),
             )
         finally:
-            _agent_route_correlation.reset(route_token)
-            self._active_tool_event.reset(token)
-            self._active_cancelled.reset(cancel_token)
+            try:
+                # Normal body tails survive upstream EOF, timeout, cancellation
+                # and truncated output. Hidden reasoning remains suppressed.
+                visible_stream.finish()
+            finally:
+                _agent_route_correlation.reset(route_token)
+                self._active_tool_event.reset(token)
+                self._active_cancelled.reset(cancel_token)
 
     def run_writing_stage(self, instructions: str, payload: dict, run_id: UUID) -> str:
         """Tool-free bounded writing stage, sharing routing and mandatory metering."""

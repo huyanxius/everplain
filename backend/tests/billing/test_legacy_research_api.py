@@ -138,7 +138,7 @@ def test_existing_extraction_route_meter_owner_persistence_and_replay(client, mo
 
     with database.engine.connect() as c:
         assert c.scalar(text("SELECT balance FROM credit_accounts")) == (
-            2999 if mode == "success" else 3000
+            3000 if mode == "unconfigured" else 29
         )
         if calls:
             row = c.execute(

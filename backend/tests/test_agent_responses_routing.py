@@ -19,7 +19,6 @@ from qunxue_api.adapters.model import (
 )
 from qunxue_api.adapters.model.metering import OperationScope
 from qunxue_api.adapters.research_agent.pydantic_runner import (
-    AgentModelRouteError,
     _RetryingOpenAIResponsesModel,
 )
 from qunxue_api.modules.agent_conversation import LUNA_REASONING_EFFORTS
@@ -54,6 +53,20 @@ def response_payload():
     }
 
 
+def stream_response_payload():
+    body = response_payload()
+    initial = {**body, "output": [], "usage": None, "status": "in_progress"}
+    events = [
+        {"type": "response.created", "response": initial},
+        {"type": "response.output_text.delta", "item_id": "msg_synthetic",
+         "output_index": 0, "content_index": 0, "delta": "OK"},
+        {"type": "response.completed", "response": body},
+    ]
+    return httpx.Response(200, headers={"content-type": "text/event-stream"},
+                          text="".join("data: " + json.dumps({**event, "sequence_number": n})
+                                       + "\n\n" for n, event in enumerate(events)))
+
+
 @pytest.mark.parametrize("effort", LUNA_REASONING_EFFORTS)
 def test_responses_route_preserves_effort_wire_cap_and_one_billing_attempt(wallet, effort):
     runtime, engine = wallet
@@ -63,7 +76,7 @@ def test_responses_route_preserves_effort_wire_cap_and_one_billing_attempt(walle
     def reply(request):
         calls.append(json.loads(request.content))
         assert request.url.path == "/v1/responses"
-        return httpx.Response(200, json=response_payload())
+        return stream_response_payload()
 
     async def run():
         async with httpx.AsyncClient(transport=httpx.MockTransport(reply), trust_env=False) as http:
@@ -106,27 +119,35 @@ def test_responses_route_preserves_effort_wire_cap_and_one_billing_attempt(walle
     asyncio.run(run())
     assert len(calls) == 1
     assert calls[0]["reasoning"]["effort"] == effort
-    assert calls[0]["max_output_tokens"] == 100
+    assert calls[0]["max_output_tokens"] == 2400
     assert calls[0]["store"] is False
     assert "temperature" not in calls[0]
     assert len(recorder.list_all()) == 1
     assert recorder.list_all()[0].model == "gpt-6-luna"
-    assert recorder.list_all()[0].input_tokens == 1000
-    assert recorder.list_all()[0].output_tokens == 100
+    # Routing selects the stream at headers; final usage belongs to its receipt.
+    assert recorder.list_all()[0].input_tokens is None
+    assert recorder.list_all()[0].output_tokens is None
     with engine.connect() as connection:
         from sqlalchemy import text
 
         assert connection.execute(
             text("SELECT api_type, requested_effort, requested_model FROM billing_attempts")
         ).one() == ("responses", effort, "gpt-6-luna")
+        assert connection.execute(
+            text("SELECT input_tokens, output_tokens FROM billing_attempts")
+        ).one() == (1000, 100)
 
 
-def test_responses_route_rejects_input_budget_before_any_network():
+def test_responses_route_defers_actual_context_boundary_to_provider():
     calls = []
+
+    def reply(request):
+        calls.append(request)
+        return stream_response_payload()
 
     async def run():
         async with httpx.AsyncClient(
-            transport=httpx.MockTransport(lambda request: calls.append(request)), trust_env=False
+            transport=httpx.MockTransport(reply), trust_env=False
         ) as http:
             provider = OpenAIProvider(
                 openai_client=AsyncOpenAI(api_key="synthetic", http_client=http, max_retries=0)
@@ -143,9 +164,8 @@ def test_responses_route_rejects_input_budget_before_any_network():
                     max_input_tokens=10,
                 ),
             )
-            with pytest.raises(AgentModelRouteError) as caught:
-                await Agent(model).run("synthetic question")
-            assert caught.value.code == "agent_input_limit"
+            result = await Agent(model).run("synthetic question")
+            assert result.output == "OK"
 
     asyncio.run(run())
-    assert calls == []
+    assert len(calls) == 1

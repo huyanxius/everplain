@@ -2,11 +2,17 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from qunxue_api.adapters.sqlite import AgentConversationRow, AgentMessageRow, AgentRunRow
+from qunxue_api.adapters.sqlite import (
+    AgentConversationRow,
+    AgentMessageRow,
+    AgentOutputAttemptRow,
+    AgentOutputEventRow,
+    AgentRunRow,
+)
 from qunxue_api.adapters.sqlite.agent_memory_model import invalidate_conversation_summary
 from qunxue_api.adapters.sqlite.research_material_model import (
     ResearchMaterialBlockRow,
@@ -16,6 +22,8 @@ from qunxue_api.modules.agent_conversation import (
     AgentCitation,
     AgentMaterialAttachment,
     AgentMessage,
+    AgentOutputAttempt,
+    AgentOutputEvent,
     AgentRun,
     AgentTurn,
     CanvasEditConflict,
@@ -133,6 +141,13 @@ class SqliteConversationRepository:
             )
             if row.turn_id is not None
         }
+        output_runs_by_turn = {
+            run.turn_id: self._run_with_output(run)
+            for run in self._session.scalars(select(AgentRunRow).where(
+                AgentRunRow.conversation_id == str(conversation_id),
+                AgentRunRow.status == "completed", AgentRunRow.turn_id.is_not(None),
+            ))
+        }
         turns: list[AgentTurn] = []
         for index in range(0, len(messages), 2):
             user_row, assistant_row = messages[index : index + 2]
@@ -186,6 +201,14 @@ class SqliteConversationRepository:
                     evidence_ids=frozenset(item.citation_id for item in citations),
                     tool_summary=tool_summary,
                     canvas_patches=canvas_patches,
+                    delivery_state=dict(output_runs_by_turn[user_row.turn_id].delivery_state)
+                    if user_row.turn_id in output_runs_by_turn else {},
+                    output_attempts=tuple(
+                        replace(attempt, answer=_DELETED_MATERIAL_ANSWER)
+                        if deleted_citation or unavailable_trace_material_ids else attempt
+                        for attempt in (output_runs_by_turn[user_row.turn_id].output_attempts
+                                        if user_row.turn_id in output_runs_by_turn else ())
+                    ),
                 )
             )
         all_patches = [patch for turn in turns for patch in turn.canvas_patches]
@@ -485,7 +508,7 @@ class SqliteConversationRepository:
             if existing.status == "running":
                 raise RunAlreadyActive(str(run.conversation_id))
             if existing.status == "completed":
-                return _run_from_row(existing)
+                return self._run_with_output(existing)
             active = self._session.scalar(
                 select(AgentRunRow).where(
                     AgentRunRow.conversation_id == str(run.conversation_id),
@@ -513,6 +536,8 @@ class SqliteConversationRepository:
                 if not claimed:
                     self._session.rollback()
                     raise RunAlreadyActive(str(run.conversation_id))
+                self._ensure_legacy_output(existing, current_token or existing.run_id)
+                self._start_output_attempt(existing.run_id, run.lease_token, run.updated_at)
                 existing.status = "running"
                 existing.error = None
                 existing.completed_at = None
@@ -528,7 +553,7 @@ class SqliteConversationRepository:
                 existing.lease_expires_at = run.lease_expires_at
                 existing.updated_at = run.updated_at
                 self._session.flush()
-                return _run_from_row(existing)
+                return self._run_with_output(existing)
             except IntegrityError as error:
                 self._session.rollback()
                 active = self._session.scalar(
@@ -548,7 +573,7 @@ class SqliteConversationRepository:
                 if existing is not None:
                     if enforce_expected_generation:
                         raise RunAlreadyActive(str(run.conversation_id)) from error
-                    return _run_from_row(existing)
+                    return self._run_with_output(existing)
                 raise error
 
         active = self._session.scalar(
@@ -601,7 +626,7 @@ class SqliteConversationRepository:
             if existing is not None:
                 if enforce_expected_generation or existing.status == "running":
                     raise RunAlreadyActive(str(run.conversation_id)) from error
-                return _run_from_row(existing)
+                return self._run_with_output(existing)
             active = self._session.scalar(
                 select(AgentRunRow).where(
                     AgentRunRow.conversation_id == str(run.conversation_id),
@@ -611,7 +636,118 @@ class SqliteConversationRepository:
             if active is not None:
                 raise RunAlreadyActive(str(run.conversation_id)) from error
             raise error
-        return run
+        self._start_output_attempt(str(run.run_id), run.lease_token, run.updated_at)
+        return replace(run, output_attempts=(AgentOutputAttempt(
+            attempt_id=run.lease_token, ordinal=1, status="running", created_at=run.updated_at,
+        ),))
+
+    def _start_output_attempt(self, run_id: str, attempt_id: str, created_at: datetime) -> None:
+        ordinal = self._session.scalar(select(func.max(AgentOutputAttemptRow.ordinal)).where(
+            AgentOutputAttemptRow.run_id == run_id,
+        )) or 0
+        self._session.add(AgentOutputAttemptRow(
+            attempt_id=attempt_id, run_id=run_id, ordinal=ordinal + 1,
+            status="running", answer="", created_at=created_at,
+        ))
+        self._session.flush()
+
+    def _ensure_legacy_output(self, row: AgentRunRow, attempt_id: str) -> None:
+        if not row.partial_answer:
+            return
+        count = self._session.scalar(select(func.count()).select_from(AgentOutputAttemptRow).where(
+            AgentOutputAttemptRow.run_id == row.run_id,
+        ))
+        if not count and row.partial_answer:
+            self._session.add(AgentOutputAttemptRow(
+                attempt_id=attempt_id, run_id=row.run_id, ordinal=1, status=row.status,
+                answer=row.partial_answer, created_at=row.started_at,
+            ))
+            self._session.flush()
+
+    def _run_with_output(self, row: AgentRunRow) -> AgentRun:
+        attempts = self._session.scalars(select(AgentOutputAttemptRow).where(
+            AgentOutputAttemptRow.run_id == row.run_id,
+        ).order_by(AgentOutputAttemptRow.ordinal).execution_options(populate_existing=True))
+        metadata = next(iter(self._session.scalars(select(AgentOutputEventRow).where(
+            AgentOutputEventRow.run_id == row.run_id,
+            AgentOutputEventRow.attempt_id == row.lease_token,
+            AgentOutputEventRow.name == "agent_delivery_state",
+        ).order_by(AgentOutputEventRow.sequence.desc()).limit(1))), None)
+        return replace(_run_from_row(row), delivery_state=dict(metadata.payload)
+                       if metadata is not None else {}, output_attempts=tuple(
+            AgentOutputAttempt(
+                attempt_id=item.attempt_id, ordinal=item.ordinal, status=item.status,
+                answer=item.answer, created_at=_utc(item.created_at),
+            ) for item in attempts
+        ), last_event_sequence=row.last_event_sequence or 0)
+
+    def append_output_event(
+        self, *, user_id: UUID, run_id: UUID, attempt_id: str,
+        name: str, payload: dict[str, object],
+    ) -> AgentOutputEvent | None:
+        # Output uses its own transaction. Rolling back a tool, final answer or
+        # billing transaction cannot undo a body that a subscriber already saw.
+        with Session(self._session.get_bind()) as session:
+            event = SqliteConversationRepository(session)._append_output_event(
+                user_id=user_id, run_id=run_id, attempt_id=attempt_id,
+                name=name, payload=payload,
+            )
+            session.commit()
+            return event
+
+    def _append_output_event(
+        self, *, user_id: UUID, run_id: UUID, attempt_id: str,
+        name: str, payload: dict[str, object],
+    ) -> AgentOutputEvent | None:
+        # Sequence allocation and the body projection are one fenced transaction.
+        query = update(AgentRunRow).where(
+            AgentRunRow.run_id == str(run_id), AgentRunRow.user_id == str(user_id),
+            AgentRunRow.lease_token == attempt_id,
+        )
+        if name == "assistant_delta":
+            query = query.where(AgentRunRow.status == "running")
+        sequence = self._session.execute(query.values(
+            last_event_sequence=AgentRunRow.last_event_sequence + 1
+        )
+            .returning(AgentRunRow.last_event_sequence)).scalar_one_or_none()
+        if sequence is None:
+            return None
+        if name == "assistant_delta":
+            delta = str(payload["delta"])
+            answer = self._session.execute(update(AgentOutputAttemptRow).where(
+                AgentOutputAttemptRow.attempt_id == attempt_id,
+                AgentOutputAttemptRow.run_id == str(run_id),
+            ).values(answer=AgentOutputAttemptRow.answer + delta)
+                .returning(AgentOutputAttemptRow.answer)).scalar_one()
+            self._session.execute(update(AgentRunRow).where(
+                AgentRunRow.run_id == str(run_id),
+            ).values(partial_answer=answer))
+        self._session.add(AgentOutputEventRow(
+            run_id=str(run_id), sequence=sequence, attempt_id=attempt_id,
+            name=name, payload=dict(payload), created_at=datetime.now(UTC),
+        ))
+        self._session.flush()
+        return AgentOutputEvent(
+            run_id=run_id, attempt_id=attempt_id, sequence=sequence,
+            name=name, payload=dict(payload),
+        )
+
+    def read_output_events(
+        self, *, user_id: UUID, run_id: UUID, after: int = 0, limit: int = 200,
+    ) -> tuple[AgentOutputEvent, ...]:
+        run = self.find_run_by_id(user_id=user_id, run_id=run_id)
+        if run is None:
+            raise ConversationNotFound(str(run_id))
+        # Apply the same deleted-source policy to replay and archived bodies.
+        if run.output_redacted:
+            return ()
+        rows = self._session.scalars(select(AgentOutputEventRow).where(
+            AgentOutputEventRow.run_id == str(run_id), AgentOutputEventRow.sequence > after,
+        ).order_by(AgentOutputEventRow.sequence).limit(min(200, max(1, limit))))
+        return tuple(AgentOutputEvent(
+            run_id=run_id, attempt_id=row.attempt_id, sequence=row.sequence,
+            name=row.name, payload=dict(row.payload),
+        ) for row in rows)
 
     def find_run(self, *, user_id: UUID, idempotency_key: str) -> AgentRun | None:
         row = self._session.scalar(
@@ -622,7 +758,7 @@ class SqliteConversationRepository:
         )
         if row is None:
             return None
-        run = _run_from_row(row)
+        run = self._run_with_output(row)
         if run.status != "completed" or run.turn_id is None:
             return self._safe_unfinished_run(row)
         conversation = self.get(
@@ -633,7 +769,14 @@ class SqliteConversationRepository:
             (item for item in conversation.turns if item.turn_id == run.turn_id),
             None,
         )
-        return replace(run, tool_summary=turn.tool_summary) if turn is not None else run
+        if turn is None:
+            return run
+        unavailable = turn.assistant_message.content == _DELETED_MATERIAL_ANSWER
+        return replace(
+            run, tool_summary=turn.tool_summary, output_attempts=turn.output_attempts,
+            partial_answer=_DELETED_MATERIAL_ANSWER if unavailable else run.partial_answer,
+            output_redacted=unavailable,
+        )
 
     def find_run_by_id(self, *, user_id: UUID, run_id: UUID) -> AgentRun | None:
         row = self._session.scalar(
@@ -644,12 +787,19 @@ class SqliteConversationRepository:
         )
         if row is None:
             return None
-        run = _run_from_row(row)
+        run = self._run_with_output(row)
         if run.status != "completed" or run.turn_id is None:
             return self._safe_unfinished_run(row)
         conversation = self.get(user_id=user_id, conversation_id=run.conversation_id)
         turn = next((item for item in conversation.turns if item.turn_id == run.turn_id), None)
-        return replace(run, tool_summary=turn.tool_summary) if turn is not None else run
+        if turn is None:
+            return run
+        unavailable = turn.assistant_message.content == _DELETED_MATERIAL_ANSWER
+        return replace(
+            run, tool_summary=turn.tool_summary, output_attempts=turn.output_attempts,
+            partial_answer=_DELETED_MATERIAL_ANSWER if unavailable else run.partial_answer,
+            output_redacted=unavailable,
+        )
 
     def finish_run(
         self,
@@ -678,6 +828,10 @@ class SqliteConversationRepository:
             ).rowcount
             if not claimed:
                 return
+        self._session.execute(update(AgentOutputAttemptRow).where(
+            AgentOutputAttemptRow.attempt_id == (lease_token or row.lease_token),
+            AgentOutputAttemptRow.run_id == str(run_id),
+        ).values(status=status))
         row.status = status
         row.error = error
         if turn_id is not None:
@@ -702,7 +856,7 @@ class SqliteConversationRepository:
 
 
     def _safe_unfinished_run(self, row: AgentRunRow) -> AgentRun:
-        run = _run_from_row(row)
+        run = self._run_with_output(row)
         if not run.partial_answer and not run.tool_summary:
             return run
         attachments = {
@@ -725,6 +879,9 @@ class SqliteConversationRepository:
         return replace(
             run,
             partial_answer=_DELETED_MATERIAL_ANSWER,
+            output_redacted=True,
+            output_attempts=tuple(replace(item, answer=_DELETED_MATERIAL_ANSWER)
+                                  for item in run.output_attempts),
             request_snapshot={
                 **run.request_snapshot,
                 "_unavailable_materials": sorted(unavailable),
@@ -793,7 +950,11 @@ class SqliteConversationRepository:
                      lease_expires_at=None, completed_at=now)
                 .execution_options(synchronize_session="fetch")).rowcount
             if changed:
-                recovered.append(_run_from_row(row))
+                self._session.execute(update(AgentOutputAttemptRow).where(
+                    AgentOutputAttemptRow.attempt_id == row.lease_token,
+                    AgentOutputAttemptRow.run_id == row.run_id,
+                ).values(status="interrupted"))
+                recovered.append(self._run_with_output(row))
         return tuple(recovered)
 
 

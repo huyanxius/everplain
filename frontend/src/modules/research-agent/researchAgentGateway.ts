@@ -20,6 +20,7 @@ import type {
   AgentConversationSummary,
   AgentEvent,
   AgentTurnRequest,
+  AgentStreamResume,
 } from './model'
 import type { ResearchStartJourney } from './researchStart'
 
@@ -65,8 +66,9 @@ export function streamAgentTurn(
   payload: AgentTurnRequest & { idempotencyKey: string },
   onEvent: (event: AgentEvent) => void,
   signal?: AbortSignal,
+  resume?: AgentStreamResume,
 ) {
-  return streamTurn(payload, onEvent, signal)
+  return streamTurn(payload, onEvent, signal, resume)
 }
 
 export function saveCanvasNode(...args: Parameters<typeof saveNode>) {

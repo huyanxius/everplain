@@ -69,6 +69,22 @@ export type AgentToolTrace = {
   error?: string | null
 }
 
+export type AgentDeliveryState = {
+  output_finish_reason?: 'complete' | 'truncated' | 'rejected' | 'upstream_error'
+  usage_status?: 'known' | 'pending'
+  settlement_status?: 'settled' | 'pending'
+  receipt_persistence?: 'saved' | 'unsaved'
+  quota_exhausted?: boolean
+}
+
+export type AgentOutputAttempt = {
+  attempt_id: string
+  ordinal: number
+  status: string
+  answer: string
+  created_at: string
+}
+
 export type AgentTurn = {
   turn_id: string
   user: AgentMessage
@@ -76,6 +92,8 @@ export type AgentTurn = {
   tool_traces?: AgentToolTrace[]
   knowledge_release_id?: string | null
   canvas_patches?: AgentResearchMapPatch[]
+  output_attempts?: AgentOutputAttempt[]
+  delivery_state?: AgentDeliveryState
 }
 
 export type AgentConversationSummary = {
@@ -130,6 +148,9 @@ export type AgentRunRecovery = {
   status: AgentUnfinishedRunStatus
   request: AgentTurnRequest
   partial_answer: string
+  output_attempts?: AgentOutputAttempt[]
+  delivery_state?: AgentDeliveryState
+  last_event_sequence?: number
   tool_summary?: Record<string, unknown>[]
   updated_at: string
   cancel_requested: boolean
@@ -161,8 +182,24 @@ export type AgentToolStep = {
   detail?: string | null
 }
 
-export type AgentEvent =
-  | { type: 'turn_started'; conversation_id: string; run_id: string; replayed: boolean; runtime_mode?: AgentRuntimeMode }
+export type AgentStreamResume = { runId: string; after: number }
+
+export type AgentRunLookup = AgentRunStopResult & {
+  output_persistence_failed?: boolean
+  conversation_id: string
+  idempotency_key: string
+  partial_answer: string
+  output_attempts?: AgentOutputAttempt[]
+  delivery_state?: AgentDeliveryState
+  last_event_sequence: number
+}
+
+export type AgentEvent = AgentEventData & { event_id?: string; attempt_id?: string }
+
+type AgentEventData =
+  | { type: 'turn_started'; conversation_id: string; run_id: string; replayed: boolean; runtime_mode?: AgentRuntimeMode; attempt_id?: string; output_attempts?: AgentOutputAttempt[] }
+  | { type: 'turn_snapshot'; run: AgentRunLookup }
+  | { type: 'agent_delivery_state'; delivery_state: AgentDeliveryState }
   | { type: 'agent_status'; status: 'thinking' | 'answering' }
   | {
       type: 'tool_started'
@@ -187,7 +224,8 @@ export type AgentEvent =
       error_code: string | null
       detail: string | null
     }
-  | { type: 'assistant_delta'; delta: string }
+  | { type: 'assistant_delta'; delta: string; persisted?: boolean }
+  | { type: 'output_persistence_failed'; message: string }
   | { type: 'research_ask'; question: string; options: string[] }
   | { type: 'research_plan'; title: string; steps: string[] }
   | { type: 'research_step'; step: string; status?: string }
@@ -195,7 +233,7 @@ export type AgentEvent =
   | { type: 'research_waiting'; run_id: string; state: 'awaiting_clarification' | 'awaiting_plan_confirmation'; title?: string; question?: string; options?: string[]; steps?: string[]; prompt?: string; selected_intent?: string }
   | { type: 'citation_added'; citation: AgentCitation }
   | { type: 'canvas_patch'; patch: AgentResearchMapPatch }
-  | { type: 'turn_completed'; conversation: AgentConversation; knowledge_release_id: string }
+  | { type: 'turn_completed'; conversation: AgentConversation; knowledge_release_id: string; delivery_state?: AgentDeliveryState }
   | { type: 'turn_interrupted'; code: string; message: string }
   | { type: 'knowledge_index_choice_required'; status: KnowledgeIndexStatus }
   | { type: 'turn_failed'; code: string; message: string }

@@ -2,8 +2,9 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from inspect import Parameter, signature
+from io import StringIO
 from typing import Literal
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
@@ -15,6 +16,7 @@ from qunxue_api.modules.agent_conversation import (
     AgentModelRouteFailure,
     AgentModelSelection,
     AgentModelSelectionUnavailable,
+    AgentOutputStorageFailure,
     AgentResearchEvent,
     AgentRunResult,
     AgentRuntimeIdentity,
@@ -44,6 +46,8 @@ class AgentTurnExecution:
     replayed: bool
     tool_summary: tuple[dict[str, object], ...] = ()
     pending_research: dict[str, object] | None = None
+    delivery_state: dict[str, object] = field(default_factory=dict)
+    incomplete_reason: str | None = None
 
 
 class DisciplinaryAgentApplication:
@@ -167,6 +171,15 @@ class DisciplinaryAgentApplication:
             user_id=user_id,
             idempotency_key=idempotency_key,
         )
+
+    def find_run_by_id(self, *, user_id: UUID, run_id: UUID):
+        return self._conversations.find_run_by_id(user_id=user_id, run_id=run_id)
+
+    def append_output_event(self, **kwargs):
+        return self._conversations.append_output_event(**kwargs)
+
+    def read_output_events(self, **kwargs):
+        return self._conversations.read_output_events(**kwargs)
 
     def request_cancel(self, *, user_id: UUID, run_id: UUID):
         run = self._conversations.request_cancel(user_id=user_id, run_id=run_id)
@@ -393,6 +406,7 @@ class DisciplinaryAgentApplication:
                     turn=replayed_turn,
                     replayed=True,
                     tool_summary=existing_run.tool_summary,
+                    delivery_state=existing_run.delivery_state,
                 )
             if conversation_id is None:
                 conversation_id = existing_run.conversation_id
@@ -568,10 +582,11 @@ class DisciplinaryAgentApplication:
             else ()
         )
         tool_events: list[AgentToolEvent] = []
+        pending_tool_events: list[AgentToolEvent] = []
         active_tool_calls: set[str] = set()
         tool_events_lock = threading.RLock()
-        partial_answer = run.partial_answer
         received_delta = False
+        presentation_body = StringIO()
         last_checkpoint = 0.0
         last_cancel_check = 0.0
         persisted_cancelled = False
@@ -620,7 +635,6 @@ class DisciplinaryAgentApplication:
                 user_id=user_id,
                 run_id=run.run_id,
                 lease_token=run.lease_token,
-                partial_answer=partial_answer,
                 tool_summary=saved_summary(),
             ):
                 raise AgentInterrupted("Agent execution lease was replaced")
@@ -628,11 +642,34 @@ class DisciplinaryAgentApplication:
             last_checkpoint = now
 
         def record_delta(delta: str) -> None:
-            nonlocal partial_answer, received_delta
-            if not received_delta:
-                partial_answer = ""
+            nonlocal received_delta
+            if not delta:
+                return
+            presentation_body.write(delta)
+            # Original body is durable before any transport callback. An attempt's
+            # output is append-only and independent of finalization/usage success.
+            with tool_events_lock:
+                try:
+                    event = self._conversations.append_output_event(
+                        user_id=user_id, run_id=run.run_id, attempt_id=run.lease_token,
+                        name="assistant_delta", payload={"delta": delta},
+                    )
+                except Exception as error:
+                    # A failed local write must not silently swallow lawful body
+                    # already received from the provider. Present this chunk with
+                    # an explicit unsaved flag, then stop unsafe new operations.
+                    if on_delta is not None:
+                        if "persisted" in signature(on_delta).parameters:
+                            extra = {"answer": presentation_body.getvalue()}
+                            if "answer" not in signature(on_delta).parameters:
+                                extra = {}
+                            on_delta(delta, persisted=False, **extra)
+                        else:
+                            on_delta(delta)
+                    raise AgentOutputStorageFailure("Received body could not be saved") from error
+                if event is None:
+                    raise AgentInterrupted("Agent execution lease was replaced")
                 received_delta = True
-            partial_answer += delta
             safe_checkpoint()
             if on_delta is not None:
                 on_delta(delta)
@@ -717,6 +754,7 @@ class DisciplinaryAgentApplication:
                     turn=completed_turn,
                     replayed=True,
                     tool_summary=run.tool_summary,
+                    delivery_state=run.delivery_state,
                 )
 
             if cancelled():
@@ -879,17 +917,36 @@ class DisciplinaryAgentApplication:
                                 replayed=False,
                                 tool_summary=(pending,),
                                 pending_research=pending,
+                                delivery_state=_delivery_state(billing_context),
                             )
 
             def record_tool_event(event: AgentToolEvent) -> None:
                 with tool_events_lock:
+                    # A tool may leave a complete business write in the shared
+                    # transaction. Never have its callback wait on that same
+                    # SQLite writer through an independent journal connection.
+                    was_idle = not active_tool_calls
                     tool_events.append(event)
                     if event.phase == "started":
+                        if was_idle:
+                            checkpoint(force=True)
                         active_tool_calls.add(event.call_id)
+                        if was_idle and on_tool_event is not None:
+                            on_tool_event(event)
+                        else:
+                            pending_tool_events.append(event)
                     else:
                         active_tool_calls.discard(event.call_id)
-                if on_tool_event is not None:
-                    on_tool_event(event)
+                        pending_tool_events.append(event)
+                        if not active_tool_calls:
+                            # All tool operations have returned a business result;
+                            # this is the existing safe checkpoint boundary, not
+                            # an output callback committing a half-written tool.
+                            checkpoint(force=True)
+                            if on_tool_event is not None:
+                                for pending_event in pending_tool_events:
+                                    on_tool_event(pending_event)
+                            pending_tool_events.clear()
 
             # 澄清、确认、执行各是一次独立调用，所以这里量到的就是真正跑研究那一段，不含
             # 用户思考的时间。不限定在 confirm 之后，是为了让没经过暂停的深入研究也留痕。
@@ -920,6 +977,8 @@ class DisciplinaryAgentApplication:
                     conversation=conversation_history,
                     tools=tools,
                 )
+            if not received_delta and result.answer:
+                record_delta(result.answer)
             coverage = getattr(tools, "knowledge_index_coverage", None)
             if coverage is not None:
                 record_tool_event(AgentToolEvent(
@@ -956,6 +1015,26 @@ class DisciplinaryAgentApplication:
                 )
             if cancelled():
                 raise AgentInterrupted("Agent run was interrupted by the client")
+            delivery_state = _delivery_state(billing_context)
+            if delivery_state.get("output_finish_reason") == "truncated":
+                checkpoint(force=True)
+                self._conversations.finish_run(
+                    run_id=run.run_id, lease_token=run.lease_token, status="interrupted",
+                    error="output_truncated", tool_summary=saved_summary(),
+                )
+                # Error/partial settlement uses the independent finance writer.
+                # Commit the completed logical-state update before asking it to
+                # close, so it cannot wait on our own SQLite write transaction.
+                self._conversations.commit()
+                if billing_context is not None:
+                    billing_context.finish("error")
+                return AgentTurnExecution(
+                    conversation=self.get_conversation(
+                        user_id=user_id, conversation_id=conversation.conversation_id,
+                    ), run_id=run.run_id, result=result, turn=None, replayed=False,
+                    tool_summary=saved_summary(), delivery_state=_delivery_state(billing_context),
+                    incomplete_reason="length",
+                )
             citations = tuple(_agent_citation(item) for item in result.citations)
             evidence_ids = frozenset(tools.evidence)
             with self._atomic():
@@ -1042,6 +1121,7 @@ class DisciplinaryAgentApplication:
                     billing_context.finish(
                         "cancelled" if isinstance(error, AgentInterrupted) else "error"
                     )
+                error.agent_delivery_state = _delivery_state(billing_context)
             raise
         finally:
             if billing_context is not None:
@@ -1078,7 +1158,19 @@ class DisciplinaryAgentApplication:
             turn=turn_result,
             replayed=False,
             tool_summary=completed_tool_summary,
+            delivery_state=_delivery_state(billing_context),
         )
+
+
+def _delivery_state(context) -> dict[str, object]:
+    if context is None:
+        return {}
+    try:
+        value = getattr(context, "delivery_state", {})
+        return dict(value) if isinstance(value, dict) else {}
+    except Exception:
+        # Metadata failure never invalidates lawful body already received.
+        return {"receipt_persistence": "unsaved", "settlement_status": "pending"}
 
 
 def _billing_run_id(run) -> UUID:

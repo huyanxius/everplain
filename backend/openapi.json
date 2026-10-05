@@ -1108,6 +1108,40 @@
         "title": "AgentModelChoiceResponse",
         "type": "object"
       },
+      "AgentOutputAttemptResponse": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "ordinal",
+          "status",
+          "answer",
+          "created_at"
+        ],
+        "title": "AgentOutputAttemptResponse",
+        "type": "object"
+      },
       "AgentProfileResponse": {
         "properties": {
           "avatar_id": {
@@ -1569,9 +1603,26 @@
             "title": "Conversation Id",
             "type": "string"
           },
+          "delivery_state": {
+            "additionalProperties": true,
+            "title": "Delivery State",
+            "type": "object"
+          },
           "idempotency_key": {
             "title": "Idempotency Key",
             "type": "string"
+          },
+          "last_event_sequence": {
+            "default": 0,
+            "title": "Last Event Sequence",
+            "type": "integer"
+          },
+          "output_attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AgentOutputAttemptResponse"
+            },
+            "title": "Output Attempts",
+            "type": "array"
           },
           "partial_answer": {
             "title": "Partial Answer",
@@ -1642,9 +1693,26 @@
             "title": "Cancel Requested",
             "type": "boolean"
           },
+          "delivery_state": {
+            "additionalProperties": true,
+            "title": "Delivery State",
+            "type": "object"
+          },
           "idempotency_key": {
             "title": "Idempotency Key",
             "type": "string"
+          },
+          "last_event_sequence": {
+            "default": 0,
+            "title": "Last Event Sequence",
+            "type": "integer"
+          },
+          "output_attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AgentOutputAttemptResponse"
+            },
+            "title": "Output Attempts",
+            "type": "array"
           },
           "partial_answer": {
             "title": "Partial Answer",
@@ -2035,6 +2103,11 @@
             "title": "Canvas Patches",
             "type": "array"
           },
+          "delivery_state": {
+            "additionalProperties": true,
+            "title": "Delivery State",
+            "type": "object"
+          },
           "knowledge_release_id": {
             "anyOf": [
               {
@@ -2045,6 +2118,13 @@
               }
             ],
             "title": "Knowledge Release Id"
+          },
+          "output_attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AgentOutputAttemptResponse"
+            },
+            "title": "Output Attempts",
+            "type": "array"
           },
           "tool_traces": {
             "items": {
@@ -20698,6 +20778,80 @@
           }
         },
         "summary": "Lookup Agent Run",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/runs/{run_id}/events": {
+      "get": {
+        "operationId": "subscribe_agent_run_events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Subscribe Agent Run Events",
         "tags": [
           "agent"
         ]
