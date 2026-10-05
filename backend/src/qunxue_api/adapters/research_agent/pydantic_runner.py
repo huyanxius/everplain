@@ -124,26 +124,29 @@ class VisibleTextStream:
         self._drain()
 
     def finish(self) -> None:
-        if not self._in_thinking and self._buffer:
-            self._on_text(self._buffer)
-        self._buffer = ""
+        remaining, self._buffer = self._buffer, ""
+        if not self._in_thinking and remaining:
+            self._on_text(remaining)
 
     def _drain(self) -> None:
         while self._buffer:
             marker = self._CLOSE if self._in_thinking else self._OPEN
             index = self._buffer.find(marker)
             if index >= 0:
-                if not self._in_thinking and index:
-                    self._on_text(self._buffer[:index])
+                visible = self._buffer[:index] if not self._in_thinking else ""
                 self._buffer = self._buffer[index + len(marker) :]
                 self._in_thinking = not self._in_thinking
+                if visible:
+                    self._on_text(visible)
                 continue
-            keep = len(marker) - 1
-            if self._in_thinking:
-                self._buffer = self._buffer[-keep:] if keep else ""
-            elif len(self._buffer) > keep:
-                self._on_text(self._buffer[:-keep])
-                self._buffer = self._buffer[-keep:] if keep else ""
+            # Hold only a real split-marker prefix, not an arbitrary nine
+            # characters of ordinary body on every stream/error boundary.
+            keep = next((size for size in range(len(marker) - 1, 0, -1)
+                         if self._buffer.endswith(marker[:size])), 0)
+            visible = self._buffer[:-keep] if keep else self._buffer
+            self._buffer = self._buffer[-keep:] if keep else ""
+            if not self._in_thinking and visible:
+                self._on_text(visible)
             break
 
 
@@ -2687,9 +2690,14 @@ class PydanticAIKnowledgeRunner:
                 usage=_result_usage(result),
             )
         finally:
-            _agent_route_correlation.reset(route_token)
-            self._active_tool_event.reset(token)
-            self._active_cancelled.reset(cancel_token)
+            try:
+                # Normal body tails survive upstream EOF, timeout, cancellation
+                # and truncated output. Hidden reasoning remains suppressed.
+                visible_stream.finish()
+            finally:
+                _agent_route_correlation.reset(route_token)
+                self._active_tool_event.reset(token)
+                self._active_cancelled.reset(cancel_token)
 
     def run_writing_stage(self, instructions: str, payload: dict, run_id: UUID) -> str:
         """Tool-free bounded writing stage, sharing routing and mandatory metering."""
