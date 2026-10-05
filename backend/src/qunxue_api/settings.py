@@ -151,6 +151,42 @@ class AgentModelEffortSettings(BaseModel):
             raise ValueError("effort settings may only contain upstream reasoning controls")
         if self.openai_reasoning_effort is not None and "reasoning_effort" in self.extra_body:
             raise ValueError("reasoning effort must not be supplied twice")
+        if "reasoning_effort" in self.extra_body:
+            effort = self.extra_body["reasoning_effort"]
+            if not ((isinstance(effort, str) and effort in {
+                "none", "minimal", "low", "medium", "high", "xhigh", "max",
+            }) or (type(effort) is int and 1 <= effort <= 100)):
+                raise ValueError("raw reasoning effort needs an explicit native level")
+        thinking = self.extra_body.get("thinking")
+        if "thinking" in self.extra_body and (
+            not isinstance(thinking, dict) or set(thinking) != {"type"}
+            or not isinstance(thinking["type"], str)
+            or thinking["type"] not in {"enabled", "disabled", "adaptive", "between_tools"}
+        ):
+            raise ValueError("thinking controls must use an explicit native dynamic mode")
+        output = self.extra_body.get("output_config")
+        if "output_config" in self.extra_body and (
+            not isinstance(output, dict) or set(output) != {"effort"}
+            or not isinstance(output["effort"], str) or not output["effort"]
+        ):
+            raise ValueError("native output_config may only set an explicit reasoning effort")
+        envelope = self.extra_body.get("extra_body")
+        google_level = None
+        if "extra_body" in self.extra_body:
+            google = envelope.get("google") if isinstance(envelope, dict) else None
+            config = google.get("thinking_config") if isinstance(google, dict) else None
+            if (not isinstance(envelope, dict) or set(envelope) != {"google"}
+                or not isinstance(google, dict) or set(google) != {"thinking_config"}
+                or not isinstance(config, dict) or set(config) != {"thinking_level"}
+                or not isinstance(config["thinking_level"], str)
+                or config["thinking_level"] not in {"minimal", "low", "medium", "high"}):
+                raise ValueError("Google native envelope may only set its explicit thinking level")
+            google_level = config["thinking_level"]
+        selectors = (self.openai_reasoning_effort is not None,
+                     "reasoning_effort" in self.extra_body, output is not None,
+                     google_level is not None)
+        if sum(selectors) > 1:
+            raise ValueError("reasoning settings must not mix competing effort controls")
         return self
 
 
@@ -184,8 +220,11 @@ class AgentSelectableModelSettings(BaseModel):
         if set(self.effort_settings) != set(self.reasoning_efforts):
             raise ValueError("wire settings must cover exactly the advertised reasoning levels")
         if self.effort_settings:
-            controls = [value.model_dump(exclude_none=True)
-                        for value in self.effort_settings.values()]
+            controls = [
+                {**value.extra_body, **({"reasoning_effort": value.openai_reasoning_effort}
+                 if value.openai_reasoning_effort is not None else {})}
+                for value in self.effort_settings.values()
+            ]
             if any(value in controls[:index] for index, value in enumerate(controls)):
                 raise ValueError("reasoning levels must not advertise duplicate wire controls")
         return self

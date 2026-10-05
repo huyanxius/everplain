@@ -49,6 +49,8 @@ def entry(**changes):
     {"effort_settings": {"low": {"openai_reasoning_effort": "low"}}},
     {"effort_settings": {"low": {"openai_reasoning_effort": "low"},
                          "high": {"openai_reasoning_effort": "low"}}},
+    {"effort_settings": {"low": {"openai_reasoning_effort": "low"},
+                         "high": {"extra_body": {"reasoning_effort": "low"}}}},
     {"reasoning_efforts": [], "default_reasoning_effort": None},
 ])
 def test_catalog_cannot_advertise_unmapped_or_duplicate_wire_levels(changes):
@@ -62,6 +64,17 @@ def test_catalog_cannot_advertise_unmapped_or_duplicate_wire_levels(changes):
     {"extra_body": {"max_tokens": 2000}},
     {"extra_body": {"api_key": "synthetic"}},
     {"openai_reasoning_effort": "high", "extra_body": {"reasoning_effort": "low"}},
+    {"extra_body": {"thinking": {}}},
+    {"extra_body": {"thinking": None}},
+    {"extra_body": {"thinking": {"type": []}}},
+    {"extra_body": {"output_config": None}},
+    {"extra_body": {"extra_body": None}},
+    {"extra_body": {"reasoning_effort": None}},
+    {"extra_body": {"reasoning_effort": True}},
+    {"extra_body": {"thinking": {"type": "enabled", "budget_tokens": 1000}}},
+    {"extra_body": {"output_config": {"effort": "low", "max_tokens": 1000}}},
+    {"extra_body": {"extra_body": {"google": {"api_key": "synthetic"}}}},
+    {"openai_reasoning_effort": "low", "extra_body": {"output_config": {"effort": "high"}}},
 ])
 def test_wire_config_accepts_only_explicit_reasoning_controls(values):
     with pytest.raises(ValidationError):
