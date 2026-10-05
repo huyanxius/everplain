@@ -508,23 +508,50 @@ def test_channel_keeps_real_runtime_lease_alive_beyond_thirty_seconds(channels):
         assert reply.result(timeout=10).status_code == 200
 
 
-def test_feishu_tenant_is_in_authenticated_binding_and_event_identity(channels):
+def test_feishu_tenant_is_in_authenticated_binding_and_event_identity(channels, monkeypatch):
     gateway_id = "feishu:cli_test:tenant_test"
     headers = {**HEADERS, "X-Everplain-Gateway": gateway_id}
+    grant = code(channels, gateway_id)
+    # Receive /bind just before a second boundary and activate just after it.
+    # A later message must not inherit the command's pre-binding occurrence time.
+    received_at_ms = (int(time.time()) + 2) * 1000 + 999
+    activated_at_ms = received_at_ms + 1
+    original_scope = channels.client.app.state.channel_gateway_scope
+
+    @contextmanager
+    def gateway_scope():
+        with original_scope() as gateway:
+            gateway.clock = lambda: activated_at_ms / 1000
+            yield gateway
+
+    monkeypatch.setattr(channels.client.app.state, "channel_gateway_scope", gateway_scope)
     payload = event(
         platform="feishu",
         bot_id="cli_test",
         tenant_id="tenant_test",
-        text="/bind " + code(channels, gateway_id),
+        text="/bind " + grant,
+        occurred_at=received_at_ms // 1000,
+        received_at_ms=received_at_ms,
     )
     assert dispatch(channels, payload, headers).status_code == 200
+    binding = channels.client.get("/api/channels/bindings").json()[0]
+    assert binding["created_at"] == activated_at_ms // 1000
     message = {
         **payload,
         "event_id": "same-provider-id",
         "text": "tenant private question",
-        "received_at_ms": int(time.time() * 1000),
+        "occurred_at": activated_at_ms // 1000,
+        "received_at_ms": activated_at_ms + 1,
     }
-    assert dispatch(channels, message, headers).status_code == 200
+    stale = {
+        **message,
+        "event_id": "pre-binding-provider-id",
+        "occurred_at": payload["occurred_at"],
+    }
+    assert dispatch(channels, stale, headers).status_code == 403
+    assert channels.calls == []
+    response = dispatch(channels, message, headers)
+    assert response.status_code == 200, response.json()
     other = {**message, "tenant_id": "other_tenant"}
     assert dispatch(channels, other, headers).status_code == 403
     assert dispatch(channels, {**message, "tenant_id": ""}, headers).status_code == 422
