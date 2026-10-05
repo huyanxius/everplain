@@ -2,7 +2,14 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from qunxue_api.modules.identity.domain import RegistrationVerification, User, UserSession
+from qunxue_api.modules.identity.domain import (
+    FederatedIdentity,
+    OAuthTransaction,
+    RegistrationVerification,
+    User,
+    UserSession,
+    VerifiedOAuthIdentity,
+)
 
 
 class PasswordHasher(Protocol):
@@ -16,6 +23,16 @@ class EmailProvider(Protocol):
 
 
 class IdentityRepository(Protocol):
+    def get_federated_identity(self, provider: str, subject: str) -> FederatedIdentity | None: ...
+
+    def get_user_provider_identity(
+        self, user_id: UUID, provider: str
+    ) -> FederatedIdentity | None: ...
+
+    def add_federated_identity(self, identity: FederatedIdentity) -> None: ...
+
+    def list_federated_providers(self, user_id: UUID) -> list[str]: ...
+
     def get_user_by_email(self, email: str) -> User | None: ...
 
     def add_user(self, user: User) -> User: ...
@@ -45,3 +62,24 @@ class IdentityRepository(Protocol):
         revoked_at: datetime,
         reason: str | None = None,
     ) -> UserSession: ...
+
+
+class OAuthProviderClient(Protocol):
+    origin: str | None
+    enabled: list[str]
+
+    async def authorize_url(
+        self, provider: str, *, state: str, verifier: str, nonce: str
+    ) -> str: ...
+
+    async def identity(
+        self, provider: str, *, code: str, verifier: str, nonce: str
+    ) -> VerifiedOAuthIdentity: ...
+
+
+class OAuthTransactionStore(Protocol):
+    def create(
+        self, *, provider: str, return_path: str, link_session_id: str | None
+    ) -> tuple[str, str, str, str]: ...
+
+    def consume(self, *, provider: str, state: str, browser: str) -> OAuthTransaction | None: ...

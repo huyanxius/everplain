@@ -6,10 +6,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from qunxue_api.adapters.sqlite import RegistrationVerificationRow, UserRow, UserSessionRow
+from qunxue_api.adapters.sqlite.oauth_model import FederatedIdentityRow
 from qunxue_api.modules.identity import (
     AccountRole,
     AccountStatus,
     EmailAlreadyRegistered,
+    FederatedIdentity,
     IdentityRepository,
     RegistrationVerification,
     User,
@@ -25,6 +27,48 @@ class SqliteIdentityRepository(IdentityRepository):
     def __init__(self, session: Session, *, on_user_created=None) -> None:
         self._db_session = session
         self._on_user_created = on_user_created
+
+    def get_federated_identity(self, provider: str, subject: str) -> FederatedIdentity | None:
+        row = self._db_session.get(FederatedIdentityRow, (provider, subject))
+        return self._identity(row) if row else None
+
+    def get_user_provider_identity(self, user_id: UUID, provider: str) -> FederatedIdentity | None:
+        row = self._db_session.scalar(
+            select(FederatedIdentityRow).where(
+                FederatedIdentityRow.user_id == str(user_id),
+                FederatedIdentityRow.provider == provider,
+            )
+        )
+        return self._identity(row) if row else None
+
+    def add_federated_identity(self, identity: FederatedIdentity) -> None:
+        self._db_session.add(
+            FederatedIdentityRow(
+                provider=identity.provider,
+                subject=identity.subject,
+                user_id=str(identity.user_id),
+                created_at=identity.created_at,
+            )
+        )
+        self._db_session.flush()
+
+    def list_federated_providers(self, user_id: UUID) -> list[str]:
+        return list(
+            self._db_session.scalars(
+                select(FederatedIdentityRow.provider).where(
+                    FederatedIdentityRow.user_id == str(user_id),
+                )
+            )
+        )
+
+    @staticmethod
+    def _identity(row: FederatedIdentityRow) -> FederatedIdentity:
+        return FederatedIdentity(
+            provider=row.provider,
+            subject=row.subject,
+            user_id=UUID(row.user_id),
+            created_at=_as_utc(row.created_at),
+        )
 
     def get_user_by_email(self, email: str) -> User | None:
         row = self._db_session.scalar(select(UserRow).where(UserRow.email == email))

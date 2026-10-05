@@ -19,6 +19,7 @@ type AccountState =
 
 export type AccountSettingsOptions = {
   api?: AccountManagementApi
+  initialSection?: SettingsSection
   onProfileUpdated?(account: AccountProfile): void
   onSessionExpired?(): void
   onAccountDeactivated?(): void
@@ -30,6 +31,7 @@ export const creditPageSize = 10
 /** Account contracts and mutation state, deliberately independent of the settings view. */
 export function useAccountSettingsController({
   api = accountManagementApi,
+  initialSection = 'profile',
   onProfileUpdated,
   onSessionExpired,
   onAccountDeactivated,
@@ -38,7 +40,7 @@ export function useAccountSettingsController({
   const { locale: appLocale, setLocale: setAppLocale } = useAppLocale()
   const [state, setState] = useState<AccountState>({ status: 'loading' })
   const [reload, setReload] = useState(0)
-  const [section, setSection] = useState<SettingsSection>('profile')
+  const [section, setSection] = useState<SettingsSection>(initialSection)
   const [displayName, setDisplayName] = useState('')
   const [editingName, setEditingName] = useState(false)
   const [locale, setLocale] = useState(appLocale)

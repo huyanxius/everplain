@@ -21,6 +21,9 @@ tests/test_course_organization_recovery.py
 tests/test_account_management_api.py
 tests/test_account_management_migration.py
 tests/test_identity_service.py
+tests/test_oauth_login.py
+tests/test_oauth_migration.py
+tests/test_oauth_forward_migration.py
 tests/test_identity_and_ownership.py
 tests/test_registration_email_verification.py
 tests/test_agent_run_recovery.py
