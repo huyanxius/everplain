@@ -65,6 +65,7 @@ tests/test_transcript_import.py
 tests/test_architecture.py
 
 tests/test_agent_profile.py
+tests/test_user_avatar_migration.py
 tests/test_import_sources.py
 tests/test_bookmark_fetch.py
 tests/test_imported_knowledge_availability.py
@@ -121,3 +122,5 @@ tests/test_conversation_context_migration.py
 
 tests/test_conversation_summary.py
 tests/test_conversation_summary_migration.py
+tests/test_conversation_summary_diagnostics.py
+tests/test_conversation_summary_failure_worker.py

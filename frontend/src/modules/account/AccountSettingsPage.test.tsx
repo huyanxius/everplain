@@ -246,7 +246,7 @@ describe('AccountSettingsPage', () => {
     expect(updatePreferences).not.toHaveBeenCalled()
   })
 
-  it('reaches all eight categories through the compact picker and retains the Agent editor', async () => {
+  it('reaches all nine categories through the compact picker and retains the Agent editor', async () => {
     const onResetAgent = vi.fn()
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     queryClient.setQueryData(['agent-profile', account.userId], {
@@ -257,7 +257,7 @@ describe('AccountSettingsPage', () => {
 
     const navigation = await screen.findByRole('navigation', { name: '账户设置分区' })
     expect(within(navigation).getAllByRole('button').map((button) => button.textContent)).toEqual([
-      '我的 Agent', '聊天平台', '个人资料', '使用情况', '使用偏好', '安全', '数据与隐私', '账户状态',
+      '我的 Agent', '我的形象', '聊天平台', '个人资料', '使用情况', '使用偏好', '安全', '数据与隐私', '账户状态',
     ])
     expect(screen.queryByRole('button', { name: '重新设置我的 AI 伙伴' })).not.toBeInTheDocument()
     expect(screen.getAllByText('林同学')).toHaveLength(1)
@@ -267,7 +267,7 @@ describe('AccountSettingsPage', () => {
     fireEvent.click(picker)
     const categoryOptions = within(screen.getByRole('listbox', { hidden: true })).getAllByRole('option', { hidden: true })
     expect(categoryOptions.map(option => option.textContent)).toEqual([
-      '我的 Agent', '聊天平台', '个人资料', '使用情况', '使用偏好', '安全', '数据与隐私', '账户状态',
+      '我的 Agent', '我的形象', '聊天平台', '个人资料', '使用情况', '使用偏好', '安全', '数据与隐私', '账户状态',
     ])
     const content = screen.getByRole('region', { name: '个人资料' })
     content.scrollTop = 240

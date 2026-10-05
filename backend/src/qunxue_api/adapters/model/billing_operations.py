@@ -50,11 +50,13 @@ class SqliteBillingOperations:
             raise BillingContextMissing("optional naming and probes must be operator-funded")
         if policy not in {"user", "operator"}:
             raise BillingContextMissing(
-                "this standalone model phase needs an explicit billing policy"
+                "this standalone model phase needs an explicit billing policy",
+                reason="phase_policy_missing",
             )
         if self.runtime is None:
             raise BillingContextMissing(
-                "billing conversion, price version and risk budgets are required"
+                "billing conversion, price version and risk budgets are required",
+                reason="billing_runtime_missing",
             )
         if policy == "user":
             with self.database.session() as session:

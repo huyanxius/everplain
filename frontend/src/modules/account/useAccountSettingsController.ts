@@ -6,7 +6,7 @@ import { isAccountManagementRequestError, type AccountManagementApi, type Accoun
 import { MutationIntentLedger } from './mutationIntent'
 import { notifyAccountUsageChanged, watchAccountUsageChanges } from './accountUsageEvents'
 
-export type SettingsSection = 'agent' | 'channels' | 'profile' | 'credits' | 'preferences' | 'security' | 'privacy' | 'danger'
+export type SettingsSection = 'agent' | 'look' | 'channels' | 'profile' | 'credits' | 'preferences' | 'security' | 'privacy' | 'danger'
 export type SettingsConfirmation =
   | { kind: 'session'; session: AccountSession }
   | { kind: 'model'; allowed: boolean }

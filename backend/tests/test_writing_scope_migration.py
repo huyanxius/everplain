@@ -98,16 +98,16 @@ def test_scope_expansion_preserves_source_and_legacy_read_write_contract(tmp_pat
     assert sha256(source.read_bytes()).hexdigest() == source_hash
 
 
-def test_scope_is_one_head_and_round_trips_the_published_summary_parent(tmp_path, monkeypatch):
+def test_scope_is_one_head_and_round_trips_the_published_avatar_parent(tmp_path, monkeypatch):
     backend = Path(__file__).parents[1]
     config = Config(str(backend / "alembic.ini"))
     config.set_main_option("script_location", str(backend / "migrations"))
     scripts = ScriptDirectory.from_config(config)
     assert scripts.get_heads() == ["20261005_0580"]
-    assert scripts.get_revision("20261005_0580").down_revision == "20261005_0570"
+    assert scripts.get_revision("20261005_0580").down_revision == "20261005_0590"
     database_url = f"sqlite:///{tmp_path / 'candidate.db'}"
     monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
-    command.upgrade(config, "20261005_0570")
+    command.upgrade(config, "20261005_0590")
     engine = create_engine(database_url)
     with engine.begin() as connection:
         connection.execute(text(
@@ -125,6 +125,14 @@ def test_scope_is_one_head_and_round_trips_the_published_summary_parent(tmp_path
             "('legacy','synthetic-owner','doc',1,'rewrite','😀正文','😀修订',"
             "'pending','[]','fixture')"
         ))
+        connection.execute(text(
+            "INSERT INTO agent_profiles "
+            "(user_id,name,avatar_id,color,speaking_style,setup_step,setup_completed,"
+            "questionnaire,memory_ids,version,soul_text,user_avatar) VALUES "
+            "('synthetic-owner','合成伙伴','nian','#b8bfa6','warm',6,1,"
+            "'{}','{}',8,'合成人格','{\"synthetic\":\"preserve\"}')"
+        ))
+        profile = connection.execute(text("SELECT * FROM agent_profiles")).fetchall()
         old_revision = connection.execute(text(
             f"SELECT {LEGACY_COLUMNS} FROM writing_revisions"
         )).fetchall()
@@ -134,6 +142,7 @@ def test_scope_is_one_head_and_round_trips_the_published_summary_parent(tmp_path
         )).fetchall()
     command.upgrade(config, "head")
     with engine.begin() as connection:
+        assert connection.execute(text("SELECT * FROM agent_profiles")).fetchall() == profile
         assert connection.execute(text(
             f"SELECT {LEGACY_COLUMNS} FROM writing_revisions"
         )).fetchall() == old_revision
@@ -145,8 +154,9 @@ def test_scope_is_one_head_and_round_trips_the_published_summary_parent(tmp_path
         ))
     # Only this synthetic candidate is downgraded; production rollback retains
     # the additive columns and uses the old compatible application.
-    command.downgrade(config, "20261005_0570")
+    command.downgrade(config, "20261005_0590")
     with engine.begin() as connection:
+        assert connection.execute(text("SELECT * FROM agent_profiles")).fetchall() == profile
         assert connection.execute(text(
             f"SELECT {LEGACY_COLUMNS} FROM writing_revisions"
         )).fetchall() == old_revision
@@ -156,6 +166,7 @@ def test_scope_is_one_head_and_round_trips_the_published_summary_parent(tmp_path
         )).fetchall() == billing_schema
     command.upgrade(config, "head")
     with engine.begin() as connection:
+        assert connection.execute(text("SELECT * FROM agent_profiles")).fetchall() == profile
         assert connection.execute(text(
             "SELECT selection_start,selection_end FROM writing_revisions"
         )).one() == (None, None)
