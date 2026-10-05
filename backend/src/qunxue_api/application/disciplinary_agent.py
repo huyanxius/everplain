@@ -621,10 +621,10 @@ class DisciplinaryAgentApplication:
         def saved_summary() -> tuple[dict[str, object], ...]:
             return (*prior_summary, *(_tool_summary(item) for item in tool_events))
 
-        def safe_checkpoint() -> None:
+        def safe_checkpoint(*, force: bool = False) -> None:
             with tool_events_lock:
                 if not active_tool_calls:
-                    checkpoint()
+                    checkpoint(force=force)
 
         def checkpoint(*, force: bool = False) -> None:
             nonlocal last_checkpoint
@@ -842,6 +842,10 @@ class DisciplinaryAgentApplication:
                         prepare_research(
                             **prepare_kwargs,
                         )
+                        # Planning has returned a complete result. Persist its
+                        # title/context writes before another connection journals
+                        # the answer; no running tool is committed by a delta.
+                        safe_checkpoint(force=True)
                         if cancelled():
                             raise AgentInterrupted("Agent run was interrupted during planning")
                     except (AgentInterrupted, AgentModelRouteFailure, BillingFailure):
@@ -978,6 +982,10 @@ class DisciplinaryAgentApplication:
                     tools=tools,
                 )
             if not received_delta and result.answer:
+                # Non-streaming runners may call business tools without emitting
+                # tool lifecycle events. Their result is a completed-step boundary,
+                # so release the writer before journaling its synthesized body.
+                safe_checkpoint(force=True)
                 record_delta(result.answer)
             coverage = getattr(tools, "knowledge_index_coverage", None)
             if coverage is not None:

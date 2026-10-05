@@ -302,3 +302,48 @@ def test_unsaved_tail_after_durable_body_preserves_exact_order_without_duplicate
         assert "output_persistence_failed" in frames
 
     asyncio.run(exercise())
+
+
+def test_runtime_checkpoint_keeps_active_tool_write_rollbackable(client):
+    from sqlalchemy import text
+
+    from qunxue_api.modules.agent_conversation import AgentToolEvent
+
+    user_id = registered_user(client)
+    database = client.app.state.database
+    with database.session() as session:
+        session.execute(text("CREATE TABLE runtime_rollback_probe (value TEXT)"))
+        session.commit()
+
+        class Runner:
+            def run_stream(self, *, on_delta, on_tool_event, on_checkpoint, **kwargs):
+                on_tool_event(AgentToolEvent(tool="write", phase="started", call_id="write"))
+                session.execute(text("INSERT INTO runtime_rollback_probe VALUES ('unfinished')"))
+                on_checkpoint()
+                with database.session() as observer:
+                    assert observer.execute(text(
+                        "SELECT count(*) FROM runtime_rollback_probe"
+                    )).scalar() == 0
+                session.rollback()
+                on_tool_event(AgentToolEvent(tool="write", phase="failed", call_id="write"))
+                on_delta("工具失败后仍保留的正文")
+                return AgentRunResult(answer="最终答案", citations=(), release_id="release-a",
+                                      provider="test", model="test")
+
+        app = DisciplinaryAgentApplication(
+            conversations=ConversationService(SqliteConversationRepository(session)),
+            runner=Runner(), tools_factory=Tools, rollback=session.rollback,
+        )
+
+        def delivered(delta):
+            with database.session() as observer:
+                assert observer.execute(text(
+                    "SELECT count(*) FROM runtime_rollback_probe"
+                )).scalar() == 0
+                saved = SqliteConversationRepository(observer).find_run(
+                    user_id=user_id, idempotency_key="active-tool-rollback",
+                )
+                assert saved.output_attempts[0].answer == delta
+
+        app.run_turn(user_id=user_id, conversation_id=None, prompt="问题",
+                     idempotency_key="active-tool-rollback", on_delta=delivered)
