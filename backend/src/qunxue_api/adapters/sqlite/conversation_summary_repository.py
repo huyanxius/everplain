@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -22,8 +23,12 @@ from .agent_memory_model import (
 from .agent_memory_repository import SqliteMemoryRepository, utc
 from .conversation_context_repository import SqliteConversationContextRepository
 
-# Same daily per-user budget as durable learning. Failed calls retain the reservation.
+# Same daily budget as durable learning. Dispatched/unknown failures retain reservations.
 SUMMARY_RESERVATION = 24000
+_RESERVATION_AUDIT = "_reservation_release_audit"
+_PREFLIGHT_FAILURES = {
+    "billing_open:phase_policy_missing", "billing_open:billing_runtime_missing",
+}
 _SOURCE_BYTES = 16000
 _GENERIC_TITLES = {
     "理清下一步",
@@ -40,6 +45,16 @@ class SqliteConversationSummaryRepository:
         self.session = session
         self.enabled = enabled
         self.memory = SqliteMemoryRepository(session)
+
+    @staticmethod
+    def _preserve_reservation_audit(output, previous, *, clear_active=False):
+        # Technical audit is never model-provided or exposed by validate/read.
+        if isinstance(previous, dict) and _RESERVATION_AUDIT in previous:
+            audit = deepcopy(previous[_RESERVATION_AUDIT])
+            if clear_active and isinstance(audit, dict):
+                audit.pop("active_reservation", None)
+            return {**output, _RESERVATION_AUDIT: audit}
+        return output
 
     def snapshot(self, user_id):
         if not self.enabled:
@@ -316,19 +331,21 @@ class SqliteConversationSummaryRepository:
             if not sources:
                 # Persist a zero-call no-op watermark so weak/oversized histories
                 # cannot monopolize the bounded scheduler scan forever.
+                previous = self.session.get(ConversationSummaryRow, owner, populate_existing=True)
+                empty = self._preserve_reservation_audit({}, previous.summary if previous else {})
                 self.session.execute(
                     insert(ConversationSummaryRow)
                     .values(
                         user_id=owner,
                         fingerprint=fingerprint,
                         attempted_fingerprint=fingerprint,
-                        summary={},
+                        summary=empty,
                         attempts=0,
                         updated_at=now,
                     )
                     .on_conflict_do_update(
                         index_elements=[ConversationSummaryRow.user_id],
-                        set_={"fingerprint": fingerprint, "summary": {}, "updated_at": now},
+                        set_={"fingerprint": fingerprint, "summary": empty, "updated_at": now},
                     )
                 )
                 continue
@@ -424,6 +441,20 @@ class SqliteConversationSummaryRepository:
                     )
                 )
                 continue
+            previous = row.summary if isinstance(row.summary, dict) else {}
+            audit = deepcopy(previous.get(_RESERVATION_AUDIT, {}))
+            if not isinstance(audit, dict):
+                raise ValueError("invalid_summary_reservation_audit")
+            audit["active_reservation"] = {
+                "lease_token": token, "day": day, "fingerprint": fingerprint,
+                "calls": 1, "budget_tokens": SUMMARY_RESERVATION,
+            }
+            self.session.execute(
+                update(ConversationSummaryRow).where(
+                    ConversationSummaryRow.user_id == owner,
+                    ConversationSummaryRow.lease_token == token,
+                ).values(summary={**previous, _RESERVATION_AUDIT: audit})
+            )
             return ContextSummaryBatch(user_id, token, fingerprint, sources, day, omitted)
         return None
 
@@ -432,6 +463,13 @@ class SqliteConversationSummaryRepository:
         snapshot = self.snapshot(batch.user_id)
         if snapshot is None or snapshot[0] != batch.fingerprint:
             return False
+        previous = self.session.get(
+            ConversationSummaryRow, str(batch.user_id), populate_existing=True
+        )
+        summary = self._preserve_reservation_audit(
+            self.validate(output, snapshot[1]), previous.summary if previous else {},
+            clear_active=True,
+        )
         result = self.session.execute(
             update(ConversationSummaryRow)
             .where(
@@ -441,7 +479,7 @@ class SqliteConversationSummaryRepository:
             )
             .values(
                 fingerprint=batch.fingerprint,
-                summary=self.validate(output, snapshot[1]),
+                summary=summary,
                 updated_at=now,
                 lease_token=None,
                 lease_until=None,
@@ -449,6 +487,7 @@ class SqliteConversationSummaryRepository:
                 attempts=0,
                 last_error=None,
             )
+            .execution_options(synchronize_session=False)
         )
         if result.rowcount != 1:
             return False
@@ -467,7 +506,11 @@ class SqliteConversationSummaryRepository:
             operation.finish("success", connection=self.session.connection())
         return True
 
-    def failed(self, batch, *, terminal=False, code="summary_failed"):
+    def failed(self, batch, *, terminal=False, code="summary_failed", release_reservation=False):
+        if release_reservation:
+            if terminal or code not in _PREFLIGHT_FAILURES:
+                raise ValueError("unproven_summary_reservation_release")
+            return self._release_preflight_reservation(batch, code)
         self.session.execute(
             update(ConversationSummaryRow)
             .where(
@@ -482,3 +525,83 @@ class SqliteConversationSummaryRepository:
                 last_error=code,
             )
         )
+
+    def _release_preflight_reservation(self, batch, code):
+        """CAS the live lease and refund its exact reservation in one transaction."""
+        connection = self.session.connection()
+        # sqlite3 legacy transaction mode does not begin on SELECT/SAVEPOINT.
+        # Ensure releasing our savepoint cannot commit ahead of the outer scope.
+        if not connection.connection.driver_connection.in_transaction:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+        now, owner = datetime.now(UTC), str(batch.user_id)
+        row = self.session.get(ConversationSummaryRow, owner, populate_existing=True)
+        usage = self.session.get(MemoryUsageRow, (owner, batch.usage_day), populate_existing=True)
+        if (
+            row is None or row.lease_token != batch.lease_token
+            or row.attempted_fingerprint != batch.fingerprint
+            or row.lease_until is None or utc(row.lease_until) <= now or row.attempts < 1
+            or usage is None or usage.calls < 1 or usage.budget_tokens < SUMMARY_RESERVATION
+        ):
+            return False
+        previous = row.summary if isinstance(row.summary, dict) else {}
+        audit = deepcopy(previous.get(_RESERVATION_AUDIT, {}))
+        if not isinstance(audit, dict):
+            return False
+        if audit.get("active_reservation") != {
+            "lease_token": batch.lease_token, "day": batch.usage_day,
+            "fingerprint": batch.fingerprint, "calls": 1,
+            "budget_tokens": SUMMARY_RESERVATION,
+        }:
+            return False
+        released = audit.get("preflight", {})
+        if not isinstance(released, dict) or any(
+            type(released.get(key, 0)) is not int or released.get(key, 0) < 0
+            for key in ("released_calls", "released_budget_tokens")
+        ):
+            return False
+        before = {"calls": usage.calls, "budget_tokens": usage.budget_tokens,
+                  "attempts": row.attempts}
+        after = {"calls": usage.calls - 1,
+                 "budget_tokens": usage.budget_tokens - SUMMARY_RESERVATION,
+                 "attempts": row.attempts - 1}
+        audit["preflight"] = {
+            "released_calls": released.get("released_calls", 0) + 1,
+            "released_budget_tokens": released.get("released_budget_tokens", 0)
+            + SUMMARY_RESERVATION,
+            "day": batch.usage_day, "fingerprint": batch.fingerprint,
+            "last_lease_token": batch.lease_token, "reason": code,
+            "released_at": now.isoformat(), "before": before, "after": after,
+        }
+        audit.pop("active_reservation")
+        # The savepoint prevents partial refund/audit if either conditional write fails.
+        with self.session.begin_nested() as transaction:
+            changed = self.session.execute(
+                update(ConversationSummaryRow).where(
+                    ConversationSummaryRow.user_id == owner,
+                    ConversationSummaryRow.lease_token == batch.lease_token,
+                    ConversationSummaryRow.attempted_fingerprint == batch.fingerprint,
+                    ConversationSummaryRow.lease_until > now,
+                    ConversationSummaryRow.attempts == before["attempts"],
+                ).values(
+                    lease_token=None, lease_until=None, attempts=after["attempts"],
+                    retry_after=now + timedelta(minutes=15), last_error=code,
+                    summary={**previous, _RESERVATION_AUDIT: audit},
+                ).execution_options(synchronize_session=False)
+            )
+            if changed.rowcount != 1:
+                transaction.rollback()
+                return False
+            refunded = self.session.execute(
+                update(MemoryUsageRow).where(
+                    MemoryUsageRow.user_id == owner, MemoryUsageRow.day == batch.usage_day,
+                    MemoryUsageRow.calls >= 1,
+                    MemoryUsageRow.budget_tokens >= SUMMARY_RESERVATION,
+                ).values(
+                    calls=MemoryUsageRow.calls - 1,
+                    budget_tokens=MemoryUsageRow.budget_tokens - SUMMARY_RESERVATION,
+                ).execution_options(synchronize_session=False)
+            )
+            if refunded.rowcount != 1:
+                transaction.rollback()
+                return False
+        return True

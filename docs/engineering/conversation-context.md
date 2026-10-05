@@ -55,13 +55,17 @@
 
 `EVERPLAIN_CONVERSATION_SUMMARY_ENABLED` 默认true，仅控制近期摘要后台及派生缓存读取，与控制长期自动提炼的 `EVERPLAIN_MEMORY_LEARNING_ENABLED` 独立。长期学习false时摘要仍可运行；两者复用同一60秒循环，但分别创建/调用自己的生成器。用户及项目的use_memory/learn_memory开关继续优先，摘要关闭时不读取原消息、不展示旧派生缓存或返回虚假pending。空闲600秒、每日8次/64000token及全局计费风险门保持原有值；打开摘要不打开长期自动学习。
 
-失败仅在既有last_error字段及日志保存受控`stage:reason`，包括billing_open/billing_start/model/publish/settle，以及固定计费、网络、结构输出、用量、租约和存储类别；HTTP错误只保存100–599数字状态。异常消息、provider body、prompt、凭据与正文不进入诊断。分类不改变终止、退避、配额预留或风险阈值；预算拒绝仍终止同水位尝试。`summary_failed`不能证明已出网，缺phase/runtime可在调用模型前失败；真实根因仍需当前非敏感配置与operation/attempt记录核对。
+失败仅在既有last_error字段及日志保存受控`stage:reason`，包括billing_open/billing_start/model/publish/settle，以及固定计费、网络、结构输出、用量、租约和存储类别；HTTP错误只保存100–599数字状态。异常消息、provider body、prompt、凭据与正文不进入诊断。预算拒绝仍终止同水位尝试。`summary_failed`不能证明已出网，缺phase/runtime可在调用模型前失败；真实根因仍需当前非敏感配置与operation/attempt记录核对。
+
+摘要独立使用`conversation_summary`计费phase，现有CD只加其`operator`策略，不打开长期学习、不改变其他phase、价格或风险阈值；已存在不同计费模式时拒绝发布并要求核对。仅`billing_open:phase_policy_missing`及`billing_open:billing_runtime_missing`证明尚未创建operation/出网：当前未过期lease、来源指纹和本次预留的day/token/24000记录同时匹配时，事务CAS释放这1call/24000及1次未执行尝试，仍保留15分钟退避。未知、模型已执行、租约过期/替换、额度记录不匹配均不退款。现有summary JSON保存技术审计，生成/空历史不会抹掉旧补偿记录，模型不能写入且API不展示。
+
+`ops/release_summary_reservations.py`仅针对已取证的2026-10-05两户旧前置配置失败，默认dry-run、显式manifest绑定来源/版本/过期retry/精确2calls/48000/2attempts和零用量/operation/attempt；任一前提不符整体拒绝，同plan审计幂等。apply须先核真实dry-run和已生效发布，再由唯一生产owner串行执行；不改账本、余额、未知风险或既有fence。
 
 - 复用既有 memory 后台循环、配置好的同一模型端点和计费边界，不新增服务、provider、密钥、权限或每次页面打开的模型调用。新 `agent_conversation_summaries` 是每账户一个可重算派生缓存与租约，不修改长期 Memory。
 - 最近最多6段会话，每段最多6个完整轮次，保留 user/assistant 角色；助手派生文本先经既有原文回读的资料删除与访问校验。模型不得将助手建议写成用户已确认决定，不从引文推断用户身份或敏感偏好。
 - 按完整消息轮询选取多个会话，原始来源预算16KB UTF-8、完整模型输入22KB、最多1800输出token。超预算消息明确计入 omitted_messages；不把截断字符串冒充模型总结，不声称已读全部历史。弱来源允许summary和cards都为空。
 - 新输入水位、标题、来源删除/权限变化及Memory开关改变都会使旧缓存失效。仅空闲达到既有 memory_learning_idle_seconds（默认600秒）、没有同账户运行中Agent且指纹改变时，后台进行一次结构化模型提炼；60秒调度周期，租约5分钟、重复指纹不重跑。失败保留预算、15分钟退避，最多3次同水位尝试；新水位可重试。
-- 与长期学习共享每用户每日8次/64000 token默认上限，每次先保守预留24000，已知用量完成后回填；无法取得真实用量的失败不释放预留。参数复用现有配置。
+- 与长期学习共享每用户每日8次/64000 token默认上限，每次先保守预留24000，已知用量完成后回填；除上述可证明尚未出网的两类前置失败外，无法取得真实用量的失败不释放预留。参数复用现有配置。
 - 模型输出短摘要及0–3个具体继续问题。每项必须有来源message ID、conversation ID和精确非凭据引文；结构化输出再次以当前owner可访问原文校验。不可用来源、泛化固定标题、无依据引文或凭据内容均丢弃；没有静态假卡回退。
 - `GET /api/agent/context-summary` 只读缓存，不触发模型，返回ready/pending/empty/disabled/failed及部分来源覆盖信息。首页与新普通Chat共享user-keyed React Query及同一组件；选择卡片只填草稿，不自动发送。保留原来的“接着聊”会话入口。成功轮次、会话/项目删除会使前端相关缓存失效。
 - 新模型轮次先使用真实结构化活动摘要和来源指针；细节仍需要search/read原文工具。两个工具已补入既有生命周期事件，事件只记录数量/游标/错误，不复制私密原文或检索词。

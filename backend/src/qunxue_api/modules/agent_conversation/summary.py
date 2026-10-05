@@ -51,5 +51,6 @@ class ContextSummaryRepository(Protocol):
     ) -> bool: ...
 
     def failed(
-        self, batch: ContextSummaryBatch, *, terminal: bool = False, code: str = "summary_failed"
+        self, batch: ContextSummaryBatch, *, terminal: bool = False, code: str = "summary_failed",
+        release_reservation: bool = False,
     ) -> None: ...

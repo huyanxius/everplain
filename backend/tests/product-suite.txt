@@ -123,3 +123,4 @@ tests/test_conversation_summary.py
 tests/test_conversation_summary_migration.py
 tests/test_conversation_summary_diagnostics.py
 tests/test_conversation_summary_failure_worker.py
+tests/test_conversation_summary_reservations.py
