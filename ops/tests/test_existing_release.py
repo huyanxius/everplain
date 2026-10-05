@@ -26,6 +26,48 @@ spec.loader.exec_module(release)
 
 
 class RegistryReleaseTests(unittest.TestCase):
+    def test_forward_only_review_is_exact_and_does_not_authorize_the_rollback_controller(self):
+        previous, candidate = {"migration_tree": "e" * 64}, {"migration_tree": "1" * 64}
+        policy = {"reviewed_forward_only_migration_transitions": [
+            {"from": previous["migration_tree"], "to": candidate["migration_tree"]},
+        ]}
+        self.assertTrue(release.check_existing_migration_transition(previous, candidate, policy))
+        self.assertFalse(release.check_existing_migration_transition(previous, previous, policy))
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            release.check_compatible(previous, candidate, policy)
+        for old, new in ((candidate, previous), (previous, {"migration_tree": "2" * 64}),
+                         ({"migration_tree": "2" * 64}, candidate)):
+            with self.subTest(old=old, new=new), \
+                 self.assertRaisesRegex(ValueError, "rollback compatibility"):
+                release.check_existing_migration_transition(old, new, policy)
+        for records in (None, "*", [{"from": "e" * 64, "to": "*"}],
+                        [{"from": "*", "to": "1" * 64}]):
+            with self.subTest(records=records), \
+                 self.assertRaisesRegex(ValueError, "rollback compatibility"):
+                release.check_existing_migration_transition(previous, candidate, {
+                    "reviewed_forward_only_migration_transitions": records,
+                })
+
+    def test_shipped_forward_only_review_matches_current_manifest_storage(self):
+        policy = json.loads((ROOT / "ops/cd/policy.json").read_text())
+        # Packaging includes migrations plus the retrieval schema adapter.
+        storage = {
+            "migrations/" + p.relative_to(ROOT / "backend/migrations").as_posix():
+            hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted((ROOT / "backend/migrations").rglob("*.py"))
+        }
+        storage["schema/sqlite_index.py"] = hashlib.sha256(
+            (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
+        ).hexdigest()
+        candidate = {"migration_tree": hashlib.sha256(
+            json.dumps(storage, sort_keys=True).encode()).hexdigest()}
+        del storage["migrations/versions/20261005_0600_weekly_quota.py"]
+        previous = {"migration_tree": hashlib.sha256(
+            json.dumps(storage, sort_keys=True).encode()).hexdigest()}
+        self.assertTrue(release.check_existing_migration_transition(previous, candidate, policy))
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            release.check_compatible(previous, candidate, policy)
+
     def test_live_compatibility_overlays_require_reviewed_bytes_and_read_only_mounts(self):
         with tempfile.TemporaryDirectory() as d:
             source = Path(d) / "settings.py"
@@ -342,14 +384,20 @@ class ExistingReleaseTests(unittest.TestCase):
             (destination / "images" / (role + ".tar")).write_bytes(b"fixture")
         (destination / "ops/cd").mkdir(parents=True)
         (destination / "ops/cd/policy.json").write_text(
-            '{"rollback_compatible_migration_trees":[]}'
+            json.dumps(getattr(self, "migration_policy", {
+                "rollback_compatible_migration_trees": [],
+            }))
         )
         observed = self.runtime_snapshot()
+        candidate_tree = getattr(
+            self, "candidate_migration_tree", observed["api"]["migration_tree"]
+        )
+        candidate_api = {**observed["api"], "migration_tree": candidate_tree}
         return {
             "revision": release.REVISION,
             "images": {"api": release.API_IMAGE, "web": release.WEB_IMAGE}, "web_checks": {},
-            "migration_tree": observed["api"]["migration_tree"],
-            "runtime_identity": {"api": observed["api"], "web_tree": observed["web_tree"]},
+            "migration_tree": candidate_tree,
+            "runtime_identity": {"api": candidate_api, "web_tree": observed["web_tree"]},
             "initial_live_fingerprint": {"format": 1, "runtime": observed},
             "provenance": {"run_id": "200", "run_attempt": "1",
                 "workflow_ref": "huyanxius/everplain/.github/workflows/deploy.yml@refs/heads/main"},
@@ -357,13 +405,16 @@ class ExistingReleaseTests(unittest.TestCase):
 
     def runtime_snapshot(self, *_args):
         resolved = getattr(self, "resolved_images", {})
-        return {
+        result = {
             "api_image": resolved.get(release.API_IMAGE, release.API_IMAGE),
             "web_image": resolved.get(release.WEB_IMAGE, release.WEB_IMAGE),
             "api": {k: "e" * 64 for k in
                 ("source_tree", "dependency_tree", "migration_tree", "ops_tree", "tokenizer_tree")},
             "web_tree": "f" * 64,
         }
+        if self.api_started and hasattr(self, "candidate_migration_tree"):
+            result["api"]["migration_tree"] = self.candidate_migration_tree
+        return result
 
     def command(self, args, **_kwargs):
         self.calls.append(args)
@@ -529,6 +580,65 @@ class ExistingReleaseTests(unittest.TestCase):
         self.assertTrue(self.updater.report["old_service_restored"])
         self.assertEqual(self.snapshot(self.source / "everplain.db", "schema_marker"), [("old",)])
         self.assertIn(["docker", "start", "everplain-api"], self.calls)
+
+    def enable_forward_only_fixture(self):
+        self.candidate_migration_tree = "1" * 64
+        self.migration_policy = {"reviewed_forward_only_migration_transitions": [
+            {"from": "e" * 64, "to": self.candidate_migration_tree},
+        ]}
+
+    def test_forward_only_success_keeps_candidate_data_and_records_exact_review(self):
+        self.enable_forward_only_fixture()
+        report = self.execute()
+        self.assertTrue(report["deployment_succeeded"])
+        self.assertTrue(report["forward_only_migration_review_verified"])
+        self.assertFalse(report["old_service_restored"])
+        self.assertEqual(self.snapshot(self.source / "everplain.db", "schema_marker"), [("old",)])
+        self.assertEqual(self.snapshot(self.updater.stage / "data/everplain.db", "schema_marker"),
+                         [("new",)])
+        state = json.loads(self.updater.state_path.read_text())
+        self.assertEqual(state["runtime"]["api"]["migration_tree"], self.candidate_migration_tree)
+
+    def test_forward_only_failure_before_candidate_start_restores_only_untouched_old_data(self):
+        self.enable_forward_only_fixture()
+        self.failure = "migration"
+        with self.assertRaises(RuntimeError):
+            self.execute()
+        self.assertTrue(self.updater.report["forward_only_migration_review_verified"])
+        self.assertFalse(self.updater.started)
+        self.assertTrue(self.updater.report["old_service_restored"])
+        self.assertEqual(self.snapshot(self.source / "everplain.db", "schema_marker"), [("old",)])
+        self.assertEqual(self.snapshot(self.source / "everplain.db", "writes"), [])
+        self.assertEqual(self.snapshot(self.updater.stage / "data/everplain.db", "schema_marker"),
+                         [("new",)])
+
+    def test_forward_only_failure_after_start_retains_candidate_and_never_runs_old_app(self):
+        self.enable_forward_only_fixture()
+        self.failure = "api-health"
+        with self.assertRaises(RuntimeError):
+            self.execute()
+        self.assertTrue(self.updater.report["forward_only_migration_review_verified"])
+        self.assertTrue(self.updater.report["forward_stop_required"])
+        self.assertTrue(self.updater.started)
+        self.assertFalse(self.updater.report["old_service_restored"])
+        self.assertFalse(any(call[:2] == ["docker", "start"] for call in self.calls))
+        self.assertEqual(self.snapshot(self.updater.stage / "data/everplain.db", "schema_marker"),
+                         [("new",)])
+        self.assertEqual(self.snapshot(self.updater.stage / "data/everplain.db", "writes"),
+                         [("accepted-background-write",)])
+        journal = json.loads((self.updater.stage / "transaction.json").read_text())
+        self.assertTrue(journal["candidate_started"])
+        self.assertTrue(journal["report"]["forward_stop_required"])
+
+    def test_unknown_forward_only_edge_fails_before_service_stop_or_migration(self):
+        self.enable_forward_only_fixture()
+        self.migration_policy["reviewed_forward_only_migration_transitions"][0]["to"] = "2" * 64
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            self.execute()
+        self.assertFalse(self.updater.stopped)
+        self.assertFalse(self.updater.started)
+        self.assertFalse(any(call[:2] == ["docker", "stop"] or "alembic" in call
+                             for call in self.calls))
 
     def test_failure_after_api_start_never_restarts_old_app_or_discards_new_writes(self):
         for failure in ("api-health", "public-health"):

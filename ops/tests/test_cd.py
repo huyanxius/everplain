@@ -187,6 +187,9 @@ class FilesystemSafetyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "rollback compatibility"):
             deploy.check_compatible({"migration_tree": new_hash},
                                     {"migration_tree": quota_hash}, policy)
+        self.assertEqual(policy["reviewed_forward_only_migration_transitions"], [
+            {"from": new_hash, "to": quota_hash},
+        ])
         changed = dict(scope_storage)
         changed["migrations/versions/20261005_0590_user_avatar.py"] = "0" * 64
         changed_hash = hashlib.sha256(json.dumps(changed, sort_keys=True).encode()).hexdigest()

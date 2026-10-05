@@ -75,8 +75,15 @@ rejecting it. If a candidate fails after start, keep its data and financial audi
 evidence; repair with an epoch-aware candidate on a fresh copy. Never run 7f on
 the migrated, used database, downgrade 0600, or restore over accepted writes.
 
-Such a forward-only maintenance authorization needs an explicit operator/user
-decision before policy enables it. Alternatively, first publish a genuinely
-epoch-aware compatibility bridge on the old storage tree and prove both versions
-against the migration, including closed-epoch refunds. Neither choice can be
-replaced by adding a hash to the rollback allowlist.
+The approved release uses that existing forward-stop route. Policy binds only
+the exact 7f-to-0600 pair in `reviewed_forward_only_migration_transitions`;
+`check_existing_migration_transition()` consumes that review exclusively in
+`deploy-existing.py`. The generic `Controller` and `check_compatible()` continue
+rejecting it. Historical rollback review edges remain unchanged. Unknown,
+reversed, mutated and wildcard edges are rejected before service stop/migration.
+
+Offline regression covers successful activation with the retained schema identity,
+pre-start migration failure restoring untouched old data, post-start API failure
+preserving candidate writes without starting the old app, and the persisted
+candidate-start journal. This is source/offline verification, not a production
+deployment or browser/model acceptance claim.

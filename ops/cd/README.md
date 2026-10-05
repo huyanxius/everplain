@@ -83,6 +83,10 @@ superseded. This deploys the checked main snapshot, not every intermediate commi
   expansion must be transaction-safe and preserve old readers/writers, and should be
   tested with both app revisions. Destructive/contract migrations need a separate
   maintenance and backup/recovery plan; adding a hash does not make them safe.
+  The existing-account route separately consumes exact forward-only maintenance
+  reviews under its candidate-start retention boundary; this rollback controller
+  does not. See [the quota 0600 review](QUOTA_0600_REVIEW.md) for the incompatible
+  old writer and the approved forward-stop release semantics.
 - `EVERPLAIN_MIGRATIONS_MANAGED=1` is set only by this controller. API startup then skips
   implicit migration. That permits the old compatible app to run against a newer schema
   it cannot name in its old Alembic history. Existing Compose/manual startup retains its

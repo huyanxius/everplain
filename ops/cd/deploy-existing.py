@@ -59,6 +59,30 @@ def require(condition, message="checked release precondition failed"):
         raise RuntimeError(message)
 
 
+def check_existing_migration_transition(old, new, policy):
+    """Allow reviewed forward-only edges only in this updater's retention model.
+
+    Before candidate start this route restores the untouched old data. After
+    candidate start recover() never runs the previous app on the candidate DB.
+    The separate rollback-capable Controller must keep using check_compatible.
+    Return whether the exact forward-only review was needed, for the report.
+    """
+    try:
+        check_compatible(old, new, policy)
+    except ValueError:
+        transition = {"from": old["migration_tree"], "to": new["migration_tree"]}
+        reviewed = policy.get("reviewed_forward_only_migration_transitions", [])
+        if (
+            isinstance(reviewed, list)
+            and all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+                    for value in transition.values())
+            and transition in reviewed
+        ):
+            return True
+        raise
+    return False
+
+
 def run(args, timeout=180, report=None, prefix=""):
     result = subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)
     if report is not None:
@@ -715,6 +739,7 @@ class ExistingRelease:
                 "deployment_succeeded",
                 "old_service_restored",
                 "forward_stop_required",
+                "forward_only_migration_review_verified",
             )
         }
         self.report["data_preserved"] = True
@@ -899,7 +924,7 @@ class ExistingRelease:
         verify_live_overlays(api, policy)
         env = configure_billing_policy(old_env, policy, self.report)
         self.expected_billing_policy = env.get("EVERPLAIN_BILLING_PHASE_POLICIES")
-        check_compatible(
+        self.report["forward_only_migration_review_verified"] = check_existing_migration_transition(
             {"migration_tree": self.baseline["api"]["migration_tree"]}, manifest, policy,
         )
         self.report["live_overlay_guard_verified"] = True
