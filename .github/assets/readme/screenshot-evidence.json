@@ -1,0 +1,39 @@
+{
+  "application": "Unmodified real Everplain frontend and backend from isolated local checkout",
+  "revision": "981915939868c73350a49dba6551624f2da467eb",
+  "browser": "Installed Mac Google Chrome, isolated headless context, no personal profile",
+  "runtime": "mock; temporary SQLite; no model requests or fabricated model replies; background import/graph worker disabled",
+  "materials_source": "Original synthetic Chinese Markdown; all four files are included in demo-materials/ and visibly marked 演示.",
+  "screenshots": [
+    {
+      "filename": "everplain-demo-library.png",
+      "route": "http://127.0.0.1:15497/library",
+      "captured_at_utc": "2026-10-05T19:35:15.937936+00:00",
+      "width": 1440,
+      "height": 1000,
+      "sha256": "98db30f09a3cc5682adaa4e29021a284e0d884f48cae8f9c579877b0e25b7b6b",
+      "size_bytes": 92584
+    },
+    {
+      "filename": "everplain-demo-document.png",
+      "route": "http://127.0.0.1:15497/library?kb_id=a781e79f-fce9-4f29-a1da-8f961487caa3&document_id=70df5121-ee4a-4073-a535-60adae4a21cc",
+      "captured_at_utc": "2026-10-05T19:35:18.825407+00:00",
+      "width": 1440,
+      "height": 1000,
+      "sha256": "09ffcb636bdb0d6615b315be532c6902de6048da717e68df4e0967993681bda9",
+      "size_bytes": 162720
+    },
+    {
+      "filename": "everplain-demo-writing.png",
+      "route": "http://127.0.0.1:15497/writing/2c00f6a4-679a-4baf-87af-bda2422873bc",
+      "captured_at_utc": "2026-10-05T19:35:21.735424+00:00",
+      "width": 1440,
+      "height": 1000,
+      "sha256": "6e727694b9a5d0f6af9aa00ec3939cb5e2db8e4013db8f10effb5399903b1f03",
+      "size_bytes": 136862
+    }
+  ],
+  "page_errors": [],
+  "blocked_nonlocal_requests": [],
+  "cleanup": "Isolated Chrome context closed; API and Vite services terminated after capture."
+}
