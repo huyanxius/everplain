@@ -5117,6 +5117,12 @@
       },
       "CreditCodeBatchResponse": {
         "properties": {
+          "action": {
+            "const": "bank_reset",
+            "default": "bank_reset",
+            "title": "Action",
+            "type": "string"
+          },
           "codes": {
             "items": {
               "type": "string"
@@ -5193,6 +5199,17 @@
           "points": {
             "title": "Points",
             "type": "integer"
+          },
+          "quota_period_epoch": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Period Epoch"
           }
         },
         "required": [
@@ -5347,10 +5364,45 @@
       },
       "CreditRedemptionResponse": {
         "properties": {
+          "action": {
+            "const": "bank_reset",
+            "default": "bank_reset",
+            "title": "Action",
+            "type": "string"
+          },
           "balance": {
             "minimum": 0.0,
             "title": "Balance",
             "type": "integer"
+          },
+          "delta_points": {
+            "default": 0,
+            "title": "Delta Points",
+            "type": "integer"
+          },
+          "quota_period_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Period Expires At"
+          },
+          "quota_period_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Period Started At"
           },
           "redeemed_points": {
             "exclusiveMinimum": 0.0,
@@ -5439,6 +5491,41 @@
           "pricing": {
             "$ref": "#/components/schemas/CreditPricingResponse"
           },
+          "quota_period_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Period Expires At"
+          },
+          "quota_period_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Period Started At"
+          },
+          "quota_plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Plan Id"
+          },
           "quota_status": {
             "default": "unavailable",
             "enum": [
@@ -5447,6 +5534,12 @@
             ],
             "title": "Quota Status",
             "type": "string"
+          },
+          "quota_window_hours": {
+            "const": 168,
+            "default": 168,
+            "title": "Quota Window Hours",
+            "type": "integer"
           },
           "total_entries": {
             "minimum": 0.0,
@@ -6121,6 +6214,7 @@
           "billing_replay_blocked",
           "billing_provider_error",
           "credit_code_unavailable",
+          "quota_configuration_unavailable",
           "credit_code_batch_conflict",
           "email_verification_invalid",
           "email_verification_rate_limited",

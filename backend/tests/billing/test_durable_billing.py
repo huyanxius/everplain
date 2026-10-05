@@ -35,6 +35,7 @@ def wallet(tmp_path):
         max_operation_pico=10**11,
         daily_budget_pico=10**12,
         max_attempts=10,
+        billing_policy="delivery_v1",
     )
     yield runtime, engine
     engine.dispose()

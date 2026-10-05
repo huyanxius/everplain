@@ -143,8 +143,13 @@ class FilesystemSafetyTests(unittest.TestCase):
         storage["schema/sqlite_index.py"] = hashlib.sha256(
             (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
         ).hexdigest()
-        new_hash = hashlib.sha256(json.dumps(storage, sort_keys=True).encode()).hexdigest()
-        avatar_storage = {k: v for k, v in storage.items()
+        quota_hash = hashlib.sha256(json.dumps(storage, sort_keys=True).encode()).hexdigest()
+        # Historical review edges predate quota epochs. Do not contaminate every
+        # predecessor with 0600 when reconstructing the reviewed storage trees.
+        scope_storage = {k: v for k, v in storage.items()
+                         if k != "migrations/versions/20261005_0600_weekly_quota.py"}
+        new_hash = hashlib.sha256(json.dumps(scope_storage, sort_keys=True).encode()).hexdigest()
+        avatar_storage = {k: v for k, v in scope_storage.items()
                           if k != "migrations/versions/20261005_0580_writing_revision_scope.py"}
         avatar_hash = hashlib.sha256(
             json.dumps(avatar_storage, sort_keys=True).encode()).hexdigest()
@@ -177,14 +182,22 @@ class FilesystemSafetyTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "rollback compatibility"):
                 deploy.check_compatible({"migration_tree": previous}, {"migration_tree": new_hash},
                                         policy)
-        changed = dict(storage)
+        # Additive DDL does not prove that the previous app can safely write the
+        # quota mirrors. This transition requires a separate release review.
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            deploy.check_compatible({"migration_tree": new_hash},
+                                    {"migration_tree": quota_hash}, policy)
+        self.assertEqual(policy["reviewed_forward_only_migration_transitions"], [
+            {"from": new_hash, "to": quota_hash},
+        ])
+        changed = dict(scope_storage)
         changed["migrations/versions/20261005_0590_user_avatar.py"] = "0" * 64
         changed_hash = hashlib.sha256(json.dumps(changed, sort_keys=True).encode()).hexdigest()
         for previous, candidate in ((new_hash, summary_hash), (summary_hash, changed_hash)):
             with self.assertRaisesRegex(ValueError, "rollback compatibility"):
                 deploy.check_compatible({"migration_tree": previous}, {"migration_tree": candidate},
                                         policy)
-        changed = dict(storage)
+        changed = dict(scope_storage)
         changed["migrations/versions/20261005_0580_writing_revision_scope.py"] = "0" * 64
         changed_hash = hashlib.sha256(json.dumps(changed, sort_keys=True).encode()).hexdigest()
         for previous, candidate in ((new_hash, avatar_hash), (avatar_hash, changed_hash)):

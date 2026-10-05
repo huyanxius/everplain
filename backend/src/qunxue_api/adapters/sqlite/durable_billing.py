@@ -15,7 +15,19 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from sqlalchemy import text
 
-from qunxue_api.modules.billing import PICO_USD, PriceBook, Tariff, TavilyPrice, UnknownPrice
+from qunxue_api.adapters.sqlite.quota_periods import (
+    ensure_quota_period,
+    get_quota_period,
+    settle_quota_period,
+)
+from qunxue_api.modules.billing import (
+    PICO_USD,
+    BillingContextMissing,
+    PriceBook,
+    Tariff,
+    TavilyPrice,
+    UnknownPrice,
+)
 from qunxue_api.modules.billing import (
     BillingBudgetExceeded as BillingBudgetExceeded,
 )
@@ -33,7 +45,8 @@ SCHEMA = (
       exempt INTEGER NOT NULL, price_json TEXT NOT NULL, credit_pico TEXT NOT NULL DEFAULT '0',
       original_credit_pico TEXT NOT NULL DEFAULT '0',
       charged_points INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""",
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      quota_period_epoch INTEGER)""",
     """CREATE TABLE billing_attempts (
       attempt_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES billing_operations(run_id),
       endpoint_id TEXT NOT NULL, route_id TEXT, request_hash TEXT NOT NULL,
@@ -80,6 +93,8 @@ class DurableBilling:
         daily_budget_pico: int,
         max_attempts: int = 64,
         clock=None,
+        billing_policy="actual_usage_v1",
+        plan_limits=None,
     ):
         values = max_attempt_pico, max_operation_pico, daily_budget_pico, max_attempts
         if any(type(n) is not int or n <= 0 for n in values):
@@ -91,6 +106,10 @@ class DurableBilling:
         self.daily_budget_pico = daily_budget_pico
         self.max_attempts = max_attempts
         self.clock = clock or (lambda: datetime.now(UTC))
+        if billing_policy not in {"actual_usage_v1", "delivery_v1"}:
+            raise ValueError("unknown billing policy")
+        self.billing_policy = billing_policy
+        self.plan_limits = plan_limits
 
     @contextmanager
     def _transaction(self):
@@ -157,18 +176,30 @@ class DurableBilling:
             tavily_price=TavilyPrice(**data["tavily_price"]) if data.get("tavily_price") else None,
         )
 
+    @staticmethod
+    def _actual_usage(run):
+        # Missing policy marks historical operations, not permission to reprice them.
+        return json.loads(run["price_json"]).get("billing_policy") == "actual_usage_v1"
+
+    def _operation_snapshot(self):
+        snapshot = json.loads(self._snapshot(self.book))
+        snapshot["billing_policy"] = self.billing_policy
+        return json.dumps(snapshot, sort_keys=True)
+
     def _available(self, conn, user_id):
         row = self._one(
-            conn, "SELECT balance FROM credit_accounts WHERE user_id=:user", user=user_id
+            conn, "SELECT * FROM credit_accounts WHERE user_id=:user", user=user_id
         )
         if row is None:
             raise BillingBudgetExceeded("credit account is missing", reason="credits_depleted")
         held = conn.scalar(
             text(
                 "SELECT coalesce(sum(hold_points),0) FROM billing_operations "
-                "WHERE user_id=:user AND status='active'"
+                "WHERE user_id=:user AND status='active' "
+                + ("AND quota_period_epoch=:epoch" if row.get("quota_period_epoch") is not None
+                   else "")
             ),
-            {"user": user_id},
+            {"user": user_id, "epoch": row.get("quota_period_epoch")},
         )
         return max(0, row["balance"] - held)
 
@@ -176,7 +207,7 @@ class DurableBilling:
         with self.engine.connect() as conn:
             return self._available(conn, str(user_id))
 
-    def start(self, *, user_id, run_id, fingerprint, exempt=False, resume=False):
+    def start(self, *, user_id, run_id, fingerprint, exempt=False, resume=False, quota_start=True):
         run_id, user_id = str(run_id), str(user_id)
         with self._transaction() as conn:
             previous = self._one(
@@ -190,12 +221,38 @@ class DurableBilling:
             if resume and previous is None:
                 raise BillingReplayBlocked("paused billing operation is missing")
             book = self._book(previous["price_json"]) if previous else self.book
+            actual_usage = self._actual_usage(previous) if previous else (
+                self.billing_policy == "actual_usage_v1"
+            )
+            period = ensure_quota_period(
+                conn, user_id, self.clock(), plan_limits=self.plan_limits, start=quota_start
+            ) if actual_usage and not exempt else None
+            if actual_usage and not exempt and not quota_start and period is None and conn.scalar(
+                text("SELECT 1 FROM sqlite_master WHERE type='table' "
+                     "AND name='credit_quota_periods'")
+            ):
+                raise BillingContextMissing(
+                    "user quota period requires an accepted message",
+                    reason="quota_period_not_started",
+                )
+            if previous and not exempt and not period:
+                account = self._one(conn, "SELECT * FROM credit_accounts WHERE user_id=:user",
+                                    user=user_id)
+                epoch = account.get("quota_period_epoch") if account else None
+                if epoch is not None and previous.get("quota_period_epoch") != epoch:
+                    raise BillingReplayBlocked(
+                        "paused operation belongs to an expired quota period"
+                    )
+            if previous and period and previous.get("quota_period_epoch") != period["epoch"]:
+                raise BillingReplayBlocked("paused operation belongs to an expired quota period")
             available = 0 if exempt else self._available(conn, user_id)
             cap = ceil(Fraction(book.maximum_credit_numerator(self.max_operation_pico), PICO_USD))
             if previous:
                 cap = max(0, cap - Fraction(previous["credit_pico"]) // PICO_USD)
-            hold = 0 if exempt else min(available, cap)
-            if not exempt and hold == 0:
+            # Future operations do not freeze an entire turn's maximum budget.
+            # Only before_attempt reserves the actual request about to be sent.
+            hold = 0 if exempt or actual_usage else min(available, cap)
+            if not exempt and available == 0:
                 balance = conn.scalar(
                     text("SELECT balance FROM credit_accounts WHERE user_id=:user"),
                     {"user": user_id},
@@ -217,8 +274,9 @@ class DurableBilling:
                 text(
                     "INSERT INTO billing_operations "
                     "(run_id,user_id,fingerprint,status,hold_points,exempt,price_json,creat"
-                    "ed_at,updated_at) "
-                    "VALUES (:run,:user,:fingerprint,'active',:hold,:exempt,:price,:now,:now)"
+                    "ed_at,updated_at,quota_period_epoch) "
+                    "VALUES (:run,:user,:fingerprint,'active',:hold,:exempt,:price,"
+                    ":now,:now,:epoch)"
                 ),
                 {
                     "run": run_id,
@@ -226,8 +284,9 @@ class DurableBilling:
                     "fingerprint": fingerprint,
                     "hold": hold,
                     "exempt": int(exempt),
-                    "price": self._snapshot(self.book),
+                    "price": self._operation_snapshot(),
                     "now": now,
+                    "epoch": period["epoch"] if period else None,
                 },
             )
         return run_id
@@ -269,6 +328,12 @@ class DurableBilling:
             )
             if run is None or run["status"] != "active":
                 raise BillingReplayBlocked("operation is not active")
+            if run.get("quota_period_epoch") is not None and not run["exempt"]:
+                period = ensure_quota_period(
+                    conn, run["user_id"], self.clock(), plan_limits=self.plan_limits, start=False
+                )
+                if period is None or period["epoch"] != run["quota_period_epoch"]:
+                    raise BillingReplayBlocked("operation belongs to an expired quota period")
             if requested_service_tier not in {None, "default", "standard"}:
                 raise UnknownPrice("requested service tier has no configured tariff")
             book = self._book(run["price_json"]).lock_dispatch(model, self.clock())
@@ -293,6 +358,7 @@ class DurableBilling:
             ) + new_credit
             unsettled = max(0, user_credit - Fraction(run["credit_pico"]))
             max_credit = ceil(Fraction(unsettled, PICO_USD))
+            actual_usage = self._actual_usage(run)
             if (
                 reserved > self.max_attempt_pico
                 or len(attempts) >= self.max_attempts
@@ -303,7 +369,10 @@ class DurableBilling:
                 raise BillingBudgetExceeded(
                     "model service risk exceeds reserved budget", reason="service_budget_exceeded"
                 )
-            if not run["exempt"] and max_credit > run["hold_points"]:
+            if not run["exempt"] and max_credit > (
+                self._available(conn, run["user_id"]) + run["hold_points"]
+                if actual_usage else run["hold_points"]
+            ):
                 raise BillingBudgetExceeded(
                     "request needs more available credits", reason="credits_depleted"
                 )
@@ -345,8 +414,10 @@ class DurableBilling:
                 {"id": attempt},
             )
             conn.execute(
-                text("UPDATE billing_operations SET updated_at=:now WHERE run_id=:run"),
-                {"now": now, "run": str(run_id)},
+                text("UPDATE billing_operations SET updated_at=:now,hold_points=:hold "
+                     "WHERE run_id=:run"),
+                {"now": now, "run": str(run_id),
+                 "hold": max_credit if actual_usage and not run["exempt"] else run["hold_points"]},
             )
         return attempt
 
@@ -374,13 +445,18 @@ class DurableBilling:
         # Only the supported transport's terminal pre-send connection evidence
         # calls this. Legacy rows, crashes and absent trace cannot reach it.
         with self._transaction() as conn:
-            return bool(conn.execute(text(
+            released = bool(conn.execute(text(
                 "UPDATE billing_attempts SET dispatch_state='not_sent',outcome='error',"
                 "usage_state='not_sent',billable=0,reference_cost_pico=0,"
                 "failure_code='transport_proven_not_sent',updated_at=:now "
                 "WHERE attempt_id=:id AND dispatch_state='prepared' "
                 "AND reference_cost_pico IS NULL"
             ), {"id": attempt_id, "now": self._now()}).rowcount)
+            if released:
+                row = self._one(conn, "SELECT run_id FROM billing_attempts WHERE attempt_id=:id",
+                                id=attempt_id)
+                self._settle_actual(conn, row["run_id"])
+            return released
 
     def pending_reconciliation(self, *, limit=50):
         if type(limit) is not int or not 1 <= limit <= 100:
@@ -439,6 +515,66 @@ class DurableBilling:
             return book.search_credit_numerator(cost)
         return book.credit_numerator(cost)
 
+    def _settle_actual(self, conn, run_id, *, receipt_attempt_id=None):
+        """Debit confirmed usage and retain capacity only for live HTTP attempts.
+
+        This is inside the attempt's receipt transaction, so a crash cannot leave
+        a confirmed charge without its receipt, or apply the same receipt twice.
+        Unknown terminal attempts stay in operator risk, never in the wallet hold.
+        """
+        run = self._one(conn, "SELECT * FROM billing_operations WHERE run_id=:run", run=run_id)
+        if run is None or not self._actual_usage(run) or run["status"] != "active":
+            return
+        attempts = conn.execute(text("SELECT * FROM billing_attempts WHERE run_id=:run"),
+                                {"run": run_id}).mappings().all()
+        numerator = sum(self._attempt_credit(a) for a in attempts if a["billable"])
+        remaining = sum(self._attempt_credit(a, reserved=True) for a in attempts
+                        if a["outcome"] == "in_flight")
+        points = 0
+        if not run["exempt"]:
+            epoch = run.get("quota_period_epoch")
+            period = get_quota_period(conn, run["user_id"], epoch) if epoch is not None else None
+            if epoch is not None and period is None:
+                raise BillingReplayBlocked("operation quota period is missing")
+            previous = period or self._one(
+                conn, "SELECT total_credit_pico FROM billing_precision WHERE user_id=:u",
+                u=run["user_id"]
+            )
+            old_total = Fraction(previous["total_credit_pico"]) if previous else 0
+            new_total = old_total - Fraction(run["credit_pico"]) + numerator
+            points = new_total // PICO_USD - old_total // PICO_USD
+            # Existing provider-overrun/mismatch guards remain. Confirmed ordinary
+            # usage must fit its own live reservation, never another run's funds.
+            account = period or self._one(
+                conn, "SELECT balance FROM credit_accounts WHERE user_id=:u", u=run["user_id"]
+            )
+            if points < 0 or points > run["hold_points"] or points > account["balance"]:
+                raise BillingBudgetExceeded("confirmed usage exceeds available credits",
+                                            reason="credits_depleted")
+            if new_total != old_total:
+                if period:
+                    settle_quota_period(conn, run["user_id"], epoch,
+                                        account["balance"] - points, str(new_total), self.clock())
+                else:
+                    conn.execute(text(
+                        "INSERT INTO billing_precision(user_id,total_credit_pico) "
+                        "VALUES (:u,:total) ON CONFLICT(user_id) DO UPDATE SET "
+                        "total_credit_pico=excluded.total_credit_pico"
+                    ), {"u": run["user_id"], "total": str(new_total)})
+                    conn.execute(text(
+                        "UPDATE credit_accounts SET balance=balance-:points,updated_at=:now "
+                        "WHERE user_id=:u"
+                    ), {"u": run["user_id"], "points": points, "now": self._now()})
+                self._ledger(conn, run, -points, credit_numerator=numerator,
+                             receipt_attempt_id=receipt_attempt_id)
+        conn.execute(text(
+            "UPDATE billing_operations SET credit_pico=:exact,original_credit_pico=:exact,"
+            "charged_points=charged_points+:points,hold_points=:hold,updated_at=:now "
+            "WHERE run_id=:run"
+        ), {"run": run_id, "exact": str(numerator), "points": points,
+            "hold": 0 if run["exempt"] else ceil(Fraction(remaining, PICO_USD)),
+            "now": self._now()})
+
     def complete_search_attempt(self, *, attempt_id, credits=None, receipt=None,
                                 outcome="error", failure_code=None):
         """Record one actual provider request, without pretending credits are tokens."""
@@ -474,7 +610,11 @@ class DurableBilling:
                 outcome = "error"
                 failure_code = failure_code or "search_usage_unknown"
             operation = self._one(
-                conn, "SELECT status FROM billing_operations WHERE run_id=:run", run=row["run_id"]
+                conn, "SELECT * FROM billing_operations WHERE run_id=:run", run=row["run_id"]
+            )
+            billable = valid and operation["status"] == "active" and (
+                outcome == "success" or (self._actual_usage(operation)
+                                         and not duplicate and not exceeded)
             )
             conn.execute(
                 text("UPDATE billing_attempts SET outcome=:outcome,usage_state=:state,"
@@ -483,8 +623,7 @@ class DurableBilling:
                      "failure_code=:failure,updated_at=:now WHERE attempt_id=:id"),
                 {
                     "outcome": outcome, "state": "known" if valid else "unknown",
-                    "billable": int(valid and outcome == "success"
-                                    and operation["status"] == "active"),
+                    "billable": int(billable),
                     "cost": cost, "receipt": receipt if valid and not duplicate else None,
                     "model": "tavily:basic" if valid else None,
                     "raw": (json.dumps({"credits": credits, "request_id": receipt})
@@ -493,6 +632,7 @@ class DurableBilling:
                     "failure": failure_code, "now": self._now(), "id": attempt_id,
                 },
             )
+            self._settle_actual(conn, row["run_id"], receipt_attempt_id=attempt_id)
         if duplicate:
             raise BillingReplayBlocked("Tavily receipt was already recorded")
         if exceeded:
@@ -558,7 +698,7 @@ class DurableBilling:
             if row is None:
                 raise BillingReplayBlocked("attempt is missing")
             operation = self._one(
-                conn, "SELECT status FROM billing_operations WHERE run_id=:run", run=row["run_id"]
+                conn, "SELECT * FROM billing_operations WHERE run_id=:run", run=row["run_id"]
             )
             if reconciliation_receipt is not None:
                 provider_host, provider_request_id = reconciliation_receipt
@@ -622,6 +762,9 @@ class DurableBilling:
                 elif mismatch:
                     outcome = "model_mismatch"
             billable = int(outcome == "success" and operation["status"] == "active")
+            if self._actual_usage(operation):
+                billable = int(cost is not None and not mismatch and not exceeded
+                               and operation["status"] == "active")
             if reconciliation_receipt is not None:
                 # Authoritative provider cost repairs operator risk only. A later
                 # receipt cannot turn failed delivery into success or a charge.
@@ -669,6 +812,8 @@ class DurableBilling:
                     "id": attempt_id,
                 },
             )
+            if reconciliation_receipt is None:
+                self._settle_actual(conn, row["run_id"], receipt_attempt_id=attempt_id)
         if price_error:
             raise price_error
         if reconciliation_receipt is not None:
@@ -682,17 +827,22 @@ class DurableBilling:
         with self._transaction() as conn:
             conn.execute(
                 text(
-                    "UPDATE billing_attempts SET outcome='error',billable=0,failure_code=:code "
+                    "UPDATE billing_attempts SET outcome='error',billable=CASE WHEN "
+                    "json_extract((SELECT price_json FROM billing_operations o "
+                    "WHERE o.run_id=billing_attempts.run_id),'$.billing_policy')='actual_usage_v1' "
+                    "THEN billable ELSE 0 END,failure_code=:code "
                     "WHERE attempt_id=:id AND outcome='success'"
                 ),
                 {"id": attempt_id, "code": failure_code},
             )
 
-    def _ledger(self, conn, run, points, *, refund=False, credit_numerator=0):
-        balance = conn.scalar(
+    def _ledger(self, conn, run, points, *, refund=False, credit_numerator=0,
+                receipt_attempt_id=None):
+        epoch = run.get("quota_period_epoch")
+        period = get_quota_period(conn, run["user_id"], epoch) if epoch is not None else None
+        balance = period["balance"] if period else conn.scalar(
             text("SELECT balance FROM credit_accounts WHERE user_id=:user"),
-            {"user": run["user_id"]},
-        )
+            {"user": run["user_id"]})
         ident = (
             str(uuid5(NAMESPACE_URL, "billing-refund:" + run["run_id"]))
             if refund
@@ -706,9 +856,15 @@ class DurableBilling:
             conn,
             "SELECT coalesce(sum(input_tokens),0) AS i, "
             "coalesce(sum(output_tokens),0) AS o FROM billing_attempts WHERE run_id=:run "
-            "AND outcome='success'",
+            + ("AND billable=1" if self._actual_usage(run) else "AND outcome='success'"),
             run=run["run_id"],
         )
+        if receipt_attempt_id is not None:
+            totals = self._one(conn,
+                               "SELECT coalesce(input_tokens,0) AS i, "
+                               "coalesce(output_tokens,0) AS o FROM billing_attempts "
+                               "WHERE attempt_id=:id AND run_id=:run",
+                               id=receipt_attempt_id, run=run["run_id"])
         conn.execute(
             text(
                 "INSERT INTO credit_ledger "
@@ -727,6 +883,9 @@ class DurableBilling:
                 "now": self._now(),
             },
         )
+        if epoch is not None:
+            conn.execute(text("UPDATE credit_ledger SET quota_period_epoch=:epoch "
+                              "WHERE entry_id=:id"), {"epoch": epoch, "id": ident})
 
     def finish(self, *, run_id, outcome, connection=None):
         if outcome not in {"success", "paused", "error", "cancelled"}:
@@ -741,6 +900,30 @@ class DurableBilling:
                 return run["status"] if run else None
             if run["status"] == outcome and outcome in {"success", "paused"}:
                 return run["status"]
+            if self._actual_usage(run):
+                # Receipt settlement is independent of business delivery. Failure
+                # and cancellation close the scope but cannot refund paid usage.
+                self._settle_actual(conn, str(run_id))
+                attempts = conn.execute(text(
+                    "SELECT outcome,usage_state FROM billing_attempts WHERE run_id=:run"
+                ), {"run": str(run_id)}).mappings().all()
+                if outcome in {"success", "paused"} and any(
+                    a["outcome"] in {
+                        "in_flight", "overrun", "model_mismatch", "limited", "rejected"
+                    }
+                    or (a["outcome"] == "success" and a["usage_state"] != "known")
+                    for a in attempts
+                ):
+                    outcome = "error"
+                if outcome in {"success", "paused"} and attempts and not any(
+                    a["outcome"] == "success" and a["usage_state"] == "known" for a in attempts
+                ):
+                    outcome = "error"
+                conn.execute(text(
+                    "UPDATE billing_operations SET status=:status,hold_points=0,updated_at=:now "
+                    "WHERE run_id=:run"
+                ), {"status": outcome, "run": str(run_id), "now": self._now()})
+                return outcome
             attempts = conn.execute(
                 text("SELECT * FROM billing_attempts WHERE run_id=:run"), {"run": str(run_id)}
             ).mappings().all()
@@ -757,7 +940,11 @@ class DurableBilling:
                 self._attempt_credit(a)
                 for a in attempts if a["outcome"] == "success" and a["billable"]
             ) if delivered else 0
-            previous = self._one(
+            epoch = run.get("quota_period_epoch")
+            period = get_quota_period(conn, run["user_id"], epoch) if epoch is not None else None
+            if epoch is not None and period is None:
+                raise BillingReplayBlocked("operation quota period is missing")
+            previous = period or self._one(
                 conn, "SELECT total_credit_pico FROM billing_precision WHERE user_id=:user",
                 user=run["user_id"],
             )
@@ -766,37 +953,45 @@ class DurableBilling:
             new_total = previous_total
             charged = run["charged_points"]
             if not run["exempt"]:
+                account = period or self._one(
+                    conn, "SELECT balance FROM credit_accounts WHERE user_id=:user",
+                    user=run["user_id"],
+                )
                 new_total = previous_total - old_exact + numerator
                 # Integer rounding belongs to the account's shared exact total.
                 # Removing a run also removes its fraction: refund the signed
                 # change in that total's floor, not this run's historical debit.
                 # Other runs/phases may have consumed its fractional carry.
                 points = new_total // PICO_USD - previous_total // PICO_USD
-                if delivered:
-                    account = self._one(
-                        conn, "SELECT balance FROM credit_accounts WHERE user_id=:user",
-                        user=run["user_id"],
-                    )
-                    if points < 0 or points > run["hold_points"] or points > account["balance"]:
-                        outcome, delivered = "error", False
-                        numerator = 0
-                        new_total = previous_total - old_exact
-                        points = new_total // PICO_USD - previous_total // PICO_USD
+                if delivered and (
+                    points < 0 or points > run["hold_points"] or points > account["balance"]
+                ):
+                    outcome, delivered = "error", False
+                    numerator = 0
+                    new_total = previous_total - old_exact
+                    points = new_total // PICO_USD - previous_total // PICO_USD
                 if new_total != previous_total:
-                    conn.execute(
-                        text("INSERT INTO billing_precision(user_id,total_credit_pico) "
-                             "VALUES (:user,:total) ON CONFLICT(user_id) DO UPDATE SET "
-                             "total_credit_pico=excluded.total_credit_pico"),
-                        {"user": run["user_id"], "total": str(new_total)},
-                    )
+                    if period:
+                        settle_quota_period(
+                            conn, run["user_id"], epoch,
+                            account["balance"] - points, str(new_total), self.clock()
+                        )
+                    else:
+                        conn.execute(
+                            text("INSERT INTO billing_precision(user_id,total_credit_pico) "
+                                 "VALUES (:user,:total) ON CONFLICT(user_id) DO UPDATE SET "
+                                 "total_credit_pico=excluded.total_credit_pico"),
+                            {"user": run["user_id"], "total": str(new_total)},
+                        )
                 # Record a zero-point fractional withdrawal as well; the stable
                 # refund receipt and terminal status make repeated refunds no-ops.
                 if points or numerator != old_exact:
-                    conn.execute(
-                        text("UPDATE credit_accounts SET balance=balance+:change,updated_at=:now "
-                             "WHERE user_id=:user"),
-                        {"change": -points, "user": run["user_id"], "now": self._now()},
-                    )
+                    if not period:
+                        conn.execute(
+                            text("UPDATE credit_accounts SET balance=balance+:change,"
+                                 "updated_at=:now WHERE user_id=:user"),
+                            {"change": -points, "user": run["user_id"], "now": self._now()},
+                        )
                     self._ledger(conn, run, -points, refund=not delivered,
                                  credit_numerator=numerator)
                 charged = charged + points if delivered else 0
@@ -811,14 +1006,15 @@ class DurableBilling:
             )
             return status
 
-    def recover_stale(self, *, before):
+    def recover_stale(self, *, before, recover_actual_usage=False):
         with self.engine.connect() as conn:
             ids = conn.scalars(
                 text(
                     "SELECT run_id FROM billing_operations WHERE status='active' "
-                    "AND updated_at < :before"
+                    "AND (updated_at < :before OR (:recover_actual AND "
+                    "json_extract(price_json,'$.billing_policy')='actual_usage_v1'))"
                 ),
-                {"before": before.isoformat()},
+                {"before": before.isoformat(), "recover_actual": recover_actual_usage},
             ).all()
         for run_id in ids:
             self.finish(run_id=run_id, outcome="error")

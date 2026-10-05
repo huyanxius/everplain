@@ -407,7 +407,7 @@ describe('AccountSettingsPage', () => {
     expect(getCreditSummary).toHaveBeenCalledOnce()
     expect(screen.getByText('额度信息暂不可用')).toBeVisible()
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
-    expect(screen.queryByText(/1,162|3,000|39%|积分/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/1,162|3,000|39%/)).not.toBeInTheDocument()
     expect(screen.getByText('600 输入 · 800 输出 token')).toBeVisible()
     expect(screen.queryByText('-38')).not.toBeInTheDocument()
     expect(screen.getByText('已退款')).toBeVisible()

@@ -3,12 +3,11 @@
 import json
 import sqlite3
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from alembic import command
-from test_agent_memory import register
-from test_conversation_context import seed
+from legacy_migration_support import create_legacy_database, seed_conversation, seed_user
 
 SCHEMA = Path(__file__).parent / "fixtures/billing_reset_schema.sql"
 
@@ -25,15 +24,15 @@ def protected_objects(connection):
 
 
 def test_copy_upgrade_old_write_downgrade_and_reset_fence_survive(
-    plain_client,
     tmp_path,
     monkeypatch,
     alembic_config,
 ):
-    owner = UUID(register(plain_client))
-    conversation = seed(plain_client, owner, ("源对话不会丢失", "最新真实用户问题"))
-    source_path = plain_client.app.state.database.engine.url.database
-    command.downgrade(alembic_config, "20261003_0540")
+    source_path = tmp_path / "context-source-0540.db"
+    create_legacy_database(source_path, "20261003_0540", monkeypatch, alembic_config)
+    with sqlite3.connect(source_path) as source:
+        owner = seed_user(source)
+        conversation, _ = seed_conversation(source, owner, ("源对话不会丢失", "最新真实用户问题"))
     with sqlite3.connect(source_path) as source:
         source.executescript(SCHEMA.read_text())
         source.execute(
@@ -76,7 +75,7 @@ def test_copy_upgrade_old_write_downgrade_and_reset_fence_survive(
         cached = json.loads(
             candidate.execute(
                 "SELECT context_digest FROM agent_conversations WHERE conversation_id=?",
-                (str(conversation.conversation_id),),
+                (str(conversation),),
             ).fetchone()[0]
         )
         assert cached["items"][-1]["excerpt"] == "最新真实用户问题"

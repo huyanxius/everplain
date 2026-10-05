@@ -285,17 +285,56 @@ def test_old_queued_message_cannot_cross_binding_generation(channels):
 
 
 def test_depleted_account_does_not_call_runner(channels):
-    from qunxue_api.adapters.sqlite.billing_model import CreditAccountRow
+    from datetime import UTC, datetime
+
+    from qunxue_api.adapters.sqlite.billing_repository import SqliteCreditRepository
 
     bind(channels)
     with channels.db.session() as session:
-        session.execute(
-            update(CreditAccountRow)
-            .where(CreditAccountRow.user_id == str(channels.owner))
-            .values(balance=0)
+        repository = SqliteCreditRepository(session)
+        run, now = uuid4(), datetime.now(UTC)
+        repository.reserve_usage(user_id=channels.owner, run_id=run, now=now)
+        opened = repository.get_summary(user_id=channels.owner, limit=1)
+        assert opened.balance == 30 and opened.quota_period_started_at is not None
+        repository.charge_usage(
+            user_id=channels.owner, run_id=run, points=30, input_tokens=3000,
+            output_tokens=0, model="synthetic-depleted", now=now,
         )
+        depleted = repository.get_summary(user_id=channels.owner, limit=1)
+        assert depleted.balance == 0 and depleted.quota_period_started_at is not None
+        assert depleted.entries[0].points == -30
     assert dispatch(channels, event()).status_code == 402
     assert channels.calls == []
+
+
+def test_first_valid_channel_message_opens_free30_for_unstarted_legacy_zero(channels):
+    from datetime import UTC, datetime
+
+    from qunxue_api.adapters.sqlite.billing_model import CreditAccountRow
+    from qunxue_api.adapters.sqlite.billing_repository import SqliteCreditRepository
+
+    bind(channels)
+    with channels.db.session() as session:
+        session.execute(update(CreditAccountRow)
+                        .where(CreditAccountRow.user_id == str(channels.owner)).values(balance=0))
+        session.add(CreditLedgerRow(
+            entry_id=str(uuid4()), user_id=str(channels.owner), run_id=None, kind="usage",
+            points=-30, balance_after=0, input_tokens=3000, output_tokens=0,
+            model="synthetic-pre-cycle", created_at=datetime.now(UTC),
+        ))
+        before = SqliteCreditRepository(session).get_summary(user_id=channels.owner, limit=1)
+        assert before.balance == 0 and before.quota_period_started_at is None
+    payload = event()
+    result = dispatch(channels, payload)
+    assert result.status_code == 200, result.text
+    assert channels.calls == ["hello"]
+    with channels.db.session() as session:
+        after = SqliteCreditRepository(session).get_summary(user_id=channels.owner, limit=1)
+        assert after.quota_period_started_at is not None
+        assert after.balance == 28
+        assert after.active_usage_buckets[0]["limit_points"] == 30
+    assert dispatch(channels, payload).status_code == 200
+    assert channels.calls == ["hello"]
 
 
 def test_durable_billing_metered_attempt_and_replay_share_one_charge(channels):

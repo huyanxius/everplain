@@ -152,6 +152,9 @@ def get_account_credits(
         total_granted_points=summary.total_granted_points,
         active_usage_buckets=list(summary.active_usage_buckets),
         quota_status=summary.quota_status,
+        quota_period_started_at=summary.quota_period_started_at,
+        quota_period_expires_at=summary.quota_period_expires_at,
+        quota_plan_id=summary.quota_plan_id,
         pricing=CreditPricingResponse(
             mode="model_rates" if request.app.state.billing_operations.runtime else "unconfigured",
             credits_per_usd=(

@@ -230,12 +230,46 @@ def test_anonymous_recent_context_is_rejected(plain_client):
     assert plain_client.get("/api/agent/recent-context").status_code == 401
 
 
-def test_upgrade_backfills_existing_history_without_generation(plain_client, alembic_config):
-    from alembic import command
+def test_upgrade_backfills_existing_history_without_generation(
+    tmp_path, monkeypatch, alembic_config
+):
+    import sqlite3
 
-    owner = UUID(register(plain_client))
-    seed(plain_client, owner, [f"迁移前对话{n}" for n in range(5)])
-    expected = plain_client.get("/api/agent/recent-context").json()
-    command.downgrade(alembic_config, "20261003_0540")
+    from alembic import command
+    from legacy_migration_support import create_legacy_database, seed_conversation, seed_user
+
+    from qunxue_api.adapters.sqlite.conversation_context_repository import (
+        SqliteConversationContextRepository,
+    )
+    from qunxue_api.adapters.sqlite.database import Database
+
+    path = tmp_path / "backfill-source-0540.db"
+    create_legacy_database(path, "20261003_0540", monkeypatch, alembic_config)
+    with sqlite3.connect(path) as source:
+        owner = seed_user(source)
+        conversation, messages = seed_conversation(
+            source, owner, [f"迁移前对话{n}" for n in range(5)]
+        )
+        originals = source.execute("SELECT * FROM agent_messages ORDER BY sequence").fetchall()
     command.upgrade(alembic_config, "head")
-    assert plain_client.get("/api/agent/recent-context").json() == expected
+    with sqlite3.connect(path) as source:
+        assert source.execute(
+            "SELECT * FROM agent_messages ORDER BY sequence"
+        ).fetchall() == originals
+        digest = json.loads(source.execute(
+            "SELECT context_digest FROM agent_conversations WHERE conversation_id=?",
+            (str(conversation),),
+        ).fetchone()[0])
+        assert digest == {
+            "version": 1, "kind": "user_excerpt", "through_sequence": 8, "items": messages[-3:],
+        }
+    database = Database(f"sqlite:///{path}")
+    try:
+        with database.session() as session:
+            recent = SqliteConversationContextRepository(session).recent(owner)
+            assert len(recent) == 1
+            assert recent[0]["conversation_id"] == str(conversation)
+            assert recent[0]["recent_excerpts"] == messages[-3:]
+            assert recent[0]["excerpt"] == "迁移前对话4"
+    finally:
+        database.engine.dispose()

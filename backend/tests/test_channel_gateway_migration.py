@@ -21,6 +21,8 @@ def test_writing_then_gateway_is_one_head_and_preserves_existing_data(tmp_path, 
     assert len(scripts.get_heads()) == 1
     current_head = scripts.get_current_head()
     assert current_head is not None
+    gateway_revision = "20261003_0540"
+    assert scripts.get_revision(gateway_revision).down_revision == "20261003_0530"
     url = f"sqlite:///{tmp_path / 'migration.db'}"
     monkeypatch.setenv("EVERPLAIN_DATABASE_URL", url)
     command.upgrade(config, "20261003_0530")
@@ -51,7 +53,9 @@ def test_writing_then_gateway_is_one_head_and_preserves_existing_data(tmp_path, 
                 ),
                 {"id": document_id, "user": user_id, "now": now.isoformat()},
             )
-        command.upgrade(config, "head")
+        # Round-trip the gateway revision itself, without crossing later
+        # irreversible financial-evidence revisions.
+        command.upgrade(config, gateway_revision)
         assert "channel_bindings" in inspect(database.engine).get_table_names()
         with database.engine.connect() as connection:
             assert (
@@ -60,7 +64,7 @@ def test_writing_then_gateway_is_one_head_and_preserves_existing_data(tmp_path, 
             )
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == current_head
+                == gateway_revision
             )
         command.downgrade(config, "20261003_0530")
         assert "channel_bindings" not in inspect(database.engine).get_table_names()
@@ -68,5 +72,10 @@ def test_writing_then_gateway_is_one_head_and_preserves_existing_data(tmp_path, 
             assert connection.scalar(text("SELECT count(*) FROM writing_documents")) == 1
         command.upgrade(config, "head")
         assert "channel_bindings" in inspect(database.engine).get_table_names()
+        with database.engine.connect() as connection:
+            assert connection.scalar(
+                text("SELECT version_num FROM alembic_version")
+            ) == current_head
+            assert connection.scalar(text("SELECT count(*) FROM writing_documents")) == 1
     finally:
         database.engine.dispose()

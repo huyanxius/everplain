@@ -302,7 +302,11 @@ def create_app(
     async def lifespan(app: FastAPI):
         if app.state.billing_operations.runtime:
             app.state.billing_operations.runtime.recover_stale(
-                before=datetime.now(UTC) - timedelta(minutes=30)
+                before=datetime.now(UTC) - timedelta(minutes=30),
+                # Production is single-instance/single-worker. On startup no
+                # prior process owns these live requests; release their wallet
+                # capacity while retaining unknown provider-cost evidence.
+                recover_actual_usage=True,
             )
         probe_task = None
         memory_task = None
@@ -1240,7 +1244,9 @@ def create_app(
                     ),
                     rollback=session.rollback,
                     credits=CreditService(
-                        SqliteCreditRepository(session),
+                        SqliteCreditRepository(
+                            session, plan_limits=resolved_settings.billing_plan_weekly_points
+                        ),
                         exempt_user_ids=getattr(
                             app.state,
                             "credit_exempt_user_ids",
@@ -1991,4 +1997,5 @@ def _billing_runtime(settings, database):
         max_operation_pico=settings.billing_max_operation_usd_micro * 10**6,
         daily_budget_pico=settings.billing_daily_budget_usd_micro * 10**6,
         max_attempts=settings.billing_max_attempts,
+        plan_limits=settings.billing_plan_weekly_points,
     )

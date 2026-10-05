@@ -25,6 +25,7 @@ class ErrorCode(StrEnum):
     BILLING_REPLAY_BLOCKED = "billing_replay_blocked"
     BILLING_PROVIDER_ERROR = "billing_provider_error"
     CREDIT_CODE_UNAVAILABLE = "credit_code_unavailable"
+    QUOTA_CONFIGURATION_UNAVAILABLE = "quota_configuration_unavailable"
     CREDIT_CODE_BATCH_CONFLICT = "credit_code_batch_conflict"
     EMAIL_VERIFICATION_INVALID = "email_verification_invalid"
     EMAIL_VERIFICATION_RATE_LIMITED = "email_verification_rate_limited"

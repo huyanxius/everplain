@@ -40,6 +40,7 @@ def test_existing_extraction_route_meter_owner_persistence_and_replay(client, mo
             max_attempt_pico=10**11,
             max_operation_pico=10**11,
             daily_budget_pico=10**12,
+            billing_policy="delivery_v1",
         )
     provider = OpenAICompatibleModelProvider(
         base_url="https://synthetic.test/v1",

@@ -60,7 +60,9 @@ class SqliteBillingOperations:
             )
         if policy == "user":
             with self.database.session() as session:
-                CreditService(SqliteCreditRepository(session)).summary(user_id=user_id, limit=1)
+                CreditService(SqliteCreditRepository(
+                    session, plan_limits=self.runtime.plan_limits
+                )).summary(user_id=user_id, limit=1)
         fingerprint = hashlib.sha256(
             json.dumps(payload, default=str, sort_keys=True, ensure_ascii=False).encode()
         ).hexdigest()
@@ -82,6 +84,7 @@ class SqliteBillingOperations:
             before_network=before_network,
             resume=resume,
             settlement_connection=self._settlement_connection if self.session is not None else None,
+            quota_start=phase in {"agent_turn", "user_research", "writing"},
         )
 
     def close(self, *, run_id, outcome):

@@ -160,18 +160,19 @@ function CreditsPanel({ controller: c }: PanelProps) {
           <p className="ep-settings-inline"><span>{label}</span><strong>{bucket.remainingPercent === null ? c.text('暂不可用', 'Unavailable') : `${bucket.remainingPercent}%`}</strong></p>
           {bucket.remainingPercent !== null ? <div className="ep-settings-meter" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={bucket.remainingPercent}><span style={{ width: `${bucket.remainingPercent}%` }} /></div> : null}
           {bucket.remainingPoints != null && bucket.usedPoints != null && bucket.limitPoints != null ? <small className="qx-meta">{c.text('剩余', 'Remaining')} {bucket.remainingPoints.toLocaleString(c.locale, { maximumFractionDigits: 4 })} / {bucket.limitPoints.toLocaleString(c.locale)} · {c.text('已用', 'Used')} {bucket.usedPoints.toLocaleString(c.locale, { maximumFractionDigits: 4 })}</small> : null}
-          {bucket.expiresAt ? <small className="qx-meta">{c.text('有效至', 'Valid until')} {dateLabel(bucket.expiresAt, c.locale)}</small> : null}
+          {bucket.expiresAt ? <small className="qx-meta">{c.text('下次重置', 'Next reset')} {dateLabel(bucket.expiresAt, c.locale)}</small> : null}
         </div>
       })}</div>}
     </SettingRow>
+    {!credits.isUnlimited ? <p className="qx-meta">{c.text('7 天额度从首次有效消息请求开始，每满 168 小时恢复套餐满额。Free 每 7 天 30 积分。', 'Your 7-day allowance starts with your first valid message and resets every 168 hours. Free includes 30 points every 7 days.')}</p> : null}
     {!credits.isUnlimited ? <SettingRow label={c.text('兑换码', 'Redemption code')}>
       <form className="ep-settings-redeem" onSubmit={c.redeemCredits}><input className="qx-input" aria-label={c.text('兑换码', 'Redemption code')} autoComplete="off" maxLength={64} placeholder="QX-XXXX-XXXX" value={c.redemptionCode} onChange={event => c.setRedemptionCode(event.target.value)} /><button className="qx-btn qx-btn--secondary" disabled={c.pending || !c.redemptionCode.trim()}>{c.pendingAction === 'credit-redemption' ? c.text('正在兑换…', 'Redeeming…') : c.text('兑换', 'Redeem')}</button></form>
-      <small className="qx-meta">{c.text('每个兑换码仅可使用一次', 'Each code can be used once')}</small>
+      <small className="qx-meta">{c.text('bank RESET：恢复当前套餐的 100%，并从现在重新计算 7 天。每个兑换码仅可使用一次。', 'bank RESET restores 100% of your current plan and starts a new 7-day period. Each code can be used once.')}</small>
     </SettingRow> : null}
     <section className="ep-settings-history" aria-label={c.text('用量记录', 'Usage history')}>
       <header className="ep-settings-inline"><h3 className="qx-heading">{c.text('用量记录', 'Usage history')}</h3><span className="qx-meta">{c.text(`共 ${credits.totalEntries} 笔`, `${credits.totalEntries} total`)}</span></header>
       {credits.entries.length ? <ol className="ep-settings-list">{credits.entries.map(entry => <li key={entry.entryId}>
-        <div><strong>{entry.kind === 'usage' ? c.text('Agent 对话', 'Agent conversation') : entry.kind === 'redemption' ? c.text('兑换码到账', 'Code redemption') : c.text('新用户赠送', 'Welcome allowance')}</strong><time className="qx-meta" dateTime={entry.createdAt}>{dateLabel(entry.createdAt, c.locale)}</time>{entry.kind === 'usage' ? <small className="qx-meta">{entry.inputTokens.toLocaleString(c.locale)} {c.text('输入', 'input')} · {entry.outputTokens.toLocaleString(c.locale)} {c.text('输出', 'output')} token</small> : null}</div>
+        <div><strong>{entry.kind === 'usage' ? c.text('Agent 对话', 'Agent conversation') : entry.kind === 'redemption' ? c.text('bank RESET', 'bank RESET') : c.text('新用户赠送', 'Welcome allowance')}</strong><time className="qx-meta" dateTime={entry.createdAt}>{dateLabel(entry.createdAt, c.locale)}</time>{entry.kind === 'usage' ? <small className="qx-meta">{entry.inputTokens.toLocaleString(c.locale)} {c.text('输入', 'input')} · {entry.outputTokens.toLocaleString(c.locale)} {c.text('输出', 'output')} token</small> : null}</div>
         <div className="ep-settings-usage-status">
           {entry.status ? <small className="qx-meta">{statusLabels[entry.status]}</small> : null}
           {typeof entry.chargedCny === 'number' && Number.isFinite(entry.chargedCny) && entry.chargedCny >= 0 ? <small className="qx-meta">{c.text('费用', 'Cost')} {money(entry.chargedCny)}</small> : null}
