@@ -64,7 +64,7 @@ class WritingAgentTools:
         }
 
     def propose_edit(self, *, expected_version, original_text, replacement_text,
-                     selection_start=None, selection_end=None):
+                     selection_start=None, selection_end=None, runtime_instructions=""):
         if self.context is None:
             raise ValueError("当前对话没有绑定写作文稿")
         if expected_version != self.context["document_version"]:
@@ -111,4 +111,5 @@ class WritingAgentTools:
         key = f"agent-writing:{self.run_id}:{digest}"
         return self.application.propose_edit(
             self.user_id, self.context["document_id"], key, payload,
+            runtime_instructions=runtime_instructions,
         )

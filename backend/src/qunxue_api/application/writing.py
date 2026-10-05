@@ -223,7 +223,7 @@ class WritingApplication:
         self.repository.complete(operation, result)
         return result
 
-    def propose_edit(self, user_id, document_id, key, request):
+    def propose_edit(self, user_id, document_id, key, request, *, runtime_instructions=""):
         """Save a precise Agent-authored suggestion without another model call.
 
         Only replacement_text becomes document content. Conversation, prompts and
@@ -254,7 +254,8 @@ class WritingApplication:
                 raise WritingConflict("请先接受或撤回当前待定修订；仍可继续讨论")
             original, replacement = request["original_text"], request["replacement_text"]
             if instruction_artifacts(
-                original, replacement, runtime_instructions=WRITING_INSTRUCTIONS,
+                original, replacement,
+                runtime_instructions=WRITING_INSTRUCTIONS + "\n" + runtime_instructions,
             ):
                 raise WritingUnsafeOutput("替换内容包含系统指令或运行信息，未创建修订")
             if len(replacement) > 30000:

@@ -181,10 +181,18 @@ def instruction_artifacts(
         r"|数据中的reference_samples、original、context、previous_draft、content_plan"
     )
     old = set(re.findall(patterns, original, re.I))
-    signatures = [line.strip() for line in runtime_instructions.splitlines() if len(line) >= 24]
-    return bool(set(re.findall(patterns, candidate, re.I)) - old) or any(
-        signature in candidate and signature not in original for signature in signatures
-    )
+    if set(re.findall(patterns, candidate, re.I)) - old:
+        return True
+    # Current Agent instructions are often one concatenated paragraph. Checking
+    # entire lines misses copied sentences/fragments and reflowed whitespace.
+    # Match bounded exact spans of the trusted runtime text, exempting spans that
+    # already belong to the user's original document. This is a mechanical leak
+    # guard, not a claim that arbitrary paraphrases can be recognized.
+    def spans(text):
+        compact = re.sub(r"\s+", "", text)
+        return {compact[i:i + 24] for i in range(len(compact) - 23)}
+
+    return bool((spans(candidate) - spans(original)) & spans(runtime_instructions))
 
 
 def output_issues(
