@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
  * shader 与 system-theme 处理的是 GPU/位图图层，不是界面表面。
  */
 const srcRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../src')
-const exempt = /(?:^|\/)(?:styles\/tokens\.css|styles\/system-theme\.css|app\/foundation\/|modules\/agent-avatar\/|modules\/companion\/companion\.css$|mock\/)|shader/i
+const exempt = /(?:^|\/)(?:styles\/tokens\.css|styles\/system-theme\.css|app\/foundation\/|modules\/agent-avatar\/|modules\/companion\/companion\.css$|modules\/user-avatar\/user-avatar\.css$|mock\/)|shader/i
 
 function collect(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

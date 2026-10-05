@@ -1,0 +1,5 @@
+export { UserAvatar } from './UserAvatar'
+export type { UserAvatarProps, UserAvatarMood } from './UserAvatar'
+export { PEOPLE } from './avatar-data'
+export type { UserAvatarId, UserAvatarCustom, UserAvatarPerson } from './avatar-data'
+export { mix, withCustom } from './avatar-colors'

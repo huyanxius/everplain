@@ -1,0 +1,35 @@
+/* Reuse Companion animation timing; scope prototype overrides to user avatars. */
+.user-avatar .cp-face-shade { filter: var(--ua-soft-edge); }
+.user-avatar .cp-blush { opacity: var(--blush, .85); filter: var(--ua-soft-edge); }
+.user-avatar[data-mood='happy'] .cp-blush { opacity: var(--blush, .85); }
+.user-avatar .cp-chin-shadow { filter: var(--ua-soft); }
+.user-avatar .cp-bob { transform-origin: 50% 85%; }
+.user-avatar[data-variant='head'] { cursor: inherit; }
+.user-avatar:focus-visible { outline: 2px solid currentColor; outline-offset: 6px; }
+
+.user-avatar .fx-twinkle{transform-box:fill-box;transform-origin:center;animation:fx-tw 2.4s ease-in-out infinite}
+@keyframes fx-tw{0%,100%{transform:scale(.5) rotate(0);opacity:.35}50%{transform:scale(1.15) rotate(45deg);opacity:1}}
+.user-avatar .fx-wand{transform-box:view-box;transform-origin:80px 204px;animation:fx-wand 3.2s ease-in-out infinite}
+@keyframes fx-wand{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(9deg)}}
+.user-avatar .fx-spark{opacity:0;animation:fx-spark 2.4s ease-out infinite}
+@keyframes fx-spark{0%{opacity:0;transform:translateY(0)}20%{opacity:1}100%{opacity:0;transform:translateY(22px)}}
+.user-avatar .fx-note{opacity:0;animation:fx-note 3.2s ease-out infinite}
+@keyframes fx-note{0%{opacity:0;transform:translate(0,0)}15%{opacity:.9}100%{opacity:0;transform:translate(12px,-46px) rotate(12deg)}}
+.user-avatar.groove .cp-bob{animation:fx-groove .9s ease-in-out infinite}
+@keyframes fx-groove{0%,100%{translate:0 0}50%{translate:0 -2.5px}}
+.user-avatar .fx-leaf{opacity:0;animation:fx-leaf 6s linear infinite}
+@keyframes fx-leaf{0%{opacity:0;transform:translate(150px,-6px) rotate(0)}10%{opacity:1}50%{transform:translate(184px,80px) rotate(160deg)}90%{opacity:1}100%{opacity:0;transform:translate(164px,170px) rotate(340deg)}}
+.user-avatar .fx-tail{transform-box:fill-box;transform-origin:30% 100%;animation:fx-tail 2.8s ease-in-out infinite}
+@keyframes fx-tail{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(8deg)}}
+.user-avatar .fx-ear{transform-box:fill-box;transform-origin:50% 100%;animation:fx-ear 4.2s infinite}.user-avatar .fx-ear--r{animation-delay:-2.1s}
+@keyframes fx-ear{0%,86%,100%{transform:rotate(0)}89%{transform:rotate(-10deg)}92%{transform:rotate(2deg)}95%{transform:rotate(-6deg)}}
+.user-avatar .fx-petal{opacity:0;animation:fx-petal 6.3s linear infinite}
+@keyframes fx-petal{0%{opacity:0;transform:translate(0,0) rotate(0)}10%{opacity:.95}100%{opacity:0;transform:translate(26px,130px) rotate(260deg)}}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-avatar, .user-avatar * { animation: none !important; transition: none !important; }
+}
+.user-avatar[data-reduced-motion='true'], .user-avatar[data-reduced-motion='true'] * { animation: none !important; transition: none !important; }
+
+/* The reference portrait backdrop belongs to the illustration, not the UI theme. */
+:root { --ua-portrait-background: #26252a; }
