@@ -25,7 +25,9 @@ class CanonicalGoogleThinkingTransport(httpx.AsyncBaseTransport):
         self.inner = inner
 
     async def handle_async_request(self, request):
-        if request.method != 'POST' or not request.url.path.endswith((':generateContent', ':streamGenerateContent')):
+        if request.method != 'POST' or not request.url.path.endswith(
+            (':generateContent', ':streamGenerateContent')
+        ):
             return await self.inner.handle_async_request(request)
         payload = json.loads(await request.aread())
         thinking = payload.get('generationConfig', {}).get('thinkingConfig', {})
@@ -93,7 +95,9 @@ def test_documented_anthropic_native_levels_have_real_wire_controls(effort):
         })
 
     async def run():
-        async with httpx2.AsyncClient(transport=httpx2.MockTransport(reply), trust_env=False) as http:
+        async with httpx2.AsyncClient(
+            transport=httpx2.MockTransport(reply), trust_env=False
+        ) as http:
             model = AnthropicModel('claude-sonnet-5-5', provider=AnthropicProvider(
                 api_key='synthetic', base_url='https://synthetic.invalid/bypass/anthropic',
                 http_client=http,
@@ -145,7 +149,10 @@ def test_google_native_levels_are_not_openai_enums(level):
         return httpx.Response(200, json=response)
 
     async def run():
-        async with httpx.AsyncClient(transport=CanonicalGoogleThinkingTransport(httpx.MockTransport(reply)), trust_env=False) as http:
+        async with httpx.AsyncClient(
+            transport=CanonicalGoogleThinkingTransport(httpx.MockTransport(reply)),
+            trust_env=False,
+        ) as http:
             model = GoogleModel('gemini-3.5-flash', provider=GoogleProvider(
                 api_key='synthetic', base_url='https://synthetic.invalid', http_client=http,
             ), settings={'max_tokens': 4096,
