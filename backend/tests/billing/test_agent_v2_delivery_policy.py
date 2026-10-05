@@ -105,8 +105,8 @@ def current_app(plain_client):
         yield user, database, runtime, repository, build, now
 
 
-@pytest.mark.parametrize("mode", ["complete", "tool_then_length", "pending"])
-def test_default_agent_current_policy_delivers_normal_length_or_pending(current_app, mode):
+@pytest.mark.parametrize("mode", ["complete", "pending"])
+def test_default_agent_current_policy_delivers_completed_or_pending_replay(current_app, mode):
     user, database, runtime, _repository, build, _now = current_app
     runner = CurrentRunner(mode)
     app = build(runner)
@@ -122,9 +122,7 @@ def test_default_agent_current_policy_delivers_normal_length_or_pending(current_
     assert answer.result.answer.startswith("已保存正文")
     assert replay.replayed is True
     assert runner.calls == 1
-    assert runner.states[-1]["output_finish_reason"] == (
-        "truncated" if mode == "tool_then_length" else "complete"
-    )
+    assert runner.states[-1]["output_finish_reason"] == "complete"
     assert runner.states[-1]["usage_status"] == ("pending" if mode == "pending" else "known")
     assert runtime.billing_policy == "delivery_v1"  # Only the explicit Agent scope changes.
     with database.engine.connect() as conn:
@@ -135,6 +133,56 @@ def test_default_agent_current_policy_delivers_normal_length_or_pending(current_
             conn.scalar(text("SELECT limit_points FROM credit_quota_periods WHERE epoch=1")) == 30
         )
         assert conn.scalar(text("SELECT balance FROM credit_accounts")) >= 28
+
+
+def test_tool_then_length_continues_with_distinct_receipts_and_retained_original_body(current_app):
+    user, database, _runtime, repository, build, _now = current_app
+    runner = CurrentRunner("tool_then_length")
+    app = build(runner)
+    chunks = []
+    args = dict(user_id=user, conversation_id=None, prompt="synthetic",
+                idempotency_key="tool_then_length", on_delta=chunks.append)
+    first = app.run_turn(**args)
+    assert first.replayed is False and first.turn is None and first.incomplete_reason == "length"
+    assert first.delivery_state["output_finish_reason"] == "truncated"
+    assert first.delivery_state["receipt_persistence"] == "saved"
+    original = repository.find_run(user_id=user, idempotency_key="tool_then_length")
+    assert original.status == "interrupted"
+    assert original.partial_answer == first.result.answer == "已保存正文1。已保存正文2。"
+    assert "".join(chunks) == original.partial_answer
+    assert len(original.output_attempts) == 1
+    original_output = original.output_attempts[0]
+    assert original_output.status == "interrupted" and original_output.answer == first.result.answer
+    with database.engine.connect() as conn:
+        first_receipts = conn.execute(text(
+            "SELECT attempt_id,reference_cost_pico FROM billing_attempts WHERE run_id=:run "
+            "ORDER BY attempt_id"
+        ), {"run": runner.identities[0]}).all()
+        assert len(first_receipts) == 2 and all(cost == 9200000000 for _, cost in first_receipts)
+        assert conn.scalar(text("SELECT balance FROM credit_accounts")) == 29
+
+    runner.mode = "complete"
+    continuation = app.run_turn(**args)
+    assert continuation.replayed is False and continuation.run_id == first.run_id
+    assert continuation.turn is not None and continuation.incomplete_reason is None
+    assert runner.calls == 2 and runner.identities[0] != runner.identities[1]
+    finished = repository.find_run(user_id=user, idempotency_key="tool_then_length")
+    assert finished.status == "completed" and len(finished.output_attempts) == 2
+    assert finished.output_attempts[0] == original_output
+    assert finished.output_attempts[1].answer == continuation.result.answer
+    assert finished.output_attempts[1].attempt_id != original_output.attempt_id
+    assert app.run_turn(**args).replayed is True and runner.calls == 2
+    with database.engine.connect() as conn:
+        assert conn.scalar(text("SELECT count(*) FROM billing_operations")) == 2
+        assert conn.scalar(text("SELECT count(*) FROM billing_attempts")) == 3
+        assert conn.execute(text(
+            "SELECT attempt_id,reference_cost_pico FROM billing_attempts WHERE run_id=:run "
+            "ORDER BY attempt_id"
+        ), {"run": runner.identities[0]}).all() == first_receipts
+        assert conn.scalar(text(
+            "SELECT total_credit_pico FROM credit_quota_periods WHERE epoch=1"
+        )) == "2760000000000"
+        assert conn.scalar(text("SELECT balance FROM credit_accounts")) == 28
 
 
 def test_confirmed_free30_exhaustion_stops_next_dispatch_and_preserves_text(current_app):
