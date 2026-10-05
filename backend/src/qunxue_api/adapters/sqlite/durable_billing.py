@@ -5,6 +5,7 @@ reserved across process restarts until an explicit receipt reconciles it.
 """
 
 import json
+import re
 from contextlib import contextmanager, nullcontext
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -48,7 +49,8 @@ SCHEMA = (
       procurement_status TEXT NOT NULL DEFAULT 'pending',
       overrun_cost_pico INTEGER NOT NULL DEFAULT 0,
       failure_code TEXT, price_json TEXT NOT NULL,
-      created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""",
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      dispatch_state TEXT DEFAULT 'legacy_unknown' NOT NULL, provider_request_id TEXT)""",
     """CREATE TABLE billing_precision (
       user_id TEXT PRIMARY KEY, total_credit_pico TEXT NOT NULL)""",
     "CREATE INDEX ix_billing_operations_user_status ON billing_operations(user_id,status)",
@@ -339,10 +341,96 @@ class DurableBilling:
                 },
             )
             conn.execute(
+                text("UPDATE billing_attempts SET dispatch_state='prepared' WHERE attempt_id=:id"),
+                {"id": attempt},
+            )
+            conn.execute(
                 text("UPDATE billing_operations SET updated_at=:now WHERE run_id=:run"),
                 {"now": now, "run": str(run_id)},
             )
         return attempt
+
+    def mark_dispatch_started(self, attempt_id):
+        with self._transaction() as conn:
+            conn.execute(text("UPDATE billing_attempts SET dispatch_state='dispatch_started' "
+                              "WHERE attempt_id=:id AND dispatch_state='prepared'"),
+                         {"id": attempt_id})
+
+    def record_response_received(self, attempt_id, provider_request_id=None):
+        if provider_request_id is not None and (
+            not isinstance(provider_request_id, str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}", provider_request_id) is None
+        ):
+            provider_request_id = None
+        with self._transaction() as conn:
+            conn.execute(text("UPDATE billing_attempts SET "
+                              "dispatch_state=CASE WHEN usage_state='known' THEN 'usage_confirmed' "
+                              "ELSE 'response_received' END, "
+                              "provider_request_id=coalesce(provider_request_id,:receipt) "
+                              "WHERE attempt_id=:id AND dispatch_state!='not_sent'"),
+                         {"id": attempt_id, "receipt": provider_request_id})
+
+    def release_proven_not_sent(self, attempt_id):
+        # Only the supported transport's terminal pre-send connection evidence
+        # calls this. Legacy rows, crashes and absent trace cannot reach it.
+        with self._transaction() as conn:
+            return bool(conn.execute(text(
+                "UPDATE billing_attempts SET dispatch_state='not_sent',outcome='error',"
+                "usage_state='not_sent',billable=0,reference_cost_pico=0,"
+                "failure_code='transport_proven_not_sent',updated_at=:now "
+                "WHERE attempt_id=:id AND dispatch_state='prepared' "
+                "AND reference_cost_pico IS NULL"
+            ), {"id": attempt_id, "now": self._now()}).rowcount)
+
+    def pending_reconciliation(self, *, limit=50):
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("reconciliation batch must be between 1 and 100")
+        with self.engine.connect() as conn:
+            return [dict(row) for row in conn.execute(text(
+                "SELECT a.attempt_id,a.provider_host,a.provider_request_id,a.requested_model,"
+                "a.dispatch_state,a.failure_code,a.created_at,a.updated_at,a.reserved_cost_pico "
+                "FROM billing_attempts a JOIN billing_operations o ON o.run_id=a.run_id "
+                "WHERE a.reference_cost_pico IS NULL AND o.status!='active' "
+                "ORDER BY a.created_at,a.attempt_id LIMIT :limit"
+            ), {"limit": limit}).mappings()]
+
+    def reconcile_usage(self, *, attempt_id, provider_host, provider_request_id, model,
+                        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens):
+        from qunxue_api.adapters.model.token_usage import normalized_usage
+
+        normalized_usage({
+            "input_tokens": input_tokens, "output_tokens": output_tokens,
+            "input_tokens_details": {"cached_tokens": cache_read_tokens,
+                                     "cache_write_tokens": cache_write_tokens},
+        })
+        return self.complete_attempt(
+            attempt_id=attempt_id, returned_model=model,
+            input_tokens=input_tokens, output_tokens=output_tokens,
+            cache_read_tokens=cache_read_tokens, cache_write_tokens=cache_write_tokens,
+            raw_usage_json=json.dumps({
+                "input_tokens": input_tokens, "output_tokens": output_tokens,
+                "cache_read_tokens": cache_read_tokens, "cache_write_tokens": cache_write_tokens,
+            }, sort_keys=True),
+            reconciliation_receipt=(provider_host, provider_request_id),
+        )
+
+    def risk_breakdown(self):
+        midnight = self.clock().astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        with self.engine.connect() as conn:
+            row = self._one(conn, "SELECT "
+                            "coalesce(sum(CASE WHEN a.reference_cost_pico IS NOT NULL AND "
+                            "a.updated_at>=:day THEN a.reference_cost_pico "
+                            "ELSE 0 END),0) known_today,"
+                            "coalesce(sum(CASE WHEN a.reference_cost_pico IS NULL "
+                            "AND o.status='active' "
+                            "THEN a.reserved_cost_pico ELSE 0 END),0) active_reserved,"
+                            "coalesce(sum(CASE WHEN a.reference_cost_pico IS NULL "
+                            "AND o.status!='active' "
+                            "THEN a.reserved_cost_pico ELSE 0 END),0) pending_unknown "
+                            "FROM billing_attempts a JOIN billing_operations o "
+                            "ON o.run_id=a.run_id",
+                            day=midnight.isoformat())
+            return dict(row)
 
     def _attempt_credit(self, attempt, *, reserved=False):
         book = self._book(attempt["price_json"])
@@ -361,7 +449,7 @@ class DurableBilling:
             )
             if row is None or row["api_type"] != "tavily_search":
                 raise BillingReplayBlocked("search attempt is missing")
-            if row["usage_state"] == "known":
+            if row["usage_state"] in {"known", "not_sent"}:
                 return
             valid = (
                 type(credits) is int and 0 <= credits <= 1_000_000
@@ -458,6 +546,7 @@ class DurableBilling:
         raw_usage_json=None,
         finish_reason=None,
         returned_service_tier=None,
+        reconciliation_receipt=None,
     ):
         exceeded = False
         mismatch = False
@@ -468,7 +557,35 @@ class DurableBilling:
             )
             if row is None:
                 raise BillingReplayBlocked("attempt is missing")
+            operation = self._one(
+                conn, "SELECT status FROM billing_operations WHERE run_id=:run", run=row["run_id"]
+            )
+            if reconciliation_receipt is not None:
+                provider_host, provider_request_id = reconciliation_receipt
+                if (
+                    not provider_request_id or row["provider_host"] != provider_host
+                    or row["provider_request_id"] != provider_request_id
+                    or row["dispatch_state"] == "not_sent"
+                    or row["api_type"] not in {"chat_completions", "responses"}
+                ):
+                    raise BillingReplayBlocked("receipt does not identify the persisted attempt")
+                duplicates = conn.scalar(text(
+                    "SELECT count(*) FROM billing_attempts "
+                    "WHERE provider_host=:host AND provider_request_id=:receipt"
+                ), {"host": provider_host, "receipt": provider_request_id})
+                book = self._book(row["price_json"])
+                if (
+                    duplicates != 1 or not isinstance(returned_model, str) or not returned_model
+                    or book.aliases.get(returned_model, returned_model)
+                    != book.aliases.get(row["requested_model"], row["requested_model"])
+                ):
+                    raise BillingReplayBlocked("receipt identity is ambiguous or mismatched")
+                if operation is None or operation["status"] == "active":
+                    raise BillingReplayBlocked("active delivery owns its own settlement")
+                returned_service_tier = row["returned_service_tier"]
             if row["usage_state"] == "known":
+                return "already_known" if reconciliation_receipt is not None else None
+            if row["usage_state"] == "not_sent":
                 return
             cost = None
             if usage_known and input_tokens is not None and output_tokens is not None:
@@ -504,14 +621,22 @@ class DurableBilling:
                     outcome = "overrun"
                 elif mismatch:
                     outcome = "model_mismatch"
-            operation = self._one(
-                conn, "SELECT status FROM billing_operations WHERE run_id=:run", run=row["run_id"]
-            )
             billable = int(outcome == "success" and operation["status"] == "active")
+            if reconciliation_receipt is not None:
+                # Authoritative provider cost repairs operator risk only. A later
+                # receipt cannot turn failed delivery into success or a charge.
+                outcome, billable = row["outcome"], 0
+                failure_code = row["failure_code"]
+                provider_response_id = row["provider_response_id"]
+                reasoning_tokens = row["reasoning_tokens"]
+                finish_reason = row["finish_reason"]
+                returned_service_tier = row["returned_service_tier"]
             conn.execute(
                 text(
                     "UPDATE billing_attempts SET "
                     "billable=:billable,outcome=:outcome,usage_state=:state,"
+                    "dispatch_state=CASE WHEN :state='known' THEN 'usage_confirmed' "
+                    "ELSE dispatch_state END,"
                     "input_tokens=:i,output_tokens=:o,cache_read_tokens=:c,cache_write_tokens=:w,"
                     "reference_cost_pico=:cost,returned_model=:model,provider_response_id=:receipt,"
                     "reasoning_tokens=:reasoning,raw_usage_json=:raw,finish_reason=:finish,"
@@ -546,6 +671,8 @@ class DurableBilling:
             )
         if price_error:
             raise price_error
+        if reconciliation_receipt is not None:
+            return "reconciled"
         if mismatch:
             raise BillingRouteMismatch("returned model differs from the locked route")
         if exceeded:

@@ -109,6 +109,9 @@ tests/test_agent_time_context.py
 tests/test_model_streaming.py
 tests/billing/test_buffered_streaming.py
 tests/billing/test_wire_guard_failure.py
+tests/billing/test_dispatch_lifecycle.py
+tests/billing/test_dispatch_migration.py
+tests/billing/test_reconciliation_safety.py
 tests/test_conversation_context.py
 
 tests/test_conversation_context_migration.py
