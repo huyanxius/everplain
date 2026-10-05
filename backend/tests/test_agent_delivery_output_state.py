@@ -83,3 +83,36 @@ def test_real_upstream_length_is_saved_interrupted_and_can_continue_without_eras
     assert run.output_attempts[0].answer == "完整收到的原文"
     assert result.conversation.turns == ()
     assert scope.outcomes == ["error"]
+
+
+def test_truncated_state_is_committed_before_independent_financial_close(client):
+    from test_agent_run_recovery import registered_user
+
+    from qunxue_api.adapters.sqlite.agent_conversation_repository import (
+        SqliteConversationRepository,
+    )
+
+    user_id = registered_user(client)
+    database = client.app.state.database
+
+    class ScopedReceipt(ReceiptScope):
+        def finish(self, outcome):
+            with database.session() as observer:
+                saved = SqliteConversationRepository(observer).find_run(
+                    user_id=user_id, idempotency_key="length-settlement-order",
+                )
+                assert saved.status == "interrupted"
+                assert saved.output_attempts[0].answer == "完整收到的原文"
+            super().finish(outcome)
+
+    scope = ScopedReceipt({"output_finish_reason": "truncated", "usage_status": "known",
+                            "settlement_status": "settled", "receipt_persistence": "saved"})
+    with database.session() as session:
+        app = DisciplinaryAgentApplication(
+            conversations=ConversationService(SqliteConversationRepository(session)),
+            runner=Runner(), tools_factory=Tools, billing=Billing(scope),
+        )
+        result = app.run_turn(user_id=user_id, conversation_id=None, prompt="问题",
+                             idempotency_key="length-settlement-order", on_delta=lambda _: None)
+        assert result.incomplete_reason == "length"
+    assert scope.outcomes == ["error"]

@@ -1016,9 +1016,12 @@ class DisciplinaryAgentApplication:
                     run_id=run.run_id, lease_token=run.lease_token, status="interrupted",
                     error="output_truncated", tool_summary=saved_summary(),
                 )
+                # Error/partial settlement uses the independent finance writer.
+                # Commit the completed logical-state update before asking it to
+                # close, so it cannot wait on our own SQLite write transaction.
+                self._conversations.commit()
                 if billing_context is not None:
                     billing_context.finish("error")
-                self._conversations.commit()
                 return AgentTurnExecution(
                     conversation=self.get_conversation(
                         user_id=user_id, conversation_id=conversation.conversation_id,
