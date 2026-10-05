@@ -70,9 +70,12 @@ Path=/、Secure、无 Domain 已由服务器设置满足。更名会使旧会话
 
 ## 迁移与发布顺序
 
-`20261005_0620_federated_login` 的 down_revision 是 `20261005_0610`。
-顺序必须是 main 的 0580 → 财务 0600 → output runtime 0610 → OAuth 0620。
-该提交只含 OAuth 0620，不夹带其他负责人迁移或未准备的业务改动。
+`20261005_0620_federated_login` 的 down_revision 是 `20261005_0615`。
+顺序必须是 main 的 0580 → 财务 0600 → output runtime 0610 → 一键导入 0615 → OAuth 0620。
+该提交只含 OAuth 0620，不夹带一键导入负责人迁移或业务代码。
+本轮基于公开 main `4fc5aabf69fa5090bbf949400b2732baaac8fccf`；0610 已在该主线，
+0615 以导入负责人冻结 `967e42ebf1f20615d4643e85bed693b4bd7c7c5c` 的迁移作为本地测试输入。
+必须等待 0615 实际正常合并，再整合本 OAuth PR；不得在缺 0615 时先运行 OAuth migration 或宣称可先上线。
 先由正常集成流程确认上述前置变更已经合并、迁移单 head 与必要检查通过，再发布 OAuth。
 不得为提前发布创建另一个 head、修改他人的 down_revision 或跳过迁移。
 0620 只新增 federated_identities 与短期 oauth_transactions，保留现有用户和会话。
