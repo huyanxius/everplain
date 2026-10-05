@@ -8,6 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 
+from qunxue_api.api.billing_projection import customer_billing_operation
 from qunxue_api.api.contracts.account_management import (
     AccountAuditPageResponse,
     AccountPreferencesResponse,
@@ -148,7 +149,7 @@ def get_account_credits(
         is_unlimited=summary.is_unlimited,
         frozen_points=summary.frozen_points,
         available_balance=summary.available_balance,
-        operations=list(summary.operations),
+        operations=[customer_billing_operation(operation) for operation in summary.operations],
         total_granted_points=summary.total_granted_points,
         active_usage_buckets=list(summary.active_usage_buckets),
         quota_status=summary.quota_status,
