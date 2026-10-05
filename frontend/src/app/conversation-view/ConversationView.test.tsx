@@ -190,3 +190,17 @@ describe('ConversationResearchFlow', () => {
     expect(screen.getByRole('region', { name: '研究结论' })).toHaveTextContent('知识库 2 条 · 网页资料 1 条')
   })
 })
+
+it('shows received writing text immediately before completion and preserves natural questions', () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+  const first = '这是已经从服务端收到的第一段真实文字。'.repeat(8)
+  const latest = `${first}\n\n这是第二个收到的片段。`
+  const view = render(<ConversationThread turns={[{ id: 'writing', question: '', answer: first, citations: [], streaming: true, liveText: true }]} onSelectCitation={vi.fn()} />)
+  expect(view.container.querySelector('[data-role="user-message"]')).not.toBeInTheDocument()
+  expect(view.container.querySelector('.cv-turn__prose')).toHaveTextContent(first)
+  expect(view.container.querySelector('.cv-turn')).toHaveAttribute('data-streaming')
+  view.rerender(<ConversationThread turns={[{ id: 'writing', question: '', answer: latest, citations: [], streaming: true, liveText: true }]} onSelectCitation={vi.fn()} />)
+  expect(view.container.querySelector('.cv-turn__prose')).toHaveTextContent('这是第二个收到的片段。')
+  view.rerender(<ConversationThread turns={[{ id: 'natural', question: '优化当前选区', answer: latest, citations: [], liveText: true }]} onSelectCitation={vi.fn()} />)
+  expect(view.container.querySelector('[data-role="user-message"]')).toHaveTextContent('优化当前选区')
+})
