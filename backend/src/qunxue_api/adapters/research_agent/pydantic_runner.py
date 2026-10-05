@@ -3428,6 +3428,7 @@ def _trace_items(values, *, limit: int = 4) -> list[dict[str, object]]:
         elif isinstance(value, Mapping):
             item = {}
             for key in (
+                "url",
                 "knowledge_id",
                 "material_id",
                 "segment_id",
