@@ -87,7 +87,7 @@ GitHub 验证主邮箱和最小 scope、callback 浏览器与 provider 绑定、
 5. 取消授权、过期 state、错误回调与绑定会话退出都安全失败。
 
 官方资料：
-- [Authlib Starlette OAuth client](https://docs.authlib.org/en/stable/client/starlette.html)
+- [Authlib Starlette OAuth client](https://docs.authlib.org/en/stable/oauth2/client/web/starlette.html)
 - [Google OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect)
 - [GitHub OAuth App authorization](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps)
 - [GitHub OAuth scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps)
