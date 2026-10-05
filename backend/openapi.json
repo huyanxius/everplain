@@ -1146,6 +1146,16 @@
             "title": "Speaking Style",
             "type": "string"
           },
+          "user_avatar": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserAvatar"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "version": {
             "title": "Version",
             "type": "integer"
@@ -1242,7 +1252,7 @@
           "setup_step": {
             "anyOf": [
               {
-                "maximum": 4.0,
+                "maximum": 6.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -1280,6 +1290,16 @@
               }
             ],
             "title": "Speaking Style"
+          },
+          "user_avatar": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserAvatar"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -17319,6 +17339,47 @@
           }
         },
         "title": "UpdateSharedKnowledgeRequest",
+        "type": "object"
+      },
+      "UserAvatar": {
+        "additionalProperties": false,
+        "properties": {
+          "blush": {
+            "title": "Blush",
+            "type": "boolean"
+          },
+          "hair": {
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Hair",
+            "type": "string"
+          },
+          "id": {
+            "enum": [
+              "xiaoping",
+              "mo",
+              "silver",
+              "sand",
+              "cat",
+              "hime"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "skin": {
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Skin",
+            "type": "string"
+          },
+          "sleeve": {
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Sleeve",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "UserAvatar",
         "type": "object"
       },
       "ValidationError": {

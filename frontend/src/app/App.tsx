@@ -247,7 +247,7 @@ export function AppRoutes({
 
   return (
     <RailStateProvider>
-      <HomeCompanion active={resolvedSessionState.status === 'authenticated' && location.pathname === '/app'} />
+      <HomeCompanion userId={authenticatedUserId} active={resolvedSessionState.status === 'authenticated' && (location.pathname === '/app' || settingsOpen)} />
       <RouteMotionSurface identityKey={authenticatedUserId}>
         <Routes location={settingsOpen ? settingsBackground ?? { pathname: '/app' } : location}>
       <Route

@@ -1,6 +1,17 @@
-from typing import Literal
+from typing import Annotated, Literal, NotRequired, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, with_config
+
+AvatarColor = Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")]
+
+
+@with_config(ConfigDict(extra="forbid"))
+class UserAvatar(TypedDict):
+    id: Literal["xiaoping", "mo", "silver", "sand", "cat", "hime"]
+    hair: NotRequired[AvatarColor]
+    skin: NotRequired[AvatarColor]
+    sleeve: NotRequired[AvatarColor]
+    blush: NotRequired[Annotated[bool, Field(strict=True)]]
 
 
 class Questionnaire(BaseModel):
@@ -27,7 +38,8 @@ class AgentProfileUpdate(BaseModel):
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     speaking_style: Literal["clear", "warm", "rigorous", "curious"] | None = None
     soul_text: str | None = Field(default=None, max_length=8000)
-    setup_step: int | None = Field(default=None, ge=0, le=4)
+    user_avatar: UserAvatar | None = None
+    setup_step: int | None = Field(default=None, ge=0, le=6)
     setup_completed: bool | None = None
     questionnaire: Questionnaire | None = None
 
@@ -45,6 +57,7 @@ class AgentProfileResponse(BaseModel):
     color: str
     speaking_style: str
     soul_text: str = ""
+    user_avatar: UserAvatar | None = None
     setup_step: int
     setup_completed: bool
     questionnaire: Questionnaire

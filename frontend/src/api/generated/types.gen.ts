@@ -662,6 +662,7 @@ export type AgentProfileResponse = {
      * Speaking Style
      */
     speaking_style: string;
+    user_avatar?: UserAvatar | null;
     /**
      * Version
      */
@@ -705,6 +706,7 @@ export type AgentProfileUpdate = {
      * Speaking Style
      */
     speaking_style?: 'clear' | 'warm' | 'rigorous' | 'curious' | null;
+    user_avatar?: UserAvatar | null;
 };
 
 /**
@@ -9585,6 +9587,32 @@ export type UpdateSharedKnowledgeRequest = {
      * Sharing Enabled
      */
     sharing_enabled?: boolean | null;
+};
+
+/**
+ * UserAvatar
+ */
+export type UserAvatar = {
+    /**
+     * Blush
+     */
+    blush?: boolean;
+    /**
+     * Hair
+     */
+    hair?: string;
+    /**
+     * Id
+     */
+    id: 'xiaoping' | 'mo' | 'silver' | 'sand' | 'cat' | 'hime';
+    /**
+     * Skin
+     */
+    skin?: string;
+    /**
+     * Sleeve
+     */
+    sleeve?: string;
 };
 
 /**
