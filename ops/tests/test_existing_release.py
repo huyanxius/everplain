@@ -59,6 +59,8 @@ class RegistryReleaseTests(unittest.TestCase):
         storage["schema/sqlite_index.py"] = hashlib.sha256(
             (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
         ).hexdigest()
+        # Reconstruct the exact reviewed endpoint before the newer account migration.
+        del storage["migrations/versions/20261005_0630_federated_accounts.py"]
         # These reviews predate import receipts and OAuth. Reconstruct their
         # exact trees rather than allowing hashes contaminated by later DDL.
         del storage["migrations/versions/20261005_0620_federated_login.py"]
@@ -98,6 +100,8 @@ class RegistryReleaseTests(unittest.TestCase):
         storage["schema/sqlite_index.py"] = hashlib.sha256(
             (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
         ).hexdigest()
+        # Reconstruct the exact reviewed endpoint before the newer account migration.
+        del storage["migrations/versions/20261005_0630_federated_accounts.py"]
         candidate = {"migration_tree": hashlib.sha256(
             json.dumps(storage, sort_keys=True).encode()).hexdigest()}
         candidate_storage = dict(storage)
@@ -134,6 +138,50 @@ class RegistryReleaseTests(unittest.TestCase):
             with self.subTest(changed_file=changed_file), \
                  self.assertRaisesRegex(ValueError, "rollback compatibility"):
                 release.check_existing_migration_transition(previous, changed_candidate, policy)
+
+    def test_shipped_federated_account_review_is_exact_forward_only(self):
+        policy = json.loads((ROOT / "ops/cd/policy.json").read_text())
+        storage = {
+            "migrations/" + p.relative_to(ROOT / "backend/migrations").as_posix():
+            hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted((ROOT / "backend/migrations").rglob("*.py"))
+        }
+        storage["schema/sqlite_index.py"] = hashlib.sha256(
+            (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
+        ).hexdigest()
+        candidate_storage = dict(storage)
+        candidate = {"migration_tree": hashlib.sha256(
+            json.dumps(storage, sort_keys=True).encode()).hexdigest()}
+        del storage["migrations/versions/20261005_0630_federated_accounts.py"]
+        previous = {"migration_tree": hashlib.sha256(
+            json.dumps(storage, sort_keys=True).encode()).hexdigest()}
+        del storage["migrations/versions/20261005_0620_federated_login.py"]
+        imported = {"migration_tree": hashlib.sha256(
+            json.dumps(storage, sort_keys=True).encode()).hexdigest()}
+        self.assertIn({"from": previous["migration_tree"], "to": candidate["migration_tree"]},
+                      policy["reviewed_forward_only_migration_transitions"])
+        self.assertTrue(release.check_existing_migration_transition(previous, candidate, policy))
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            release.check_compatible(previous, candidate, policy)
+        for old, new in ((candidate, previous), (imported, candidate),
+                         (previous, {"migration_tree": "0" * 64}),
+                         ({"migration_tree": "0" * 64}, candidate)):
+            with self.subTest(old=old, new=new), self.assertRaisesRegex(
+                ValueError, "rollback compatibility"
+            ):
+                release.check_existing_migration_transition(old, new, policy)
+        for changed_file in (
+            "migrations/versions/20261005_0630_federated_accounts.py",
+            "migrations/versions/20261005_0620_federated_login.py",
+        ):
+            changed = dict(candidate_storage)
+            changed[changed_file] = "0" * 64
+            mutated = {"migration_tree": hashlib.sha256(
+                json.dumps(changed, sort_keys=True).encode()).hexdigest()}
+            with self.subTest(changed_file=changed_file), self.assertRaisesRegex(
+                ValueError, "rollback compatibility"
+            ):
+                release.check_existing_migration_transition(previous, mutated, policy)
 
     def test_live_compatibility_overlays_require_reviewed_bytes_and_read_only_mounts(self):
         with tempfile.TemporaryDirectory() as d:

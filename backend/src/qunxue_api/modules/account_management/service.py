@@ -18,6 +18,7 @@ from qunxue_api.modules.account_management.errors import (
     AccountNotFound,
     InvalidConfirmation,
     InvalidCurrentPassword,
+    InvalidPasswordReset,
     LastAdministratorProtected,
     ProvisionedAdministratorProtected,
     StaleAccountVersion,
@@ -578,7 +579,13 @@ class AccountManagementService:
         idempotency_key: str,
         now: datetime,
     ) -> dict[str, object]:
-        self.get_account(user_id)
+        account = self.get_account(user_id)
+        if (
+            account.get("login_mode", "email_password") != "email_password"
+            or not account["email"]
+            or self._repository.get_password_hash(user_id) == "!oauth-only"
+        ):
+            raise InvalidPasswordReset
         result = self._repository.create_password_reset(
             reset_id=self._id_factory(),
             user_id=user_id,

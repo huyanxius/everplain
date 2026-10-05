@@ -63,7 +63,9 @@ class SqliteAccountRepository:
         }
 
     def get_user_by_email(self, email: str) -> dict[str, object] | None:
-        row = self._db.scalar(select(UserRow).where(UserRow.email == email))
+        row = self._db.scalar(
+            select(UserRow).where(UserRow.email == email, UserRow.login_mode == "email_password")
+        )
         if row is None:
             return None
         preference = self._db.get(UserPreferenceRow, row.user_id)
@@ -531,6 +533,14 @@ class SqliteAccountRepository:
             raise InvalidPasswordReset
         if _as_utc(row.expires_at) <= now:
             raise ExpiredAccountToken
+        user = self._db.get(UserRow, row.user_id)
+        if (
+            user is None
+            or user.login_mode != "email_password"
+            or user.email is None
+            or user.password_hash == "!oauth-only"
+        ):
+            raise InvalidPasswordReset
         row.used_at = now
         user_id = UUID(row.user_id)
         self.change_password(
@@ -873,6 +883,7 @@ class SqliteAccountRepository:
         return {
             "user_id": user.user_id,
             "email": user.email,
+            "login_mode": user.login_mode,
             "display_name": user.display_name,
             "role": user.role,
             "status": user.status,
@@ -940,6 +951,7 @@ class SqliteAccountRepository:
         return {
             "user_id": row.user_id,
             "email": row.email,
+            "login_mode": row.login_mode,
             "display_name": row.display_name,
             "role": row.role,
             "status": row.status,

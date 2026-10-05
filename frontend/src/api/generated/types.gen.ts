@@ -69,6 +69,11 @@ export type AccountAuditPageResponse = {
 };
 
 /**
+ * AccountLoginMode
+ */
+export type AccountLoginMode = 'email_password' | 'federated';
+
+/**
  * AccountPreferencesResponse
  */
 export type AccountPreferencesResponse = {
@@ -117,7 +122,7 @@ export type AccountResponse = {
     /**
      * Email
      */
-    email: string;
+    email: string | null;
     /**
      * Is Protected Admin
      */
@@ -126,6 +131,7 @@ export type AccountResponse = {
      * Last Login At
      */
     last_login_at: string | null;
+    login_mode?: AccountLoginMode;
     preferences: AccountPreferencesResponse;
     role: AccountRole;
     status: AccountStatus;
@@ -317,7 +323,7 @@ export type AdminUserResponse = {
     /**
      * Email
      */
-    email: string;
+    email: string | null;
     /**
      * Is Current User
      */
@@ -330,6 +336,7 @@ export type AdminUserResponse = {
      * Last Active At
      */
     last_active_at: string | null;
+    login_mode?: AccountLoginMode;
     role: AccountRole;
     status: AccountStatus;
     /**
@@ -8831,7 +8838,8 @@ export type SessionUserResponse = {
     /**
      * Email
      */
-    email: string;
+    email: string | null;
+    login_mode?: AccountLoginMode;
     /**
      * User Id
      */

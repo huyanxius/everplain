@@ -1,5 +1,7 @@
 """Identity-only OAuth clients. Provider tokens never leave this adapter or get persisted."""
 
+import logging
+
 import httpx2
 from authlib.integrations.starlette_client import OAuth, OAuthError
 from joserfc.errors import JoseError
@@ -12,6 +14,7 @@ from qunxue_api.modules.identity import (
 )
 
 PROVIDERS = ("google", "github")
+logger = logging.getLogger(__name__)
 
 
 class OAuthClients:
@@ -41,7 +44,7 @@ class OAuthClients:
                 },
             )
             if provider == "google":
-                common["client_kwargs"]["scope"] = "openid email"
+                common["client_kwargs"]["scope"] = "openid email profile"
                 self._registry.register(
                     provider,
                     **common,
@@ -107,6 +110,7 @@ class OAuthClients:
                 },
             )
             subject, email = info.get("sub"), info.get("email")
+            display_name = info.get("name")
         else:
             scopes = set(str(token.get("scope", "")).replace(",", " ").split())
             if scopes != {"user:email"}:
@@ -121,6 +125,7 @@ class OAuthClients:
             if type(user.get("id")) is not int or user["id"] <= 0:
                 raise OAuthIdentityInvalid("missing GitHub subject")
             subject = str(user["id"])
+            display_name = user.get("name") or user.get("login")
             response = await client.get("user/emails", token=token, headers=headers)
             response.raise_for_status()
             emails = response.json()
@@ -143,7 +148,12 @@ class OAuthClients:
             or not 3 <= len(email) <= 320
         ):
             raise OAuthIdentityInvalid("missing verified identity")
-        return VerifiedOAuthIdentity(provider=provider, subject=subject, email=email)
+        return VerifiedOAuthIdentity(
+            provider=provider,
+            subject=subject,
+            email=email,
+            display_name=display_name.strip()[:80] if isinstance(display_name, str) else None,
+        )
 
     async def authorize_url(self, provider: str, *, state: str, verifier: str, nonce: str) -> str:
         try:
@@ -156,6 +166,7 @@ class OAuthClients:
             TypeError,
             KeyError,
         ) as error:
+            self._record_failure(provider, "authorization", error)
             raise OAuthProviderUnavailable("OAuth provider unavailable") from error
 
     async def identity(
@@ -164,4 +175,29 @@ class OAuthClients:
         try:
             return await self._identity(provider, code=code, verifier=verifier, nonce=nonce)
         except (httpx2.HTTPError, OAuthError, JoseError, ValueError, TypeError, KeyError) as error:
+            self._record_failure(provider, "identity", error)
             raise OAuthProviderUnavailable("OAuth provider verification failed") from error
+
+    @staticmethod
+    def _record_failure(provider: str, operation: str, error: Exception) -> None:
+        # Error descriptions, URLs and traceback locals can contain provider
+        # codes/tokens/secrets. Only bounded categories reach the operational log.
+        code = getattr(error, "error", None)
+        known_codes = {
+            "invalid_client",
+            "invalid_grant",
+            "invalid_request",
+            "access_denied",
+            "temporarily_unavailable",
+            "server_error",
+            "unauthorized_client",
+        }
+        logger.warning(
+            "OAuth provider request failed provider=%s operation=%s category=%s code=%s "
+            "cause_category=%s",
+            provider,
+            operation,
+            type(error).__name__,
+            code if isinstance(code, str) and code in known_codes else "unspecified",
+            type(error.__cause__).__name__ if error.__cause__ else "unspecified",
+        )

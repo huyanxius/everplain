@@ -39,7 +39,6 @@ export function LoginPage(props: LoginPageProps) {
       onBack={flow.step === 'password' ? flow.back : undefined}
       footer={<span>还没有账号？ <a href={props.registerHref}>创建账号</a></span>}>
       <OAuthCallbackNotice code={props.oauthError} />
-      {flow.step === 'email' && <OAuthActions returnPath={props.returnPath ?? '/app'} busy={flow.submitting} onNavigate={props.onOAuthNavigate} />}
       {flow.step === 'password' && <p className="auth-stage__email">{flow.email}</p>}
       <form className="auth-stage__form" aria-label="登录到 Everplain" onSubmit={flow.step === 'email' ? flow.continueToPassword : flow.submit} noValidate>
         {props.sessionExpired && <p className="qx-notice" role="status">登录已过期，请重新登录后继续。</p>}
@@ -59,6 +58,7 @@ export function LoginPage(props: LoginPageProps) {
           {flow.step === 'email' ? '继续' : flow.submitting ? '正在登录…' : '登录并继续'}
         </button>
       </form>
+      {flow.step === 'email' && <OAuthActions returnPath={props.returnPath ?? '/app'} busy={flow.submitting} onNavigate={props.onOAuthNavigate} />}
     </AuthStage>
   )
 }
@@ -71,7 +71,6 @@ export function RegisterPage(props: RegisterPageProps) {
       onBack={flow.step !== 'email' ? flow.back : undefined}
       footer={<span>已有账号？ <a href={props.loginHref}>返回登录</a></span>}>
       <OAuthCallbackNotice code={props.oauthError} />
-      {flow.step === 'email' && <OAuthActions returnPath={props.returnPath ?? '/app'} busy={flow.submitting} onNavigate={props.onOAuthNavigate} />}
       <ol className="auth-stage__steps" aria-label={`第 ${stepNumber} 步，共 3 步`}>
         {[1, 2, 3].map(step => <li key={step} data-current={step === stepNumber} data-done={step < stepNumber} />)}
       </ol>
@@ -94,6 +93,7 @@ export function RegisterPage(props: RegisterPageProps) {
         </button>
         {flow.step === 'code' && <button className="qx-btn qx-btn--ghost" type="button" disabled={flow.submitting || flow.resendAfter > 0} onClick={() => void flow.sendCode()}>{flow.resendAfter > 0 ? `${flow.resendAfter} 秒后可重新发送` : '重新发送验证码'}</button>}
       </form>
+      {flow.step === 'email' && <OAuthActions returnPath={props.returnPath ?? '/app'} busy={flow.submitting} onNavigate={props.onOAuthNavigate} />}
     </AuthStage>
   )
 }

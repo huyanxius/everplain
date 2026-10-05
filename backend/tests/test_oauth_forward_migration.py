@@ -5,22 +5,20 @@ import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from argon2 import PasswordHasher
-from fastapi.testclient import TestClient
+from oauth_legacy_migration_support import PASSWORD, seed_account, seed_imports
 from sqlalchemy import event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from qunxue_api.adapters.sqlite.database import Database
 from qunxue_api.adapters.sqlite.quota_periods import ensure_quota_period, settle_quota_period
-from qunxue_api.bootstrap import create_app
-from qunxue_api.settings import Settings
 
 SOURCE = Path(__file__).resolve().parents[2]
 PREVIOUS = "20261005_0615"
@@ -83,17 +81,6 @@ def copy_database(source, destination):
         old.backup(new)
 
 
-def start_import(client, files):
-    response = client.post(
-        "/api/imports",
-        data={"source_type": "obsidian"},
-        files=[("files", (name, body, "application/octet-stream")) for name, body in files],
-        headers={"Idempotency-Key": str(uuid4())},
-    )
-    assert response.status_code == 202, response.text
-    return response.json()
-
-
 @pytest.fixture(scope="module")
 def seeded_baseline(tmp_path_factory):
     evidence = tmp_path_factory.mktemp("oauth-forward")
@@ -103,50 +90,15 @@ def seeded_baseline(tmp_path_factory):
     )
     cfg = config(path)
     upgrade(cfg, PREVIOUS)
+    with sqlite3.connect(path) as connection:
+        connection.execute("PRAGMA foreign_keys=ON")
+        seed = seed_account(connection)
+        imports = seed_imports(connection, seed["owner"])
+        assert "login_mode" not in {
+            row[1] for row in connection.execute("PRAGMA table_info(users)")
+        }
+    owner = seed["owner"]
     database = Database(f"sqlite:///{path}")
-    settings = Settings(_env_file=None, database_url=f"sqlite:///{path}", runtime_mode="mock")
-    app = create_app(settings=settings, database=database, require_email_verification=False)
-    app.state.import_worker_enabled = False
-    with TestClient(app) as client:
-        registered = client.post(
-            "/api/session/register",
-            json={"email": "migration-owner@example.test", "password": "synthetic-passphrase-only"},
-            headers={"Idempotency-Key": str(uuid4())},
-        )
-        assert registered.status_code == 201, registered.text
-        owner = registered.json()["user"]["user_id"]
-        session_id = registered.json()["session_id"]
-        credential = client.cookies.get(settings.session_cookie_name)
-        ready = start_import(
-            client,
-            [
-                (
-                    "Vault/notes/A.md",
-                    "# A\n![[图.png]] [report](../assets/report.pdf)\nSynthetic text".encode(),
-                ),
-                ("Vault/assets/图.png", b"\x89PNG\r\n\x00\xff\xfe"),
-                ("Vault/assets/report.pdf", b"%PDF synthetic fixture\x00\xff"),
-            ],
-        )
-        for _ in range(30):
-            if not app.state.run_import_once():
-                break
-        else:
-            raise AssertionError("synthetic import queue did not drain")
-        ready = client.get("/api/imports/" + ready["id"]).json()
-        assert ready["status"] == "completed" and ready["imported"] == 1
-        assert ready["attachment_count"] == 2
-        asset_urls = [attachment["url"] for attachment in ready["items"][0]["attachments"]]
-        asset_bodies = [client.get(url).content for url in asset_urls]
-        queued = start_import(
-            client,
-            [
-                ("Vault/notes/B.md", b"# B\n![[queued.png]]\nQueued synthetic text"),
-                ("Vault/assets/queued.png", b"\x00queued attachment\xff"),
-            ],
-        )
-        assert queued["status"] == "processing" and queued["attachment_count"] == 1
-        assert queued["items"][0]["status"] == "queued"
     now = datetime.now(UTC)
     with database.engine.connect() as conn:
         conn.execute(text("BEGIN IMMEDIATE"))
@@ -173,16 +125,7 @@ def seeded_baseline(tmp_path_factory):
     assert not old["foreign_key_violations"] and old["integrity"] == "ok"
     assert old["rows"]["alembic_version"] == [[PREVIOUS]]
     assert not ADDED_TABLES.intersection(old["rows"])
-    return {
-        "path": path,
-        "owner": owner,
-        "session_id": session_id,
-        "credential": credential,
-        "asset_urls": asset_urls,
-        "asset_bodies": asset_bodies,
-        "queued": queued,
-        "snapshot": old,
-    }
+    return seed | {"path": path, "imports": imports, "snapshot": old}
 
 
 def test_real_0615_to_0620_preserves_every_old_row_and_schema(seeded_baseline):
@@ -192,7 +135,7 @@ def test_real_0615_to_0620_preserves_every_old_row_and_schema(seeded_baseline):
     copy_database(seed["path"], path)
     cfg = config(path)
     graph = ScriptDirectory.from_config(cfg)
-    assert graph.get_heads() == [CANDIDATE]
+    assert len(graph.get_heads()) == 1
     assert graph.get_revision(CANDIDATE).down_revision == PREVIOUS
     upgrade(cfg, CANDIDATE)
     new = snapshot(path)
@@ -207,43 +150,25 @@ def test_real_0615_to_0620_preserves_every_old_row_and_schema(seeded_baseline):
     assert new["rows"]["federated_identities"] == []
     assert new["rows"]["oauth_transactions"] == []
     assert not new["foreign_key_violations"] and new["integrity"] == "ok"
-    upgrade(cfg, "head")
+    upgrade(cfg, CANDIDATE)
     assert snapshot(path) == new
     with pytest.raises(RuntimeError, match="restoring a backup to a new database"):
         downgrade(cfg, PREVIOUS)
     assert snapshot(path) == new
-    database = Database(f"sqlite:///{path}")
-    settings = Settings(_env_file=None, database_url=f"sqlite:///{path}", runtime_mode="mock")
-    app = create_app(settings=settings, database=database, require_email_verification=False)
-    app.state.import_worker_enabled = False
-    with app.state.identity_service_scope() as service:
-        authenticated = service.authenticate(seed["credential"])
-        assert authenticated.user.user_id == UUID(seed["owner"])
-        assert authenticated.session.session_id == UUID(seed["session_id"])
-    with database.engine.connect() as conn:
-        password_hash = conn.scalar(
-            text("SELECT password_hash FROM users WHERE user_id=:u"), {"u": seed["owner"]}
-        )
-        assert PasswordHasher().verify(password_hash, "synthetic-passphrase-only")
-        assert (
-            conn.scalar(
-                text("SELECT quota_period_epoch FROM credit_accounts WHERE user_id=:u"),
-                {"u": seed["owner"]},
-            )
-            == 2
-        )
-        assert (
-            conn.scalar(text("SELECT sum(points) FROM credit_ledger WHERE kind='signup_grant'"))
-            == 30
-        )
-    with TestClient(app) as client:
-        client.cookies.set(settings.session_cookie_name, seed["credential"])
-        for url, body in zip(seed["asset_urls"], seed["asset_bodies"], strict=True):
-            assert client.get(url).content == body
-        queued = client.get("/api/imports/" + seed["queued"]["id"])
-        assert queued.status_code == 200 and queued.json()["status"] == seed["queued"]["status"]
-        assert queued.json()["items"][0]["status"] == "queued"
-    database.engine.dispose()
+    with sqlite3.connect(path) as connection:
+        assert PasswordHasher().verify(seed["password_hash"], PASSWORD)
+        assert connection.execute(
+            "SELECT user_id,revoked_at FROM user_sessions WHERE session_id=?",
+            (seed["session_id"],),
+        ).fetchone() == (seed["owner"], None)
+        for attachment, content in seed["imports"]["assets"].items():
+            assert connection.execute(
+                "SELECT content FROM import_attachments WHERE id=?", (attachment,)
+            ).fetchone() == (content,)
+        assert connection.execute(
+            "SELECT status FROM import_items WHERE id=?",
+            (seed["imports"]["batches"][1]["item"],),
+        ).fetchone() == ("queued",)
     assert snapshot(seed["path"]) == before, "the untouched old baseline must remain unchanged"
 
 

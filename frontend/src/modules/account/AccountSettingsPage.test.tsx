@@ -135,12 +135,12 @@ function openPartition(name: string) {
 }
 
 describe('AccountSettingsPage', () => {
-  it('explains the existing administrator-assisted password setup without inventing self-service recovery', async () => {
-    render(<AccountSettingsPage api={createApi()} initialSection="security" />)
+  it('keeps provider-only accounts separate from password recovery', async () => {
+    render(<AccountSettingsPage api={createApi({ getAccount: async () => ({ ...account, email: null, loginMode: 'federated' }) })} initialSection="security" />)
     await screen.findByRole('heading', { name: '安全' })
-    expect(screen.getByText(/使用第三方注册且还没有本地密码/)).toHaveTextContent('核验身份后获取一次性密码重设链接')
-    expect(screen.getByText(/使用第三方注册且还没有本地密码/)).toHaveTextContent('撤销所有旧会话')
-    expect(screen.getByLabelText('当前密码')).toBeRequired()
+    expect(screen.getByText(/此账户使用已绑定的 Google 或 GitHub 登录/)).toHaveTextContent('第三方邮箱不会启用邮箱登录或密码重设')
+    expect(screen.queryByLabelText('当前密码')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '更新密码' })).not.toBeInTheDocument()
   })
 
   it('uses the shared liquid Bot while the settings page is pending, then removes it', async () => {

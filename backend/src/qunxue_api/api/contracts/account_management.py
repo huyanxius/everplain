@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from qunxue_api.modules.identity import AccountRole, AccountStatus
+from qunxue_api.modules.identity import AccountLoginMode, AccountRole, AccountStatus
 
 
 class ExportStatus(StrEnum):
@@ -25,7 +25,8 @@ class AccountPreferencesResponse(BaseModel):
 
 class AccountResponse(BaseModel):
     user_id: UUID
-    email: str
+    email: str | None
+    login_mode: AccountLoginMode = AccountLoginMode.EMAIL_PASSWORD
     display_name: str | None
     role: AccountRole
     status: AccountStatus
@@ -171,7 +172,8 @@ class ChangePasswordResponse(BaseModel):
 
 class AdminUserResponse(BaseModel):
     user_id: UUID
-    email: str
+    email: str | None
+    login_mode: AccountLoginMode = AccountLoginMode.EMAIL_PASSWORD
     display_name: str | None
     role: AccountRole
     status: AccountStatus

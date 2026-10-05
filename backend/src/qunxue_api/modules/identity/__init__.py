@@ -2,6 +2,7 @@
 
 from qunxue_api.modules.identity.domain import (
     OAUTH_TTL_SECONDS,
+    AccountLoginMode,
     AccountRole,
     AccountStatus,
     AuthenticatedSession,
@@ -55,6 +56,7 @@ __all__ = [
     "OAuthTransactionStore",
     "safe_oauth_return_path",
     "AccountRole",
+    "AccountLoginMode",
     "AccountStatus",
     "AuthenticatedSession",
     "EmailAlreadyRegistered",
