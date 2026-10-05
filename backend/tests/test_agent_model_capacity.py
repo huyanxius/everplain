@@ -11,6 +11,8 @@ from pydantic_ai import Agent
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from qunxue_api.adapters.model import ModelEndpoint, ModelRouteExecutor
+from qunxue_api.adapters.research_agent import pydantic_runner
+from qunxue_api.adapters.research_agent.catalog_tools import KnowledgeToolRegistry
 from qunxue_api.adapters.research_agent.model_capacity import (
     model_capacity_key,
     resolve_agent_model_capacity,
@@ -191,3 +193,54 @@ def test_wire_keeps_native_output_cap_and_long_input_despite_legacy_router_limit
     if protocol == "chat_completions":
         assert "max_completion_tokens" not in calls[0]
     assert prompt in json.dumps(calls[0], ensure_ascii=False)
+
+
+def test_exact_qiniu_runner_streams_complete_answer_and_documented_wire_parameter(monkeypatch):
+    calls, deltas = [], []
+    answer = "服务端正文" * 1600
+
+    class EmptyCatalog:
+        def current_release(self, **kwargs):
+            raise LookupError
+
+    def reply(request):
+        calls.append(json.loads(request.content))
+        chunks = [{
+            "id": "qiniu-synthetic", "object": "chat.completion.chunk", "created": 1,
+            "model": QINIU_MODEL,
+            "choices": [{"index": 0, "delta": {"role": "assistant", "content": part},
+                         "finish_reason": None}],
+        } for part in (answer[:3000], answer[3000:7000], answer[7000:])]
+        chunks.append({
+            "id": "qiniu-synthetic", "object": "chat.completion.chunk", "created": 1,
+            "model": QINIU_MODEL,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 10000, "completion_tokens": 7500,
+                      "total_tokens": 17500},
+        })
+        return httpx.Response(200, headers={"content-type": "text/event-stream"},
+                             text="".join("data: " + json.dumps(c) + "\n\n" for c in chunks)
+                             + "data: [DONE]\n\n")
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(reply), trust_env=False)
+    monkeypatch.setattr(pydantic_runner, "AsyncOpenAI",
+                        lambda **kwargs: AsyncOpenAI(**kwargs, http_client=http))
+    runner = PydanticAIKnowledgeRunner(
+        base_url=QINIU_URL, api_key="synthetic", model=QINIU_MODEL, timeout_seconds=30,
+        route_executor=ModelRouteExecutor(endpoints=(
+            ModelEndpoint("primary", QINIU_URL, QINIU_MODEL, None, 30),
+        )),
+    )
+    try:
+        result = runner.run_stream(
+            prompt="直接回答测试正文", conversation=(), tools=KnowledgeToolRegistry(EmptyCatalog()),
+            on_delta=deltas.append,
+        )
+    finally:
+        asyncio.run(http.aclose())
+    assert result.answer == answer == "".join(deltas)
+    assert len(deltas) > 1
+    assert len(calls) == 1
+    assert calls[0]["model"] == QINIU_MODEL
+    assert calls[0]["max_tokens"] == 384000
+    assert "max_completion_tokens" not in calls[0]
