@@ -77,14 +77,16 @@ class KnowledgeImportApplication:
                 if not text:
                     raise ValueError("网页没有可读取的正文")
                 fetched_text = text
-                content = text.encode()
+                content = f"# {item['title']}\n\n来源：{item['source_url']}\n\n{text}".encode()
             if not content:
                 raise ValueError("没有可导入的正文")
             if item["source_type"] == "chrome" and item.get("source_url"):
                 title = item["title"]
                 if _generic_bookmark_title(filename):
                     title = _web_title(
-                        title, content.decode("utf-8", errors="replace"), item["source_url"]
+                        title,
+                        fetched_text or content.decode("utf-8", errors="replace"),
+                        item["source_url"],
                     )
                     filename = (
                         re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", title).strip(" .")[:120] + ".md"

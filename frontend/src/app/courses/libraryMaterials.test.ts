@@ -8,6 +8,8 @@ describe('web material metadata', () => {
   it('classifies Markdown bookmarks using their source URL', () => {
     expect(documentKind(document, { url: 'https://example.com/article' })).toBe('网页')
     expect(documentKind(document)).toBe('笔记')
+    expect(documentKind({ ...document, mediaType: 'image/png' }, { url: 'https://example.com/' })).toBe('图片')
+    expect(documentKind({ ...document, mediaType: 'application/pdf' }, { url: 'https://example.com/' })).toBe('PDF')
     expect(documentKind(document, { url: 'javascript:alert(1)' })).toBe('笔记')
   })
   it('uses the original page title and preserves meaningful filenames', () => {
