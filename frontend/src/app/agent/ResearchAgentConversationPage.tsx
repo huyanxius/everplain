@@ -804,6 +804,7 @@ function deepResearchRecord(turn: AgentTurn | undefined): DeepResearchRecord | n
 function persistedToolSteps(traces: AgentToolTrace[] | undefined): ResearchToolStep[] {
   let steps: ResearchToolStep[] = []
   for (const trace of traces ?? []) {
+    if (trace.tool === 'writing_ui_action') continue
     if (trace.tool === DEEP_RESEARCH_TRACE) continue
     const event: AgentToolEvent = trace.phase === 'started'
       ? { type: 'tool_started', tool: trace.tool, call_id: trace.call_id, input: trace.input ?? undefined, detail: trace.detail }
@@ -925,6 +926,7 @@ function AssistantTurn({
   onRegenerate,
   onContinueResearch,
   researchEntryBusy,
+  liveText,
 }: {
   userId: string | null
   turnId: string
@@ -946,6 +948,7 @@ function AssistantTurn({
   onRegenerate?: () => void
   onContinueResearch?: () => void
   researchEntryBusy?: boolean
+  liveText?: boolean
 }) {
   const { locale, text } = useAppLocale()
   const profile = useQuery({ queryKey: ['agent-profile', userId], queryFn: readAgentProfile, enabled: Boolean(userId), staleTime: 30_000 })
@@ -995,7 +998,7 @@ function AssistantTurn({
     agent={{ name: profile.data?.name.trim() || 'Everplain', avatar, color: profile.data?.color }}
     turn={{ id: turnId, question, answer, citations, knowledgeReleaseId,
       toolSteps: toolSteps.map(step => ({ ...step, label: localizedToolLabel(step.tool, locale, step.label), detail: step.detail ? localizedToolDetail(step.detail, locale) : undefined, purpose: localizedToolPurpose(step.tool, locale), resultItems: resultItemsFromOutput(step.output) })),
-      streaming, statusText,
+      streaming, statusText, liveText,
       progressEnd, interrupted, failure, provenance, handoffs,
       notice: interrupted ? answer.trim() || embedded
         ? text(`本轮已停止，已保留生成内容和 ${completedStepCount} 个已完成步骤。`, `This turn was stopped. Generated content and ${completedStepCount} steps were retained.`)
@@ -1540,7 +1543,7 @@ export function ResearchAgentConversationPage({
     const traces = (run.tool_summary ?? []).filter((item) => typeof item.tool === 'string' && typeof item.phase === 'string') as AgentToolTrace[]
     return {
       runId: run.run_id,
-      question: run.request.message,
+      question: run.idempotency_key.startsWith('writing-ui:') && run.request.writing_context ? '' : run.request.message,
       answer: run.partial_answer,
       citations: [],
       toolSteps: run.status === 'running' ? persistedToolSteps(traces) : interruptedSteps(persistedToolSteps(traces), locale),
@@ -1576,7 +1579,7 @@ export function ResearchAgentConversationPage({
   function resumeRecovery(run: AgentRunRecovery) {
     if (isBusy) return
     failedTurnAttempt.current = recoveryAttempt(run)
-    void submitQuestion(run.request.message, run.idempotency_key)
+    void submitQuestion(run.request.message, run.idempotency_key, undefined, false, undefined, run.idempotency_key.startsWith('writing-ui:') && Boolean(run.request.writing_context))
   }
 
   const loadConversation = useCallback(async (conversationId: string) => {
@@ -1933,8 +1936,7 @@ export function ResearchAgentConversationPage({
     const turnMode = resumeRequest ? (resumeRequest.mode === 'deep_research' ? 'deep-research' : 'standard') : (researchEntry || writingShortcut) ? 'standard' : (failedTurnAttempt.current?.idempotencyKey === retryIdempotencyKey && failedTurnAttempt.current?.request ? failedTurnAttempt.current.request.mode === 'deep_research' ? 'deep-research' : 'standard' : composerMode)
     let resultConversation: AgentConversation | null = null
     const idempotencyKey = retryIdempotencyKey
-      ?? globalThis.crypto?.randomUUID?.()
-      ?? `agent-${Date.now()}`
+      ?? `${writingShortcut ? 'writing-ui:retry:' : ''}${globalThis.crypto?.randomUUID?.() ?? `agent-${Date.now()}`}`
     quickWritingAttempt.current = writingShortcut ? idempotencyKey : null
     const resumableAttempt = failedTurnAttempt.current?.idempotencyKey === idempotencyKey
       ? failedTurnAttempt.current
@@ -2000,7 +2002,7 @@ export function ResearchAgentConversationPage({
     setStatus('thinking')
     pendingToolSteps.current = []
     redactedStreamingMaterialIds.current.clear()
-    const firstStreamingTurn: StreamingTurn = { runId: attempt.runId, question, answer: '', citations: [], toolSteps: [], canvasPatches: [], startedAt: Date.now() }
+    const firstStreamingTurn: StreamingTurn = { runId: attempt.runId, question: writingShortcut ? '' : question, answer: '', citations: [], toolSteps: [], canvasPatches: [], startedAt: Date.now() }
     const controller = new AbortController()
     const runGeneration = streamGeneration.current + 1
     streamGeneration.current = runGeneration
@@ -2158,6 +2160,7 @@ export function ResearchAgentConversationPage({
             )
             resultConversation = completedConversation
             const completedTurn = completedConversation.turns.at(-1)
+            if (writingShortcut && completedTurn) completedTurn.tool_traces = [...(completedTurn.tool_traces ?? []), { tool: 'writing_ui_action', phase: 'finished', call_id: idempotencyKey, input: { origin: 'selection_toolbar' } }]
             if (completedTurn) visualTurnKeys.current.set(completedTurn.turn_id, `live-${streamVisualKey.current}`)
             const releaseId = event.knowledge_release_id.trim()
             if (releaseId) rememberKnowledgeRelease(completedConversation.conversation_id, releaseId)
@@ -2390,7 +2393,8 @@ export function ResearchAgentConversationPage({
 
   function retryFailedTurn(question: string) {
     const attempt = failedTurnAttempt.current
-    void submitQuestion(question, attempt?.question === question ? attempt.idempotencyKey : undefined)
+    const automatic = Boolean(attempt?.idempotencyKey.startsWith('writing-ui:') && attempt.request?.writing_context)
+    void submitQuestion(automatic && !question ? attempt!.question : question, automatic || attempt?.question === question ? attempt?.idempotencyKey : undefined, undefined, false, undefined, automatic)
   }
 
   function settleInterruptedTurn({ resumable = true }: { resumable?: boolean } = {}) {
@@ -2701,7 +2705,7 @@ export function ResearchAgentConversationPage({
     sourceClosing={!contextOpen}
     title={activeConversation?.title || text('新对话', 'New conversation')}
     label={writingDocumentId ? text('写作 Agent 对话栏', 'Writing Agent conversation panel') : embedded ? text('研究 Agent 对话栏', 'Research Agent conversation panel') : text('Everplain Agent 对话', 'Everplain conversation')}
-    modes={<AgentModeSwitch mode={composerMode} disabled={isBusy} avatar={<PersonalCompanion userId={userId} compact working={isBusy} fallback={<AgentAvatar avatar="shi" size={32} state={isBusy ? 'work' : 'idle'} />} />} onChange={mode => { setComposerMode(mode); setMaterialMenuOpen(false); if (mode === 'deep-research') setDeepResearchIntroVisible(false) }}>{modeIntroduction}</AgentModeSwitch>}
+    modes={writingDocumentId ? null : <AgentModeSwitch mode={composerMode} disabled={isBusy} avatar={<PersonalCompanion userId={userId} compact working={isBusy} fallback={<AgentAvatar avatar="shi" size={32} state={isBusy ? 'work' : 'idle'} />} />} onChange={mode => { setComposerMode(mode); setMaterialMenuOpen(false); if (mode === 'deep-research') setDeepResearchIntroVisible(false) }}>{modeIntroduction}</AgentModeSwitch>}
     actions={<ConversationActions key={requestedScope} label={text('更多对话操作', 'More conversation actions')}>{conversationActions}</ConversationActions>}
     history={!embedded && showConversationManagement ? <button type="button" className="qx-btn qx-btn--ghost qx-btn--icon cv-layout__history-button" aria-label={text('打开研究记录', 'Open research history')} onClick={() => setHistoryOpen(true)}><ListIcon /></button> : null}
     companionBar={<CompanionStatusBar userId={userId} status={status} />}
@@ -2713,19 +2717,20 @@ export function ResearchAgentConversationPage({
                     userId={userId}
                     key={visualTurnKeys.current.get(turn.turn_id) ?? turn.turn_id}
                     turnId={visualTurnKeys.current.get(turn.turn_id) ?? turn.turn_id}
-                    question={turn.user.content}
+                    question={turn.tool_traces?.some(trace => trace.tool === 'writing_ui_action') ? '' : turn.user.content}
                     answer={turn.assistant.content}
                     citations={turn.assistant.citations}
                   toolSteps={toolStepsByTurnId[turn.turn_id] ?? persistedToolSteps(turn.tool_traces)}
                   conversationId={activeConversation?.conversation_id ?? null}
                   knowledgeReleaseId={turn.knowledge_release_id?.trim() || null}
                   embedded={embedded}
+                  liveText={Boolean(writingDocumentId)}
                   showResearchHandoff={!embedded}
                   onContinueResearch={() => { void continueResearch() }}
                   researchEntryBusy={researchEntryBusy || isBusy || materialUploading || attachedMaterials.some((material) => material.status !== 'ready')}
                     onOpenActivity={step => { setSelectedCitationContext(null); setSelectedActivityId(step?.id ?? null); setContextTab(step ? 'basis' : 'activity'); setContextOpen(true) }}
                     onSelectCitation={openCitation}
-                    onRegenerate={() => { void submitQuestion(turn.user.content) }}
+                    onRegenerate={() => { void submitQuestion(turn.user.content, undefined, undefined, false, undefined, Boolean(turn.tool_traces?.some(trace => trace.tool === 'writing_ui_action'))) }}
                   />
                 )),
                 ...(activeConversation?.unfinished_runs ?? []).filter((run) => run.run_id !== streamingTurn?.runId).map((run) => {
@@ -2743,6 +2748,7 @@ export function ResearchAgentConversationPage({
                     interrupted={saved.interrupted}
                     failure={saved.failure}
                     embedded={embedded}
+                    liveText={Boolean(writingDocumentId)}
                     onOpenActivity={step => { setSelectedCitationContext(null); setSelectedActivityId(step?.id ?? null); setContextTab(step ? 'basis' : 'activity'); setContextOpen(true) }}
                     onSelectCitation={openCitation}
                     onRegenerate={isBusy ? undefined : () => resumeRecovery(run)}
@@ -2784,6 +2790,7 @@ export function ResearchAgentConversationPage({
                     streamingStatus={status}
                     progressEnd={streamingTurn.progressEnd}
                     embedded={embedded}
+                    liveText={Boolean(writingDocumentId)}
                     onOpenActivity={step => { setSelectedCitationContext(null); setSelectedActivityId(step?.id ?? null); setContextTab(step ? 'basis' : 'activity'); setContextOpen(true) }}
                     onSelectCitation={openCitation}
                     onRegenerate={isBusy ? undefined : () => retryFailedTurn(streamingTurn.question)}

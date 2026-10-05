@@ -123,7 +123,7 @@ class SqliteConversationRepository:
             )
         }
         run_summaries = {
-            row.turn_id: tuple(dict(item) for item in (row.tool_summary or []))
+            row.turn_id: _display_tool_summary(row)
             for row in self._session.scalars(
                 select(AgentRunRow).where(
                     AgentRunRow.conversation_id == str(conversation_id),
@@ -813,6 +813,23 @@ def _citation_dict(item: AgentCitation) -> dict[str, object]:
         "deleted": item.deleted,
         **({"knowledge_base_id": item.knowledge_base_id} if item.knowledge_base_id else {}),
     }
+
+
+def _display_tool_summary(row: AgentRunRow) -> tuple[dict[str, object], ...]:
+    """Presentation origin only; never infer intent by matching message text."""
+    summary = tuple(dict(item) for item in (row.tool_summary or []))
+    if row.idempotency_key.startswith("writing-ui:") and (row.request_snapshot or {}).get(
+        "writing_context"
+    ):
+        summary += (
+            {
+                "tool": "writing_ui_action",
+                "phase": "finished",
+                "call_id": row.run_id,
+                "input": {"origin": "selection_toolbar"},
+            },
+        )
+    return summary
 
 
 def _run_from_row(row: AgentRunRow) -> AgentRun:

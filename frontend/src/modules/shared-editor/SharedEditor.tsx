@@ -110,6 +110,7 @@ export function SharedEditor({
   const [link, setLink] = useState<{ x: number; y: number; href: string } | null>(null)
   const [find, setFind] = useState<{ term: string; replace: string; index: number; cs: boolean; withReplace: boolean } | null>(null)
   const [source, setSource] = useState<string | null>(null)
+  const [sourceSelection, setSourceSelection] = useState<MarkdownSelection>(null)
   const [focusMode, setFocusMode] = useState(false)
   const [wide, setWide] = useState(false)
   const [help, setHelp] = useState(false)
@@ -119,6 +120,7 @@ export function SharedEditor({
   const [imageError, setImageError] = useState('')
   const [selectionError, setSelectionError] = useState('')
   const reportSelection = (selection: MarkdownSelection) => {
+    setSourceSelection(selection)
     setSelectionError(selection && 'error' in selection ? selection.error : '')
     selectionCallback.current?.(selection)
     return selection
@@ -496,6 +498,8 @@ export function SharedEditor({
           </form>
         ) : null}
       </div>
+
+      {source !== null && sourceSelection && 'start' in sourceSelection && selectionActions.length > 0 && <div className="se-source-bubble se-bubble" role="toolbar" aria-label="源码选区操作">{selectionActions.map(action => <button key={action.id} type="button" className="qx-btn qx-btn--ghost se-bubble__text" disabled={action.disabled} onMouseDown={event => event.preventDefault()} onClick={() => action.run(editor, sourceSelection.text, sourceSelection)}>{action.icon}{action.label}</button>)}</div>}
 
       <BubbleMenu editor={editor} shouldShow={({ editor: ed, state }) => !state.selection.empty && !ed.isActive('codeBlock') && !ed.isActive('image') && source === null} options={{ placement: 'top', offset: 10 }}>
         <div className="se-bubble">

@@ -1,9 +1,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
-import { mapMarkdownSelection, type MarkdownSelection } from '../../modules/shared-editor'
+import { mapMarkdownSelection, type MarkdownSelection, type SelectionAction } from '../../modules/shared-editor'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -19,13 +19,15 @@ vi.mock('../ui/Select', () => ({ Select: ({ options, onChange, ...props }: { opt
 const shared = vi.hoisted(() => ({ editor: null as Editor | null, selection: null as null | ((value: MarkdownSelection) => void) }))
 vi.mock('../../modules/shared-editor', async importOriginal => ({
   ...await importOriginal<typeof import('../../modules/shared-editor')>(),
-  SharedEditor: ({ markdown, onChange, onReady, onSelectionChange, readOnly }: { markdown: string; onChange(value: string): void; onReady?(editor: Editor): void; onSelectionChange?(value: MarkdownSelection): void; readOnly?: boolean }) => {
+  SharedEditor: ({ markdown, onChange, onReady, onSelectionChange, readOnly, selectionActions = [] }: { markdown: string; onChange(value: string): void; onReady?(editor: Editor): void; onSelectionChange?(value: MarkdownSelection): void; readOnly?: boolean; selectionActions?: SelectionAction[] }) => {
     const [editor] = useState(() => new Editor({ extensions: [StarterKit, Markdown], content: markdown, contentType: 'markdown' }))
-    shared.editor = editor; shared.selection = onSelectionChange ?? null
+    const [selected, setSelected] = useState<MarkdownSelection>(null)
+    const report = useCallback((value: MarkdownSelection) => { setSelected(value); onSelectionChange?.(value) }, [onSelectionChange])
+    shared.editor = editor; shared.selection = report
     useEffect(() => { onReady?.(editor); return () => editor.destroy() }, [editor, onReady])
     useEffect(() => { editor.commands.setContent(markdown, { contentType: 'markdown', emitUpdate: false }) }, [editor, markdown])
-    useEffect(() => { const select = () => onSelectionChange?.(mapMarkdownSelection(editor, markdown)); editor.on('selectionUpdate', select); return () => { editor.off('selectionUpdate', select) } }, [editor, markdown, onSelectionChange])
-    return <textarea aria-label="Markdown 源码" value={markdown} onChange={event => onChange(event.target.value)} onSelect={event => { const input = event.currentTarget; onSelectionChange?.(input.selectionStart < input.selectionEnd ? { start: input.selectionStart, end: input.selectionEnd, text: input.value.slice(input.selectionStart, input.selectionEnd) } : null) }} readOnly={readOnly} />
+    useEffect(() => { const select = () => report(mapMarkdownSelection(editor, markdown)); editor.on('selectionUpdate', select); return () => { editor.off('selectionUpdate', select) } }, [editor, markdown, report])
+    return <><textarea aria-label="Markdown 源码" value={markdown} onChange={event => onChange(event.target.value)} onSelect={event => { const input = event.currentTarget; report(input.selectionStart < input.selectionEnd ? { start: input.selectionStart, end: input.selectionEnd, text: input.value.slice(input.selectionStart, input.selectionEnd) } : null) }} readOnly={readOnly} />{selected && <div role="toolbar" aria-label="选区操作">{selectionActions.map(action => <button key={action.id} disabled={action.disabled} onClick={() => action.run(editor, 'start' in selected ? selected.text : '', selected)}>{action.label}</button>)}</div>}</>
   },
 }))
 const agent = vi.hoisted(() => ({ props: null as null | { prepareWritingContext: () => Promise<unknown>; onTurnCompleted: () => void; onConversationStarted: (identity: { conversation_id: string }) => void; conversationId: string | null; writingAction?: { id: string; text: string } | null; onWritingActionFinished?: (id: string) => void } }))
@@ -35,6 +37,7 @@ const revision = { revision_id: 'rev-1', document_id: 'doc-1', base_version: 1, 
 function Location() { return <div data-testid="location">{useLocation().pathname}</div> }
 function wrap(element: React.ReactNode) { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/writing']}><Routes><Route path="*" element={<>{element}<Location /></>} /></Routes></MemoryRouter></QueryClientProvider>) }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done }); return { promise, resolve } }
+async function selectedAction(name: string) { const input = await screen.findByRole('textbox', { name: 'Markdown 源码' }) as HTMLTextAreaElement; input.setSelectionRange(0, input.value.length); fireEvent.select(input); return screen.findByRole('button', { name }) }
 beforeEach(() => { vi.resetAllMocks(); shared.editor = null; shared.selection = null; sessionStorage.clear(); vi.mocked(writingApi.summary).mockResolvedValue({ sample_count: 0, genres: [], documents: [] }); vi.mocked(writingApi.samples).mockResolvedValue({ items: [] }); vi.mocked(writingApi.document).mockResolvedValue(doc); vi.mocked(writingApi.revisions).mockResolvedValue({ items: [] }); vi.mocked(writingApi.create).mockResolvedValue(doc); vi.mocked(writingApi.update).mockImplementation(async (_id, body) => ({ ...doc, ...body, version: 2 })); vi.mocked(writingApi.propose).mockResolvedValue(revision); vi.mocked(writingApi.resolve).mockResolvedValue({ document: { ...doc, markdown: '建议内容', version: 2 }, revision: { ...revision, status: 'accepted' } }); HTMLElement.prototype.scrollIntoView = vi.fn() })
 afterEach(cleanup)
 describe('real writing home integration', () => {
@@ -60,15 +63,15 @@ describe('writing draft and revision safety', () => {
   it('saves exact Markdown and requires current expected_version', async () => { wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); const input = await screen.findByRole('textbox', { name: 'Markdown 源码' }); const markdown = '---\ntitle: old\n---\n\n[[双链|别名]]\n```js\nlet a=1\n```\n'; fireEvent.change(input, { target: { value: markdown } }); fireEvent.click(screen.getByRole('button', { name: '保存' })); await waitFor(() => expect(writingApi.update).toHaveBeenCalledWith('doc-1', expect.objectContaining({ markdown, expected_version: 1 }), expect.any(String))) })
   it('restores only the current owner’s draft after refresh', async () => { sessionStorage.setItem(draftKey('u1', 'doc-1'), JSON.stringify({ title: '恢复标题', genre: 'essay', markdown: '未保存全文', version: 1 })); sessionStorage.setItem(draftKey('u2', 'doc-1'), JSON.stringify({ title: '他人标题', genre: 'essay', markdown: '他人全文', version: 1 })); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); expect(await screen.findByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('未保存全文'); expect(screen.getByRole('textbox', { name: '文稿标题' })).toHaveValue('恢复标题'); expect(screen.queryByText('他人全文')).not.toBeInTheDocument() })
   it('leaves unsaved body intact on failed save and reuses attempt key', async () => { vi.mocked(writingApi.update).mockRejectedValue(new Error('版本冲突')); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); fireEvent.change(await screen.findByRole('textbox', { name: 'Markdown 源码' }), { target: { value: '本地修改' } }); fireEvent.click(screen.getByRole('button', { name: '保存' })); await screen.findByText('版本冲突'); expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('本地修改'); fireEvent.click(screen.getByRole('button', { name: '保存' })); await waitFor(() => expect(writingApi.update).toHaveBeenCalledTimes(2)); expect(vi.mocked(writingApi.update).mock.calls[0][2]).toBe(vi.mocked(writingApi.update).mock.calls[1][2]) })
-  it('never replaces original body just because Agent proposed a revision', async () => { wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); await screen.findByText('公共 Agent 面板'); vi.mocked(writingApi.revisions).mockResolvedValue({ items: [revision] }); act(() => agent.props!.onTurnCompleted()); await screen.findByText('查看待定修订 · 对话仍可继续'); expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('原文内容'); expect(writingApi.resolve).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole('button', { name: '接受修订' })); await waitFor(() => expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('建议内容')); expect(writingApi.resolve).toHaveBeenCalledWith('doc-1', 'rev-1', { decision: 'accept', expected_version: 1 }, expect.any(String)) })
-  it('blocks acceptance over an unsaved user edit', async () => { vi.mocked(writingApi.revisions).mockResolvedValue({ items: [revision] }); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); fireEvent.change(await screen.findByRole('textbox', { name: 'Markdown 源码' }), { target: { value: '新手写内容' } }); fireEvent.click(screen.getByRole('tab', { name: '修订 · 1' })); expect(screen.getByRole('button', { name: '接受' })).toBeDisabled(); expect(writingApi.resolve).not.toHaveBeenCalled() })
+  it('never replaces original body just because Agent proposed a revision', async () => { wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); await screen.findByText('公共 Agent 面板'); vi.mocked(writingApi.revisions).mockResolvedValue({ items: [revision] }); act(() => agent.props!.onTurnCompleted()); await screen.findByRole('region', { name: '待定修订预览' }); expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('原文内容'); expect(writingApi.resolve).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole('button', { name: '接受修订' })); await waitFor(() => expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('建议内容')); expect(writingApi.resolve).toHaveBeenCalledWith('doc-1', 'rev-1', { decision: 'accept', expected_version: 1 }, expect.any(String)) })
+  it('blocks acceptance over an unsaved user edit', async () => { vi.mocked(writingApi.revisions).mockResolvedValue({ items: [revision] }); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); fireEvent.change(await screen.findByRole('textbox', { name: 'Markdown 源码' }), { target: { value: '新手写内容' } }); expect(screen.getByRole('button', { name: '接受修订' })).toBeDisabled(); expect(writingApi.resolve).not.toHaveBeenCalled() })
   it('keeps chat available with a pending revision and does not call a second writer', async () => { vi.mocked(writingApi.revisions).mockResolvedValue({ items: [revision] }); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); expect(await screen.findByRole('button', { name: 'Agent 发送消息' })).toBeEnabled(); expect(screen.queryByRole('tab', { name: '写作' })).not.toBeInTheDocument(); await act(async () => { expect(await agent.props!.prepareWritingContext()).toEqual({ document_id: 'doc-1', document_version: 1 }) }); expect(writingApi.propose).not.toHaveBeenCalled() })
   it('saves the latest article before making it available to the existing Agent', async () => { wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); fireEvent.change(await screen.findByRole('textbox', { name: 'Markdown 源码' }), { target: { value: '最新原文' } }); await act(async () => { expect(await agent.props!.prepareWritingContext()).toEqual({ document_id: 'doc-1', document_version: 2 }) }); expect(writingApi.update).toHaveBeenCalledWith('doc-1', expect.objectContaining({ markdown: '最新原文', expected_version: 1 }), expect.any(String)); expect(writingApi.propose).not.toHaveBeenCalled() })
   it('preserves editing during a delayed save and blocks sending stale document context', async () => { const request = deferred<typeof doc>(); vi.mocked(writingApi.update).mockReturnValue(request.promise); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); const input = await screen.findByRole('textbox', { name: 'Markdown 源码' }); fireEvent.change(input, { target: { value: '提交中的版本' } }); let preparation!: Promise<unknown>; act(() => { preparation = agent.props!.prepareWritingContext() }); const rejected = expect(preparation).rejects.toThrow('保存期间正文有新修改'); fireEvent.change(input, { target: { value: '保存期间继续输入' } }); await act(async () => { request.resolve({ ...doc, markdown: '提交中的版本', version: 2 }); await rejected }); expect(input).toHaveValue('保存期间继续输入') })
   it('preserves edits made while an accepted revision response is pending', async () => { const response = deferred<Awaited<ReturnType<typeof writingApi.resolve>>>(); vi.mocked(writingApi.resolve).mockReturnValue(response.promise); vi.mocked(writingApi.revisions).mockResolvedValue({ items: [revision] }); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); fireEvent.click(await screen.findByRole('button', { name: '接受修订' })); fireEvent.change(screen.getByRole('textbox', { name: 'Markdown 源码' }), { target: { value: '接受期间继续输入' } }); await act(async () => response.resolve({ document: { ...doc, markdown: '建议内容', version: 2 }, revision: { ...revision, status: 'accepted' } })); expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('接受期间继续输入') })
-  it('keeps one conversation mounted across panels and restores its identity on refresh', async () => { const view = wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); await screen.findByText('公共 Agent 面板'); act(() => agent.props!.onConversationStarted({ conversation_id: 'conversation-1' })); fireEvent.click(screen.getByRole('tab', { name: '大纲' })); expect(screen.getByText('公共 Agent 面板')).toBeInTheDocument(); fireEvent.click(screen.getByRole('tab', { name: 'Agent' })); expect(agent.props!.conversationId).toBe('conversation-1'); view.unmount(); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); await screen.findByText('公共 Agent 面板'); expect(agent.props!.conversationId).toBe('conversation-1') })
-  it('can undo an accepted revision using the current expected version', async () => { vi.mocked(writingApi.document).mockResolvedValue({ ...doc, markdown: '建议内容', version: 2 }); vi.mocked(writingApi.revisions).mockResolvedValue({ items: [{ ...revision, status: 'accepted' }] }); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); await screen.findByText('公共 Agent 面板'); fireEvent.click(screen.getByRole('tab', { name: '修订' })); fireEvent.click(screen.getByRole('button', { name: '撤销这次修订' })); await waitFor(() => expect(writingApi.update).toHaveBeenCalledWith('doc-1', expect.objectContaining({ expected_version: 2, markdown: '原文内容' }), expect.any(String))) })
-  it('makes no automatic model call during document open or Agent-tab open', async () => { wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); await screen.findByRole('textbox', { name: 'Markdown 源码' }); fireEvent.click(screen.getByRole('tab', { name: 'Agent' })); expect(screen.getByText('公共 Agent 面板')).toBeInTheDocument(); expect(writingApi.propose).not.toHaveBeenCalled() })
+  it('keeps one conversation mounted across panels and restores its identity on refresh', async () => { const view = wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); await screen.findByText('公共 Agent 面板'); act(() => agent.props!.onConversationStarted({ conversation_id: 'conversation-1' })); expect(screen.queryByRole('tablist', { name: '写作侧栏' })).not.toBeInTheDocument(); expect(screen.getByText('公共 Agent 面板')).toBeInTheDocument(); expect(agent.props!.conversationId).toBe('conversation-1'); view.unmount(); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); await screen.findByText('公共 Agent 面板'); expect(agent.props!.conversationId).toBe('conversation-1') })
+  it('can undo an accepted revision using the current expected version', async () => { vi.mocked(writingApi.document).mockResolvedValue({ ...doc, markdown: '建议内容', version: 2 }); vi.mocked(writingApi.revisions).mockResolvedValue({ items: [{ ...revision, status: 'accepted' }] }); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); await screen.findByText('公共 Agent 面板'); fireEvent.click(screen.getByRole('button', { name: '撤销最近优化' })); await waitFor(() => expect(writingApi.update).toHaveBeenCalledWith('doc-1', expect.objectContaining({ expected_version: 2, markdown: '原文内容' }), expect.any(String))) })
+  it('makes no automatic model call during document open or Agent-tab open', async () => { wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); await screen.findByRole('textbox', { name: 'Markdown 源码' }); expect(screen.queryByRole('tab', { name: 'Agent' })).not.toBeInTheDocument(); expect(screen.getByText('公共 Agent 面板')).toBeInTheDocument(); expect(writingApi.propose).not.toHaveBeenCalled() })
   it('serializes duplicate save clicks', async () => { const pending = deferred<typeof doc>(); vi.mocked(writingApi.update).mockReturnValue(pending.promise); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); fireEvent.change(await screen.findByRole('textbox', { name: '文稿标题' }), { target: { value: '新题' } }); const save = screen.getByRole('button', { name: '保存' }); fireEvent.click(save); fireEvent.click(save); expect(writingApi.update).toHaveBeenCalledTimes(1); await act(async () => pending.resolve({ ...doc, title: '新题' })) })
   it('refreshes server version while preserving conflicted local edits', async () => { vi.mocked(writingApi.update).mockRejectedValue(new Error('版本冲突')); wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); fireEvent.change(await screen.findByRole('textbox', { name: 'Markdown 源码' }), { target: { value: '本地内容' } }); fireEvent.click(screen.getByRole('button', { name: '保存' })); await screen.findByText('版本冲突'); vi.mocked(writingApi.document).mockResolvedValue({ ...doc, version: 5, markdown: '服务器新正文' }); fireEvent.click(screen.getByRole('button', { name: '刷新版本并保留修改' })); await screen.findByText('服务器版本已刷新，本地修改仍保留。请对照最新正文后再保存。'); expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('本地内容') })
 })
@@ -77,10 +80,12 @@ describe('writing draft and revision safety', () => {
 describe('direct writing controls', () => {
   it('submits optimization to the existing Agent once without prefilling or a second send', async () => {
     wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
-    const button = await screen.findByRole('button', { name: '优化全文' })
+    const button = await selectedAction('优化选区')
     fireEvent.click(button); fireEvent.click(button)
-    await waitFor(() => expect(agent.props!.writingAction?.text).toContain('优化当前全文'))
+    await waitFor(() => expect(agent.props!.writingAction?.text).toContain('优化当前选区'))
     const id = agent.props!.writingAction!.id
+    expect(id).toMatch(/^writing-ui:rewrite:/)
+    expect(agent.props!.writingAction!.text).not.toContain('调用精确修订工具')
     expect(button).toBeDisabled()
     expect(writingApi.propose).not.toHaveBeenCalled()
     act(() => agent.props!.onWritingActionFinished?.(id))
@@ -88,7 +93,7 @@ describe('direct writing controls', () => {
   })
   it('does not pretend to personalize without same-genre samples', async () => {
     wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
-    fireEvent.click(await screen.findByRole('button', { name: '更像我' }))
+    fireEvent.click(await selectedAction('更像我'))
     await screen.findByText(/当前随笔还没有可用样文/)
     expect(agent.props!.writingAction).toBeNull()
     expect(screen.getByRole('link', { name: '管理同文体样文' })).toBeInTheDocument()
@@ -97,16 +102,16 @@ describe('direct writing controls', () => {
   it('personalizes directly after checking real sample readiness', async () => {
     vi.mocked(writingApi.summary).mockResolvedValue({ sample_count: 3, genres: [{ genre: 'essay', sample_count: 3, character_count: 9000, readiness: 'ready' }], documents: [] })
     wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
-    fireEvent.click(await screen.findByRole('button', { name: '更像我' }))
+    fireEvent.click(await selectedAction('更像我'))
     await waitFor(() => expect(agent.props!.writingAction?.text).toContain('真实同文体样文'))
     expect(writingApi.summary).toHaveBeenCalledTimes(1)
     expect(writingApi.propose).not.toHaveBeenCalled()
   })
-  it('uses global segmented tabs and leaves a dirty pending diff reviewable but unappliable', async () => {
+  it('has no approval tabs and leaves a dirty pending diff reviewable but unappliable', async () => {
     vi.mocked(writingApi.revisions).mockResolvedValue({ items: [revision] })
     wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
     fireEvent.change(await screen.findByRole('textbox', { name: 'Markdown 源码' }), { target: { value: '我正在写的新内容' } })
-    expect(screen.getByRole('tablist', { name: '写作侧栏' })).toHaveClass('qx-segmented')
+    expect(screen.queryByRole('tablist', { name: '写作侧栏' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: '待定修订预览' })).toHaveTextContent('建议内容')
     expect(screen.getByRole('button', { name: '接受修订' })).toBeDisabled()
     expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('我正在写的新内容')
@@ -181,8 +186,7 @@ describe('precise selection and rich revision acceptance', () => {
     const accept = await screen.findByRole('button', { name: '接受修订' })
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('选区外'))
     expect(accept).toBeDisabled(); fireEvent.click(accept)
-    fireEvent.click(screen.getByRole('tab', { name: '修订 · 1' }))
-    expect(screen.getByRole('button', { name: '接受' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '接受修订' })).toBeDisabled()
     expect(writingApi.resolve).not.toHaveBeenCalled()
     expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(before)
   })
@@ -214,4 +218,28 @@ describe('precise selection and rich revision acceptance', () => {
     await waitFor(() => expect(accept).toBeEnabled()); fireEvent.click(accept)
     await waitFor(() => expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(after))
   })
+})
+
+it('rejects the anchored pending revision while preserving an unsaved manual edit', async () => {
+  vi.mocked(writingApi.revisions).mockResolvedValue({ items: [revision] })
+  vi.mocked(writingApi.resolve).mockResolvedValue({ document: doc, revision: { ...revision, status: 'rejected' } })
+  wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+  const input = await screen.findByRole('textbox', { name: 'Markdown 源码' })
+  fireEvent.change(input, { target: { value: '新手写正文保留' } })
+  expect(screen.getByRole('button', { name: '接受修订' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: '撤回修订' }))
+  await waitFor(() => expect(writingApi.resolve).toHaveBeenCalledWith('doc-1', 'rev-1', { decision: 'reject', expected_version: 1 }, expect.any(String)))
+  await waitFor(() => expect(screen.queryByRole('region', { name: '待定修订预览' })).not.toBeInTheDocument())
+  expect(input).toHaveValue('新手写正文保留')
+})
+
+it('keeps one breadcrumb title and offers editing actions only with a selection', async () => {
+  const view = wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+  await screen.findByRole('textbox', { name: 'Markdown 源码' })
+  expect(screen.getAllByRole('textbox', { name: '文稿标题' })).toHaveLength(1)
+  expect(view.container.querySelector('.writing-document-title, .writing-quick-actions')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '优化选区' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('tablist', { name: '写作侧栏' })).not.toBeInTheDocument()
+  await selectedAction('优化选区')
+  expect(screen.getByRole('toolbar', { name: '选区操作' })).toBeInTheDocument()
 })

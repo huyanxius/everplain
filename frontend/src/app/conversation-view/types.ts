@@ -34,6 +34,7 @@ export type ConversationTurnView = {
   citations: readonly AgentCitation[]
   knowledgeReleaseId?: string | null
   toolSteps?: readonly ConversationToolStep[]
+  liveText?: boolean
   streaming?: boolean
   statusText?: string
   progressEnd?: number

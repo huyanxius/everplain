@@ -113,3 +113,17 @@ describe('rich selection Markdown ranges', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('源码模式重新选择')
   })
 })
+
+it('offers host actions only for an exact source selection and keeps bytes and range on click', async () => {
+  const run = vi.fn(), onChange = vi.fn()
+  render(<SharedEditor markdown="😀重复 重复" onChange={onChange} selectionActions={[{ id: 'rewrite', label: '优化选区', run }]} />)
+  fireEvent.click(await screen.findByRole('tab', { name: '源码' }))
+  expect(screen.queryByRole('toolbar', { name: '源码选区操作' })).not.toBeInTheDocument()
+  const input = screen.getByRole('textbox', { name: 'Markdown 源码' }) as HTMLTextAreaElement
+  input.setSelectionRange(5, 7); fireEvent.select(input)
+  fireEvent.click(screen.getByRole('toolbar', { name: '源码选区操作' }).querySelector('button')!)
+  expect(run).toHaveBeenLastCalledWith(expect.anything(), '重复', { start: 5, end: 7, text: '重复' })
+  expect(input).toHaveValue('😀重复 重复'); expect(onChange).not.toHaveBeenCalled()
+  input.setSelectionRange(7, 7); fireEvent.select(input)
+  expect(screen.queryByRole('toolbar', { name: '源码选区操作' })).not.toBeInTheDocument()
+})

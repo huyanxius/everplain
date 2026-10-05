@@ -168,3 +168,5 @@
 .se-help h4 { margin: 0 0 6px; color: var(--qx-color-faint); font-size: var(--qx-text-meta); font-weight: 600; }
 .se-help p { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; color: var(--qx-color-ink-soft); font-size: var(--qx-text-meta); }
 .se-help kbd { color: var(--qx-color-muted); font-family: var(--qx-font-mono); font-size: var(--qx-text-meta); white-space: nowrap; }
+
+.se-source-bubble { position: absolute; z-index: 40; left: var(--qx-space-4); bottom: calc(var(--qx-space-8) + var(--qx-space-2)); }
