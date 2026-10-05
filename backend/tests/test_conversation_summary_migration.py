@@ -2,23 +2,55 @@
 
 import sqlite3
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from alembic import command
-from test_agent_memory import register
-from test_conversation_context import seed
 
 SCHEMA = Path(__file__).parent / "fixtures/billing_reset_schema.sql"
 
 
 def test_0560_to_0570_copy_upgrade_old_writer_and_downgrade(
-    plain_client, tmp_path, monkeypatch, alembic_config
+    tmp_path, monkeypatch, alembic_config
 ):
-    owner = UUID(register(plain_client))
-    conversation = seed(plain_client, owner)
-    original_path = plain_client.app.state.database.engine.url.database
-    command.downgrade(alembic_config, "20261005_0560")
+    # Build the actual old source schema. Current head includes financial quota
+    # evidence that must never be dropped just to prepare a historical fixture.
+    original_path = tmp_path / "source-0560.db"
+    database_url = f"sqlite:///{original_path}"
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
+    command.upgrade(alembic_config, "20261005_0560")
+    owner = uuid4()
+    conversation_id, turn_id = uuid4(), uuid4()
+    with sqlite3.connect(original_path) as source:
+        source.execute(
+            "INSERT INTO users(user_id,email,password_hash,role,status,version,created_at,"
+            "updated_at) VALUES (?,'migration@example.com','synthetic','member','active',1,"
+            "'2026-10-05','2026-10-05')",
+            (str(owner),),
+        )
+        source.execute(
+            "INSERT INTO credit_accounts(user_id,balance,created_at,updated_at) "
+            "VALUES (?,30,'2026-10-05','2026-10-05')",
+            (str(owner),),
+        )
+        source.execute(
+            "INSERT INTO credit_ledger(entry_id,user_id,kind,points,balance_after,input_tokens,"
+            "output_tokens,created_at) VALUES (?,?,'signup_grant',30,30,0,0,'2026-10-05')",
+            (str(uuid4()), str(owner)),
+        )
+        source.execute(
+            "INSERT INTO agent_conversations(conversation_id,user_id,title,version,created_at,"
+            "updated_at) VALUES (?,?,'Migration fixture',1,'2026-10-05','2026-10-05')",
+            (str(conversation_id), str(owner)),
+        )
+        for sequence, (role, content) in enumerate((
+            ("user", "Synthetic source"), ("assistant", "Synthetic reply"),
+        )):
+            source.execute(
+                "INSERT INTO agent_messages(message_id,conversation_id,turn_id,role,content,"
+                "citations,sequence,created_at) VALUES (?,?,?,?,?,'[]',?,'2026-10-05')",
+                (str(uuid4()), str(conversation_id), str(turn_id), role, content, sequence),
+            )
     candidate_path = tmp_path / "candidate.db"
     with sqlite3.connect(original_path) as source:
         source.executescript(SCHEMA.read_text())
@@ -62,7 +94,7 @@ def test_0560_to_0570_copy_upgrade_old_writer_and_downgrade(
         # The old application never mentions the new derived-cache table and keeps writing.
         candidate.execute(
             "UPDATE agent_conversations SET title='old-writer' WHERE conversation_id=?",
-            (str(conversation.conversation_id),),
+            (str(conversation_id),),
         )
         new_id = str(uuid4())
         candidate.execute(
@@ -101,7 +133,7 @@ def test_0560_to_0570_copy_upgrade_old_writer_and_downgrade(
         assert (
             candidate.execute(
                 "SELECT title FROM agent_conversations WHERE conversation_id=?",
-                (str(conversation.conversation_id),),
+                (str(conversation_id),),
             ).fetchone()[0]
             == "old-writer"
         )

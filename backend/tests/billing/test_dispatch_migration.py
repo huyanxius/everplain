@@ -4,8 +4,14 @@ from pathlib import Path
 from alembic import command
 
 
-def test_dispatch_upgrade_rollback_and_reset_fence_preserve_evidence(plain_client, alembic_config):
-    path = plain_client.app.state.database.engine.url.database
+def test_dispatch_upgrade_rollback_and_reset_fence_preserve_evidence(
+    tmp_path, monkeypatch, alembic_config
+):
+    # Exercise this historical migration on its own revision. New financial
+    # epochs deliberately cannot be downgraded from current product head.
+    path = tmp_path / "dispatch-0560.db"
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", f"sqlite:///{path}")
+    command.upgrade(alembic_config, "20261005_0560")
     with sqlite3.connect(path) as connection:
         connection.executescript(
             (Path(__file__).parents[1] / "fixtures/billing_reset_schema.sql").read_text()
