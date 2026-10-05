@@ -52,7 +52,8 @@ describe('personal home rebuilt from Home mock', () => {
     show()
     const composer = screen.getByRole('textbox', { name: /问/ }).closest('form')!
     fireEvent.click(await within(composer).findByRole('button', { name: /GPT 6 Luna · 中/ }))
-    expect(within(composer).getByRole('radio', { name: 'GPT 6 Luna' })).toBeVisible()
+    expect(within(composer).getByRole('button', { name: '选择模型：GPT 6 Luna · 中' })).toHaveFocus()
+    expect(within(composer).queryByRole('radio')).not.toBeInTheDocument()
     fireEvent.keyDown(within(composer).getByRole('slider', { name: '思考强度' }), { key: 'End' })
     const input = await screen.findByRole('textbox', { name: '问小叶' })
     fireEvent.change(input, { target: { value: '我的新问题' } })
