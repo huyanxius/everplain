@@ -16,7 +16,6 @@ from qunxue_api.modules.billing.domain import (
     usage_credit_cost,
 )
 from qunxue_api.modules.billing.ports import CreditRepository
-from qunxue_api.modules.subscriptions import MEMBERSHIP_WEEKLY_POINTS, membership_plan
 
 
 class CreditService:
@@ -32,7 +31,7 @@ class CreditService:
         self._repository = repository
         self._clock = clock or (lambda: datetime.now(UTC))
         self._exempt_user_ids = frozenset(exempt_user_ids)
-        self._plan_limits = {**MEMBERSHIP_WEEKLY_POINTS, **(plan_limits or {})}
+        self._plan_limits = dict(plan_limits or {})
         self._code_signing_secret = (
             code_signing_secret.encode("utf-8") if code_signing_secret else None
         )
@@ -95,9 +94,12 @@ class CreditService:
         if self._code_signing_secret is None:
             raise RuntimeError("credit code signing secret is not configured")
         now = self._clock()
-        plan = membership_plan(plan_id) if plan_id is not None else None
-        points = self._plan_limits[plan.id] if plan else SIGNUP_GRANT
-        action = "membership" if plan else "bank_reset"
+        points = SIGNUP_GRANT
+        if plan_id is not None:
+            points = self._plan_limits.get(plan_id)
+            if type(points) is not int or points <= 0:
+                raise ValueError("unknown membership plan")
+        action = "membership" if plan_id is not None else "bank_reset"
         expires_on = (now + timedelta(days=expires_in_days)).date()
         expires_at = datetime.combine(expires_on, time(23, 59, 59), tzinfo=UTC)
         plain_codes: list[str] = []

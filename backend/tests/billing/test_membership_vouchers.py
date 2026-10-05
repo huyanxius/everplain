@@ -10,11 +10,13 @@ from test_account_management_api import login_admin, register
 
 from qunxue_api.adapters.sqlite.billing_repository import SqliteCreditRepository
 from qunxue_api.modules.billing import CreditCodeBatchConflict, CreditCodeUnavailable, CreditService
+from qunxue_api.modules.subscriptions import MEMBERSHIP_WEEKLY_POINTS
 
 
 def service(session, now):
     return CreditService(
         SqliteCreditRepository(session, clock=lambda: now),
+        plan_limits=MEMBERSHIP_WEEKLY_POINTS,
         clock=lambda: now,
         code_signing_secret="synthetic-membership-signing-secret",
     )

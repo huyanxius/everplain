@@ -35,6 +35,7 @@ from qunxue_api.modules.billing import (
     CreditService,
 )
 from qunxue_api.modules.identity import PasswordHasher, User
+from qunxue_api.modules.subscriptions import MEMBERSHIP_WEEKLY_POINTS
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +58,8 @@ def install_account_management(
         return
 
     configured_admin_email = (
-        initial_admin_email or app.state.settings.account_initial_admin_email
-    ).strip().casefold()
+        (initial_admin_email or app.state.settings.account_initial_admin_email).strip().casefold()
+    )
     configured_admin_password = initial_admin_password
     if configured_admin_password is None:
         setting = app.state.settings.account_initial_admin_password
@@ -104,11 +105,15 @@ def install_account_management(
     def credit_service_scope() -> Iterator[CreditService]:
         with database.session() as session:
             yield CreditService(
-                SqliteCreditRepository(session,
-                    plan_limits=app.state.settings.billing_plan_weekly_points),
+                SqliteCreditRepository(
+                    session, plan_limits=app.state.settings.billing_plan_weekly_points
+                ),
                 exempt_user_ids=credit_exempt_user_ids,
                 code_signing_secret=code_signing_secret,
-                plan_limits=app.state.settings.billing_plan_weekly_points,
+                plan_limits={
+                    **MEMBERSHIP_WEEKLY_POINTS,
+                    **app.state.settings.billing_plan_weekly_points,
+                },
             )
 
     app.state.account_management_service_scope = service_scope
@@ -122,11 +127,16 @@ def install_account_management(
 
     @app.exception_handler(QuotaConfigurationUnavailable)
     async def handle_quota_unavailable(_request: Request, _error):
-        return JSONResponse(status_code=503, content={"error": {
-            "code": ErrorCode.QUOTA_CONFIGURATION_UNAVAILABLE,
-            "message": "当前套餐用量额度尚未配置。",
-            "trace_id": str(uuid4()),
-        }})
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": {
+                    "code": ErrorCode.QUOTA_CONFIGURATION_UNAVAILABLE,
+                    "message": "当前套餐用量额度尚未配置。",
+                    "trace_id": str(uuid4()),
+                }
+            },
+        )
 
     @app.exception_handler(CreditCodeUnavailable)
     async def handle_credit_code_unavailable(
@@ -244,8 +254,7 @@ def _provision_initial_administrator(
                 or account["status"] != "active"
             ):
                 raise RuntimeError(
-                    "the configured initial administrator no longer matches "
-                    "the provisioned account"
+                    "the configured initial administrator no longer matches the provisioned account"
                 )
             return provisioned_user_id
 
