@@ -59,6 +59,9 @@ class RegistryReleaseTests(unittest.TestCase):
         storage["schema/sqlite_index.py"] = hashlib.sha256(
             (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
         ).hexdigest()
+        imported = {"migration_tree": hashlib.sha256(
+            json.dumps(storage, sort_keys=True).encode()).hexdigest()}
+        del storage["migrations/versions/20261005_0615_incremental_import_attachments.py"]
         journal = {"migration_tree": hashlib.sha256(
             json.dumps(storage, sort_keys=True).encode()).hexdigest()}
         del storage["migrations/versions/20261005_0610_agent_output_journal.py"]
@@ -67,13 +70,20 @@ class RegistryReleaseTests(unittest.TestCase):
         del storage["migrations/versions/20261005_0600_weekly_quota.py"]
         previous = {"migration_tree": hashlib.sha256(
             json.dumps(storage, sort_keys=True).encode()).hexdigest()}
-        for old, new in ((previous, quota), (quota, journal)):
+        for old, new in ((previous, quota), (quota, journal), (journal, imported)):
             self.assertTrue(release.check_existing_migration_transition(old, new, policy))
             with self.assertRaisesRegex(ValueError, "rollback compatibility"):
                 release.check_compatible(old, new, policy)
         # A reviewed 0600->0610 edge cannot skip the separately reviewed 0600 boundary.
         with self.assertRaisesRegex(ValueError, "rollback compatibility"):
             release.check_existing_migration_transition(previous, journal, policy)
+        # The new review cannot skip prior boundaries, reverse, or bless mutated bytes.
+        for old, new in ((previous, imported), (quota, imported), (imported, journal),
+                         (journal, {"migration_tree": "0" * 64})):
+            with self.subTest(old=old, new=new), self.assertRaisesRegex(
+                ValueError, "rollback compatibility"
+            ):
+                release.check_existing_migration_transition(old, new, policy)
 
     def test_live_compatibility_overlays_require_reviewed_bytes_and_read_only_mounts(self):
         with tempfile.TemporaryDirectory() as d:
