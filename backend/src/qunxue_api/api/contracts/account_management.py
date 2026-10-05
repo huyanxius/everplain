@@ -38,6 +38,7 @@ class AccountResponse(BaseModel):
 
 
 class CreditLedgerEntryResponse(BaseModel):
+    quota_period_epoch: int | None = None
     model_config = ConfigDict(from_attributes=True)
 
     entry_id: UUID
@@ -87,6 +88,10 @@ class CreditSummaryResponse(BaseModel):
     total_granted_points: int | None = Field(default=None, ge=0)
     active_usage_buckets: list[CreditUsageBucketResponse] = Field(default_factory=list)
     quota_status: Literal["known", "unavailable"] = "unavailable"
+    quota_period_started_at: datetime | None = None
+    quota_period_expires_at: datetime | None = None
+    quota_plan_id: str | None = None
+    quota_window_hours: Literal[168] = 168
     entries: list[CreditLedgerEntryResponse]
     total_entries: int = Field(ge=0)
     next_cursor: str | None
@@ -99,6 +104,10 @@ class CreditRedemptionRequest(BaseModel):
 class CreditRedemptionResponse(BaseModel):
     redeemed_points: int = Field(gt=0)
     balance: int = Field(ge=0)
+    delta_points: int = 0
+    action: Literal["bank_reset"] = "bank_reset"
+    quota_period_started_at: datetime | None = None
+    quota_period_expires_at: datetime | None = None
 
 
 class CreditCodeBatchCreateRequest(BaseModel):
@@ -107,6 +116,7 @@ class CreditCodeBatchCreateRequest(BaseModel):
 
 
 class CreditCodeBatchResponse(BaseModel):
+    action: Literal["bank_reset"] = "bank_reset"
     codes: list[str]
     points: int = Field(gt=0)
     expires_at: datetime

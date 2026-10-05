@@ -2776,6 +2776,10 @@ export type CreditCodeBatchCreateRequest = {
  */
 export type CreditCodeBatchResponse = {
     /**
+     * Action
+     */
+    action?: 'bank_reset';
+    /**
      * Codes
      */
     codes: Array<string>;
@@ -2825,6 +2829,10 @@ export type CreditLedgerEntryResponse = {
      * Points
      */
     points: number;
+    /**
+     * Quota Period Epoch
+     */
+    quota_period_epoch?: number | null;
 };
 
 /**
@@ -2896,9 +2904,25 @@ export type CreditRedemptionRequest = {
  */
 export type CreditRedemptionResponse = {
     /**
+     * Action
+     */
+    action?: 'bank_reset';
+    /**
      * Balance
      */
     balance: number;
+    /**
+     * Delta Points
+     */
+    delta_points?: number;
+    /**
+     * Quota Period Expires At
+     */
+    quota_period_expires_at?: string | null;
+    /**
+     * Quota Period Started At
+     */
+    quota_period_started_at?: string | null;
     /**
      * Redeemed Points
      */
@@ -2953,9 +2977,25 @@ export type CreditSummaryResponse = {
     }>;
     pricing: CreditPricingResponse;
     /**
+     * Quota Period Expires At
+     */
+    quota_period_expires_at?: string | null;
+    /**
+     * Quota Period Started At
+     */
+    quota_period_started_at?: string | null;
+    /**
+     * Quota Plan Id
+     */
+    quota_plan_id?: string | null;
+    /**
      * Quota Status
      */
     quota_status?: 'known' | 'unavailable';
+    /**
+     * Quota Window Hours
+     */
+    quota_window_hours?: 168;
     /**
      * Total Entries
      */

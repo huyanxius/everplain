@@ -7,6 +7,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -112,24 +113,24 @@ class CreditQuotaPeriodRow(Base):
     epoch: Mapped[int] = mapped_column(Integer, primary_key=True)
     plan_id: Mapped[str] = mapped_column(String(64), nullable=False)
     limit_points: Mapped[int] = mapped_column(Integer, nullable=False)
-    started_at: Mapped[str] = mapped_column(String, nullable=False)
-    expires_at: Mapped[str] = mapped_column(String, nullable=False)
+    started_at: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[str] = mapped_column(Text, nullable=False)
     balance: Mapped[int] = mapped_column(Integer, nullable=False)
-    total_credit_pico: Mapped[str] = mapped_column(String, nullable=False)
-    closed_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    total_credit_pico: Mapped[str] = mapped_column(Text, nullable=False)
+    closed_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     reason: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
 class BillingPrecisionAdjustmentRow(Base):
     __tablename__ = "billing_precision_adjustments"
-    reset_id: Mapped[str] = mapped_column(String, primary_key=True)
-    user_id: Mapped[str] = mapped_column(String, primary_key=True)
-    reason: Mapped[str] = mapped_column(String, nullable=False)
-    before_precision: Mapped[str] = mapped_column(String, nullable=False)
-    delta_precision: Mapped[str] = mapped_column(String, nullable=False)
-    after_precision: Mapped[str] = mapped_column(String, nullable=False)
+    reset_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    user_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    before_precision: Mapped[str] = mapped_column(Text, nullable=False)
+    delta_precision: Mapped[str] = mapped_column(Text, nullable=False)
+    after_precision: Mapped[str] = mapped_column(Text, nullable=False)
     before_balance: Mapped[int] = mapped_column(Integer, nullable=False)
     delta_points: Mapped[int] = mapped_column(Integer, nullable=False)
     after_balance: Mapped[int] = mapped_column(Integer, nullable=False)
-    closed_operation_ids: Mapped[str] = mapped_column(String, nullable=False)
-    created_at: Mapped[str] = mapped_column(String, nullable=False)
+    closed_operation_ids: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)

@@ -84,6 +84,7 @@ class CreditEntry:
     output_tokens: int
     model: str | None
     created_at: datetime
+    quota_period_epoch: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +100,9 @@ class CreditSummary:
     total_granted_points: int | None = None
     active_usage_buckets: tuple[dict, ...] = ()
     quota_status: Literal["known", "unavailable"] = "unavailable"
+    quota_period_started_at: datetime | None = None
+    quota_period_expires_at: datetime | None = None
+    quota_plan_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,12 +121,17 @@ class GeneratedCreditCodeBatch:
     codes: tuple[str, ...]
     points: int
     expires_at: datetime
+    action: Literal["bank_reset"] = "bank_reset"
 
 
 @dataclass(frozen=True, slots=True)
 class CreditRedemption:
     redeemed_points: int
     balance: int
+    delta_points: int = 0
+    action: Literal["bank_reset"] = "bank_reset"
+    quota_period_started_at: datetime | None = None
+    quota_period_expires_at: datetime | None = None
 
 
 def usage_credit_cost(*, input_tokens: int, output_tokens: int) -> int:

@@ -221,6 +221,16 @@ def ensure_quota_period(
             ),
             {"user": user_id, "old": period["epoch"] if period else 0},
         )
+    # Legacy non-durable leases cannot charge a newly restored allowance.
+    columns = {row[1] for row in conn.execute(text("PRAGMA table_info(credit_accounts)"))}
+    if "active_run_id" in columns:
+        conn.execute(
+            text(
+                "UPDATE credit_accounts SET active_run_id=NULL,"
+                "active_run_expires_at=NULL WHERE user_id=:user"
+            ),
+            {"user": user_id},
+        )
     conn.execute(
         text(
             "UPDATE credit_accounts SET quota_period_epoch=:epoch,balance=:balance,updated_at=:now "
@@ -232,9 +242,9 @@ def ensure_quota_period(
         conn.execute(
             text(
                 "INSERT INTO billing_precision(user_id,total_credit_pico) "
-                    "VALUES(:user,:precision) "
+                "VALUES(:user,:precision) "
                 "ON CONFLICT(user_id) DO UPDATE "
-                    "SET total_credit_pico=excluded.total_credit_pico"
+                "SET total_credit_pico=excluded.total_credit_pico"
             ),
             {"user": user_id, "precision": new_precision},
         )

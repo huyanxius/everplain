@@ -97,7 +97,8 @@ def install_account_management(
     def credit_service_scope() -> Iterator[CreditService]:
         with database.session() as session:
             yield CreditService(
-                SqliteCreditRepository(session),
+                SqliteCreditRepository(session,
+                    plan_limits=app.state.settings.billing_plan_weekly_points),
                 exempt_user_ids=credit_exempt_user_ids,
                 code_signing_secret=configured_admin_password,
             )
@@ -108,6 +109,15 @@ def install_account_management(
     app.state.account_management_installed = True
     for router in routers:
         app.include_router(router)
+
+    from qunxue_api.adapters.sqlite.quota_periods import QuotaConfigurationUnavailable
+
+    @app.exception_handler(QuotaConfigurationUnavailable)
+    async def handle_quota_unavailable(_request: Request, _error):
+        return JSONResponse(status_code=503, content={"error": {
+            "code": "quota_configuration_unavailable", "message": "当前套餐用量额度尚未配置。",
+            "trace_id": str(uuid4()),
+        }})
 
     @app.exception_handler(CreditCodeUnavailable)
     async def handle_credit_code_unavailable(

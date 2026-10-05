@@ -279,15 +279,15 @@ export function AdminUsersPage({
         </section>
         <div className="ep-admin-support">
           <section aria-labelledby="credit-code-generator-title">
-            <header className="ep-admin-section-head"><h2 className="qx-heading" id="credit-code-generator-title">积分兑换码</h2></header>
+            <header className="ep-admin-section-head"><h2 className="qx-heading" id="credit-code-generator-title">bank RESET 兑换码</h2></header>
             <div className="qx-card ep-admin-credit-panel">
-              <p className="qx-meta">批量生成一次性兑换码，兑换后积分恢复至 10,000。</p>
+              <p className="qx-meta">批量生成一次性 bank RESET 兑换码，将用量恢复至当前套餐的 100%，并重新开始 7 天周期。</p>
               <form className="ep-admin-credit-form" onSubmit={submitCreditCodeBatch}>
                 <label className="ep-admin-field">生成数量<input className="qx-input" type="number" min={1} max={100} value={creditCodeCount} onChange={event => setCreditCodeCount(Number(event.target.value))} /></label>
                 <label className="ep-admin-field">有效天数<input className="qx-input" type="number" min={1} max={365} value={creditCodeExpiresInDays} onChange={event => setCreditCodeExpiresInDays(Number(event.target.value))} /></label>
                 <button className="qx-btn qx-btn--primary" type="submit" disabled={pending || creditCodeCount < 1 || creditCodeExpiresInDays < 1}>{pendingAction === 'credit-code-batch' ? '正在生成…' : '生成兑换码'}</button>
               </form>
-              {generatedCreditCodes ? <div className="ep-admin-credit-result"><p>完整兑换码只显示在这里，请立即复制保存。</p><p className="qx-meta">兑换后恢复至 {generatedCreditCodes.points.toLocaleString('zh-CN')} 积分 · 有效至 {formatDate(generatedCreditCodes.expiresAt)}</p><ol>{generatedCreditCodes.codes.map(code => <li key={code}><code>{code}</code></li>)}</ol></div> : null}
+              {generatedCreditCodes ? <div className="ep-admin-credit-result"><p>完整兑换码只显示在这里，请立即复制保存。</p><p className="qx-meta">兑换后恢复当前套餐满额（Free：30） · 兑换码有效至 {formatDate(generatedCreditCodes.expiresAt)}</p><ol>{generatedCreditCodes.codes.map(code => <li key={code}><code>{code}</code></li>)}</ol></div> : null}
             </div>
           </section>
           <section className="ep-admin-audit" aria-labelledby="account-audit-title">

@@ -56,6 +56,9 @@ type RawSession = {
 
 type RawCreditSummary = {
   balance: number
+  quota_period_started_at?: string | null
+  quota_period_expires_at?: string | null
+  quota_plan_id?: string | null
   active_usage_buckets?: Array<{ bucket_id: string; kind: 'subscription' | 'top_up' | 'welcome'; available_points: number; settled_remaining_points?: number | null; limit_points: number; expires_at: string | null }> | null
   credit_limit: number
   grant_amount: number
@@ -168,6 +171,9 @@ function toSession(value: RawSession): AccountSession {
 function toCreditSummary(value: RawCreditSummary): CreditSummary {
   return {
     balance: value.balance,
+    quotaPeriodStartedAt: value.quota_period_started_at,
+    quotaPeriodExpiresAt: value.quota_period_expires_at,
+    quotaPlanId: value.quota_plan_id,
     activeUsageBuckets: value.active_usage_buckets?.map(bucket => ({ id: bucket.bucket_id, kind: bucket.kind, availablePoints: bucket.available_points, settledRemainingPoints: bucket.settled_remaining_points, limitPoints: bucket.limit_points, expiresAt: bucket.expires_at })) ?? null,
     creditLimit: value.credit_limit,
     grantAmount: value.grant_amount,
