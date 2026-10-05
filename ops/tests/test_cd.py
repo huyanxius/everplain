@@ -198,8 +198,14 @@ class FilesystemSafetyTests(unittest.TestCase):
         self.assertEqual(policy["reviewed_forward_only_migration_transitions"], [
             {"from": new_hash, "to": quota_hash},
             {"from": quota_hash, "to": journal_hash},
+            {"from": journal_hash, "to": import_hash},
             {"from": import_hash, "to": oauth_hash},
         ])
+        # 0615 is forward-only; no rollback-compatible edge is inferred from DDL.
+        for previous in (new_hash, quota_hash, journal_hash):
+            with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+                deploy.check_compatible({"migration_tree": previous},
+                                        {"migration_tree": import_hash}, policy)
         with self.assertRaisesRegex(ValueError, "rollback compatibility"):
             deploy.check_compatible({"migration_tree": quota_hash},
                                     {"migration_tree": journal_hash}, policy)

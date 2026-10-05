@@ -15,7 +15,7 @@ from pydantic_ai.exceptions import (
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.usage import UsageLimits
 
-from qunxue_api.adapters.model.metering import MeteredOpenAIChatModel
+from qunxue_api.adapters.model.metering import MeteredOpenAIChatModel, current_operation
 from qunxue_api.modules.agent_conversation import ContextSummaryGenerationFailure
 
 from .pydantic_runner import _is_deepseek_flash, _responses_input_token_estimate
@@ -125,8 +125,12 @@ class PydanticConversationSummarizer:
             result = await agent.run(
                 payload, usage_limits=UsageLimits(request_limit=1, tool_calls_limit=0)
             )
+            operation = current_operation()
+            usage_known = not operation or not operation.independent_delivery or (
+                operation.delivery_state.get("usage_status") == "known"
+            )
             return (
                 result.output.model_dump(mode="json"),
-                result.usage.input_tokens,
-                result.usage.output_tokens,
+                result.usage.input_tokens if usage_known else None,
+                result.usage.output_tokens if usage_known else None,
             )

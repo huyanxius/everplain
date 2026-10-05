@@ -70,13 +70,16 @@ def validate_manifest(value, revision):
             raise ValueError("invalid artifact entry")
         if path.parts[0] not in {"backend", "images", "ops"}:
             raise ValueError("unexpected artifact entry")
+    roles = set(value.get("images", {}))
+    if roles not in ({"api", "web"}, {"api", "web", "gateway"}):
+        raise ValueError("invalid application image roles")
     required = {"ops/cd/policy.json"}
     if "registry_images" in value:
         references = value["registry_images"]
         sizes = value.get("image_sizes", {})
-        if set(references) != {"api", "web"} or set(sizes) != {"api", "web"}:
+        if set(references) != roles or set(sizes) != roles:
             raise ValueError("incomplete registry images")
-        for role in ("api", "web"):
+        for role in roles:
             if not re.fullmatch(r"ghcr\.io/huyanxius/everplain-" + role + r"@sha256:[0-9a-f]{64}",
                                 references[role]):
                 raise ValueError("registry image must use the repository's immutable digest")
@@ -85,8 +88,8 @@ def validate_manifest(value, revision):
         if any(name.startswith("images/") for name in value.get("files", {})):
             raise ValueError("registry release must not carry complete image archives")
     else:
-        required.update({"images/api.tar", "images/web.tar"})
-    if set(value.get("images", {})) != {"api", "web"} or any(
+        required.update({"images/" + role + ".tar" for role in roles})
+    if any(
         not re.fullmatch(r"sha256:[0-9a-f]{64}", image) for image in value["images"].values()
     ):
         raise ValueError("invalid immutable Docker image IDs")
@@ -211,6 +214,8 @@ def build(root, prepared, output, revision, images, bases):
                 "clipper_lock_sha256": digest(root / "extensions/clipper/package-lock.json"),
             },
         }
+        if "gateway" in images:
+            manifest["provenance"]["gateway_lock_sha256"] = digest(root / "gateway/uv.lock")
         if registry.exists():
             manifest["registry_images"] = json.loads(registry.read_text())
             manifest["image_sizes"] = json.loads((prepared / "image-sizes.json").read_text())
@@ -238,12 +243,14 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, required=True)
     for role in ("api-image", "web-image", "python-base", "node-base", "nginx-base"):
         parser.add_argument("--" + role, required=True)
+    parser.add_argument("--gateway-image")
     args = parser.parse_args()
     build(
         Path(__file__).resolve().parents[2],
         args.prepared,
         args.output,
         args.revision,
-        {"api": args.api_image, "web": args.web_image},
+        {"api": args.api_image, "web": args.web_image,
+         **({"gateway": args.gateway_image} if args.gateway_image else {})},
         {"python": args.python_base, "node": args.node_base, "nginx": args.nginx_base},
     )

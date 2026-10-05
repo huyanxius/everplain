@@ -13,7 +13,8 @@ export function useConversationContextSummary(userId: string | null) {
     staleTime: 60_000,
     retry: false,
     refetchInterval: query => {
-      if (query.state.status === 'error') return false
+      // A transport error keeps the last cache response. If it was awaiting a
+      // background result/retry, keep checking that result without generating.
       const data = query.state.data
       if (data?.status === 'pending') return 15_000
       if (data?.status !== 'failed' || !data.retry_at) return false

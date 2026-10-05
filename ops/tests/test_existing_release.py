@@ -62,6 +62,8 @@ class RegistryReleaseTests(unittest.TestCase):
         # These reviews predate import receipts and OAuth. Reconstruct their
         # exact trees rather than allowing hashes contaminated by later DDL.
         del storage["migrations/versions/20261005_0620_federated_login.py"]
+        imported = {"migration_tree": hashlib.sha256(
+            json.dumps(storage, sort_keys=True).encode()).hexdigest()}
         del storage["migrations/versions/20261005_0615_incremental_import_attachments.py"]
         journal = {"migration_tree": hashlib.sha256(
             json.dumps(storage, sort_keys=True).encode()).hexdigest()}
@@ -71,13 +73,20 @@ class RegistryReleaseTests(unittest.TestCase):
         del storage["migrations/versions/20261005_0600_weekly_quota.py"]
         previous = {"migration_tree": hashlib.sha256(
             json.dumps(storage, sort_keys=True).encode()).hexdigest()}
-        for old, new in ((previous, quota), (quota, journal)):
+        for old, new in ((previous, quota), (quota, journal), (journal, imported)):
             self.assertTrue(release.check_existing_migration_transition(old, new, policy))
             with self.assertRaisesRegex(ValueError, "rollback compatibility"):
                 release.check_compatible(old, new, policy)
         # A reviewed 0600->0610 edge cannot skip the separately reviewed 0600 boundary.
         with self.assertRaisesRegex(ValueError, "rollback compatibility"):
             release.check_existing_migration_transition(previous, journal, policy)
+        # The new review cannot skip prior boundaries, reverse, or bless mutated bytes.
+        for old, new in ((previous, imported), (quota, imported), (imported, journal),
+                         (journal, {"migration_tree": "0" * 64})):
+            with self.subTest(old=old, new=new), self.assertRaisesRegex(
+                ValueError, "rollback compatibility"
+            ):
+                release.check_existing_migration_transition(old, new, policy)
 
     def test_shipped_oauth_review_is_exact_forward_only_and_cannot_skip_import_head(self):
         policy = json.loads((ROOT / "ops/cd/policy.json").read_text())

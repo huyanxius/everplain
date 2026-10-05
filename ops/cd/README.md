@@ -87,6 +87,8 @@ superseded. This deploys the checked main snapshot, not every intermediate commi
   reviews under its candidate-start retention boundary; this rollback controller
   does not. See [the quota 0600 review](QUOTA_0600_REVIEW.md) for the incompatible
   old writer and the approved forward-stop release semantics.
+  The [0615 import review](IMPORT_0615_REVIEW.md) binds the next exact edge; the
+  old document-removal path retains newly stored attachments, so this edge is also forward-only.
   The [OAuth 0620 review](OAUTH_0620_REVIEW.md) binds the exact 0615-to-0620
   edge to the same copied-data and forward-stop boundary; it does not authorize
   old-app rollback, in-place interrupted-DDL retry or skipping the import head.

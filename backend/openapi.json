@@ -3609,18 +3609,40 @@
       "ChannelDispatchResponse": {
         "additionalProperties": false,
         "properties": {
+          "cursor": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Cursor",
+            "type": "integer"
+          },
           "event_key": {
             "title": "Event Key",
             "type": "string"
           },
-          "text": {
-            "title": "Text",
+          "state": {
+            "default": "complete",
+            "enum": [
+              "complete",
+              "processing",
+              "retryable"
+            ],
+            "title": "State",
             "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
           }
         },
         "required": [
-          "event_key",
-          "text"
+          "event_key"
         ],
         "title": "ChannelDispatchResponse",
         "type": "object"
@@ -4265,6 +4287,11 @@
             "title": "Cards",
             "type": "array"
           },
+          "is_stale": {
+            "default": false,
+            "title": "Is Stale",
+            "type": "boolean"
+          },
           "omitted_messages": {
             "title": "Omitted Messages",
             "type": "integer"
@@ -4341,6 +4368,21 @@
               }
             ],
             "title": "Updated At"
+          },
+          "usage_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "known",
+                  "pending"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Status"
           }
         },
         "required": [
@@ -21213,6 +21255,16 @@
             },
             "description": "Successful Response"
           },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelDispatchResponse"
+                }
+              }
+            },
+            "description": "Durably admitted; read the event cursor for completion"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -21225,6 +21277,59 @@
           }
         },
         "summary": "Dispatch",
+        "tags": [
+          "channel-gateway"
+        ]
+      }
+    },
+    "/api/channel-gateway/events/{event_key}": {
+      "get": {
+        "operationId": "read_channel_message_output",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_key",
+            "required": true,
+            "schema": {
+              "title": "Event Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelDispatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Output",
         "tags": [
           "channel-gateway"
         ]

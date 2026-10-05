@@ -1934,13 +1934,21 @@ export type ChannelDispatchRequest = {
  */
 export type ChannelDispatchResponse = {
     /**
+     * Cursor
+     */
+    cursor?: number;
+    /**
      * Event Key
      */
     event_key: string;
     /**
+     * State
+     */
+    state?: 'complete' | 'processing' | 'retryable';
+    /**
      * Text
      */
-    text: string;
+    text?: string | null;
 };
 
 /**
@@ -2338,6 +2346,10 @@ export type ConversationSummaryResponse = {
      */
     cards: Array<ConversationSuggestionResponse>;
     /**
+     * Is Stale
+     */
+    is_stale?: boolean;
+    /**
      * Omitted Messages
      */
     omitted_messages: number;
@@ -2369,6 +2381,10 @@ export type ConversationSummaryResponse = {
      * Updated At
      */
     updated_at: string | null;
+    /**
+     * Usage Status
+     */
+    usage_status?: 'known' | 'pending' | null;
 };
 
 /**
@@ -11820,9 +11836,48 @@ export type DispatchChannelMessageResponses = {
      * Successful Response
      */
     200: ChannelDispatchResponse;
+    /**
+     * Durably admitted; read the event cursor for completion
+     */
+    202: ChannelDispatchResponse;
 };
 
 export type DispatchChannelMessageResponse = DispatchChannelMessageResponses[keyof DispatchChannelMessageResponses];
+
+export type ReadChannelMessageOutputData = {
+    body?: never;
+    path: {
+        /**
+         * Event Key
+         */
+        event_key: string;
+    };
+    query?: {
+        /**
+         * After
+         */
+        after?: number;
+    };
+    url: '/api/channel-gateway/events/{event_key}';
+};
+
+export type ReadChannelMessageOutputErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReadChannelMessageOutputError = ReadChannelMessageOutputErrors[keyof ReadChannelMessageOutputErrors];
+
+export type ReadChannelMessageOutputResponses = {
+    /**
+     * Successful Response
+     */
+    200: ChannelDispatchResponse;
+};
+
+export type ReadChannelMessageOutputResponse = ReadChannelMessageOutputResponses[keyof ReadChannelMessageOutputResponses];
 
 export type AuthorizeChannelDeliveryData = {
     body?: never;

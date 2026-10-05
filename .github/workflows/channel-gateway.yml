@@ -1,0 +1,50 @@
+name: Channel gateway contracts
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: channel-gateway-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolated-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version-file: backend/.python-version
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: 0.11.29
+          enable-cache: true
+          cache-dependency-glob: |
+            backend/uv.lock
+            gateway/uv.lock
+      - name: Install independent locked environments
+        run: |
+          uv sync --project backend --frozen
+          uv sync --project gateway --frozen
+      - name: Run synthetic backend and platform contracts
+        # No environment secrets, platform credentials, or live service are used.
+        # Fixtures create their own accounts/databases and only bind loopback ports.
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+
+          excluded = {"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"}
+          environment = {
+              key: value for key, value in os.environ.items()
+              if not key.startswith("EVERPLAIN_") and key.upper() not in excluded
+          }
+          subprocess.run(["bash", "gateway/scripts/verify-local.sh"],
+                         env=environment, check=True)
+          PY
