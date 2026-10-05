@@ -15,10 +15,15 @@ class AccountStatus(StrEnum):
     DEACTIVATED = "deactivated"
 
 
+class AccountLoginMode(StrEnum):
+    EMAIL_PASSWORD = "email_password"
+    FEDERATED = "federated"
+
+
 @dataclass(frozen=True, slots=True)
 class User:
     user_id: UUID
-    email: str
+    email: str | None
     password_hash: str
     display_name: str | None
     created_at: datetime
@@ -28,6 +33,7 @@ class User:
     version: int = 1
     last_login_at: datetime | None = None
     deactivated_at: datetime | None = None
+    login_mode: AccountLoginMode = AccountLoginMode.EMAIL_PASSWORD
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +78,7 @@ class FederatedIdentity:
     subject: str
     user_id: UUID
     created_at: datetime
+    verified_email: str | None = None
 
 
 OAUTH_TTL_SECONDS = 600
@@ -96,6 +103,7 @@ class VerifiedOAuthIdentity:
     provider: str
     subject: str
     email: str
+    display_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -15,11 +15,21 @@ class UserRow(Base):
             name="ck_users_status",
         ),
         CheckConstraint("version >= 1", name="ck_users_version"),
+        CheckConstraint(
+            "login_mode IN ('email_password', 'federated')",
+            name="ck_users_login_mode",
+        ),
+        CheckConstraint(
+            "(login_mode = 'email_password' AND email IS NOT NULL) OR "
+            "(login_mode = 'federated' AND password_hash = '!oauth-only')",
+            name="ck_users_login_credentials",
+        ),
         Index("ix_users_role_status", "role", "status"),
     )
 
     user_id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True, unique=True)
+    login_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="email_password")
     password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="member")

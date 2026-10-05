@@ -159,6 +159,7 @@ def _session_response(current: AuthenticatedSession) -> SessionResponse:
         user={
             "user_id": current.user.user_id,
             "email": current.user.email,
+            "login_mode": current.user.login_mode,
             "display_name": current.user.display_name,
         },
         expires_at=current.session.expires_at,

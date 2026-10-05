@@ -1,6 +1,7 @@
 export type AccountUser = {
   userId: string
-  email: string
+  email: string | null
+  loginMode?: 'email_password' | 'federated'
   displayName: string | null
 }
 

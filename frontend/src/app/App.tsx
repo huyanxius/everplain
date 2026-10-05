@@ -138,7 +138,7 @@ function AccountSettingsRoute() {
     })
   }
   return (
-    <SettingsModal userId={account.sessionState.status === 'authenticated' ? account.sessionState.session.user.userId : undefined} accountName={account.sessionState.status === 'authenticated' ? account.sessionState.session.user.displayName || account.sessionState.session.user.email : undefined} onClose={() => location.state?.settingsBackground ? navigate(-1) : navigate('/app', { replace: true })}>
+    <SettingsModal userId={account.sessionState.status === 'authenticated' ? account.sessionState.session.user.userId : undefined} accountName={account.sessionState.status === 'authenticated' ? account.sessionState.session.user.displayName || account.sessionState.session.user.email || undefined : undefined} onClose={() => location.state?.settingsBackground ? navigate(-1) : navigate('/app', { replace: true })}>
         <AccountSettingsPage
           onOAuthNavigate={url => window.location.assign(url)}
           oauthError={new URLSearchParams(location.search).get('oauth_error')}

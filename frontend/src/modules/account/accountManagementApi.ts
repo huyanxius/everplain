@@ -32,7 +32,8 @@ type RawPreferences = {
 
 type RawAccount = {
   user_id: string
-  email: string
+  email: string | null
+  login_mode?: AccountProfile['loginMode']
   display_name: string | null
   role: AccountProfile['role']
   status: AccountProfile['status']
@@ -85,7 +86,8 @@ type RawCreditSummary = {
 
 type RawAdminUser = {
   user_id: string
-  email: string
+  email: string | null
+  login_mode?: AdminUser['loginMode']
   display_name: string | null
   role: AdminUser['role']
   status: AdminUser['status']
@@ -146,6 +148,7 @@ function toAccount(value: RawAccount): AccountProfile {
   return {
     userId: value.user_id,
     email: value.email,
+    loginMode: value.login_mode,
     displayName: value.display_name,
     role: value.role,
     status: value.status,
@@ -201,6 +204,7 @@ function toAdminUser(value: RawAdminUser): AdminUser {
   return {
     userId: value.user_id,
     email: value.email,
+    loginMode: value.login_mode,
     displayName: value.display_name,
     role: value.role,
     status: value.status,

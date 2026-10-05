@@ -10,7 +10,6 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, text
 
 from qunxue_api.adapters.sqlite.database import Database
-from qunxue_api.adapters.sqlite.identity_model import UserRow
 
 
 def test_writing_then_gateway_is_one_head_and_preserves_existing_data(tmp_path, monkeypatch):
@@ -31,18 +30,15 @@ def test_writing_then_gateway_is_one_head_and_preserves_existing_data(tmp_path, 
     now = datetime.now(UTC)
     try:
         assert "channel_bindings" not in inspect(database.engine).get_table_names()
-        with database.session() as session:
-            session.add(
-                UserRow(
-                    user_id=user_id,
-                    email="migration-fixture@example.test",
-                    password_hash="not-a-real-password",
-                    role="member",
-                    status="active",
-                    version=1,
-                    created_at=now,
-                    updated_at=now,
-                )
+        # This is a real 0530 database; current UserRow has later columns.
+        with database.engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users(user_id,email,password_hash,role,status,version,"
+                    "created_at,updated_at) VALUES (:user,'migration-fixture@example.test',"
+                    "'not-a-real-password','member','active',1,:now,:now)"
+                ),
+                {"user": user_id, "now": now.isoformat()},
             )
         with database.engine.begin() as connection:
             connection.execute(
