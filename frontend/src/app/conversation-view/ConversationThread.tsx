@@ -5,6 +5,7 @@ import { citationGroup, displayAgentText } from '../../modules/research-agent'
 import { useAppLocale } from '../../i18n/AppLocaleProvider'
 import { AgentAnswerMarkdown } from '../agent/AgentAnswerMarkdown'
 import { useStreamPacer } from '../agent/useStreamPacer'
+import { CitationSiteIcon } from './CitationSiteIcon'
 import { ConversationThinking } from './ConversationThinking'
 import { flyBubble, takeLaunch } from './sendFlight'
 import { ConversationActivity } from './ConversationActivity'
@@ -80,7 +81,7 @@ export function ConversationTurn({ turn, agent, renderAvatar, onSelectCitation, 
         {turn.failure && turn.onRegenerate ? <div className="cv-turn__actions"><button className="qx-btn qx-btn--ghost" type="button" disabled={turn.actionsDisabled} onClick={turn.onRegenerate}><ArrowClockwiseIcon />{text('重试本轮', 'Retry this turn')}</button></div> : null}
         {turn.provenance ? <p className="cv-turn__provenance"><WarningCircleIcon />{turn.provenance}</p> : null}
         {sources.length ? <p className="cv-visually-hidden" role="status" aria-label={text('本轮证据来源', 'Evidence sources for this answer')}>{text('本轮引用', 'Cited this turn')} · {sources.join(' · ')}</p> : null}
-        {turn.citations.length ? <div className="cv-turn__sources" aria-label={text('回答证据', 'Answer evidence')}>{turn.citations.map((citation, index) => <button className="qx-tag qx-tag--outline" type="button" key={citation.citation_id} aria-label={text(`查看证据：${citation.label}`, `View evidence: ${citation.label}`)} onClick={() => chooseCitation(citation)}><span className="cv-source-number">{index + 1}</span><span className="cv-source-label">{citation.label}</span>{citation.deleted ? <span className="cv-visually-hidden">{text('已删除', 'Deleted')}</span> : null}</button>)}</div> : null}
+        {turn.citations.length ? <div className="cv-turn__sources" aria-label={text('回答证据', 'Answer evidence')}>{turn.citations.map((citation, index) => <button className="qx-tag qx-tag--outline" type="button" key={citation.citation_id} aria-label={text(`查看证据：${citation.label}`, `View evidence: ${citation.label}`)} onClick={() => chooseCitation(citation)}><span className="cv-source-number">{index + 1}</span><CitationSiteIcon citation={citation} /><span className="cv-source-label">{citation.label}</span>{citation.deleted ? <span className="cv-visually-hidden">{text('已删除', 'Deleted')}</span> : null}</button>)}</div> : null}
         {turn.handoffs?.map(handoff => <ConversationHandoffCard key={handoff.id} handoff={handoff} />)}
         <TurnActions turn={turn} />
       </div>
