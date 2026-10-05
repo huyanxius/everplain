@@ -143,3 +143,54 @@ def seed_imports(connection, owner):
             assets[attachment] = binary
         batches.append({"id": batch, "item": item, "status": status})
     return {"library": library, "documents": documents, "batches": batches, "assets": assets}
+
+
+def seed_quota_history(connection, owner, *, receipt_id="synthetic-reset-receipt"):
+    """Fixed pre-0640 SQL for activated, settled and reset free-quota evidence.
+
+    These columns and values follow f6747a6's quota adapter. Never use the
+    current runtime against a historical database: its required columns evolve.
+    """
+    started = "2026-10-04T00:00:00+00:00"
+    reset = "2026-10-04T02:00:00+00:00"
+    for epoch, end, balance, precision, closed, reason in (
+        (0, started, 30, "0", started, "legacy_before_quota"),
+        (1, "2026-10-11T00:00:00+00:00", 24, "6000000000000", reset, "quota_activation"),
+        (2, "2026-10-11T02:00:00+00:00", 30, "0", None, "bank_reset"),
+    ):
+        connection.execute(
+            "INSERT INTO credit_quota_periods(user_id,epoch,plan_id,limit_points,started_at,"
+            "expires_at,balance,total_credit_pico,closed_at,reason) "
+            "VALUES (?,?,'free',30,?,?,?,?,?,?)",
+            (owner, epoch, reset if epoch == 2 else started,
+             end, balance, precision, closed, reason),
+        )
+    connection.execute(
+        "UPDATE credit_accounts SET quota_period_epoch=2,balance=30,updated_at=? WHERE user_id=?",
+        (reset, owner),
+    )
+    connection.execute(
+        "INSERT INTO billing_precision(user_id,total_credit_pico) VALUES (?,'0')", (owner,)
+    )
+    for epoch, entry, stamp, before, delta, reason, model, precision in (
+        (1, str(uuid4()), started, 30, 0, "quota_activation", "quota-activation", "0"),
+        (2, receipt_id, reset, 24, 6, "bank_reset", "bank-reset", "6000000000000"),
+    ):
+        connection.execute(
+            "INSERT INTO credit_ledger(entry_id,user_id,run_id,kind,points,balance_after,"
+            "quota_period_epoch,input_tokens,output_tokens,model,created_at) "
+            "VALUES (?,?,NULL,'redemption',?,30,?,0,0,?,?)",
+            (entry, owner, delta, epoch, model, stamp),
+        )
+        connection.execute(
+            "INSERT INTO billing_precision_adjustments(reset_id,user_id,reason,before_precision,"
+            "delta_precision,after_precision,before_balance,delta_points,after_balance,"
+            "closed_operation_ids,created_at) VALUES (?,?,?,?,?,'0',?,?,30,'[]',?)",
+            (entry, owner, reason, precision, str(-int(precision)), before, delta, stamp),
+        )
+    epoch, balance = connection.execute(
+        "SELECT epoch,balance FROM credit_quota_periods WHERE user_id=? "
+        "ORDER BY epoch DESC LIMIT 1",
+        (owner,),
+    ).fetchone()
+    return {"epoch": epoch, "balance": balance}

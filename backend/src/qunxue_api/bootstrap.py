@@ -1585,6 +1585,7 @@ def create_app(
         subscription_repository_scope,
         StripeSubscriptionGateway(commerce_settings),
         plans=commerce_settings.plans(),
+        plan_limits=resolved_settings.billing_plan_weekly_points,
         unavailable_reason=commerce_settings.unavailable_reason,
         success_url=commerce_settings.stripe_success_url,
         cancel_url=commerce_settings.stripe_cancel_url,

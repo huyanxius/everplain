@@ -114,6 +114,8 @@ class CreditCodeSpec:
     created_by_user_id: UUID
     created_at: datetime
     expires_at: datetime
+    action: Literal["bank_reset", "membership"] = "bank_reset"
+    plan_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +123,8 @@ class GeneratedCreditCodeBatch:
     codes: tuple[str, ...]
     points: int
     expires_at: datetime
-    action: Literal["bank_reset"] = "bank_reset"
+    action: Literal["bank_reset", "membership"] = "bank_reset"
+    plan_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,7 +132,10 @@ class CreditRedemption:
     redeemed_points: int
     balance: int
     delta_points: int = 0
-    action: Literal["bank_reset"] = "bank_reset"
+    action: Literal["bank_reset", "membership"] = "bank_reset"
+    plan_id: str | None = None
+    membership_starts_at: datetime | None = None
+    membership_expires_at: datetime | None = None
     quota_period_started_at: datetime | None = None
     quota_period_expires_at: datetime | None = None
 

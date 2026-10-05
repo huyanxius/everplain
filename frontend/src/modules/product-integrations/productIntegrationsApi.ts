@@ -24,6 +24,7 @@ export async function connections() { return data(await sdk.listExternalAgentCon
 export async function createConnection(body: { name: string; library_ids: string[]; expires_at: string }) { return data(await sdk.createExternalAgentConnection({ client: apiClient, body, headers: headers() })) }
 export async function revokeConnection(id: string) { return data(await sdk.revokeExternalAgentConnection({ client: apiClient, path: { connection_id: id }, headers: headers() })) }
 export async function models() { return data(await sdk.getModelCatalog({ client: apiClient })).items }
+export async function productCatalog() { return data(await sdk.getPublicProductCatalog({ client: apiClient })) }
 export async function subscription() { return data(await sdk.getSubscription({ client: apiClient })) }
 export async function checkout(id: string) { return data(await sdk.createSubscriptionCheckout({ client: apiClient, body: { plan_id: id }, headers: headers() })) }
 export async function portal() { return data(await sdk.createSubscriptionPortal({ client: apiClient, body: {}, headers: headers() })) }

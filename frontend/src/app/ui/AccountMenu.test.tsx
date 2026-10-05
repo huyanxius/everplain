@@ -12,7 +12,7 @@ vi.mock('../../modules/product-integrations', () => ({ subscription: vi.fn() }))
 vi.mock('../../modules/agent-profile', () => ({ readAgentProfile: vi.fn() }))
 const clients: QueryClient[] = []
 beforeEach(() => {
-  vi.mocked(subscription).mockResolvedValue({ available: false, unavailable_reason: '未配置支付', plans: [{ id: 'live-plan', name: 'Plus', description: '' }], subscription: { plan_id: 'live-plan', status: 'active', current_period_end: null, cancel_at_period_end: false } })
+  vi.mocked(subscription).mockResolvedValue({ available: false, unavailable_reason: '未配置支付', plans: [{ id: 'live-plan', name: 'Plus', description: '', price_cny_fen: 4900, weekly_points: 50, period_days: 28, period_points: 200 }], subscription: { plan_id: 'live-plan', status: 'active', current_period_end: null, cancel_at_period_end: false } })
   vi.mocked(readAccountUsage).mockResolvedValue({ isUnlimited: false, remainingPercent: null, buckets: [] })
 })
 afterEach(() => { cleanup(); clients.forEach(client => client.clear()); clients.length = 0; vi.clearAllMocks() })

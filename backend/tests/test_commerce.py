@@ -187,12 +187,13 @@ def test_missing_configuration_and_authenticated_secret_free_reads(store):
             assert client.get(path).status_code == 401
         overview = client.get("/api/subscription", headers=headers(users[0]))
         assert overview.status_code == 200
-        assert overview.json() == {
-            "available": False,
-            "unavailable_reason": "订阅支付尚未启用",
-            "plans": [],
-            "subscription": None,
-        }
+        payload = overview.json()
+        assert payload["available"] is False
+        assert payload["unavailable_reason"] == "订阅支付尚未启用"
+        assert payload["subscription"] is None
+        assert [plan["id"] for plan in payload["plans"]] == ["plus", "pro", "max"]
+        assert [plan["weekly_points"] for plan in payload["plans"]] == [200, 400, 1000]
+        assert all(plan["period_days"] == 28 for plan in payload["plans"])
         assert client.get("/api/models", headers=headers(users[0])).json() == {"items": []}
         response = client.post(
             "/api/subscription/checkout", json={"plan_id": "personal"}, headers=headers(users[0])

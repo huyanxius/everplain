@@ -37,7 +37,7 @@ def wallet(tmp_path):
         "delta_points INTEGER,after_balance INTEGER,closed_operation_ids TEXT,created_at TEXT,"
         "PRIMARY KEY(reset_id,user_id))",
         "CREATE TABLE subscriptions(provider_id TEXT,user_id TEXT,plan_id TEXT,status TEXT,"
-        "current_period_end TEXT,created_at TEXT)",
+        "current_period_end TEXT,created_at TEXT,current_period_start TEXT)",
         "INSERT INTO credit_accounts VALUES('u',30,NULL,'2026-10-01')",
         "INSERT INTO billing_precision VALUES('u','250000000000')",
     ]
@@ -151,20 +151,28 @@ def test_concurrent_first_messages_and_renewals_grant_once(wallet):
 def test_current_paid_plan_requires_configuration_and_uses_configured_limit(wallet):
     with wallet.begin() as c:
         c.execute(
-            text("INSERT INTO subscriptions VALUES('s','u','plus','active',NULL,:now)"),
+            text(
+                "INSERT INTO subscriptions(provider_id,user_id,plan_id,status,"
+                "current_period_end,created_at) VALUES('s','u','custom-paid','active',NULL,:now)"
+            ),
             {"now": NOW.isoformat()},
         )
     with pytest.raises(QuotaConfigurationUnavailable):
         transaction(wallet, lambda c: ensure_quota_period(c, "u", NOW, reset=True))
-    p = transaction(wallet, lambda c: ensure_quota_period(c, "u", NOW, {"plus": 75}, reset=True))
-    assert p["balance"] == 75 and p["limit_points"] == 75 and p["plan_id"] == "plus"
+    p = transaction(
+        wallet, lambda c: ensure_quota_period(c, "u", NOW, {"custom-paid": 75}, reset=True)
+    )
+    assert p["balance"] == 75 and p["limit_points"] == 75 and p["plan_id"] == "custom-paid"
 
 
 def test_plan_change_is_resolved_at_renewal(wallet):
     transaction(wallet, lambda c: ensure_quota_period(c, "u", NOW))
     with wallet.begin() as c:
         c.execute(
-            text("INSERT INTO subscriptions VALUES('s','u','plus','trialing',NULL,:now)"),
+            text(
+                "INSERT INTO subscriptions(provider_id,user_id,plan_id,status,"
+                "current_period_end,created_at) VALUES('s','u','plus','trialing',NULL,:now)"
+            ),
             {"now": NOW.isoformat()},
         )
     p = transaction(

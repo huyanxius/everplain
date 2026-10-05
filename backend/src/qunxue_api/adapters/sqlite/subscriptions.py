@@ -30,6 +30,9 @@ class SubscriptionRow(Base):
     customer_id: Mapped[str] = mapped_column(String(255))
     plan_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(24))
+    current_period_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     current_period_end: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -75,6 +78,7 @@ def _subscription(row: SubscriptionRow) -> Subscription:
         cancel_at_period_end=row.cancel_at_period_end,
         created_at=_utc(row.created_at),
         current_period_end=_utc(row.current_period_end) if row.current_period_end else None,
+        current_period_start=_utc(row.current_period_start) if row.current_period_start else None,
     )
 
 
@@ -91,7 +95,18 @@ class SqliteSubscriptionRepository:
         if not rows:
             return None
         # A late event for an old canceled subscription cannot hide a newer active one.
-        row = max(rows, key=lambda row: (row.status not in TERMINAL_STATUSES, _utc(row.created_at)))
+        now = datetime.now(UTC)
+        effective = [
+            row
+            for row in rows
+            if row.status in {"active", "trialing"}
+            and (row.current_period_start is None or _utc(row.current_period_start) <= now)
+            and (row.current_period_end is None or _utc(row.current_period_end) > now)
+        ]
+        row = max(
+            effective or rows,
+            key=lambda row: (row.status not in TERMINAL_STATUSES, _utc(row.created_at)),
+        )
         return _subscription(row)
 
     def reserve_checkout(self, intent: CheckoutIntent) -> CheckoutIntent:

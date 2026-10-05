@@ -44,6 +44,32 @@ describe('account management API adapter', () => {
     })
   })
 
+  it('maps membership redemption action and scheduling dates', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => new Response(JSON.stringify({ action: 'membership', plan_id: 'pro', redeemed_points: 100, balance: 27, membership_starts_at: '2026-11-01T12:00:00Z', membership_expires_at: '2026-11-29T12:00:00Z' }), { headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(accountManagementApi.redeemCredits({ code: 'QX-MEMBERSHIP-CODE', idempotencyKey: 'membership-1' })).resolves.toEqual({ action: 'membership', planId: 'pro', redeemedPoints: 100, balance: 27, membershipStartsAt: '2026-11-01T12:00:00Z', membershipExpiresAt: '2026-11-29T12:00:00Z' })
+    const request = fetchMock.mock.calls[0][0] as Request
+    expect(new URL(request.url).pathname).toBe('/api/account/credit-redemptions')
+    expect(request.headers.get('Idempotency-Key')).toBe('membership-1')
+    await expect(request.json()).resolves.toEqual({ code: 'QX-MEMBERSHIP-CODE' })
+  })
+
+  it('preserves a server-capped RESET deadline when only two membership days remain', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ action: 'bank_reset', plan_id: 'plus', redeemed_points: 50, balance: 50, quota_period_started_at: '2026-01-01T12:00:00Z', quota_period_expires_at: '2026-01-03T12:00:00Z' }), { headers: { 'Content-Type': 'application/json' } })))
+    await expect(accountManagementApi.redeemCredits({ code: 'QX-RESET-CODE', idempotencyKey: 'reset-2-days' })).resolves.toMatchObject({ action: 'bank_reset', quotaPeriodExpiresAt: '2026-01-03T12:00:00Z' })
+  })
+
+  it.each(['plus', 'pro', 'max', null] as const)('serializes the selected %s code kind and maps its response', async planId => {
+    const action = planId ? 'membership' : 'bank_reset'
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => new Response(JSON.stringify({ action, plan_id: planId, codes: ['QX-ONCE-CODE'], points: 50, expires_at: '2026-11-01T12:00:00Z' }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(accountManagementApi.createCreditRedemptionCodes({ planId, count: 2, expiresInDays: 14, idempotencyKey: 'code-batch-1' })).resolves.toEqual({ action, planId, codes: ['QX-ONCE-CODE'], points: 50, expiresAt: '2026-11-01T12:00:00Z' })
+    const request = fetchMock.mock.calls[0][0] as Request
+    expect(new URL(request.url).pathname).toBe('/api/admin/credit-redemption-codes')
+    expect(request.headers.get('Idempotency-Key')).toBe('code-batch-1')
+    await expect(request.json()).resolves.toEqual({ plan_id: planId, count: 2, expires_in_days: 14 })
+  })
+
   it('exposes system health through the account module adapter', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL) => new Response(JSON.stringify({
       capability: 'base',

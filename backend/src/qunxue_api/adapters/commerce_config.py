@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from qunxue_api.modules.model_catalog import CatalogModel
-from qunxue_api.modules.subscriptions import SubscriptionPlan
+from qunxue_api.modules.subscriptions import MEMBERSHIP_PLANS, SubscriptionPlan
 
 
 class ModelCatalogEntry(BaseModel):
@@ -96,6 +96,8 @@ class CommerceSettings(BaseSettings):
         return None
 
     def plans(self) -> tuple[SubscriptionPlan, ...]:
+        if not self.subscription_plans:
+            return MEMBERSHIP_PLANS
         return tuple(SubscriptionPlan(**plan.model_dump()) for plan in self.subscription_plans)
 
 

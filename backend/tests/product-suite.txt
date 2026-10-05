@@ -149,6 +149,8 @@ tests/test_writing_action_origin.py
 
 tests/test_agent_native_protocol_config.py
 tests/billing/test_native_protocol_metering.py
-
 tests/billing/test_api_cost_reporting.py
 tests/test_api_costs_api.py
+tests/test_membership_catalog.py
+tests/billing/test_membership_vouchers.py
+tests/test_membership_voucher_migration.py

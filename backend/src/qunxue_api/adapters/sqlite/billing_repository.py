@@ -17,6 +17,7 @@ from qunxue_api.adapters.sqlite.quota_periods import (
     get_quota_period,
     settle_quota_period,
 )
+from qunxue_api.adapters.sqlite.subscriptions import SubscriptionRow
 from qunxue_api.modules.billing import (
     SIGNUP_GRANT,
     CreditCodeBatchConflict,
@@ -27,6 +28,7 @@ from qunxue_api.modules.billing import (
     CreditsDepleted,
     CreditSummary,
 )
+from qunxue_api.modules.subscriptions import MEMBERSHIP_WEEKLY_POINTS, membership_plan
 
 _RESERVATION_LEASE = timedelta(minutes=10)
 
@@ -38,7 +40,7 @@ def _as_utc(value: datetime) -> datetime:
 class SqliteCreditRepository:
     def __init__(self, session: Session, *, plan_limits=None, clock=None) -> None:
         self._session = session
-        self._plan_limits = plan_limits or {}
+        self._plan_limits = {**MEMBERSHIP_WEEKLY_POINTS, **(plan_limits or {})}
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def ensure_welcome_grant(
@@ -248,6 +250,8 @@ class SqliteCreditRepository:
                 "code_hash": code.code_hash,
                 "batch_id": code.batch_id,
                 "code_index": code.code_index,
+                "action": code.action,
+                "plan_id": code.plan_id,
                 "created_by_user_id": str(code.created_by_user_id),
                 "created_at": code.created_at,
                 "expires_at": code.expires_at,
@@ -271,10 +275,54 @@ class SqliteCreditRepository:
         if len(stored) != len(codes) or any(
             row.code_index != code.code_index
             or row.code_hash != code.code_hash
+            or row.action != code.action
+            or row.plan_id != code.plan_id
             or _as_utc(row.expires_at) != _as_utc(code.expires_at)
             for row, code in zip(stored, codes, strict=True)
         ):
             raise CreditCodeBatchConflict
+
+    def _membership_receipt(self, code):
+        if code.action != "membership":
+            return {}
+        subscription = self._session.get(SubscriptionRow, f"membership:{code.code_id}")
+        if subscription is None:
+            raise RuntimeError("membership receipt is missing its subscription")
+        return {
+            "action": "membership",
+            "plan_id": code.plan_id,
+            "membership_starts_at": _as_utc(subscription.current_period_start),
+            "membership_expires_at": _as_utc(subscription.current_period_end),
+        }
+
+    def _schedule_membership(self, code, user_id, now):
+        plan = membership_plan(code.plan_id)
+        starts_at = _as_utc(now)
+        existing = self._session.scalars(
+            select(SubscriptionRow).where(
+                SubscriptionRow.user_id == str(user_id),
+                SubscriptionRow.status.in_(("active", "trialing")),
+            )
+        ).all()
+        for subscription in existing:
+            if subscription.current_period_end is None:
+                # A non-expiring external entitlement cannot be silently replaced.
+                raise CreditCodeUnavailable
+            starts_at = max(starts_at, _as_utc(subscription.current_period_end))
+        subscription = SubscriptionRow(
+            provider_id=f"membership:{code.code_id}",
+            user_id=str(user_id),
+            customer_id=str(user_id),
+            plan_id=plan.id,
+            status="active",
+            current_period_start=starts_at,
+            current_period_end=starts_at + timedelta(days=plan.period_days),
+            cancel_at_period_end=True,
+            created_at=now,
+        )
+        self._session.add(subscription)
+        self._session.flush()
+        return subscription
 
     def redeem_code(
         self,
@@ -314,9 +362,14 @@ class SqliteCreditRepository:
                 quota_period_expires_at=(
                     datetime.fromisoformat(receipt_period["expires_at"]) if receipt_period else None
                 ),
-                redeemed_points=replay.balance_after,
+                redeemed_points=(
+                    self._plan_limits[code.plan_id]
+                    if code.action == "membership"
+                    else replay.balance_after
+                ),
                 delta_points=replay.points,
                 balance=self._current_balance(user_id),
+                **self._membership_receipt(code),
             )
 
         claimed = self._session.execute(
@@ -342,6 +395,31 @@ class SqliteCreditRepository:
                     )
             raise CreditCodeUnavailable
 
+        if code.action == "membership":
+            subscription = self._schedule_membership(code, user_id, now)
+            if _as_utc(subscription.current_period_start) > _as_utc(now):
+                balance = self._current_balance(user_id)
+                self._session.add(
+                    CreditLedgerRow(
+                        entry_id=code.code_id,
+                        user_id=str(user_id),
+                        run_id=None,
+                        kind="redemption",
+                        points=0,
+                        balance_after=balance,
+                        quota_period_epoch=None,
+                        input_tokens=0,
+                        output_tokens=0,
+                        model=f"membership-queued:{code.plan_id}",
+                        created_at=now,
+                    )
+                )
+                self._session.flush()
+                return CreditRedemption(
+                    redeemed_points=self._plan_limits[code.plan_id],
+                    balance=balance,
+                    **self._membership_receipt(code),
+                )
         period = ensure_quota_period(
             self._session.connection(),
             user_id,
@@ -349,6 +427,7 @@ class SqliteCreditRepository:
             self._plan_limits,
             reset=True,
             receipt_id=code.code_id,
+            reset_reason="membership_activation" if code.action == "membership" else "bank_reset",
         )
         if period is None:
             raise RuntimeError("bank RESET requires the weekly quota migration")
@@ -361,6 +440,7 @@ class SqliteCreditRepository:
             delta_points=receipt.points,
             quota_period_started_at=datetime.fromisoformat(period["started_at"]),
             quota_period_expires_at=datetime.fromisoformat(period["expires_at"]),
+            **self._membership_receipt(code),
         )
 
     def reserve_usage(self, *, user_id: UUID, run_id: UUID, now: datetime) -> None:

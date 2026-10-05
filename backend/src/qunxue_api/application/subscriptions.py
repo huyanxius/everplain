@@ -1,8 +1,9 @@
 """Explicit transaction boundaries around remote subscription operations."""
 
 import hashlib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
+from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -30,6 +31,7 @@ class SubscriptionApplication:
         cancel_url: str,
         portal_return_url: str = "",
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        plan_limits: Mapping[str, int] | None = None,
     ):
         self.repository_scope = repository_scope
         self.gateway = gateway
@@ -39,10 +41,18 @@ class SubscriptionApplication:
         self.cancel_url = cancel_url
         self.clock = clock
         self.portal_return_url = portal_return_url
+        self.plan_limits = dict(plan_limits or {})
 
     def get(self, user_id: UUID) -> Subscription | None:
         with self.repository_scope() as repository:
-            return repository.get(user_id)
+            value = repository.get(user_id)
+        if value and value.provider_id.startswith("membership:"):
+            now = self.clock()
+            if value.current_period_end is not None and value.current_period_end <= now:
+                return replace(value, status="expired")
+            if value.current_period_start is not None and value.current_period_start > now:
+                return replace(value, status="scheduled")
+        return value
 
     def checkout(self, user_id: UUID, plan_id: str, key: str) -> CheckoutResult:
         self._require_available()

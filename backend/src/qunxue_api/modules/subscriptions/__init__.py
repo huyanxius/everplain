@@ -42,6 +42,31 @@ class SubscriptionPlan:
     name: str
     description: str
     price_id: str
+    price_cny_fen: int = 0
+    weekly_points: int = 0
+    period_days: int = 28
+
+    @property
+    def period_points(self) -> int:
+        return self.weekly_points * 4
+
+
+# Public allowance catalogue. Procurement rates never belong in this catalogue.
+MEMBERSHIP_PLANS = (
+    SubscriptionPlan("plus", "Plus", "适合日常阅读、问答与写作", "", 5900, 200),
+    SubscriptionPlan("pro", "PRO", "适合持续研究与较高频使用", "", 11900, 400),
+    SubscriptionPlan("max", "Max", "适合密集研究与大量文稿工作", "", 29900, 1000),
+)
+MEMBERSHIP_WEEKLY_POINTS = {plan.id: plan.weekly_points for plan in MEMBERSHIP_PLANS}
+TOP_UP_POINTS = 200
+TOP_UP_PRICE_CNY_FEN = 1900
+
+
+def membership_plan(plan_id: str) -> SubscriptionPlan:
+    for plan in MEMBERSHIP_PLANS:
+        if plan.id == plan_id:
+            return plan
+    raise ValueError("unknown membership plan")
 
 
 @dataclass(frozen=True)
@@ -72,6 +97,7 @@ class Subscription:
     current_period_end: datetime | None
     cancel_at_period_end: bool
     created_at: datetime
+    current_period_start: datetime | None = None
 
 
 @dataclass(frozen=True)

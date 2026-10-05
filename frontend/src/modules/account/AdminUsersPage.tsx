@@ -18,6 +18,7 @@ import {
   type AccountStatus,
   type AdminUser,
   type CreditRedemptionCodeBatch,
+  type MembershipPlanId,
   type PasswordResetLink,
 } from './accountManagementModels'
 import { AccountConfirmationDialog } from './AccountSettingsPage'
@@ -98,6 +99,7 @@ export function AdminUsersPage({
   const [statusReason, setStatusReason] = useState('')
   const [resetUser, setResetUser] = useState<AdminUser | null>(null)
   const [resetLinks, setResetLinks] = useState<Record<string, PasswordResetLink>>({})
+  const [creditCodePlanId, setCreditCodePlanId] = useState<MembershipPlanId | ''>('')
   const [creditCodeCount, setCreditCodeCount] = useState(20)
   const [creditCodeExpiresInDays, setCreditCodeExpiresInDays] = useState(30)
   const [generatedCreditCodes, setGeneratedCreditCodes] = useState<CreditRedemptionCodeBatch | null>(null)
@@ -213,6 +215,7 @@ export function AdminUsersPage({
   function submitCreditCodeBatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const intent = {
+      planId: creditCodePlanId || null,
       count: creditCodeCount,
       expiresInDays: creditCodeExpiresInDays,
     }
@@ -223,7 +226,7 @@ export function AdminUsersPage({
         idempotencyKey: mutationIntents.current.keyFor('credit-code-batch', intent),
       }),
       setGeneratedCreditCodes,
-      `已生成 ${creditCodeCount} 个积分兑换码。`,
+      `已生成 ${creditCodeCount} 个兑换码。`,
     )
   }
 
@@ -279,15 +282,16 @@ export function AdminUsersPage({
         </section>
         <div className="ep-admin-support">
           <section aria-labelledby="credit-code-generator-title">
-            <header className="ep-admin-section-head"><h2 className="qx-heading" id="credit-code-generator-title">bank RESET 兑换码</h2></header>
+            <header className="ep-admin-section-head"><h2 className="qx-heading" id="credit-code-generator-title">生成兑换码</h2></header>
             <div className="qx-card ep-admin-credit-panel">
-              <p className="qx-meta">批量生成一次性 bank RESET 兑换码，将用量恢复至当前套餐的 100%，并重新开始 7 天周期。</p>
+              <p className="qx-meta">会员码开启 28 天会员，已有会员时顺延生效；bank RESET 恢复当前套餐满额，周期通常为 7 天，最晚截止至会员到期时间，不延长会员有效期。</p>
               <form className="ep-admin-credit-form" onSubmit={submitCreditCodeBatch}>
+                <label className="ep-admin-field">兑换码类型<Select aria-label="兑换码类型" value={creditCodePlanId} disabled={pending} onChange={value => setCreditCodePlanId(value as MembershipPlanId | '')} options={[{ value: '', label: 'bank RESET' }, { value: 'plus', label: 'Plus 会员 · 28 天' }, { value: 'pro', label: 'PRO 会员 · 28 天' }, { value: 'max', label: 'Max 会员 · 28 天' }]} /></label>
                 <label className="ep-admin-field">生成数量<input className="qx-input" type="number" min={1} max={100} value={creditCodeCount} onChange={event => setCreditCodeCount(Number(event.target.value))} /></label>
                 <label className="ep-admin-field">有效天数<input className="qx-input" type="number" min={1} max={365} value={creditCodeExpiresInDays} onChange={event => setCreditCodeExpiresInDays(Number(event.target.value))} /></label>
                 <button className="qx-btn qx-btn--primary" type="submit" disabled={pending || creditCodeCount < 1 || creditCodeExpiresInDays < 1}>{pendingAction === 'credit-code-batch' ? '正在生成…' : '生成兑换码'}</button>
               </form>
-              {generatedCreditCodes ? <div className="ep-admin-credit-result"><p>完整兑换码只显示在这里，请立即复制保存。</p><p className="qx-meta">兑换后恢复当前套餐满额（Free：30） · 兑换码有效至 {formatDate(generatedCreditCodes.expiresAt)}</p><ol>{generatedCreditCodes.codes.map(code => <li key={code}><code>{code}</code></li>)}</ol></div> : null}
+              {generatedCreditCodes ? <div className="ep-admin-credit-result"><p>完整兑换码只显示在这里，请立即复制保存。</p><p className="qx-meta">{generatedCreditCodes.action === 'membership' ? `${({ plus: 'Plus', pro: 'PRO', max: 'Max' } as Record<string, string>)[generatedCreditCodes.planId ?? ''] ?? generatedCreditCodes.planId} 会员 · 28 天` : 'bank RESET · 恢复当前套餐满额'} · 兑换码有效至 {formatDate(generatedCreditCodes.expiresAt)}</p><ol>{generatedCreditCodes.codes.map(code => <li key={code}><code>{code}</code></li>)}</ol></div> : null}
             </div>
           </section>
           <section className="ep-admin-audit" aria-labelledby="account-audit-title">

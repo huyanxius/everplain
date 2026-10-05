@@ -3152,6 +3152,10 @@ export type CreditCodeBatchCreateRequest = {
      * Expires In Days
      */
     expires_in_days: number;
+    /**
+     * Plan Id
+     */
+    plan_id?: 'plus' | 'pro' | 'max' | null;
 };
 
 /**
@@ -3161,7 +3165,7 @@ export type CreditCodeBatchResponse = {
     /**
      * Action
      */
-    action?: 'bank_reset';
+    action?: 'bank_reset' | 'membership';
     /**
      * Codes
      */
@@ -3170,6 +3174,10 @@ export type CreditCodeBatchResponse = {
      * Expires At
      */
     expires_at: string;
+    /**
+     * Plan Id
+     */
+    plan_id?: string | null;
     /**
      * Points
      */
@@ -3289,7 +3297,7 @@ export type CreditRedemptionResponse = {
     /**
      * Action
      */
-    action?: 'bank_reset';
+    action?: 'bank_reset' | 'membership';
     /**
      * Balance
      */
@@ -3298,6 +3306,18 @@ export type CreditRedemptionResponse = {
      * Delta Points
      */
     delta_points?: number;
+    /**
+     * Membership Expires At
+     */
+    membership_expires_at?: string | null;
+    /**
+     * Membership Starts At
+     */
+    membership_starts_at?: string | null;
+    /**
+     * Plan Id
+     */
+    plan_id?: string | null;
     /**
      * Quota Period Expires At
      */
@@ -5622,6 +5642,44 @@ export type MaterialRelationResponse = {
 export type MaterialRelationType = 'derived_from' | 'supplements' | 'translation_of' | 'version_of' | 'describes' | 'related';
 
 /**
+ * MembershipCatalogResponse
+ */
+export type MembershipCatalogResponse = {
+    /**
+     * Agent Models
+     */
+    agent_models: Array<PublicAgentModelResponse>;
+    /**
+     * Free Weekly Points
+     */
+    free_weekly_points: number;
+    /**
+     * Payments Enabled
+     */
+    payments_enabled: boolean;
+    /**
+     * Plans
+     */
+    plans: Array<SubscriptionPlanResponse>;
+    /**
+     * Reset Days
+     */
+    reset_days: number;
+    /**
+     * Runtime Mode
+     */
+    runtime_mode: string;
+    /**
+     * Top Up Points
+     */
+    top_up_points: number;
+    /**
+     * Top Up Price Cny Fen
+     */
+    top_up_price_cny_fen: number;
+};
+
+/**
  * MemoryCollection
  */
 export type MemoryCollection = {
@@ -6746,6 +6804,28 @@ export type ProjectResearchFactsResponse = {
      * Sensitivity Levels
      */
     sensitivity_levels: Array<Array<string | number>>;
+};
+
+/**
+ * PublicAgentModelResponse
+ */
+export type PublicAgentModelResponse = {
+    /**
+     * Default Reasoning Effort
+     */
+    default_reasoning_effort: string | null;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Model Id
+     */
+    model_id: string;
+    /**
+     * Reasoning Efforts
+     */
+    reasoning_efforts: Array<string>;
 };
 
 /**
@@ -9237,6 +9317,22 @@ export type SubscriptionPlanResponse = {
      * Name
      */
     name: string;
+    /**
+     * Period Days
+     */
+    period_days: number;
+    /**
+     * Period Points
+     */
+    period_points: number;
+    /**
+     * Price Cny Fen
+     */
+    price_cny_fen: number;
+    /**
+     * Weekly Points
+     */
+    weekly_points: number;
 };
 
 /**
@@ -9268,6 +9364,10 @@ export type SubscriptionResponse = {
      * Current Period End
      */
     current_period_end: string | null;
+    /**
+     * Current Period Start
+     */
+    current_period_start?: string | null;
     /**
      * Plan Id
      */
@@ -14582,6 +14682,22 @@ export type ListPhenomenonExamplesResponses = {
 };
 
 export type ListPhenomenonExamplesResponse = ListPhenomenonExamplesResponses[keyof ListPhenomenonExamplesResponses];
+
+export type GetPublicProductCatalogData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/product-catalog';
+};
+
+export type GetPublicProductCatalogResponses = {
+    /**
+     * Successful Response
+     */
+    200: MembershipCatalogResponse;
+};
+
+export type GetPublicProductCatalogResponse = GetPublicProductCatalogResponses[keyof GetPublicProductCatalogResponses];
 
 export type ListPublicKnowledgeDirectoryData = {
     body?: never;
