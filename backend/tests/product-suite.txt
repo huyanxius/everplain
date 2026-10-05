@@ -22,6 +22,8 @@ tests/test_identity_service.py
 tests/test_identity_and_ownership.py
 tests/test_registration_email_verification.py
 tests/test_agent_run_recovery.py
+tests/billing/test_agent_retry_billing.py
+tests/billing/test_planner_failure_propagation.py
 tests/test_agent_run_lookup.py
 tests/test_agent_stream_lifecycle.py
 tests/test_agent_task_binding.py
@@ -89,6 +91,7 @@ tests/test_writing_errors.py
 tests/test_writing_concurrency.py
 tests/test_writing_output_limits.py
 tests/test_writing_release_policy.py
+tests/test_writing_scope_migration.py
 
 # Explicit model routing and versioned additional-provider billing.
 tests/test_agent_model_selection.py
@@ -108,6 +111,13 @@ tests/test_agent_time_context.py
 # All generative callers use the shared stream transport.
 tests/test_model_streaming.py
 tests/billing/test_buffered_streaming.py
+tests/billing/test_wire_guard_failure.py
+tests/billing/test_dispatch_lifecycle.py
+tests/billing/test_dispatch_migration.py
+tests/billing/test_reconciliation_safety.py
 tests/test_conversation_context.py
 
 tests/test_conversation_context_migration.py
+
+tests/test_conversation_summary.py
+tests/test_conversation_summary_migration.py

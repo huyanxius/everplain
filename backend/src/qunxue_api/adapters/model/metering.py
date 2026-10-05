@@ -4,6 +4,7 @@ import hashlib
 import json
 from contextvars import ContextVar
 
+from qunxue_api.adapters.model.dispatch import attach_dispatch, response_dispatch_hook
 from qunxue_api.adapters.model.routing import current_model_route_scope
 from qunxue_api.adapters.model.token_usage import (
     ResponsesUsageSnapshot,
@@ -428,13 +429,27 @@ async def _wire_hook(request):
     state = _wire_request.get()
     if state is None:
         return
-    payload = json.loads(request.content)
-    state["attempt"] = state["scope"].before_attempt_payload(
-        payload,
-        state["route"],
-        request.url.host,
-        api_type=state.get("api_type", "chat_completions"),
-    )
+    try:
+        if request.extensions.get("everplain_dispatch") is not None:
+            raise BillingContextMissing(
+                "metered redirect or auth resend requires a new explicit request"
+            )
+        payload = json.loads(request.content)
+        state["attempt"] = state["scope"].before_attempt_payload(
+            payload,
+            state["route"],
+            request.url.host,
+            api_type=state.get("api_type", "chat_completions"),
+        )
+        state["dispatch"] = attach_dispatch(
+            request, state["scope"].runtime, state["attempt"], state["client"]
+        )
+    except Exception as error:
+        # OpenAI wraps HTTP client hook exceptions as APIConnectionError. This
+        # guard ran locally before the network; preserve its actual failure so
+        # budget, configuration and lease errors keep their existing contracts.
+        state["local_error"] = error
+        raise
 
 
 class MeteredOpenAIChatModel(UsageSafeOpenAIChatModel):
@@ -444,6 +459,8 @@ class MeteredOpenAIChatModel(UsageSafeOpenAIChatModel):
         client = self.client._client
         if _wire_hook not in client.event_hooks["request"]:
             client.event_hooks["request"].append(_wire_hook)
+        if response_dispatch_hook not in client.event_hooks["response"]:
+            client.event_hooks["response"].append(response_dispatch_hook)
 
     async def _completions_create(self, messages, stream, model_settings, model_request_parameters):
         scope = _current_operation.get()
@@ -456,13 +473,21 @@ class MeteredOpenAIChatModel(UsageSafeOpenAIChatModel):
         if self.client.max_retries != 0:
             raise BillingContextMissing("SDK automatic retries must be disabled")
         _mark_validation_retry(scope, messages)
-        state = {"scope": scope, "attempt": None, "route": current_model_route_scope()}
+        state = {"scope": scope, "attempt": None, "route": current_model_route_scope(),
+                 "client": self.client._client}
         token = _wire_request.set(state)
         try:
             value = await super()._completions_create(
                 messages, stream, model_settings, model_request_parameters
             )
         except BaseException as error:
+            if state.get("dispatch") is not None:
+                state["dispatch"].finish_failed(error)
+            if state.get("local_error") is not None:
+                if state["attempt"] is not None:
+                    scope.complete(state["attempt"], outcome="error",
+                                   failure_code="local_guard_after_dispatch")
+                raise state["local_error"] from None
             if state["attempt"] is not None:
                 scope.complete(
                     state["attempt"],
@@ -495,6 +520,8 @@ class MeteredOpenAIResponsesModel(UsageSafeOpenAIResponsesModel):
         client = self.client._client
         if _wire_hook not in client.event_hooks["request"]:
             client.event_hooks["request"].append(_wire_hook)
+        if response_dispatch_hook not in client.event_hooks["response"]:
+            client.event_hooks["response"].append(response_dispatch_hook)
 
     async def _responses_compact(self, *args, **kwargs):
         if self.require_billing or _current_operation.get() is not None:
@@ -519,6 +546,7 @@ class MeteredOpenAIResponsesModel(UsageSafeOpenAIResponsesModel):
             "attempt": None,
             "route": current_model_route_scope(),
             "api_type": "responses",
+            "client": self.client._client,
         }
         token = _wire_request.set(state)
         try:
@@ -526,6 +554,13 @@ class MeteredOpenAIResponsesModel(UsageSafeOpenAIResponsesModel):
                 messages, stream, model_settings, model_request_parameters
             )
         except BaseException as error:
+            if state.get("dispatch") is not None:
+                state["dispatch"].finish_failed(error)
+            if state.get("local_error") is not None:
+                if state["attempt"] is not None:
+                    scope.complete(state["attempt"], outcome="error",
+                                   failure_code="local_guard_after_dispatch")
+                raise state["local_error"] from None
             if state["attempt"] is not None:
                 scope.complete(
                     state["attempt"],

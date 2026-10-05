@@ -144,12 +144,36 @@ class FilesystemSafetyTests(unittest.TestCase):
             (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
         ).hexdigest()
         new_hash = hashlib.sha256(json.dumps(storage, sort_keys=True).encode()).hexdigest()
-        old_storage = {k: v for k, v in storage.items()
+        summary_storage = {k: v for k, v in storage.items()
+                           if k != "migrations/versions/20261005_0580_writing_revision_scope.py"}
+        summary_hash = hashlib.sha256(
+            json.dumps(summary_storage, sort_keys=True).encode()).hexdigest()
+        dispatch_storage = {k: v for k, v in summary_storage.items()
+                            if k != "migrations/versions/20261005_0570_conversation_summary.py"}
+        dispatch_hash = hashlib.sha256(
+            json.dumps(dispatch_storage, sort_keys=True).encode()).hexdigest()
+        context_storage = {k: v for k, v in dispatch_storage.items()
+                           if k != "migrations/versions/20261005_0560_billing_dispatch.py"}
+        context_hash = hashlib.sha256(
+            json.dumps(context_storage, sort_keys=True).encode()
+        ).hexdigest()
+        old_storage = {k: v for k, v in context_storage.items()
                        if k != "migrations/versions/20261004_0550_conversation_context.py"}
         old_hash = hashlib.sha256(json.dumps(old_storage, sort_keys=True).encode()).hexdigest()
         self.assertEqual(policy["rollback_compatible_migration_trees"], [])
-        self.assertIn({"from": old_hash, "to": new_hash}, policy["reviewed_migration_transitions"])
-        deploy.check_compatible({"migration_tree": old_hash}, {"migration_tree": new_hash}, policy)
+        for previous, candidate in ((old_hash, context_hash), (context_hash, dispatch_hash),
+                                    (dispatch_hash, summary_hash), (summary_hash, new_hash)):
+            self.assertIn({"from": previous, "to": candidate},
+                          policy["reviewed_migration_transitions"])
+            deploy.check_compatible({"migration_tree": previous}, {"migration_tree": candidate},
+                                    policy)
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            deploy.check_compatible({"migration_tree": old_hash}, {"migration_tree": new_hash},
+                                    policy)
+        for previous, candidate in ((dispatch_hash, new_hash), (new_hash, summary_hash)):
+            with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+                deploy.check_compatible({"migration_tree": previous},
+                                        {"migration_tree": candidate}, policy)
 
 
 class ArtifactTests(unittest.TestCase):

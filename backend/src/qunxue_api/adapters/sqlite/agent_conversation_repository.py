@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from qunxue_api.adapters.sqlite import AgentConversationRow, AgentMessageRow, AgentRunRow
+from qunxue_api.adapters.sqlite.agent_memory_model import invalidate_conversation_summary
 from qunxue_api.adapters.sqlite.research_material_model import (
     ResearchMaterialBlockRow,
     ResearchMaterialRow,
@@ -298,6 +299,7 @@ class SqliteConversationRepository:
         if row is None:
             raise ConversationNotFound(str(conversation_id))
         row.title = title
+        invalidate_conversation_summary(self._session, user_id)
         row.updated_at = updated_at
         self._session.flush()
         return self.get(user_id=user_id, conversation_id=conversation_id)
@@ -312,6 +314,7 @@ class SqliteConversationRepository:
         if row is None:
             raise ConversationNotFound(str(conversation_id))
         self._session.delete(row)
+        invalidate_conversation_summary(self._session, user_id)
         self._session.flush()
 
     def release_ids_by_turn(self, *, conversation_id: UUID) -> dict[UUID, str]:
@@ -379,6 +382,7 @@ class SqliteConversationRepository:
         )
         row.updated_at = max(_utc(row.updated_at), turn.assistant_message.created_at)
         row.version += 1
+        invalidate_conversation_summary(self._session, conversation.user_id)
         self._session.flush()
         return turn
 
@@ -458,13 +462,25 @@ class SqliteConversationRepository:
                     "research material segment is no longer eligible for a new citation"
                 )
 
-    def start_run(self, run: AgentRun) -> AgentRun:
+    def start_run(
+        self,
+        run: AgentRun,
+        *,
+        enforce_expected_generation: bool = False,
+        expected_previous_lease_token: str | None = None,
+    ) -> AgentRun:
         existing = self._session.scalar(
             select(AgentRunRow).where(
                 AgentRunRow.conversation_id == str(run.conversation_id),
                 AgentRunRow.idempotency_key == run.idempotency_key,
-            )
+            ).execution_options(populate_existing=True)
         )
+        current_token = (existing.lease_token or "") if existing is not None else None
+        if enforce_expected_generation and current_token != expected_previous_lease_token:
+            # Financial repair covered this exact generation, including absence.
+            # A later failed/completed generation cannot inherit that repair.
+            self._session.rollback()
+            raise RunAlreadyActive(str(run.conversation_id))
         if existing is not None:
             if existing.status == "running":
                 raise RunAlreadyActive(str(run.conversation_id))
@@ -487,7 +503,11 @@ class SqliteConversationRepository:
                         AgentRunRow.run_id == existing.run_id,
                         AgentRunRow.user_id == str(run.user_id),
                         AgentRunRow.status == existing.status,
-                        AgentRunRow.lease_token == existing.lease_token,
+                        AgentRunRow.lease_token == (
+                            expected_previous_lease_token
+                            if enforce_expected_generation and expected_previous_lease_token
+                            else existing.lease_token
+                        ),
                     ).values(status="running", lease_token=run.lease_token)
                 ).rowcount
                 if not claimed:
@@ -496,7 +516,6 @@ class SqliteConversationRepository:
                 existing.status = "running"
                 existing.error = None
                 existing.completed_at = None
-                existing.started_at = datetime.now(UTC)
                 existing.knowledge_release_id = run.knowledge_release_id
                 existing.provider = run.provider
                 existing.model = run.model
@@ -527,6 +546,8 @@ class SqliteConversationRepository:
                     )
                 )
                 if existing is not None:
+                    if enforce_expected_generation:
+                        raise RunAlreadyActive(str(run.conversation_id)) from error
                     return _run_from_row(existing)
                 raise error
 
@@ -578,7 +599,7 @@ class SqliteConversationRepository:
                 )
             )
             if existing is not None:
-                if existing.status == "running":
+                if enforce_expected_generation or existing.status == "running":
                     raise RunAlreadyActive(str(run.conversation_id)) from error
                 return _run_from_row(existing)
             active = self._session.scalar(
@@ -769,7 +790,8 @@ class SqliteConversationRepository:
                 AgentRunRow.run_id == row.run_id, AgentRunRow.status == "running",
                 or_(AgentRunRow.lease_expires_at.is_(None), AgentRunRow.lease_expires_at <= now),
             ).values(status="interrupted", cancel_requested=True, updated_at=now,
-                     lease_expires_at=None, completed_at=now)).rowcount
+                     lease_expires_at=None, completed_at=now)
+                .execution_options(synchronize_session="fetch")).rowcount
             if changed:
                 recovered.append(_run_from_row(row))
         return tuple(recovered)

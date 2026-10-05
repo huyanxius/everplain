@@ -358,3 +358,29 @@ class RecentConversationContextResponse(BaseModel):
 
 class RecentConversationContextsResponse(BaseModel):
     items: list[RecentConversationContextResponse]
+
+
+class ConversationSummarySourceResponse(BaseModel):
+    role: Literal["user", "assistant"]
+    sequence: int = Field(ge=0)
+    conversation_id: UUID
+    message_id: UUID
+    quote: str
+    title: str
+
+
+class ConversationSuggestionResponse(BaseModel):
+    title: str
+    description: str
+    prompt: str
+    sources: list[ConversationSummarySourceResponse]
+
+
+class ConversationSummaryResponse(BaseModel):
+    status: Literal["ready", "pending", "empty", "disabled", "failed"]
+    summary: str
+    summary_sources: list[ConversationSummarySourceResponse]
+    cards: list[ConversationSuggestionResponse]
+    updated_at: datetime | None
+    scope: Literal["conversation_messages"]
+    omitted_messages: int

@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const buildUrl = vi.hoisted(() => vi.fn())
+const get = vi.hoisted(() => vi.fn())
 
-vi.mock('../../api/client', () => ({ apiClient: { buildUrl } }))
+vi.mock('../../api/client', () => ({ apiClient: { buildUrl, get } }))
 
 import {
   confirmResearchStartProposal,
   deleteAgentConversation,
   getAgentConversation,
+  getConversationContextSummary,
   getResearchStartJourney,
   listAgentConversations,
   parseAgentEventStream,
@@ -17,6 +19,7 @@ import {
 
 beforeEach(() => {
   buildUrl.mockReset()
+  get.mockReset()
   buildUrl.mockImplementation(({ path, url }: {
     path?: Record<string, unknown>
     url: string
@@ -31,6 +34,24 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+})
+
+describe('server-owned conversation context adapter', () => {
+  const summary = { status: 'ready', scope: 'conversation_messages', omitted_messages: 0, summary_sources: [], summary: '跨对话里你提到周五迁移与旧入口回退。', updated_at: '2026-10-05T00:00:00Z', cards: [{ title: '核对迁移回退入口', description: '根据两次迁移讨论整理。', prompt: '核对周五迁移与旧入口回退的安排。', sources: [{ role: 'user', sequence: 0, conversation_id: 'one', message_id: 'one-user-1', quote: '周五迁移', title: '迁移讨论' }] }] }
+  it('reads the authenticated server cache without generating a turn', async () => {
+    get.mockResolvedValue({ data: summary })
+    const controller = new AbortController()
+    expect(await getConversationContextSummary(controller.signal)).toEqual(summary)
+    expect(get).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ url: '/api/agent/context-summary', credentials: 'include', signal: controller.signal, cache: 'no-store' }))
+  })
+  it.each([{ items: [] }, { ...summary, scope: 'assistant_messages' }, { ...summary, cards: [{ ...summary.cards[0], sources: [] }] }])('does not invent cards for an invalid cached response', async payload => {
+    get.mockResolvedValue({ data: payload })
+    await expect(getConversationContextSummary()).rejects.toThrow('最近对话建议暂时不可用')
+  })
+  it('exposes an honest read failure instead of falling back to a template', async () => {
+    get.mockResolvedValue({ error: { detail: 'unavailable' }, response: new Response(null, { status: 503 }) })
+    await expect(getConversationContextSummary()).rejects.toThrow('无法读取最近对话建议')
+  })
 })
 
 describe('research agent SSE adapter', () => {

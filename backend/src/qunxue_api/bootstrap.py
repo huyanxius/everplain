@@ -52,6 +52,9 @@ from qunxue_api.adapters.research_agent import (
     ResearchDocumentToolRegistry,
     SiliconFlowRerankerProvider,
 )
+from qunxue_api.adapters.research_agent.conversation_summarizer import (
+    PydanticConversationSummarizer,
+)
 from qunxue_api.adapters.research_agent.course_cost import CourseCostLimits
 from qunxue_api.adapters.research_agent.course_organization import (
     CourseKnowledgeGenerator,
@@ -78,6 +81,9 @@ from qunxue_api.adapters.sqlite.agent_memory_repository import SqliteMemoryRepos
 from qunxue_api.adapters.sqlite.agent_profile import SqliteAgentProfileRepository
 from qunxue_api.adapters.sqlite.billing_repository import SqliteCreditRepository
 from qunxue_api.adapters.sqlite.channel_gateway import SqliteChannelGatewayRepository
+from qunxue_api.adapters.sqlite.conversation_summary_repository import (
+    SqliteConversationSummaryRepository,
+)
 from qunxue_api.adapters.sqlite.database import Database
 from qunxue_api.adapters.sqlite.external_agents import SqliteExternalAgentRepository
 from qunxue_api.adapters.sqlite.identity_repository import SqliteIdentityRepository
@@ -178,6 +184,7 @@ from qunxue_api.application import (
 from qunxue_api.application.agent_profile import AgentProfileApplication
 from qunxue_api.application.agent_research_workflow import AgentResearchWorkflow
 from qunxue_api.application.channel_gateway import ChannelGatewayApplication
+from qunxue_api.application.conversation_summary import ConversationSummaryWorker
 from qunxue_api.application.external_agents import ExternalAgentApplication
 from qunxue_api.application.knowledge_import import KnowledgeImportApplication
 from qunxue_api.application.memory_learning import MemoryLearningWorker
@@ -335,12 +342,18 @@ def create_app(
             course_task = asyncio.create_task(
                 organize_courses(), name="everplain-course-processing"
             )
-        if resolved_settings.memory_learning_enabled and app.state.model_endpoints:
+        if app.state.model_endpoints and (
+            resolved_settings.memory_learning_enabled
+            or resolved_settings.conversation_summary_enabled
+        ):
 
             async def learn_memories():
                 while True:
                     try:
-                        await asyncio.to_thread(app.state.memory_worker.run_once)
+                        if resolved_settings.conversation_summary_enabled:
+                            await asyncio.to_thread(app.state.context_summary_worker.run_once)
+                        if resolved_settings.memory_learning_enabled:
+                            await asyncio.to_thread(app.state.memory_worker.run_once)
                     except asyncio.CancelledError:
                         raise
                     except Exception:
@@ -1307,7 +1320,12 @@ def create_app(
             SqliteConversationContextRepository,
         )
         with resolved_database.session() as session:
-            yield SqliteConversationContextRepository(session), SqliteMemoryRepository(session)
+            yield (
+                SqliteConversationContextRepository(
+                    session, summary_enabled=resolved_settings.conversation_summary_enabled
+                ),
+                SqliteMemoryRepository(session),
+            )
 
     app.state.conversation_context_scope = conversation_context_scope
 
@@ -1406,6 +1424,29 @@ def create_app(
         memory_learning_scope,
         extractor=memory_extractor,
         billing=app.state.billing_operations if memory_extractor else None,
+        idle_seconds=resolved_settings.memory_learning_idle_seconds,
+        daily_calls=resolved_settings.memory_learning_daily_calls,
+        daily_tokens=resolved_settings.memory_learning_daily_tokens,
+    )
+    @contextmanager
+    def context_summary_scope():
+        with resolved_database.session() as summary_session:
+            yield SqliteConversationSummaryRepository(
+                summary_session, enabled=resolved_settings.conversation_summary_enabled
+            )
+
+    app.state.context_summary_scope = context_summary_scope
+    context_summarizer = None
+    if app.state.model_endpoints and resolved_settings.conversation_summary_enabled:
+        summary_endpoint = app.state.model_endpoints[0]
+        context_summarizer = PydanticConversationSummarizer(
+            base_url=summary_endpoint.base_url, api_key=summary_endpoint.api_key,
+            model=summary_endpoint.model, extra_headers=summary_endpoint.extra_headers,
+            timeout_seconds=min(resolved_settings.model_timeout_seconds, 45),
+        )
+    app.state.context_summary_worker = ConversationSummaryWorker(
+        context_summary_scope, generate=context_summarizer,
+        billing=app.state.billing_operations if context_summarizer else None,
         idle_seconds=resolved_settings.memory_learning_idle_seconds,
         daily_calls=resolved_settings.memory_learning_daily_calls,
         daily_tokens=resolved_settings.memory_learning_daily_tokens,

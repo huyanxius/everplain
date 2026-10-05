@@ -112,4 +112,7 @@ class WritingAgentTools:
         return self.application.propose_edit(
             self.user_id, self.context["document_id"], key, payload,
             runtime_instructions=runtime_instructions,
+            selection_scope=(
+                {"start": bound_start, "end": bound_end} if bound_start is not None else None
+            ),
         )

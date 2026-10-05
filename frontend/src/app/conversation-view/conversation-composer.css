@@ -41,6 +41,21 @@
 .cv-suggestions__card { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: var(--qx-space-2); min-width: 0; height: 100%; padding: var(--qx-space-3); border-radius: var(--qx-radius-item); background: var(--qx-color-surface-muted); text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .cv-suggestions__card > strong { font-size: var(--qx-text-control); font-weight: 500; }
 .cv-suggestions__card > span { color: var(--qx-color-muted); font-size: var(--qx-text-meta); font-weight: 400; line-height: var(--qx-text-meta--line-height); }
+.cv-context-suggestions { width: 100%; }
+.cv-context-suggestions__summary, .cv-context-suggestions__hint { margin: 0 0 var(--qx-space-3); color: var(--qx-color-muted); line-height: var(--qx-text-meta--line-height); }
+.cv-context-suggestions__summary p { margin: 0 0 var(--qx-space-2); }
+.cv-context-suggestions__item { min-width: 0; display: flex; flex-direction: column; gap: var(--qx-space-2); }
+.cv-context-suggestions__item .cv-suggestions__card { height: auto; flex: 1; width: 100%; }
+.cv-context-suggestions__sources { display: grid; gap: var(--qx-space-2); padding: 0 var(--qx-space-2); margin: 0; list-style: none; }
+.cv-context-suggestions__sources li { display: flex; flex-wrap: wrap; gap: var(--qx-space-1) var(--qx-space-2); font-size: var(--qx-text-meta); line-height: var(--qx-text-meta--line-height); overflow-wrap: anywhere; }
+.cv-context-suggestions__sources a { color: var(--qx-color-ink-soft); text-decoration-color: var(--qx-color-rule-strong); text-underline-offset: 3px; }
+.cv-context-suggestions__sources span { color: var(--qx-color-muted); }
+.cv-context-suggestions__quotes { margin-top: var(--qx-space-2); padding: 0 var(--qx-space-2); color: var(--qx-color-muted); font-size: var(--qx-text-meta); line-height: var(--qx-text-meta--line-height); }
+.cv-context-suggestions__quotes summary { cursor: pointer; }
+.cv-context-suggestions__quotes ul { display: grid; gap: var(--qx-space-2); margin: var(--qx-space-2) 0 0; padding: 0; list-style: none; }
+.cv-context-suggestions__quotes li { overflow-wrap: anywhere; }
+.cv-context-suggestions__state { display: grid; justify-items: start; gap: var(--qx-space-2); }
+.cv-context-suggestions__state p { margin: 0; }
 @container conversation-suggestions (max-width: 560px) { .cv-suggestions__cards { grid-template-columns: minmax(0, 1fr); } }
 
 .cv-library-selector, .cv-library-selector > label { display: grid; gap: var(--qx-space-2); min-width: 0; }

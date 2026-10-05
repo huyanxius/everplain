@@ -36,5 +36,5 @@ export function useAppHome() {
     const homeSubmitId = createHomeSubmission(userId, value, modelSelection.selection, origin)
     navigate('/agent', { state: { homeSubmitId } })
   }
-  return { history, recentConversations: history.data ?? [], profile, graph, question, setQuestion, documents, visibleDocuments, ask, greeting, modelSelection }
+  return { userId, history, recentConversations: history.data ?? [], profile, graph, question, setQuestion, documents, visibleDocuments, ask, greeting, modelSelection }
 }

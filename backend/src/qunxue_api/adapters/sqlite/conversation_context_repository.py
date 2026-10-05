@@ -21,8 +21,9 @@ from qunxue_api.modules.agent_memory import redact_sensitive
 
 
 class SqliteConversationContextRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, *, summary_enabled: bool = True):
         self.session = session
+        self.summary_enabled = summary_enabled
 
     def recent(self, user_id: UUID, *, exclude: UUID | None = None, limit: int = 3) -> list[dict]:
         statement = select(AgentConversationRow).where(
@@ -51,6 +52,13 @@ class SqliteConversationContextRepository:
             "source_message_id": items[-1]["message_id"] if items else None,
             "recent_excerpts": items,
         }
+
+    def summary(self, user_id: UUID) -> dict:
+        from .conversation_summary_repository import SqliteConversationSummaryRepository
+
+        return SqliteConversationSummaryRepository(
+            self.session, enabled=self.summary_enabled
+        ).read(user_id)
 
     def search(self, user_id: UUID, query: str, *, after: int = 0) -> dict:
         # Literal contains, including SQL wildcard escaping. Search authored user
@@ -121,6 +129,39 @@ class SqliteConversationContextRepository:
         if not messages:
             return {"conversation_id": row.conversation_id, "messages": [], "next_cursor": None}
         message = messages[0]
+        text = self.source_text(user_id, row, message)
+        # Page within a message too; no original text is silently lost to truncation.
+        if message.sequence != sequence:
+            offset = 0
+        content = text[offset : offset + 600]
+        end = offset + len(content)
+        cursor = (
+            {"sequence": message.sequence, "offset": end}
+            if end < len(text)
+            else {"sequence": messages[1].sequence, "offset": 0}
+            if len(messages) > 1
+            else None
+        )
+        return {
+            "conversation_id": row.conversation_id,
+            "title": excerpt(redact_sensitive(row.title), 120),
+            "messages": [
+                {
+                    "message_id": message.message_id,
+                    "role": message.role,
+                    "sequence": message.sequence,
+                    "offset": offset,
+                    "content": content,
+                }
+            ],
+            "next_cursor": cursor,
+            "untrusted_history": True,
+        }
+
+    def source_text(self, user_id: UUID, row, message) -> str:
+        """Share the exact history deletion/access fence with background summaries."""
+        if row.user_id != str(user_id) or message.conversation_id != row.conversation_id:
+            raise ConversationNotFound(str(row.conversation_id))
         text = message.content
         if message.role == "assistant":
             run = self.session.scalar(
@@ -163,30 +204,4 @@ class SqliteConversationContextRepository:
             if unavailable or any(item.deleted and item.material_id for item in citations):
                 text = _DELETED_MATERIAL_ANSWER
         text = redact_sensitive(text)
-        # Page within a message too; no original text is silently lost to truncation.
-        if message.sequence != sequence:
-            offset = 0
-        content = text[offset : offset + 600]
-        end = offset + len(content)
-        cursor = (
-            {"sequence": message.sequence, "offset": end}
-            if end < len(text)
-            else {"sequence": messages[1].sequence, "offset": 0}
-            if len(messages) > 1
-            else None
-        )
-        return {
-            "conversation_id": row.conversation_id,
-            "title": excerpt(redact_sensitive(row.title), 120),
-            "messages": [
-                {
-                    "message_id": message.message_id,
-                    "role": message.role,
-                    "sequence": message.sequence,
-                    "offset": offset,
-                    "content": content,
-                }
-            ],
-            "next_cursor": cursor,
-            "untrusted_history": True,
-        }
+        return text

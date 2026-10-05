@@ -223,7 +223,8 @@ class WritingApplication:
         self.repository.complete(operation, result)
         return result
 
-    def propose_edit(self, user_id, document_id, key, request, *, runtime_instructions=""):
+    def propose_edit(self, user_id, document_id, key, request, *, runtime_instructions="",
+                     selection_scope=None):
         """Save a precise Agent-authored suggestion without another model call.
 
         Only replacement_text becomes document content. Conversation, prompts and
@@ -235,7 +236,8 @@ class WritingApplication:
         self.repository.get(user_id, document_id)
         target = f"revision:{document_id}"
         digest = sha256(json.dumps(
-            {"target": target, "request": request}, sort_keys=True, default=str,
+            {"target": target, "request": request, "selection_scope": selection_scope},
+            sort_keys=True, default=str,
         ).encode()).hexdigest()
         old = self.repository.operation(user_id, key, digest)
         if old:
@@ -247,6 +249,13 @@ class WritingApplication:
             document = self.repository.get(user_id, document_id)
             if document["version"] != request["expected_version"]:
                 raise WritingConflict("原文已改变，请保存并刷新后重试")
+            scope_start, scope_end = (
+                (selection_scope["start"], selection_scope["end"])
+                if selection_scope is not None else (0, len(document["markdown"].encode(
+                    "utf-16-le",
+                )) // 2)
+            )
+            utf16_slice(document["markdown"], scope_start, scope_end, allow_empty=True)
             if any(
                 r["status"] == "pending"
                 for r in self.repository.revisions(user_id, document_id)
@@ -280,6 +289,10 @@ class WritingApplication:
                 )
                 if selected != original:
                     raise WritingConflict("选区原文不匹配，修改没有保存；请重新读取文稿")
+            actual_start = len(prefix.encode("utf-16-le")) // 2
+            actual_end = actual_start + len(original.encode("utf-16-le")) // 2
+            if not scope_start <= actual_start <= actual_end <= scope_end:
+                raise WritingConflict("修改超出本轮用户选区，请仅修改所选文字")
             markdown = prefix + replacement + suffix
             if markdown == document["markdown"]:
                 raise ValueError("建议与原文相同，没有创建修订")
@@ -288,6 +301,7 @@ class WritingApplication:
             result = self.repository.add_revision(
                 user_id, document, action="rewrite", after_markdown=markdown,
                 warnings=["Agent 提议尚未写入正文。请复核事实、语义及引用后接受或撤回。"],
+                selection_start=scope_start, selection_end=scope_end,
             )
             self.repository.complete(operation, result)
             self.repository.commit()
@@ -346,6 +360,15 @@ class WritingApplication:
                     action=request["action"],
                     after_markdown=markdown,
                     warnings=warnings,
+                    selection_start=(
+                        request.get("selection_start")
+                        if request.get("selection_start") is not None else 0
+                    ),
+                    selection_end=(
+                        request.get("selection_end")
+                        if request.get("selection_end") is not None
+                        else len(document["markdown"].encode("utf-16-le")) // 2
+                    ),
                 )
                 self.repository.complete(operation, result)
                 if settlement:
