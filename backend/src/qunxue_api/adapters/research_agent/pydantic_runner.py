@@ -58,6 +58,7 @@ from qunxue_api.adapters.research_agent.model_capacity import (
     AgentModelCapacityMetadata,
     resolve_agent_model_capacity,
 )
+from qunxue_api.adapters.research_agent.reasoning_controls import AgentReasoningControls
 from qunxue_api.adapters.research_agent.research_map_contracts import (
     ResearchMapNodeInput,
     ResearchMapRelationInput,
@@ -81,7 +82,6 @@ from qunxue_api.modules.agent_conversation import (
 )
 from qunxue_api.modules.billing import BillingFailure
 from qunxue_api.modules.shared_knowledge import KnowledgeIndexChoiceRequired
-from qunxue_api.settings import AgentModelEffortSettings
 
 WRITING_WORKSPACE_POLICY = (
     "当前是写作工作区，仍使用同一个 Agent。先调用 read_writing_document 读取正文、"
@@ -837,7 +837,7 @@ class PydanticAIKnowledgeRunner:
         timeout_seconds: float,
         extra_headers: Mapping[str, str] | None = None,
         reasoning_effort: ReasoningEffort | None = None,
-        reasoning_settings: AgentModelEffortSettings | None = None,
+        reasoning_settings: AgentReasoningControls | None = None,
         route_executor: ModelRouteExecutor | None = None,
         model_api_mock: bool = False,
         require_billing: bool = False,

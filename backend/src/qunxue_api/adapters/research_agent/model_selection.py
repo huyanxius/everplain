@@ -10,7 +10,6 @@ from qunxue_api.modules.agent_conversation import (
     AgentModelSelection,
     AgentReasoningEffort,
 )
-from qunxue_api.settings import AgentModelEffortSettings
 
 
 def selectable_agent_model(
@@ -88,9 +87,8 @@ def registered_agent_effort_settings(settings, selection: AgentModelSelection):
         return None  # Legacy Luna and models with no advertised controls retain their wire.
     if selection.reasoning_effort not in entry.effort_settings:
         raise ValueError("selected reasoning level has no registered upstream wire control")
-    return AgentModelEffortSettings.model_validate(
-        entry.effort_settings[selection.reasoning_effort].model_dump()
-    )
+    # Settings validation belongs to composition; the adapter copies its validated input.
+    return entry.effort_settings[selection.reasoning_effort].model_copy(deep=True)
 
 
 def registered_agent_native_authentication(settings, selection: AgentModelSelection):
