@@ -84,6 +84,10 @@ class CreditRedemptionCodeRow(Base):
     code_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     batch_id: Mapped[str] = mapped_column(String(128), nullable=False)
     code_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[str] = mapped_column(
+        String(24), nullable=False, default="bank_reset", server_default="bank_reset"
+    )
+    plan_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_by_user_id: Mapped[str] = mapped_column(
         ForeignKey("users.user_id", ondelete="RESTRICT"),
         nullable=False,

@@ -59,7 +59,8 @@ class RegistryReleaseTests(unittest.TestCase):
         storage["schema/sqlite_index.py"] = hashlib.sha256(
             (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
         ).hexdigest()
-        # Reconstruct the exact reviewed endpoint before the newer account migration.
+        # Reconstruct exact historical endpoints before later membership/account DDL.
+        del storage["migrations/versions/20261005_0640_membership_vouchers.py"]
         del storage["migrations/versions/20261005_0630_federated_accounts.py"]
         # These reviews predate import receipts and OAuth. Reconstruct their
         # exact trees rather than allowing hashes contaminated by later DDL.
@@ -100,7 +101,8 @@ class RegistryReleaseTests(unittest.TestCase):
         storage["schema/sqlite_index.py"] = hashlib.sha256(
             (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
         ).hexdigest()
-        # Reconstruct the exact reviewed endpoint before the newer account migration.
+        # Reconstruct exact historical endpoints before later membership/account DDL.
+        del storage["migrations/versions/20261005_0640_membership_vouchers.py"]
         del storage["migrations/versions/20261005_0630_federated_accounts.py"]
         candidate = {"migration_tree": hashlib.sha256(
             json.dumps(storage, sort_keys=True).encode()).hexdigest()}
@@ -149,6 +151,7 @@ class RegistryReleaseTests(unittest.TestCase):
         storage["schema/sqlite_index.py"] = hashlib.sha256(
             (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
         ).hexdigest()
+        del storage["migrations/versions/20261005_0640_membership_vouchers.py"]
         candidate_storage = dict(storage)
         candidate = {"migration_tree": hashlib.sha256(
             json.dumps(storage, sort_keys=True).encode()).hexdigest()}
@@ -174,6 +177,61 @@ class RegistryReleaseTests(unittest.TestCase):
             "migrations/versions/20261005_0630_federated_accounts.py",
             "migrations/versions/20261005_0620_federated_login.py",
         ):
+            changed = dict(candidate_storage)
+            changed[changed_file] = "0" * 64
+            mutated = {"migration_tree": hashlib.sha256(
+                json.dumps(changed, sort_keys=True).encode()).hexdigest()}
+            with self.subTest(changed_file=changed_file), self.assertRaisesRegex(
+                ValueError, "rollback compatibility"
+            ):
+                release.check_existing_migration_transition(previous, mutated, policy)
+
+    def test_shipped_membership_review_is_exact_forward_only_and_cannot_skip_accounts(self):
+        policy = json.loads((ROOT / "ops/cd/policy.json").read_text())
+        storage = {
+            "migrations/" + p.relative_to(ROOT / "backend/migrations").as_posix():
+            hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted((ROOT / "backend/migrations").rglob("*.py"))
+        }
+        storage["schema/sqlite_index.py"] = hashlib.sha256(
+            (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
+        ).hexdigest()
+        candidate_storage = dict(storage)
+        candidate = {"migration_tree": hashlib.sha256(
+            json.dumps(storage, sort_keys=True).encode()).hexdigest()}
+        del storage["migrations/versions/20261005_0640_membership_vouchers.py"]
+        previous = {"migration_tree": hashlib.sha256(
+            json.dumps(storage, sort_keys=True).encode()).hexdigest()}
+        self.assertEqual(previous["migration_tree"],
+                         "677d1908068c46c5d23aa2bd2018fc906c133e7b16a3f1878b5a967350703b65")
+        self.assertEqual(candidate["migration_tree"],
+                         "2110b33f141d037084bf093bc663b0f228965cf9f25c91d668a8c8deba103e86")
+        edge = {"from": previous["migration_tree"], "to": candidate["migration_tree"]}
+        self.assertIn(edge, policy["reviewed_forward_only_migration_transitions"])
+        self.assertNotIn(edge, policy["reviewed_migration_transitions"])
+        self.assertTrue(release.check_existing_migration_transition(previous, candidate, policy))
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            release.check_compatible(previous, candidate, policy)
+        prior_endpoints = {
+            point for record in policy["reviewed_forward_only_migration_transitions"]
+            for point in (record["from"], record["to"])
+        } - {previous["migration_tree"], candidate["migration_tree"]}
+        pairs = [(candidate, previous), (previous, {"migration_tree": "0" * 64}),
+                 ({"migration_tree": "0" * 64}, candidate)]
+        pairs += [({"migration_tree": point}, candidate) for point in prior_endpoints]
+        for old, new in pairs:
+            with self.subTest(old=old, new=new), self.assertRaisesRegex(
+                ValueError, "rollback compatibility"
+            ):
+                release.check_existing_migration_transition(old, new, policy)
+        membership_only = {**policy, "reviewed_forward_only_migration_transitions": [edge]}
+        del storage["migrations/versions/20261005_0630_federated_accounts.py"]
+        earlier = {"migration_tree": hashlib.sha256(
+            json.dumps(storage, sort_keys=True).encode()).hexdigest()}
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            release.check_existing_migration_transition(earlier, previous, membership_only)
+        # Every current/historical migration and the retrieval adapter are bound.
+        for changed_file in candidate_storage:
             changed = dict(candidate_storage)
             changed[changed_file] = "0" * 64
             mutated = {"migration_tree": hashlib.sha256(

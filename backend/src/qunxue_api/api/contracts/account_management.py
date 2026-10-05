@@ -106,7 +106,10 @@ class CreditRedemptionResponse(BaseModel):
     redeemed_points: int = Field(gt=0)
     balance: int = Field(ge=0)
     delta_points: int = 0
-    action: Literal["bank_reset"] = "bank_reset"
+    action: Literal["bank_reset", "membership"] = "bank_reset"
+    plan_id: str | None = None
+    membership_starts_at: datetime | None = None
+    membership_expires_at: datetime | None = None
     quota_period_started_at: datetime | None = None
     quota_period_expires_at: datetime | None = None
 
@@ -114,10 +117,12 @@ class CreditRedemptionResponse(BaseModel):
 class CreditCodeBatchCreateRequest(BaseModel):
     count: int = Field(ge=1, le=100)
     expires_in_days: int = Field(ge=1, le=365)
+    plan_id: Literal["plus", "pro", "max"] | None = None
 
 
 class CreditCodeBatchResponse(BaseModel):
-    action: Literal["bank_reset"] = "bank_reset"
+    action: Literal["bank_reset", "membership"] = "bank_reset"
+    plan_id: str | None = None
     codes: list[str]
     points: int = Field(gt=0)
     expires_at: datetime

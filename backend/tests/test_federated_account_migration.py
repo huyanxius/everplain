@@ -2,20 +2,24 @@
 
 import io
 import sqlite3
-from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
 from alembic import command
 from alembic.script import ScriptDirectory
 from legacy_migration_support import seed_conversation
-from oauth_legacy_migration_support import LATER, STAMP, seed_account, seed_imports
-from sqlalchemy import event, text
+from oauth_legacy_migration_support import (
+    LATER,
+    STAMP,
+    seed_account,
+    seed_imports,
+    seed_quota_history,
+)
+from sqlalchemy import event
 from sqlalchemy.engine import Engine
 from test_oauth_forward_migration import config, copy_database, downgrade, snapshot, upgrade
 
 from qunxue_api.adapters.sqlite.database import Database
-from qunxue_api.adapters.sqlite.quota_periods import ensure_quota_period, settle_quota_period
 from qunxue_api.bootstrap import create_app
 from qunxue_api.settings import Settings
 
@@ -50,25 +54,11 @@ def federated_baseline(tmp_path_factory):
         assert "login_mode" not in {
             row[1] for row in connection.execute("PRAGMA table_info(users)")
         }
-    database = Database(f"sqlite:///{path}")
-    try:
-        now = datetime.now(UTC)
-        with database.engine.connect() as connection:
-            connection.execute(text("BEGIN IMMEDIATE"))
-            period = ensure_quota_period(connection, federated["owner"], now - timedelta(hours=2))
-            settle_quota_period(
-                connection, federated["owner"], period["epoch"], 24, "6000000000000", now
-            )
-            ensure_quota_period(
-                connection,
-                federated["owner"],
-                now,
-                reset=True,
-                receipt_id="synthetic-federated-reset",
-            )
-            connection.commit()
-    finally:
-        database.engine.dispose()
+    with sqlite3.connect(path) as connection:
+        connection.execute("PRAGMA foreign_keys=ON")
+        seed_quota_history(
+            connection, federated["owner"], receipt_id="synthetic-federated-reset"
+        )
     return {
         "path": path,
         "local": local,

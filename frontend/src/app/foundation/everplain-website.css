@@ -164,7 +164,6 @@
 .ep-models-copy { position: relative; z-index: 20; max-width: 640px; text-align: center; }
 .ep-models h2 { font-size: var(--qx-text-statement); line-height: 1.35; }
 .ep-price { display: flex; justify-content: center; align-items: baseline; gap: 12px; margin-top: 28px; color: var(--ep-ink-2); font-size: var(--qx-text-body); }
-.ep-price strong { font-family: var(--ep-serif); font-size: var(--qx-text-hero); font-weight: 400; line-height: 1; letter-spacing: -.04em; color: var(--ep-ink); }
 .ep-models small { display: block; margin-top: 14px; color: var(--ep-muted); font-size: var(--qx-text-meta); }
 
 /* 结尾 */
@@ -489,3 +488,7 @@
   .ep-closing { padding: var(--qx-space-16) 24px; }
   .ep-models { padding-inline: 24px; }
 }
+
+/* Docs remains reachable on small screens where the section navigation is hidden. */
+.ep-header-actions { justify-self: end; display: flex; align-items: center; gap: var(--qx-space-4); }
+.ep-docs-link { display: inline-flex; align-items: center; min-height: var(--qx-control-height); font-size: var(--qx-text-control); }

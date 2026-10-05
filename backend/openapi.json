@@ -5306,6 +5306,22 @@
             "minimum": 1.0,
             "title": "Expires In Days",
             "type": "integer"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "enum": [
+                  "plus",
+                  "pro",
+                  "max"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
           }
         },
         "required": [
@@ -5318,8 +5334,11 @@
       "CreditCodeBatchResponse": {
         "properties": {
           "action": {
-            "const": "bank_reset",
             "default": "bank_reset",
+            "enum": [
+              "bank_reset",
+              "membership"
+            ],
             "title": "Action",
             "type": "string"
           },
@@ -5334,6 +5353,17 @@
             "format": "date-time",
             "title": "Expires At",
             "type": "string"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
           },
           "points": {
             "exclusiveMinimum": 0.0,
@@ -5565,8 +5595,11 @@
       "CreditRedemptionResponse": {
         "properties": {
           "action": {
-            "const": "bank_reset",
             "default": "bank_reset",
+            "enum": [
+              "bank_reset",
+              "membership"
+            ],
             "title": "Action",
             "type": "string"
           },
@@ -5579,6 +5612,41 @@
             "default": 0,
             "title": "Delta Points",
             "type": "integer"
+          },
+          "membership_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Membership Expires At"
+          },
+          "membership_starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Membership Starts At"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
           },
           "quota_period_expires_at": {
             "anyOf": [
@@ -9607,6 +9675,60 @@
         "title": "MaterialRelationType",
         "type": "string"
       },
+      "MembershipCatalogResponse": {
+        "properties": {
+          "agent_models": {
+            "items": {
+              "$ref": "#/components/schemas/PublicAgentModelResponse"
+            },
+            "title": "Agent Models",
+            "type": "array"
+          },
+          "free_weekly_points": {
+            "title": "Free Weekly Points",
+            "type": "integer"
+          },
+          "payments_enabled": {
+            "title": "Payments Enabled",
+            "type": "boolean"
+          },
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionPlanResponse"
+            },
+            "title": "Plans",
+            "type": "array"
+          },
+          "reset_days": {
+            "title": "Reset Days",
+            "type": "integer"
+          },
+          "runtime_mode": {
+            "title": "Runtime Mode",
+            "type": "string"
+          },
+          "top_up_points": {
+            "title": "Top Up Points",
+            "type": "integer"
+          },
+          "top_up_price_cny_fen": {
+            "title": "Top Up Price Cny Fen",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "plans",
+          "free_weekly_points",
+          "reset_days",
+          "top_up_points",
+          "top_up_price_cny_fen",
+          "payments_enabled",
+          "agent_models",
+          "runtime_mode"
+        ],
+        "title": "MembershipCatalogResponse",
+        "type": "object"
+      },
       "MemoryCollection": {
         "properties": {
           "items": {
@@ -11615,6 +11737,44 @@
           "analysis_counts"
         ],
         "title": "ProjectResearchFactsResponse",
+        "type": "object"
+      },
+      "PublicAgentModelResponse": {
+        "properties": {
+          "default_reasoning_effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Reasoning Effort"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
+          "reasoning_efforts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoning Efforts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "model_id",
+          "label",
+          "reasoning_efforts",
+          "default_reasoning_effort"
+        ],
+        "title": "PublicAgentModelResponse",
         "type": "object"
       },
       "PublicKnowledgeDetailResponse": {
@@ -16194,12 +16354,32 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "period_days": {
+            "title": "Period Days",
+            "type": "integer"
+          },
+          "period_points": {
+            "title": "Period Points",
+            "type": "integer"
+          },
+          "price_cny_fen": {
+            "title": "Price Cny Fen",
+            "type": "integer"
+          },
+          "weekly_points": {
+            "title": "Weekly Points",
+            "type": "integer"
           }
         },
         "required": [
           "id",
           "name",
-          "description"
+          "description",
+          "price_cny_fen",
+          "weekly_points",
+          "period_days",
+          "period_points"
         ],
         "title": "SubscriptionPlanResponse",
         "type": "object"
@@ -16240,6 +16420,18 @@
               }
             ],
             "title": "Current Period End"
+          },
+          "current_period_start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Period Start"
           },
           "plan_id": {
             "anyOf": [
@@ -25484,6 +25676,27 @@
         "summary": "List Phenomenon Examples",
         "tags": [
           "phenomena"
+        ]
+      }
+    },
+    "/api/product-catalog": {
+      "get": {
+        "operationId": "get_public_product_catalog",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipCatalogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Public Product Catalog",
+        "tags": [
+          "commerce"
         ]
       }
     },

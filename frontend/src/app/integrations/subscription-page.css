@@ -71,3 +71,17 @@
   .ep-subscription-topup > .qx-btn { width: 100%; }
   .ep-subscription-models__content li { grid-template-columns: minmax(0, 1fr); padding-inline: var(--qx-space-4); }
 }
+
+.ep-subscription-plan__price > span { font-size: var(--qx-text-control); line-height: var(--qx-text-control--line-height); font-weight: 400; color: var(--qx-color-muted); }
+.ep-subscription-plan__benefits { display: grid; gap: var(--qx-space-2); margin: 0; padding-left: var(--qx-space-5); color: var(--qx-color-ink-soft); font-size: var(--qx-text-control); line-height: var(--qx-text-control--line-height); }
+.ep-subscription-redeem { display: grid; gap: var(--qx-space-4); padding: var(--qx-space-6); border: 1px solid var(--qx-color-rule); border-radius: var(--qx-radius-card); }
+.ep-subscription-redeem > p { font-size: var(--qx-text-control); line-height: var(--qx-text-body--line-height); color: var(--qx-color-muted); }
+.ep-subscription-redeem > form { display: flex; align-items: end; gap: var(--qx-space-3); }
+.ep-subscription-redeem__field { display: grid; gap: var(--qx-space-2); flex: 1; min-width: 0; font-size: var(--qx-text-control); line-height: var(--qx-text-control--line-height); }
+.ep-subscription-redeem__field > input { width: 100%; }
+@media (max-width: 600px) {
+  .ep-subscription-redeem { padding: var(--qx-space-5); }
+  .ep-subscription-redeem > form { flex-wrap: wrap; }
+  .ep-subscription-redeem__field { flex-basis: 100%; }
+  .ep-subscription-redeem > form > button { width: 100%; }
+}

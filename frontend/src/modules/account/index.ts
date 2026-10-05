@@ -34,3 +34,7 @@ export { settingsAgentColors, settingsSpeakingStyles, useAgentSettingsController
 export { AgentSoulEditor } from './AgentSoulEditor'
 
 export { notifyAccountUsageChanged, watchAccountUsageChanges } from './accountUsageEvents'
+
+export { redeemAccountCode } from './creditRedemptions'
+export { MutationIntentLedger } from './mutationIntent'
+export { creditRedemptionMessage } from './creditRedemptionMessage'

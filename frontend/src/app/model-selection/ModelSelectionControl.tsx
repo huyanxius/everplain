@@ -24,6 +24,8 @@ export type ModelSelectionControlProps = {
   catalog?: readonly ModelDefinition[]
   className?: string
   active?: boolean
+  /** Keep documentation embeds from moving focus when their catalog loads. */
+  autoFocus?: boolean
 }
 
 const effortLabels: Record<ReasoningEffort, readonly [string, string]> = {
@@ -137,10 +139,11 @@ function ModelBrand({ modelId }: { modelId: string }) {
 }
 
 /** Controlled UI: no global settings, provider requests, or persistent side effects. */
-export function ModelSelectionControl({ value, onChange, disabled = false, catalog = MODEL_CATALOG, className = '', active = true }: ModelSelectionControlProps) {
+export function ModelSelectionControl({ value, onChange, disabled = false, catalog = MODEL_CATALOG, className = '', active = true, autoFocus = true }: ModelSelectionControlProps) {
   const { text } = useAppLocale()
   const id = useId()
   const [view, setView] = useState<'summary' | 'models'>('summary')
+  const focusRequested = useRef(autoFocus)
   const viewport = useRef<HTMLDivElement>(null)
   const summaryPanel = useRef<HTMLDivElement>(null)
   const modelsPanel = useRef<HTMLDivElement>(null)
@@ -162,6 +165,7 @@ export function ModelSelectionControl({ value, onChange, disabled = false, catal
 
   useLayoutEffect(() => {
     if (!active) { setView('summary'); return }
+    if (!focusRequested.current) return
     const first = view === 'summary' ? summaryRow.current
       : modelButtons.current.get(model?.id ?? catalog[0]?.id) ?? backButton.current
     if (!first?.disabled) first?.focus({ preventScroll: true })
@@ -193,7 +197,7 @@ export function ModelSelectionControl({ value, onChange, disabled = false, catal
         <div ref={summaryPanel} className="model-selection__layer" inert={view !== 'summary'} aria-hidden={view !== 'summary' || undefined}>
           <button ref={summaryRow} type="button" className="model-selection__summary-row" data-model-summary="true" disabled={disabled || catalog.length === 0}
             aria-label={`${text('选择模型', 'Choose model')}：${model?.label ?? text('不可用', 'Unavailable')}${valid && value.reasoningEffort !== null ? ` · ${currentLabel}` : ''}`}
-            aria-controls={`${id}-models-panel`} aria-expanded={view === 'models'} onClick={() => setView('models')}>
+            aria-controls={`${id}-models-panel`} aria-expanded={view === 'models'} onClick={() => { focusRequested.current = true; setView('models') }}>
             {model && <ModelBrand modelId={model.id} />}
             <span className="model-selection__summary-title">
               <strong>{model?.label ?? text('不可用', 'Unavailable')}</strong>

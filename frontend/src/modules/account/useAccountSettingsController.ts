@@ -4,6 +4,7 @@ import { readAppearancePreference, setAppearancePreference, type AppearancePrefe
 import { accountManagementApi } from './accountManagementApi'
 import { isAccountManagementRequestError, type AccountManagementApi, type AccountProfile, type AccountSession, type CreditSummary, type PersonalDataExport } from './accountManagementModels'
 import { MutationIntentLedger } from './mutationIntent'
+import { creditRedemptionMessage } from './creditRedemptionMessage'
 import { notifyAccountUsageChanged, watchAccountUsageChanges } from './accountUsageEvents'
 
 export type SettingsSection = 'agent' | 'look' | 'channels' | 'profile' | 'credits' | 'preferences' | 'security' | 'privacy' | 'danger'
@@ -186,7 +187,7 @@ export function useAccountSettingsController({
       if (credits) { setCreditPage(1); creditCursor.current = undefined; creditTargetPage.current = 1 }
       notifyAccountUsageChanged()
       setRedemptionCode('')
-    }, text('兑换成功。', 'Code redeemed.'))
+    }, ({ redemption }) => creditRedemptionMessage(redemption, locale))
   }
 
   async function loadCreditPage(page: number, cursor?: string) {

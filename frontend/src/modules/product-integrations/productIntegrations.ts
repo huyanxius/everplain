@@ -14,6 +14,7 @@ export const connections = (...args: Parameters<typeof api.connections>) => api.
 export const createConnection = (...args: Parameters<typeof api.createConnection>) => api.createConnection(...args)
 export const revokeConnection = (...args: Parameters<typeof api.revokeConnection>) => api.revokeConnection(...args)
 export const models = (...args: Parameters<typeof api.models>) => api.models(...args)
+export const productCatalog = (...args: Parameters<typeof api.productCatalog>) => api.productCatalog(...args)
 export const subscription = (...args: Parameters<typeof api.subscription>) => api.subscription(...args)
 export const checkout = (...args: Parameters<typeof api.checkout>) => api.checkout(...args)
 export const portal = (...args: Parameters<typeof api.portal>) => api.portal(...args)

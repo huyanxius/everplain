@@ -31,6 +31,7 @@ import { ResearchMaterialsPage } from './research/ResearchMaterialsPage'
 import { ResearchProjectWorkspacePage } from './research-workspace/ResearchProjectWorkspacePage'
 import { legacyResearchWorkspaceDestination } from './research-workspace/researchProjectWorkspaceModel'
 import { FoundationPage } from './foundation/FoundationPage'
+import { DocsPage } from './docs/DocsPage'
 import { AppHomePage } from './home/AppHomePage'
 import { HomeCompanion } from './home/HomeCompanion'
 import { SharingPage, PublicDirectoryPage, SharedReaderPage, ConnectionsPage, SubscriptionPage } from './integrations/IntegrationPages'
@@ -275,6 +276,7 @@ export function AppRoutes({
           : productHome}
       />
       <Route path="/welcome" element={productHome} />
+      <Route path="/docs" element={<DocsPage authenticated={resolvedSessionState.status === 'authenticated'} />} />
       <Route path="/welcome/setup" element={protectedRoute(<WelcomeSetupPage userId={authenticatedUserId} />)} />
       <Route path="/sharing" element={protectedRoute(<SharingPage />)} />
       <Route path="/connections" element={protectedRoute(<ConnectionsPage />)} />

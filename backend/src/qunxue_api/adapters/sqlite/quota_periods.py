@@ -11,6 +11,8 @@ from uuid import NAMESPACE_URL, uuid5
 
 from sqlalchemy import text
 
+from qunxue_api.modules.subscriptions import MEMBERSHIP_WEEKLY_POINTS
+
 FREE_WEEKLY_POINTS = 30
 PERIOD_LENGTH = timedelta(hours=168)
 
@@ -33,15 +35,16 @@ def _exists(conn, table):
     )
 
 
-def current_plan_quota(conn, user_id, now, plan_limits=None):
-    """Only authoritative active subscriptions and explicit configured paid limits."""
-    plan = "free"
+def current_plan_entitlement(conn, user_id, now, plan_limits=None):
+    """Select an effective subscription, never a queued future voucher."""
+    plan, starts_at, ends_at = "free", None, None
     if _exists(conn, "subscriptions"):
         rows = (
             conn.execute(
                 text(
-                    "SELECT plan_id,current_period_end FROM subscriptions WHERE user_id=:user "
-                    "AND status IN ('active','trialing') ORDER BY created_at DESC"
+                    "SELECT plan_id,current_period_start,current_period_end FROM subscriptions "
+                    "WHERE user_id=:user AND status IN ('active','trialing') "
+                    "ORDER BY created_at DESC,provider_id DESC"
                 ),
                 {"user": str(user_id)},
             )
@@ -49,13 +52,21 @@ def current_plan_quota(conn, user_id, now, plan_limits=None):
             .all()
         )
         for row in rows:
-            if row["current_period_end"] is None or _utc(row["current_period_end"]) > _utc(now):
+            start = _utc(row["current_period_start"]) if row["current_period_start"] else None
+            end = _utc(row["current_period_end"]) if row["current_period_end"] else None
+            if (start is None or start <= _utc(now)) and (end is None or end > _utc(now)):
                 plan = row["plan_id"] or "unconfigured"
+                starts_at, ends_at = start, end
                 break
-    limit = FREE_WEEKLY_POINTS if plan == "free" else (plan_limits or {}).get(plan)
+    limits = {**MEMBERSHIP_WEEKLY_POINTS, **(plan_limits or {})}
+    limit = FREE_WEEKLY_POINTS if plan == "free" else limits.get(plan)
     if type(limit) is not int or limit <= 0:
         raise QuotaConfigurationUnavailable("current subscription quota is not configured")
-    return plan, limit
+    return plan, limit, starts_at, ends_at
+
+
+def current_plan_quota(conn, user_id, now, plan_limits=None):
+    return current_plan_entitlement(conn, user_id, now, plan_limits)[:2]
 
 
 def get_quota_period(conn, user_id, epoch):
@@ -118,7 +129,15 @@ def settle_quota_period(conn, user_id, epoch, balance, total_credit_pico, now):
 
 
 def ensure_quota_period(
-    conn, user_id, now, plan_limits=None, *, start=True, reset=False, receipt_id=None
+    conn,
+    user_id,
+    now,
+    plan_limits=None,
+    *,
+    start=True,
+    reset=False,
+    receipt_id=None,
+    reset_reason="bank_reset",
 ):
     """Start only at accepted message-operation creation; GET may renew an existing epoch.
 
@@ -148,7 +167,9 @@ def ensure_quota_period(
         return period
     if period is None and not start and not reset:
         return None
-    plan, limit = current_plan_quota(conn, user_id, now, plan_limits)
+    plan, limit, membership_start, membership_end = current_plan_entitlement(
+        conn, user_id, now, plan_limits
+    )
     precision = "0"
     if _exists(conn, "billing_precision"):
         precision = (
@@ -191,6 +212,11 @@ def ensure_quota_period(
     if period and not reset:
         expiry = _utc(period["expires_at"])
         anchor = expiry + ((now - expiry) // PERIOD_LENGTH) * PERIOD_LENGTH
+    if membership_start is not None and not reset:
+        anchor = membership_start + ((now - membership_start) // PERIOD_LENGTH) * PERIOD_LENGTH
+    expires_at = anchor + PERIOD_LENGTH
+    if membership_end is not None:
+        expires_at = min(expires_at, membership_end)
     balance = limit
     new_precision = "0"
     conn.execute(
@@ -206,10 +232,10 @@ def ensure_quota_period(
             plan=plan,
             limit=limit,
             start=anchor.isoformat(),
-            end=(anchor + PERIOD_LENGTH).isoformat(),
+            end=expires_at.isoformat(),
             balance=balance,
             precision=new_precision,
-            reason="bank_reset" if reset else ("weekly_quota" if period else "quota_activation"),
+            reason=reset_reason if reset else ("weekly_quota" if period else "quota_activation"),
         ),
     )
     # Bind unresolved pre-upgrade operations before selecting the new current epoch.
@@ -262,7 +288,7 @@ def ensure_quota_period(
             epoch=epoch,
             delta=balance - account["balance"],
             balance=balance,
-            model="bank-reset"
+            model=reset_reason.replace("_", "-")
             if reset
             else ("weekly-quota-renewal" if period else "quota-activation"),
             now=now.isoformat(),
@@ -279,7 +305,7 @@ def ensure_quota_period(
         dict(
             id=entry_id,
             user=user_id,
-            reason="bank_reset"
+            reason=reset_reason
             if reset
             else ("weekly_quota_renewal" if period else "quota_activation"),
             before=precision,

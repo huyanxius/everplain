@@ -96,18 +96,31 @@ describe('AdminUsersPage', () => {
     render(<AdminUsersPage api={createApi({ createCreditRedemptionCodes })} />)
 
     await screen.findByRole('heading', { name: '用户管理' })
-    expect(screen.getByText('批量生成一次性 bank RESET 兑换码，将用量恢复至当前套餐的 100%，并重新开始 7 天周期。')).toBeVisible()
+    expect(screen.getByText('会员码开启 28 天会员，已有会员时顺延生效；bank RESET 恢复当前套餐满额，周期通常为 7 天，最晚截止至会员到期时间，不延长会员有效期。')).toBeVisible()
     fireEvent.change(screen.getByLabelText('生成数量'), { target: { value: '20' } })
     fireEvent.change(screen.getByLabelText('有效天数'), { target: { value: '30' } })
     fireEvent.click(screen.getByRole('button', { name: '生成兑换码' }))
 
     await waitFor(() => expect(createCreditRedemptionCodes).toHaveBeenCalledWith({
+      planId: null,
       count: 20,
       expiresInDays: 30,
       idempotencyKey: expect.any(String),
     }))
     expect(await screen.findByText('QX-7KDM-4XJP-9TWR-P6AC')).toBeVisible()
     expect(screen.getByText('完整兑换码只显示在这里，请立即复制保存。')).toBeVisible()
+  })
+
+  it.each([['plus', 'Plus'], ['pro', 'PRO'], ['max', 'Max']])('generates %s membership codes with the selected server plan ID', async (planId, name) => {
+    const createCreditRedemptionCodes = vi.fn(async () => ({ action: 'membership' as const, planId, codes: ['QX-MEMBERSHIP-CODE'], points: 50, expiresAt: '2026-11-01T12:00:00Z' }))
+    render(<AdminUsersPage api={createApi({ createCreditRedemptionCodes })} />)
+    await screen.findByRole('heading', { name: '用户管理' })
+    fireEvent.click(screen.getByRole('combobox', { name: '兑换码类型' }))
+    fireEvent.click(screen.getByRole('option', { name: `${name} 会员 · 28 天` }))
+    fireEvent.click(screen.getByRole('button', { name: '生成兑换码' }))
+    await waitFor(() => expect(createCreditRedemptionCodes).toHaveBeenCalledWith({ planId, count: 20, expiresInDays: 30, idempotencyKey: expect.any(String) }))
+    expect(await screen.findByText('QX-MEMBERSHIP-CODE')).toBeVisible()
+    expect(screen.getByText(new RegExp(`${name} 会员 · 28 天 · 兑换码有效至`))).toBeVisible()
   })
 
   it('marks the fixed administrator and does not expose lifecycle controls for it', async () => {

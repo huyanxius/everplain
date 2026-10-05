@@ -31,6 +31,10 @@
     {
       "from": "1f4abbe6fa943bb3b94bc7b57f189c40028b19e416a15c4f83e389dd29faf8d8",
       "to": "677d1908068c46c5d23aa2bd2018fc906c133e7b16a3f1878b5a967350703b65"
+    },
+    {
+      "from": "677d1908068c46c5d23aa2bd2018fc906c133e7b16a3f1878b5a967350703b65",
+      "to": "2110b33f141d037084bf093bc663b0f228965cf9f25c91d668a8c8deba103e86"
     }
   ],
   "reviewed_migration_transitions": [

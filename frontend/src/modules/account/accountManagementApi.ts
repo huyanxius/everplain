@@ -9,6 +9,8 @@ import type {
   AccountSystemHealth,
   AdminUser,
   CreditSummary,
+  CreditRedemption,
+  CreditRedemptionCodeBatch,
   PersonalDataExport,
 } from './accountManagementModels'
 import { AccountManagementRequestError } from './accountManagementModels'
@@ -247,15 +249,30 @@ export const accountManagementApi: AccountManagementApi = {
     const result = await requestJson<{
       redeemed_points: number
       balance: number
+      action: CreditRedemption['action']
+      plan_id: string | null
+      membership_starts_at: string | null
+      membership_expires_at: string | null
+      quota_period_expires_at: string | null
     }>('POST', '/api/account/credit-redemptions', {
       idempotencyKey: input.idempotencyKey,
       body: { code: input.code },
     })
-    return { redeemedPoints: result.redeemed_points, balance: result.balance }
+    return {
+      redeemedPoints: result.redeemed_points,
+      balance: result.balance,
+      action: result.action,
+      planId: result.plan_id,
+      membershipStartsAt: result.membership_starts_at,
+      membershipExpiresAt: result.membership_expires_at,
+      quotaPeriodExpiresAt: result.quota_period_expires_at,
+    }
   },
 
   async createCreditRedemptionCodes(input) {
     const result = await requestJson<{
+      action: CreditRedemptionCodeBatch['action']
+      plan_id: string | null
       codes: string[]
       points: number
       expires_at: string
@@ -264,9 +281,12 @@ export const accountManagementApi: AccountManagementApi = {
       body: {
         count: input.count,
         expires_in_days: input.expiresInDays,
+        plan_id: input.planId ?? null,
       },
     })
     return {
+      action: result.action,
+      planId: result.plan_id,
       codes: result.codes,
       points: result.points,
       expiresAt: result.expires_at,

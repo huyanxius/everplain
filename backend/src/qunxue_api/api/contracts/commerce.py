@@ -22,12 +22,35 @@ class SubscriptionPlanResponse(BaseModel):
     id: str
     name: str
     description: str
+    price_cny_fen: int
+    weekly_points: int
+    period_days: int
+    period_points: int
+
+
+class MembershipCatalogResponse(BaseModel):
+    plans: list[SubscriptionPlanResponse]
+    free_weekly_points: int
+    reset_days: int
+    top_up_points: int
+    top_up_price_cny_fen: int
+    payments_enabled: bool
+    agent_models: list["PublicAgentModelResponse"]
+    runtime_mode: str
+
+
+class PublicAgentModelResponse(BaseModel):
+    model_id: str
+    label: str
+    reasoning_efforts: list[str]
+    default_reasoning_effort: str | None
 
 
 class SubscriptionResponse(BaseModel):
     plan_id: str | None
     status: str
     current_period_end: datetime | None
+    current_period_start: datetime | None = None
     cancel_at_period_end: bool
 
 

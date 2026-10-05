@@ -1,7 +1,7 @@
 import base64
 import hashlib
 import hmac
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Mapping
 from datetime import UTC, datetime, time, timedelta
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -26,10 +26,12 @@ class CreditService:
         clock: Callable[[], datetime] | None = None,
         exempt_user_ids: Collection[UUID] = (),
         code_signing_secret: str | None = None,
+        plan_limits: Mapping[str, int] | None = None,
     ) -> None:
         self._repository = repository
         self._clock = clock or (lambda: datetime.now(UTC))
         self._exempt_user_ids = frozenset(exempt_user_ids)
+        self._plan_limits = dict(plan_limits or {})
         self._code_signing_secret = (
             code_signing_secret.encode("utf-8") if code_signing_secret else None
         )
@@ -87,11 +89,17 @@ class CreditService:
         batch_id: str,
         count: int,
         expires_in_days: int,
+        plan_id: str | None = None,
     ) -> GeneratedCreditCodeBatch:
         if self._code_signing_secret is None:
             raise RuntimeError("credit code signing secret is not configured")
         now = self._clock()
         points = SIGNUP_GRANT
+        if plan_id is not None:
+            points = self._plan_limits.get(plan_id)
+            if type(points) is not int or points <= 0:
+                raise ValueError("unknown membership plan")
+        action = "membership" if plan_id is not None else "bank_reset"
         expires_on = (now + timedelta(days=expires_in_days)).date()
         expires_at = datetime.combine(expires_on, time(23, 59, 59), tzinfo=UTC)
         plain_codes: list[str] = []
@@ -118,6 +126,8 @@ class CreditService:
                     created_by_user_id=actor_user_id,
                     created_at=now,
                     expires_at=expires_at,
+                    action=action,
+                    plan_id=plan_id,
                 )
             )
         self._repository.create_redemption_codes(codes=tuple(specs))
@@ -125,6 +135,8 @@ class CreditService:
             codes=tuple(plain_codes),
             points=points,
             expires_at=expires_at,
+            action=action,
+            plan_id=plan_id,
         )
 
     def redeem(self, *, user_id: UUID, code: str) -> CreditRedemption:
