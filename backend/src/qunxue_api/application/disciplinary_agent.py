@@ -4,6 +4,7 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field, replace
 from inspect import Parameter, signature
+from io import StringIO
 from typing import Literal
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
@@ -585,6 +586,7 @@ class DisciplinaryAgentApplication:
         active_tool_calls: set[str] = set()
         tool_events_lock = threading.RLock()
         received_delta = False
+        presentation_body = StringIO()
         last_checkpoint = 0.0
         last_cancel_check = 0.0
         persisted_cancelled = False
@@ -643,6 +645,7 @@ class DisciplinaryAgentApplication:
             nonlocal received_delta
             if not delta:
                 return
+            presentation_body.write(delta)
             # Original body is durable before any transport callback. An attempt's
             # output is append-only and independent of finalization/usage success.
             with tool_events_lock:
@@ -657,7 +660,10 @@ class DisciplinaryAgentApplication:
                     # an explicit unsaved flag, then stop unsafe new operations.
                     if on_delta is not None:
                         if "persisted" in signature(on_delta).parameters:
-                            on_delta(delta, persisted=False)
+                            extra = {"answer": presentation_body.getvalue()}
+                            if "answer" not in signature(on_delta).parameters:
+                                extra = {}
+                            on_delta(delta, persisted=False, **extra)
                         else:
                             on_delta(delta)
                     raise AgentOutputStorageFailure("Received body could not be saved") from error

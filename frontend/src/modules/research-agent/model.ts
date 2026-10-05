@@ -185,6 +185,7 @@ export type AgentToolStep = {
 export type AgentStreamResume = { runId: string; after: number }
 
 export type AgentRunLookup = AgentRunStopResult & {
+  output_persistence_failed?: boolean
   conversation_id: string
   idempotency_key: string
   partial_answer: string

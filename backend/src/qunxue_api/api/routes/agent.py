@@ -509,11 +509,11 @@ def stream_agent_turn(
     unsaved_delivery_state: list[dict[str, object]] = []
     terminal_failure: list[tuple[str, dict[str, object]]] = []
 
-    def on_delta(delta: str, *, persisted: bool = True) -> None:
+    def on_delta(delta: str, *, persisted: bool = True, answer: str | None = None) -> None:
         if not persisted:
             # Presentation-only fallback for this live subscription. It is not
             # a durable replay cursor or a second persistence/scheduling engine.
-            unsaved_body.append(delta)
+            unsaved_body[:] = [answer if answer is not None else delta]
 
     def publish(name: str, body: dict[str, object]) -> None:
         run_id = identity.get("run_id")
@@ -548,7 +548,7 @@ def stream_agent_turn(
 
     def on_run_started(run_id: UUID, conversation_id: UUID, replayed: bool,
                        *, lease_token: str | None = None) -> None:
-        identity.update(run_id=run_id, attempt_id=lease_token)
+        identity.update(run_id=run_id, attempt_id=lease_token, conversation_id=conversation_id)
         if not replayed:
             _register_active_run(user_id, run_id, cancel_event)
         with request.app.state.disciplinary_agent_scope() as app:
@@ -678,7 +678,7 @@ def stream_agent_turn(
             async for frame in _subscribe_run_events(
                 request, user_id, run_id, after=after, unsaved_body=unsaved_body,
                 terminal_failure=terminal_failure, worker_finished=finished,
-                unsaved_delivery_state=unsaved_delivery_state,
+                unsaved_delivery_state=unsaved_delivery_state, fallback_identity=identity,
             ):
                 yield frame
 
@@ -759,10 +759,11 @@ async def _subscribe_run_events(request: Request, user_id: UUID, run_id: UUID, *
                                 terminal_failure: list[tuple[str, dict[str, object]]] | None = None,
                                 worker_finished: threading.Event | None = None,
                                 unsaved_delivery_state: list[dict[str, object]] | None = None,
+                                fallback_identity: dict[str, object] | None = None,
                                 ) -> AsyncIterator[str]:
     unsaved_body = unsaved_body if unsaved_body is not None else []
     terminal_failure = terminal_failure if terminal_failure is not None else []
-    unsaved_sent = 0
+    unsaved_sent: str | None = None
     unsaved_metadata_sent = 0
     next_heartbeat = time.monotonic() + _SSE_HEARTBEAT_SECONDS
     while True:
@@ -784,20 +785,36 @@ async def _subscribe_run_events(request: Request, user_id: UUID, run_id: UUID, *
         except Exception as error:
             read_error = error
             run, events, conversation, releases = None, (), None, {}
-        if run is not None and run.output_redacted:
-            unsaved_sent = len(unsaved_body)
-        while unsaved_sent < len(unsaved_body):
-            yield _event("assistant_delta", {
-                "delta": unsaved_body[unsaved_sent], "persisted": False,
-            })
-            unsaved_sent += 1
+        def unsaved_frames(observed_run, cursor):
+            nonlocal unsaved_sent
+            if not unsaved_body or (observed_run is not None and observed_run.output_redacted):
+                return
+            text = unsaved_body[0]
+            if text == unsaved_sent:
+                return
+            snapshot = _run_snapshot(observed_run) if observed_run is not None else {
+                "run_id": str(run_id),
+                "conversation_id": str((fallback_identity or {}).get("conversation_id", "")),
+                "attempt_id": (fallback_identity or {}).get("attempt_id"),
+                "status": "failed", "output_attempts": [],
+            }
+            # A complete current-attempt presentation snapshot avoids reversing
+            # prior durable deltas or duplicating an ambiguously committed tail.
+            # It carries no invented durable cursor/history or saved-body claim.
+            snapshot.update(partial_answer=text, last_event_sequence=cursor,
+                            output_persistence_failed=True)
+            unsaved_sent = text
+            yield _event("turn_snapshot", snapshot)
             yield _event("output_persistence_failed", {
                 "message": "以下已收到的正文尚未保存，请先复制保留；未保存部分无法保证恢复。",
             })
+
         while unsaved_delivery_state and unsaved_metadata_sent < len(unsaved_delivery_state):
             yield _event("agent_delivery_state", unsaved_delivery_state[unsaved_metadata_sent])
             unsaved_metadata_sent += 1
         if read_error is not None:
+            for frame in unsaved_frames(run, after):
+                yield frame
             if worker_finished is None:
                 raise read_error
             if worker_finished is not None and worker_finished.is_set():
@@ -828,6 +845,9 @@ async def _subscribe_run_events(request: Request, user_id: UUID, run_id: UUID, *
             after = event.sequence
             if event.attempt_id != run.lease_token:
                 continue
+            if event.name in _TERMINAL_EVENT_NAMES:
+                for frame in unsaved_frames(run, after):
+                    yield frame
             yield _event(event.name, {**event.payload, "attempt_id": event.attempt_id},
                          event_id=f"{run_id}:{event.sequence}")
             if event.name in _TERMINAL_EVENT_NAMES:
@@ -841,6 +861,8 @@ async def _subscribe_run_events(request: Request, user_id: UUID, run_id: UUID, *
             })
             return
         if run.status != "running" and (not events or replay_completed or run.output_redacted):
+            for frame in unsaved_frames(run, after):
+                yield frame
             # A process may commit a canonical turn then die before its SSE
             # terminal event. Read-only reconciliation closes that gap.
             if run.status == "completed" and conversation is not None:
@@ -859,6 +881,8 @@ async def _subscribe_run_events(request: Request, user_id: UUID, run_id: UUID, *
                                     "message": "本轮已结束，已收到的正文已保存。"})
             return
         if worker_finished is not None and worker_finished.is_set() and terminal_failure:
+            for frame in unsaved_frames(run, after):
+                yield frame
             yield _event(*terminal_failure[0])
             return
         if time.monotonic() >= next_heartbeat:

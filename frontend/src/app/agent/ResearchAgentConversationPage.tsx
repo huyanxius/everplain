@@ -2125,8 +2125,9 @@ export function ResearchAgentConversationPage({
             activeTurnAttempt.current = { ...attempt, runId: run.run_id, conversationId: run.conversation_id }
             setStreamingTurn(current => current ? { ...current, runId: run.run_id,
               attemptId: run.output_attempts?.at(-1)?.attempt_id,
-              answer: run.output_attempts?.at(-1)?.answer ?? run.partial_answer,
-              outputAttempts: run.output_attempts ?? current.outputAttempts,
+              answer: run.output_persistence_failed ? run.partial_answer : run.output_attempts?.at(-1)?.answer ?? run.partial_answer,
+              outputPersistenceFailed: run.output_persistence_failed ?? current.outputPersistenceFailed,
+              outputAttempts: run.output_attempts?.length ? run.output_attempts : current.outputAttempts,
               deliveryState: run.delivery_state,
             } : current)
           } else if (event.type === 'agent_delivery_state') {

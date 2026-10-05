@@ -2542,7 +2542,8 @@ it('keeps a body visible and explicitly unsaved when a journal write fails', asy
     const path = urlFor(input).pathname
     if (path === '/api/agent/turns') return new Response(eventStream([
       ['turn_started', { run_id: 'run-unsaved', conversation_id: 'conversation-unsaved', attempt_id: 'attempt-unsaved', replayed: false }],
-      ['assistant_delta', { delta: '数据库失败时仍显示的合法正文。', persisted: false }],
+      ['assistant_delta', { delta: '数据库失败时' }],
+      ['turn_snapshot', { run_id: 'run-unsaved', conversation_id: 'conversation-unsaved', attempt_id: 'attempt-unsaved', status: 'failed', partial_answer: '数据库失败时仍显示的合法正文。', last_event_sequence: 2, output_persistence_failed: true, output_attempts: [{ attempt_id: 'attempt-unsaved', ordinal: 1, status: 'failed', answer: '数据库失败时', created_at: '2026-10-05T00:00:00Z' }] }],
       ['output_persistence_failed', { message: '正文尚未保存' }],
       ['turn_failed', { code: 'agent_output_storage_error', message: '正文保存失败，页面文字仍保留。' }],
     ]), { headers: { 'Content-Type': 'text/event-stream' } })

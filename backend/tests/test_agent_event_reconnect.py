@@ -173,8 +173,9 @@ def test_one_journal_write_failure_still_presents_received_body_as_unsaved(clien
         response = stream_agent_turn(AgentTurnRequest(message="问题"), request, current,
                                      "unsaved-body")
         frames = [event_parts(frame) async for frame in response.body_iterator]
-        delta = next(body for _, name, body in frames if name == "assistant_delta")
-        assert delta == {"delta": "原文A", "persisted": False}
+        snapshot = next(body for _, name, body in frames if name == "turn_snapshot")
+        assert snapshot["partial_answer"] == "原文A"
+        assert snapshot["output_persistence_failed"] is True
         warning = next(body for _, name, body in frames if name == "output_persistence_failed")
         assert "尚未保存" in warning["message"]
         assert "无法保证恢复" in warning["message"]
@@ -263,3 +264,41 @@ def test_tool_journal_does_not_deadlock_on_complete_uncommitted_business_write(c
     with database.session() as session:
         saved = session.execute(text("SELECT value FROM tool_journal_probe")).scalar()
         assert saved == "committed-result"
+
+
+def test_unsaved_tail_after_durable_body_preserves_exact_order_without_duplicate(
+    client, monkeypatch,
+):
+    from sqlalchemy.exc import OperationalError
+
+    runner, request, current, _database = setup_runtime(client)
+    runner.release.set()
+    original = SqliteConversationRepository.append_output_event
+    count = []
+
+    def failing_second(repo, **kwargs):
+        if kwargs["name"] == "assistant_delta":
+            count.append(1)
+            if len(count) == 2:
+                raise OperationalError("second delta", {}, RuntimeError("injected tail fault"))
+        return original(repo, **kwargs)
+
+    monkeypatch.setattr(SqliteConversationRepository, "append_output_event", failing_second)
+
+    async def exercise():
+        response = stream_agent_turn(AgentTurnRequest(message="问题"), request, current,
+                                     "saved-then-unsaved-tail")
+        answer = ""
+        frames = []
+        async for frame in response.body_iterator:
+            _identity, name, body = event_parts(frame)
+            frames.append(name)
+            if name == "assistant_delta":
+                answer += body["delta"]
+            elif name == "turn_snapshot":
+                answer = body["partial_answer"]
+        assert answer == "原文A原文B"
+        assert frames[-1] == "turn_failed"
+        assert "output_persistence_failed" in frames
+
+    asyncio.run(exercise())
