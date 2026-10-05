@@ -39,7 +39,7 @@ afterEach(() => {
 
 function renderRoute(
   path: string,
-  sessionState: { status: 'authenticated' | 'anonymous' | 'expired' | 'loading' } = {
+  sessionState: { status: 'authenticated' | 'anonymous' | 'expired' | 'loading' | 'error' } = {
     status: 'anonymous',
   },
 ) {
@@ -1194,3 +1194,52 @@ it('opens private knowledge in the library and links each topic to its original 
 vi.mock('../modules/agent-profile', () => ({ readAgentProfile: vi.fn(async () => ({ name: 'Everplain', avatar_id: 'cheng', color: '#b8c5b0', greeting: '你想研究什么？', speaking_style: 'clear', setup_step: 4, setup_completed: true, questionnaire: { occupation: '', industry: '', goals: [], interests: [], additional: '' }, version: 1 })) }))
 
 vi.mock('../modules/personal-graph', () => ({ readPersonalGraph: vi.fn(async () => ({ nodes: [], edges: [], sources: {}, document_count: 0, pending_count: 0, mode: 'mock' })) }))
+
+
+describe('session-read recovery routes', () => {
+  it.each(['/my', '/login?redirect=%2Fagent', '/register?redirect=%2Fagent', '/'])('keeps %s in place with one manual recovery action after a session-read error', async (path) => {
+    renderRoute(path, { status: 'error' })
+    expect(await screen.findByRole('heading', { name: '暂时无法确认登录状态' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '重试' })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: '登录 Everplain' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('route-location')).toHaveTextContent(path)
+  })
+
+  it.each(['/login', '/register'])('waits for bootstrap on %s before opening an authentication form', async (path) => {
+    renderRoute(path, { status: 'loading' })
+    expect(await screen.findByRole('status')).toHaveTextContent('正在确认登录状态')
+    expect(screen.queryByLabelText('邮箱')).not.toBeInTheDocument()
+    expect(screen.getByTestId('route-location')).toHaveTextContent(path)
+  })
+
+  it('retries a failed protected deep link and reaches the same authenticated route', async () => {
+    let sessionReads = 0
+    const session = {
+      session_id: 'recovered-session', status: 'active', version: 1, allowed_actions: ['logout'],
+      user: { user_id: 'recovered-user', email: 'researcher@example.com', display_name: null },
+      expires_at: '2099-01-01T00:00:00Z',
+    }
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (requestUrl(input).pathname === '/api/session') {
+        sessionReads += 1
+        if (sessionReads === 1) throw new TypeError('Failed to fetch')
+        return json(session)
+      }
+      return json({ items: [], next_cursor: null })
+    }))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const path = '/app?source=refresh#restored'
+    render(<MemoryRouter initialEntries={[path]} useTransitions={false}>
+      <QueryClientProvider client={queryClient}><AccountProvider>
+        <AppRoutes /><RouteLocation />
+      </AccountProvider></QueryClientProvider>
+    </MemoryRouter>)
+    expect(await screen.findByRole('heading', { name: '暂时无法确认登录状态' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '重试' }))
+    expect(await screen.findByRole('heading', { name: conversationGreeting('zh-CN', new Date()) })).toBeVisible()
+    expect(screen.getByTestId('route-location')).toHaveTextContent(path)
+    expect(screen.queryByRole('heading', { name: '登录 Everplain' })).not.toBeInTheDocument()
+    expect(sessionReads).toBe(2)
+    queryClient.clear()
+  })
+})

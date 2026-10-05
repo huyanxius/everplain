@@ -44,7 +44,9 @@ export function AccountProvider({ children }: PropsWithChildren) {
   const [expired, setExpired] = useState(false)
   const sessionQuery = useQuery({
     queryKey: sessionQueryKey,
-    queryFn: getCurrentSessionViaApi,
+    queryFn: ({ signal }) => getCurrentSessionViaApi({ signal }),
+    // Offline bootstrap must reach a bounded error instead of staying paused.
+    networkMode: 'always',
     retry: false,
   })
   const loginMutation = useMutation({ mutationFn: ({ email, password }: { email: string; password: string }) => loginViaApi(email, password) })
@@ -56,30 +58,33 @@ export function AccountProvider({ children }: PropsWithChildren) {
     const established = queryClient.getQueryData<AccountSession | null>(sessionQueryKey)
     if (established) {
       setExpired(true)
+      void queryClient.cancelQueries({ queryKey: sessionQueryKey, exact: true })
       queryClient.setQueryData(sessionQueryKey, null)
     }
   }), [queryClient])
 
   const sessionState: AccountSessionState = expired
     ? { status: 'expired' }
-    : sessionQuery.isPending
-    ? { status: 'loading' }
-    : sessionQuery.isError
-      ? { status: 'error' }
-      : sessionQuery.data
-        ? { status: 'authenticated', session: sessionQuery.data }
-        : { status: 'anonymous' }
+    : sessionQuery.data
+      ? { status: 'authenticated', session: sessionQuery.data }
+      : sessionQuery.data === undefined && (sessionQuery.isPending || sessionQuery.isFetching)
+        ? { status: 'loading' }
+        : sessionQuery.isError
+          ? { status: 'error' }
+          : { status: 'anonymous' }
 
   const value = useMemo<AccountContextValue>(() => ({
     sessionState,
     async login(email, password) {
       const session = await loginMutation.mutateAsync({ email, password })
+      await queryClient.cancelQueries({ queryKey: sessionQueryKey, exact: true })
       setExpired(false)
       queryClient.setQueryData(sessionQueryKey, session)
       return session
     },
     async register(email, password, verificationCode) {
       const session = await registerMutation.mutateAsync({ email, password, verificationCode })
+      await queryClient.cancelQueries({ queryKey: sessionQueryKey, exact: true })
       setExpired(false)
       queryClient.setQueryData(sessionQueryKey, session)
       return session
@@ -87,6 +92,7 @@ export function AccountProvider({ children }: PropsWithChildren) {
     sendRegistrationCode: (email) => registrationCodeMutation.mutateAsync(email),
     async logout(onSucceeded) {
       await logoutMutation.mutateAsync()
+      await queryClient.cancelQueries({ queryKey: sessionQueryKey, exact: true })
       setExpired(false)
       queryClient.setQueryData(sessionQueryKey, null)
       onSucceeded?.()

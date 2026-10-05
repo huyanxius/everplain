@@ -17,3 +17,12 @@ client.interceptors.response.use((response) => {
 })
 
 export const apiClient = client
+
+// A cancelled session bootstrap may belong to an earlier authentication state.
+// Reject late headers before response interceptors see a stale 401.
+export async function fetchActiveSession(request: Request): Promise<Response> {
+  const transport = client.getConfig().fetch ?? globalThis.fetch
+  const response = await transport(request)
+  request.signal.throwIfAborted()
+  return response
+}
