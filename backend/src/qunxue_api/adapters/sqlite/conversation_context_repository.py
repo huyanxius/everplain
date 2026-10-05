@@ -21,8 +21,9 @@ from qunxue_api.modules.agent_memory import redact_sensitive
 
 
 class SqliteConversationContextRepository:
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, *, summary_enabled: bool = True):
         self.session = session
+        self.summary_enabled = summary_enabled
 
     def recent(self, user_id: UUID, *, exclude: UUID | None = None, limit: int = 3) -> list[dict]:
         statement = select(AgentConversationRow).where(
@@ -55,7 +56,9 @@ class SqliteConversationContextRepository:
     def summary(self, user_id: UUID) -> dict:
         from .conversation_summary_repository import SqliteConversationSummaryRepository
 
-        return SqliteConversationSummaryRepository(self.session).read(user_id)
+        return SqliteConversationSummaryRepository(
+            self.session, enabled=self.summary_enabled
+        ).read(user_id)
 
     def search(self, user_id: UUID, query: str, *, after: int = 0) -> dict:
         # Literal contains, including SQL wildcard escaping. Search authored user
