@@ -293,7 +293,7 @@ class SharedKnowledgeReferences:
                     "source_kind": "shared_material",
                     "retrieval_mode": mode,
                     "degraded_reason": degraded_reason,
-                    "knowledge_index_coverage": getattr(tools, "knowledge_index_coverage", None),
+                    "knowledge_index_coverage": _index_coverage_summary(tools),
                 }
             )
         tools.select_evidence((*tools.selected_evidence_ids, *selected))
@@ -445,7 +445,7 @@ class _PrivateKnowledgeTools:
                 ),
                 "evidence_status": "read",
                 "source_kind": "shared_material",
-                "knowledge_index_coverage": getattr(self.tools, "knowledge_index_coverage", None),
+                "knowledge_index_coverage": _index_coverage_summary(self.tools),
             }
         return {"error": "knowledge_entry_not_found", "knowledge_id": knowledge_id}
 
@@ -497,3 +497,23 @@ def _document_chunks(doc):
             text=segment["text"],
             source_ids=(key,),
         )
+
+
+def _index_coverage_summary(tools):
+    """Keep model context independent of total library size, without losing coverage.
+
+    The complete diagnostic snapshot remains on tools for UI traces and index
+    repair. Repeating its per-document lists in every evidence item previously
+    exhausted context even when the retrieved source excerpts were tiny.
+    """
+    coverage = getattr(tools, "knowledge_index_coverage", None)
+    if coverage is None:
+        return None
+    return {
+        key: coverage[key]
+        for key in (
+            "purpose", "state", "embedding_model", "total_count", "ready_count",
+            "missing_count", "processing_count", "failed_count",
+        )
+        if key in coverage
+    }
