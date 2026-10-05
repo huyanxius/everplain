@@ -2304,8 +2304,19 @@ class PydanticAIKnowledgeRunner:
 
     def _run_writing_tool(self, ctx, tool_name, payload):
         call_id = _tool_call_id(ctx, tool_name)
+        trace_input = payload
+        if tool_name == "propose_writing_edit":
+            # A rejected replacement may itself contain leaked instructions.
+            # Keep neither it nor the original prose in persisted tool traces.
+            trace_input = {key: payload.get(key) for key in (
+                "expected_version", "selection_start", "selection_end",
+            )}
+            trace_input.update(
+                original_characters=len(payload["original_text"]),
+                replacement_characters=len(payload["replacement_text"]),
+            )
         self._emit_tool_event(AgentToolEvent(
-            tool=tool_name, phase="started", call_id=call_id, input=payload,
+            tool=tool_name, phase="started", call_id=call_id, input=trace_input,
             detail=(
                 "正在读取写作文稿" if tool_name == "read_writing_document" else "正在提议精确修改"
             ),
@@ -2335,7 +2346,7 @@ class PydanticAIKnowledgeRunner:
             )}
         self._emit_tool_event(AgentToolEvent(
             tool=tool_name, phase="failed" if failed else "finished", call_id=call_id,
-            input=payload, output=trace,
+            input=trace_input, output=trace,
             detail=str(result["message"]) if failed else (
                 "已读取写作文稿" if tool_name == "read_writing_document"
                 else "已生成待接受或撤回的修订，正文尚未修改"

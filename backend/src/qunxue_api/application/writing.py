@@ -253,13 +253,13 @@ class WritingApplication:
             ):
                 raise WritingConflict("请先接受或撤回当前待定修订；仍可继续讨论")
             original, replacement = request["original_text"], request["replacement_text"]
+            if len(replacement) > 30000:
+                raise ValueError("单次替换内容最多30000个字符，请分段修改")
             if instruction_artifacts(
                 original, replacement,
                 runtime_instructions=WRITING_INSTRUCTIONS + "\n" + runtime_instructions,
             ):
                 raise WritingUnsafeOutput("替换内容包含系统指令或运行信息，未创建修订")
-            if len(replacement) > 30000:
-                raise ValueError("单次替换内容最多30000个字符，请分段修改")
             sample_issues = set(output_issues(
                 original, replacement, self.repository.style_samples(user_id),
             )) & {"sample_contact_leak", "copied_sample_span"}

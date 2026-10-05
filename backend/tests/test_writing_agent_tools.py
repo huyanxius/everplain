@@ -399,6 +399,9 @@ def test_actual_runner_rejects_plain_runtime_prompt_leaks(plain_client, leaked_t
                               on_delta=lambda _: None, on_tool_event=events.append)
     assert events[-1].phase == "failed"
     assert "系统指令" in events[-1].output["message"]
+    assert all("replacement_text" not in event.input for event in events)
+    assert all("original_text" not in event.input for event in events)
+    assert all(leaked_text not in json.dumps(event.input, ensure_ascii=False) for event in events)
     path = f"/api/writing/documents/{document['document_id']}"
     assert c.get(path).json()["markdown"] == document["markdown"]
     assert c.get(path + "/revisions").json()["items"] == []
