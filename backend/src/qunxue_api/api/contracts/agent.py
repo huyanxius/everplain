@@ -100,6 +100,7 @@ class AgentTurnResponse(BaseModel):
     knowledge_release_id: str | None = None
     canvas_patches: list[AgentResearchMapPatchResponse] = Field(default_factory=list)
     output_attempts: list[AgentOutputAttemptResponse] = Field(default_factory=list)
+    delivery_state: dict[str, object] = Field(default_factory=dict)
 
 
 class AgentConversationSummaryResponse(BaseModel):
@@ -243,6 +244,7 @@ class AgentRunRecoveryResponse(BaseModel):
     request: AgentTurnRequest
     partial_answer: str
     output_attempts: list[AgentOutputAttemptResponse] = Field(default_factory=list)
+    delivery_state: dict[str, object] = Field(default_factory=dict)
     last_event_sequence: int = 0
     tool_summary: list[dict[str, object]] = Field(default_factory=list)
     updated_at: datetime
@@ -279,6 +281,7 @@ class AgentRunLookupResponse(BaseModel):
     cancel_requested: bool
     partial_answer: str
     output_attempts: list[AgentOutputAttemptResponse] = Field(default_factory=list)
+    delivery_state: dict[str, object] = Field(default_factory=dict)
     last_event_sequence: int = 0
     request: AgentTurnRequest | None
     updated_at: datetime

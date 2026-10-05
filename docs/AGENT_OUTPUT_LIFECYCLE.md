@@ -32,7 +32,7 @@ GET /api/agent/runs/{run_id}/events接受after cursor或Last-Event-ID (run_id:se
 
 ## 后续执行预算契约
 
-保留普通12 model request/20 tool、深入48/100等无穷循环保护。本纵切没有取消工具权限或所有执行预算。UsageLimitExceeded仍需下一阶段转成明确的执行预算用尽原因、具体模式额度与保存后可继续策略，不能继续当作agent_unavailable。财务已知/待receipt/未保存与output complete/truncated的独立状态由联合接口接入，不能把未知usage伪造为0或额度用尽。
+保留普通12 model request/20 tool、深入48/100等无穷循环保护。本纵切没有取消工具权限或所有执行预算。UsageLimitExceeded仍需下一阶段转成明确的执行预算用尽原因、具体模式额度与保存后可继续策略，不能继续当作agent_unavailable。财务状态与正文终态通过OperationScope.delivery_state联合接口独立接入：usage_status known/pending、settlement_status settled/pending、receipt_persistence saved/unsaved、quota_exhausted，以及output_finish_reason。完整正文在usage pending或receipt unsaved时仍完成；真实length将run保留为interrupted而不写canonical完整turn，可以明确继续。状态通过独立agent_delivery_state事件保存，lookup、snapshot、完成turn和UI可读；用量记录未保存时明确提示，不能把未知usage伪造为0或额度用尽。预算真实耗尽沿已批准的‘额度已用尽，请等待 receipt’显示。
 
 ## 已验证范围
 

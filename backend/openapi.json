@@ -1603,6 +1603,11 @@
             "title": "Conversation Id",
             "type": "string"
           },
+          "delivery_state": {
+            "additionalProperties": true,
+            "title": "Delivery State",
+            "type": "object"
+          },
           "idempotency_key": {
             "title": "Idempotency Key",
             "type": "string"
@@ -1687,6 +1692,11 @@
           "cancel_requested": {
             "title": "Cancel Requested",
             "type": "boolean"
+          },
+          "delivery_state": {
+            "additionalProperties": true,
+            "title": "Delivery State",
+            "type": "object"
           },
           "idempotency_key": {
             "title": "Idempotency Key",
@@ -2092,6 +2102,11 @@
             },
             "title": "Canvas Patches",
             "type": "array"
+          },
+          "delivery_state": {
+            "additionalProperties": true,
+            "title": "Delivery State",
+            "type": "object"
           },
           "knowledge_release_id": {
             "anyOf": [

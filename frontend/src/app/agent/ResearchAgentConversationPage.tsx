@@ -63,6 +63,7 @@ import {
   type AgentConversation,
   type AgentConversationSummary,
   type AgentOutputAttempt,
+  type AgentDeliveryState,
   type AgentStreamResume,
   type AgentEvent,
   type AgentRuntimeMode,
@@ -313,7 +314,7 @@ function localizedTurnFailure(code: string, message: string, locale: AppLocale) 
   if (locale !== 'en-US') return message
   if (code === 'not_found') return 'This conversation does not exist or you do not have access.'
   if (code === 'run_in_progress') return 'A response is already being generated. Please wait.'
-  if (code === 'credits_depleted') return 'You do not have enough credits. Review your usage in Account settings.'
+  if (code === 'credits_depleted') return 'Quota is exhausted. Please wait for the receipt.'
   return 'The Agent cannot complete this answer right now. Please try again later.'
 }
 
@@ -325,6 +326,7 @@ type StreamingTurn = {
   attemptId?: string | null
   outputAttempts?: AgentOutputAttempt[]
   outputPersistenceFailed?: boolean
+  deliveryState?: AgentDeliveryState
   progressEnd?: number
   question: string
   answer: string
@@ -932,6 +934,7 @@ function AssistantTurn({
   progressEnd = 0,
   outputAttempts = [],
   outputPersistenceFailed = false,
+  deliveryState,
   attemptId,
   embedded,
   showResearchHandoff,
@@ -956,6 +959,7 @@ function AssistantTurn({
   progressEnd?: number
   outputAttempts?: AgentOutputAttempt[]
   outputPersistenceFailed?: boolean
+  deliveryState?: AgentDeliveryState
   attemptId?: string | null
   embedded?: boolean
   showResearchHandoff?: boolean
@@ -1018,11 +1022,17 @@ function AssistantTurn({
       toolSteps: toolSteps.map(step => ({ ...step, label: localizedToolLabel(step.tool, locale, step.label), detail: step.detail ? localizedToolDetail(step.detail, locale) : undefined, purpose: localizedToolPurpose(step.tool, locale), resultItems: resultItemsFromOutput(step.output) })),
       streaming, statusText,
       progressEnd, interrupted, failure, provenance, handoffs,
-      notice: outputPersistenceFailed
-        ? text('以下已收到的正文尚未保存，请先复制保留；未保存部分无法保证恢复。', 'The received text below was not saved. Copy it now; recovery is not guaranteed.')
-        : interrupted ? answer.trim() || embedded
-        ? text(`本轮已停止，已保留生成内容和 ${completedStepCount} 个已完成步骤。`, `This turn was stopped. Generated content and ${completedStepCount} steps were retained.`)
-        : text('本轮已停止，未保存未完成的回答。', 'This turn stopped before an unfinished answer was saved.') : undefined,
+      notice: [
+        outputPersistenceFailed ? text('以下已收到的正文尚未保存，请先复制保留；未保存部分无法保证恢复。', 'The received text below was not saved. Copy it now; recovery is not guaranteed.') : null,
+        deliveryState?.receipt_persistence === 'unsaved' ? text('用量记录未保存。正文仍保留，请等待 receipt。', 'Usage records were not saved. The text remains available; wait for the receipt.') : null,
+        deliveryState?.quota_exhausted ? text('额度已用尽，请等待 receipt', 'Quota is exhausted. Please wait for the receipt.') : null,
+        deliveryState?.receipt_persistence !== 'unsaved' && !deliveryState?.quota_exhausted && (deliveryState?.usage_status === 'pending' || deliveryState?.settlement_status === 'pending') ? text('用量待 receipt，正文仍保留。', 'Usage is pending a receipt. The received text remains available.') : null,
+        deliveryState?.output_finish_reason === 'truncated' ? text('模型本次输出达到上游长度限制，可以继续本轮。', 'The upstream output limit was reached. You can continue this turn.') : null,
+        interrupted && !outputPersistenceFailed && deliveryState?.output_finish_reason !== 'truncated'
+          ? answer.trim() || embedded
+            ? text(`本轮已停止，已保留生成内容和 ${completedStepCount} 个已完成步骤。`, `This turn was stopped. Generated content and ${completedStepCount} steps were retained.`)
+            : text('本轮已停止，未保存未完成的回答。', 'This turn stopped before an unfinished answer was saved.') : null,
+      ].filter(Boolean).join(' ') || undefined,
       onRegenerate, onResume: interrupted && !failure ? onRegenerate : undefined,
       onCopy: onRegenerate && answer ? async content => { if (!navigator.clipboard?.writeText) throw new Error('clipboard_unavailable'); await navigator.clipboard.writeText(content) } : undefined,
     }}
@@ -1565,9 +1575,10 @@ export function ResearchAgentConversationPage({
     return {
       runId: run.run_id,
       question: run.request.message,
-      answer: run.partial_answer,
+      answer: run.output_attempts?.at(-1)?.answer ?? run.partial_answer,
       attemptId: run.output_attempts?.at(-1)?.attempt_id,
       outputAttempts: run.output_attempts ?? [],
+      deliveryState: run.delivery_state,
       citations: [],
       toolSteps: run.status === 'running' ? persistedToolSteps(traces) : interruptedSteps(persistedToolSteps(traces), locale),
       canvasPatches: [],
@@ -2116,7 +2127,10 @@ export function ResearchAgentConversationPage({
               attemptId: run.output_attempts?.at(-1)?.attempt_id,
               answer: run.output_attempts?.at(-1)?.answer ?? run.partial_answer,
               outputAttempts: run.output_attempts ?? current.outputAttempts,
+              deliveryState: run.delivery_state,
             } : current)
+          } else if (event.type === 'agent_delivery_state') {
+            setStreamingTurn(current => current ? { ...current, deliveryState: event.delivery_state } : current)
           } else if (event.type === 'agent_status') {
             if (!pausePending.current) setStatus(event.status === 'answering' ? 'answering' : 'thinking')
           } else if (event.type === 'research_ask') {
@@ -2209,10 +2223,14 @@ export function ResearchAgentConversationPage({
             persistDraft(storageScope.current, writingShortcut ? draft : '')
             const localToolSteps = pendingToolSteps.current
             const unsavedOutputs = (streamingTurnRef.current?.outputAttempts ?? []).filter(output => output.status === 'unsaved')
-            const preservedConversation = unsavedOutputs.length ? { ...event.conversation,
+            const deliveryConversation = event.delivery_state ? { ...event.conversation,
+              turns: event.conversation.turns.map((turn, index) => index === event.conversation.turns.length - 1
+                ? { ...turn, delivery_state: event.delivery_state } : turn),
+            } : event.conversation
+            const preservedConversation = unsavedOutputs.length ? { ...deliveryConversation,
               turns: event.conversation.turns.map((turn, index) => index === event.conversation.turns.length - 1
                 ? { ...turn, output_attempts: [...(turn.output_attempts ?? []), ...unsavedOutputs] } : turn),
-            } : event.conversation
+            } : deliveryConversation
             const completedConversation = [...locallyDeletedMaterialIds.current].reduce(
               (conversation, materialId) => tombstoneConversationMaterial(conversation, materialId),
               attachLocalToolSteps(preservedConversation, localToolSteps),
@@ -2788,6 +2806,7 @@ export function ResearchAgentConversationPage({
                     question={turn.user.content}
                     answer={turn.assistant.content}
                     outputAttempts={turn.output_attempts}
+                    deliveryState={turn.delivery_state}
                     citations={turn.assistant.citations}
                   toolSteps={toolStepsByTurnId[turn.turn_id] ?? persistedToolSteps(turn.tool_traces)}
                   conversationId={activeConversation?.conversation_id ?? null}
@@ -2810,6 +2829,7 @@ export function ResearchAgentConversationPage({
                     question={saved.question}
                     answer={saved.answer}
                     outputAttempts={saved.outputAttempts}
+                    deliveryState={saved.deliveryState}
                     attemptId={saved.attemptId}
                     citations={saved.citations}
                     toolSteps={saved.toolSteps}
@@ -2852,6 +2872,7 @@ export function ResearchAgentConversationPage({
                     outputAttempts={streamingTurn.outputAttempts}
                     attemptId={streamingTurn.attemptId}
                     outputPersistenceFailed={streamingTurn.outputPersistenceFailed}
+                    deliveryState={streamingTurn.deliveryState}
                     citations={streamingTurn.citations}
                     toolSteps={streamingTurn.toolSteps}
                     conversationId={activeConversation?.conversation_id ?? pendingConversationId.current}

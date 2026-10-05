@@ -69,6 +69,14 @@ export type AgentToolTrace = {
   error?: string | null
 }
 
+export type AgentDeliveryState = {
+  output_finish_reason?: 'complete' | 'truncated' | 'rejected' | 'upstream_error'
+  usage_status?: 'known' | 'pending'
+  settlement_status?: 'settled' | 'pending'
+  receipt_persistence?: 'saved' | 'unsaved'
+  quota_exhausted?: boolean
+}
+
 export type AgentOutputAttempt = {
   attempt_id: string
   ordinal: number
@@ -85,6 +93,7 @@ export type AgentTurn = {
   knowledge_release_id?: string | null
   canvas_patches?: AgentResearchMapPatch[]
   output_attempts?: AgentOutputAttempt[]
+  delivery_state?: AgentDeliveryState
 }
 
 export type AgentConversationSummary = {
@@ -140,6 +149,7 @@ export type AgentRunRecovery = {
   request: AgentTurnRequest
   partial_answer: string
   output_attempts?: AgentOutputAttempt[]
+  delivery_state?: AgentDeliveryState
   last_event_sequence?: number
   tool_summary?: Record<string, unknown>[]
   updated_at: string
@@ -179,6 +189,7 @@ export type AgentRunLookup = AgentRunStopResult & {
   idempotency_key: string
   partial_answer: string
   output_attempts?: AgentOutputAttempt[]
+  delivery_state?: AgentDeliveryState
   last_event_sequence: number
 }
 
@@ -187,6 +198,7 @@ export type AgentEvent = AgentEventData & { event_id?: string; attempt_id?: stri
 type AgentEventData =
   | { type: 'turn_started'; conversation_id: string; run_id: string; replayed: boolean; runtime_mode?: AgentRuntimeMode; attempt_id?: string; output_attempts?: AgentOutputAttempt[] }
   | { type: 'turn_snapshot'; run: AgentRunLookup }
+  | { type: 'agent_delivery_state'; delivery_state: AgentDeliveryState }
   | { type: 'agent_status'; status: 'thinking' | 'answering' }
   | {
       type: 'tool_started'
@@ -220,7 +232,7 @@ type AgentEventData =
   | { type: 'research_waiting'; run_id: string; state: 'awaiting_clarification' | 'awaiting_plan_confirmation'; title?: string; question?: string; options?: string[]; steps?: string[]; prompt?: string; selected_intent?: string }
   | { type: 'citation_added'; citation: AgentCitation }
   | { type: 'canvas_patch'; patch: AgentResearchMapPatch }
-  | { type: 'turn_completed'; conversation: AgentConversation; knowledge_release_id: string }
+  | { type: 'turn_completed'; conversation: AgentConversation; knowledge_release_id: string; delivery_state?: AgentDeliveryState }
   | { type: 'turn_interrupted'; code: string; message: string }
   | { type: 'knowledge_index_choice_required'; status: KnowledgeIndexStatus }
   | { type: 'turn_failed'; code: string; message: string }

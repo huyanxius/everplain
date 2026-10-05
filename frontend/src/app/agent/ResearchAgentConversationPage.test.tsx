@@ -2556,3 +2556,25 @@ it('keeps a body visible and explicitly unsaved when a journal write fails', asy
   expect(screen.getByText('以下已收到的正文尚未保存，请先复制保留；未保存部分无法保证恢复。')).toBeVisible()
   expect(screen.getByRole('button', { name: '重试本轮' })).toBeEnabled()
 })
+
+
+it('keeps a complete canonical answer visible while its receipt is unsaved', async () => {
+  const conversation = conversationFixture({ answer: '已经完整收到的回答。' })
+  const state = { output_finish_reason: 'complete', usage_status: 'known', settlement_status: 'pending', receipt_persistence: 'unsaved' }
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const path = urlFor(input).pathname
+    if (path === '/api/agent/turns') return new Response(eventStream([
+      ['turn_started', { run_id: 'run-receipt-unsaved', conversation_id: conversation.conversation_id, replayed: false }],
+      ['assistant_delta', { delta: '已经完整收到的回答。' }],
+      ['agent_delivery_state', state],
+      ['turn_completed', { conversation, knowledge_release_id: 'release-a', delivery_state: state }],
+    ]), { headers: { 'Content-Type': 'text/event-stream' } })
+    return json({ items: [] })
+  }))
+  renderPage()
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  fireEvent.change(input, { target: { value: '问题' } })
+  fireEvent.submit(input.closest('form')!)
+  expect(await screen.findByText('已经完整收到的回答。')).toBeVisible()
+  expect(screen.getByText('用量记录未保存。正文仍保留，请等待 receipt。')).toBeVisible()
+})

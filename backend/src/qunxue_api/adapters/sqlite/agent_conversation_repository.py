@@ -141,8 +141,8 @@ class SqliteConversationRepository:
             )
             if row.turn_id is not None
         }
-        output_by_turn = {
-            run.turn_id: self._run_with_output(run).output_attempts
+        output_runs_by_turn = {
+            run.turn_id: self._run_with_output(run)
             for run in self._session.scalars(select(AgentRunRow).where(
                 AgentRunRow.conversation_id == str(conversation_id),
                 AgentRunRow.status == "completed", AgentRunRow.turn_id.is_not(None),
@@ -201,10 +201,13 @@ class SqliteConversationRepository:
                     evidence_ids=frozenset(item.citation_id for item in citations),
                     tool_summary=tool_summary,
                     canvas_patches=canvas_patches,
+                    delivery_state=dict(output_runs_by_turn[user_row.turn_id].delivery_state)
+                    if user_row.turn_id in output_runs_by_turn else {},
                     output_attempts=tuple(
                         replace(attempt, answer=_DELETED_MATERIAL_ANSWER)
                         if deleted_citation or unavailable_trace_material_ids else attempt
-                        for attempt in output_by_turn.get(user_row.turn_id, ())
+                        for attempt in (output_runs_by_turn[user_row.turn_id].output_attempts
+                                        if user_row.turn_id in output_runs_by_turn else ())
                     ),
                 )
             )
@@ -665,7 +668,13 @@ class SqliteConversationRepository:
         attempts = self._session.scalars(select(AgentOutputAttemptRow).where(
             AgentOutputAttemptRow.run_id == row.run_id,
         ).order_by(AgentOutputAttemptRow.ordinal).execution_options(populate_existing=True))
-        return replace(_run_from_row(row), output_attempts=tuple(
+        metadata = next(iter(self._session.scalars(select(AgentOutputEventRow).where(
+            AgentOutputEventRow.run_id == row.run_id,
+            AgentOutputEventRow.attempt_id == row.lease_token,
+            AgentOutputEventRow.name == "agent_delivery_state",
+        ).order_by(AgentOutputEventRow.sequence.desc()).limit(1))), None)
+        return replace(_run_from_row(row), delivery_state=dict(metadata.payload)
+                       if metadata is not None else {}, output_attempts=tuple(
             AgentOutputAttempt(
                 attempt_id=item.attempt_id, ordinal=item.ordinal, status=item.status,
                 answer=item.answer, created_at=_utc(item.created_at),

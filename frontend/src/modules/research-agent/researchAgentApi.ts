@@ -90,6 +90,8 @@ export function parseAgentEventStream(stream: string): AgentEvent[] {
       events.push(event)
     } else if (eventName === 'assistant_delta' && typeof payload.delta === 'string') {
       events.push({ type: eventName, delta: payload.delta, ...(payload.persisted === false ? { persisted: false } : {}) })
+    } else if (eventName === 'agent_delivery_state') {
+      events.push({ type: eventName, delivery_state: payload as AgentRunLookup['delivery_state'] })
     } else if (eventName === 'output_persistence_failed') {
       events.push({ type: eventName, message: String(payload.message ?? '正文尚未保存，请先复制保留。') })
     } else if (eventName === 'research_ask' && typeof payload.question === 'string' && Array.isArray(payload.options)) {
@@ -148,6 +150,7 @@ export function parseAgentEventStream(stream: string): AgentEvent[] {
         type: eventName,
         conversation: payload.conversation as AgentConversation,
         knowledge_release_id: String(payload.knowledge_release_id ?? ''),
+        ...(payload.delivery_state && typeof payload.delivery_state === 'object' ? { delivery_state: payload.delivery_state as AgentRunLookup['delivery_state'] } : {}),
       })
     } else if (eventName === 'turn_interrupted') {
       events.push({

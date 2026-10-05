@@ -874,6 +874,12 @@ export type AgentRunLookupResponse = {
      */
     conversation_id: string;
     /**
+     * Delivery State
+     */
+    delivery_state?: {
+        [key: string]: unknown;
+    };
+    /**
      * Idempotency Key
      */
     idempotency_key: string;
@@ -916,6 +922,12 @@ export type AgentRunRecoveryResponse = {
      * Cancel Requested
      */
     cancel_requested: boolean;
+    /**
+     * Delivery State
+     */
+    delivery_state?: {
+        [key: string]: unknown;
+    };
     /**
      * Idempotency Key
      */
@@ -1095,6 +1107,12 @@ export type AgentTurnResponse = {
      * Canvas Patches
      */
     canvas_patches?: Array<AgentResearchMapPatchResponse>;
+    /**
+     * Delivery State
+     */
+    delivery_state?: {
+        [key: string]: unknown;
+    };
     /**
      * Knowledge Release Id
      */

@@ -2,7 +2,7 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from inspect import Parameter, signature
 from typing import Literal
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
@@ -45,6 +45,8 @@ class AgentTurnExecution:
     replayed: bool
     tool_summary: tuple[dict[str, object], ...] = ()
     pending_research: dict[str, object] | None = None
+    delivery_state: dict[str, object] = field(default_factory=dict)
+    incomplete_reason: str | None = None
 
 
 class DisciplinaryAgentApplication:
@@ -403,6 +405,7 @@ class DisciplinaryAgentApplication:
                     turn=replayed_turn,
                     replayed=True,
                     tool_summary=existing_run.tool_summary,
+                    delivery_state=existing_run.delivery_state,
                 )
             if conversation_id is None:
                 conversation_id = existing_run.conversation_id
@@ -745,6 +748,7 @@ class DisciplinaryAgentApplication:
                     turn=completed_turn,
                     replayed=True,
                     tool_summary=run.tool_summary,
+                    delivery_state=run.delivery_state,
                 )
 
             if cancelled():
@@ -907,6 +911,7 @@ class DisciplinaryAgentApplication:
                                 replayed=False,
                                 tool_summary=(pending,),
                                 pending_research=pending,
+                                delivery_state=_delivery_state(billing_context),
                             )
 
             def record_tool_event(event: AgentToolEvent) -> None:
@@ -1004,6 +1009,23 @@ class DisciplinaryAgentApplication:
                 )
             if cancelled():
                 raise AgentInterrupted("Agent run was interrupted by the client")
+            delivery_state = _delivery_state(billing_context)
+            if delivery_state.get("output_finish_reason") == "truncated":
+                checkpoint(force=True)
+                self._conversations.finish_run(
+                    run_id=run.run_id, lease_token=run.lease_token, status="interrupted",
+                    error="output_truncated", tool_summary=saved_summary(),
+                )
+                if billing_context is not None:
+                    billing_context.finish("error")
+                self._conversations.commit()
+                return AgentTurnExecution(
+                    conversation=self.get_conversation(
+                        user_id=user_id, conversation_id=conversation.conversation_id,
+                    ), run_id=run.run_id, result=result, turn=None, replayed=False,
+                    tool_summary=saved_summary(), delivery_state=_delivery_state(billing_context),
+                    incomplete_reason="length",
+                )
             citations = tuple(_agent_citation(item) for item in result.citations)
             evidence_ids = frozenset(tools.evidence)
             with self._atomic():
@@ -1090,6 +1112,7 @@ class DisciplinaryAgentApplication:
                     billing_context.finish(
                         "cancelled" if isinstance(error, AgentInterrupted) else "error"
                     )
+                error.agent_delivery_state = _delivery_state(billing_context)
             raise
         finally:
             if billing_context is not None:
@@ -1126,7 +1149,19 @@ class DisciplinaryAgentApplication:
             turn=turn_result,
             replayed=False,
             tool_summary=completed_tool_summary,
+            delivery_state=_delivery_state(billing_context),
         )
+
+
+def _delivery_state(context) -> dict[str, object]:
+    if context is None:
+        return {}
+    try:
+        value = getattr(context, "delivery_state", {})
+        return dict(value) if isinstance(value, dict) else {}
+    except Exception:
+        # Metadata failure never invalidates lawful body already received.
+        return {"receipt_persistence": "unsaved", "settlement_status": "pending"}
 
 
 def _billing_run_id(run) -> UUID:

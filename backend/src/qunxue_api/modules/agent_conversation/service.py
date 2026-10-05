@@ -90,6 +90,8 @@ class _MemoryRepository:
                     turn,
                     tool_summary=runs_by_turn.get(turn.turn_id, turn.tool_summary),
                     canvas_patches=patches_by_turn.get(turn.turn_id, turn.canvas_patches),
+                    delivery_state=next((run.delivery_state for run in self.runs.values()
+                                         if run.turn_id == turn.turn_id), {}),
                     output_attempts=next((run.output_attempts for run in self.runs.values()
                                           if run.turn_id == turn.turn_id), ()) ,
                 )
@@ -242,6 +244,7 @@ class _MemoryRepository:
                 lease_token=run.lease_token,
                 lease_expires_at=run.lease_expires_at,
                 updated_at=run.updated_at,
+                delivery_state={},
             )
         if any(
             item.conversation_id == run.conversation_id and item.status == "running"
@@ -358,6 +361,8 @@ class _MemoryRepository:
                 attempt.answer for attempt in attempts if attempt.attempt_id == attempt_id
             )
         self.runs[run_id] = replace(run, output_attempts=attempts, partial_answer=answer,
+                                    delivery_state=dict(payload) if name == "agent_delivery_state"
+                                    else run.delivery_state,
                                     last_event_sequence=sequence)
         event = AgentOutputEvent(run_id=run_id, attempt_id=attempt_id, sequence=sequence,
                                  name=name, payload=dict(payload))

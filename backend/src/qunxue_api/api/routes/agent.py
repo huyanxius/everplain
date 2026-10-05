@@ -506,6 +506,7 @@ def stream_agent_turn(
     identity: dict[str, object] = {}
     startup_failure: list[tuple[str, dict[str, object]]] = []
     unsaved_body: list[str] = []
+    unsaved_delivery_state: list[dict[str, object]] = []
     terminal_failure: list[tuple[str, dict[str, object]]] = []
 
     def on_delta(delta: str, *, persisted: bool = True) -> None:
@@ -602,7 +603,18 @@ def stream_agent_turn(
                         f"research_{event.kind}", dict(event.payload)),
                     is_cancelled=cancel_event.is_set,
                 )
-            if execution.pending_research is not None:
+            delivery_state = getattr(execution, "delivery_state", {})
+            if delivery_state:
+                try:
+                    publish("agent_delivery_state", delivery_state)
+                except Exception:
+                    unsaved_delivery_state.append(delivery_state)
+            if getattr(execution, "incomplete_reason", None) == "length":
+                publish("turn_interrupted", {
+                    "code": "output_truncated",
+                    "message": "模型本次输出达到上游长度限制，已收到的正文已保存，可以继续本轮。",
+                })
+            elif execution.pending_research is not None:
                 publish("research_waiting", {"run_id": str(execution.run_id),
                                              **execution.pending_research})
             else:
@@ -617,6 +629,7 @@ def stream_agent_turn(
                         if execution.turn is not None else {},
                     ).model_dump(mode="json"),
                     "knowledge_release_id": execution.result.release_id,
+                    "delivery_state": delivery_state,
                 })
         except RunAlreadyActive:
             # A competing POST may win admission. Attach once; no polling loop
@@ -629,10 +642,16 @@ def stream_agent_turn(
                 identity["run_id"] = run.run_id
         except Exception as error:
             failure = _agent_failure(error)
+            delivery_state = getattr(error, "agent_delivery_state", {})
             if identity.get("run_id") is None:
                 startup_failure.append(failure)
             else:
                 try:
+                    if delivery_state:
+                        try:
+                            publish("agent_delivery_state", delivery_state)
+                        except Exception:
+                            unsaved_delivery_state.append(delivery_state)
                     publish(*failure)
                 except Exception:
                     terminal_failure.append(failure)
@@ -659,6 +678,7 @@ def stream_agent_turn(
             async for frame in _subscribe_run_events(
                 request, user_id, run_id, after=after, unsaved_body=unsaved_body,
                 terminal_failure=terminal_failure, worker_finished=finished,
+                unsaved_delivery_state=unsaved_delivery_state,
             ):
                 yield frame
 
@@ -690,7 +710,7 @@ def _agent_failure(error: Exception) -> tuple[str, dict[str, object]]:
         }
     if isinstance(error, CreditsDepleted):
         return "turn_failed", {
-            "code": "credits_depleted", "message": "积分不足，请前往账户设置查看用量。",
+            "code": "credits_depleted", "message": "额度已用尽，请等待 receipt",
         }
     if isinstance(error, AgentModelSelectionUnavailable):
         return "turn_failed", {"code": "model_selection_unavailable", "message": str(error)}
@@ -738,10 +758,12 @@ async def _subscribe_run_events(request: Request, user_id: UUID, run_id: UUID, *
                                 unsaved_body: list[str] | None = None,
                                 terminal_failure: list[tuple[str, dict[str, object]]] | None = None,
                                 worker_finished: threading.Event | None = None,
+                                unsaved_delivery_state: list[dict[str, object]] | None = None,
                                 ) -> AsyncIterator[str]:
     unsaved_body = unsaved_body if unsaved_body is not None else []
     terminal_failure = terminal_failure if terminal_failure is not None else []
     unsaved_sent = 0
+    unsaved_metadata_sent = 0
     next_heartbeat = time.monotonic() + _SSE_HEARTBEAT_SECONDS
     while True:
         def read(cursor=after):
@@ -762,6 +784,8 @@ async def _subscribe_run_events(request: Request, user_id: UUID, run_id: UUID, *
         except Exception as error:
             read_error = error
             run, events, conversation, releases = None, (), None, {}
+        if run is not None and run.output_redacted:
+            unsaved_sent = len(unsaved_body)
         while unsaved_sent < len(unsaved_body):
             yield _event("assistant_delta", {
                 "delta": unsaved_body[unsaved_sent], "persisted": False,
@@ -770,6 +794,9 @@ async def _subscribe_run_events(request: Request, user_id: UUID, run_id: UUID, *
             yield _event("output_persistence_failed", {
                 "message": "以下已收到的正文尚未保存，请先复制保留；未保存部分无法保证恢复。",
             })
+        while unsaved_delivery_state and unsaved_metadata_sent < len(unsaved_delivery_state):
+            yield _event("agent_delivery_state", unsaved_delivery_state[unsaved_metadata_sent])
+            unsaved_metadata_sent += 1
         if read_error is not None:
             if worker_finished is None:
                 raise read_error
@@ -845,6 +872,7 @@ def _run_snapshot(run) -> dict[str, object]:
         "run_id": str(run.run_id), "conversation_id": str(run.conversation_id),
         "attempt_id": run.lease_token, "status": run.status,
         "partial_answer": run.partial_answer, "last_event_sequence": run.last_event_sequence,
+        "delivery_state": run.delivery_state,
         "output_attempts": [_output_attempt(item).model_dump(mode="json")
                             for item in run.output_attempts],
     }
@@ -918,6 +946,7 @@ def lookup_agent_run(
         cancel_requested=run.cancel_requested,
         partial_answer=run.partial_answer,
         output_attempts=[_output_attempt(item) for item in run.output_attempts],
+        delivery_state=run.delivery_state,
         last_event_sequence=run.last_event_sequence,
         request=original_request,
         updated_at=run.updated_at,
@@ -1002,6 +1031,7 @@ def _conversation(
                 knowledge_release_id=resolved_release_ids.get(turn.turn_id),
                 canvas_patches=[dict(patch) for patch in turn.canvas_patches],
                 output_attempts=[_output_attempt(item) for item in turn.output_attempts],
+                delivery_state=turn.delivery_state,
             )
             for turn in item.turns
         ],
@@ -1018,6 +1048,7 @@ def _conversation(
                 }),
                 partial_answer=run.partial_answer,
                 output_attempts=[_output_attempt(item) for item in run.output_attempts],
+                delivery_state=run.delivery_state,
                 last_event_sequence=run.last_event_sequence,
                 tool_summary=list(run.tool_summary),
                 updated_at=run.updated_at,

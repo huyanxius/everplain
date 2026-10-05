@@ -77,6 +77,7 @@ class AgentTurn:
     tool_summary: tuple[dict[str, object], ...] = ()
     canvas_patches: tuple[dict[str, object], ...] = ()
     output_attempts: tuple[AgentOutputAttempt, ...] = ()
+    delivery_state: dict[str, object] = field(default_factory=dict)
 
     @classmethod
     def create(
@@ -170,6 +171,7 @@ class AgentRun:
     request_snapshot: dict[str, object] = field(default_factory=dict)
     partial_answer: str = ""
     output_attempts: tuple[AgentOutputAttempt, ...] = ()
+    delivery_state: dict[str, object] = field(default_factory=dict)
     last_event_sequence: int = 0
     output_redacted: bool = False
     updated_at: datetime = field(default_factory=_now)
