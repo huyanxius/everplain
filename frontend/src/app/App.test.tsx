@@ -982,7 +982,9 @@ describe('App routes', () => {
     '/my',
     '/settings',
     '/admin/users',
+    '/admin/api-costs',
   ])('sends anonymous visitors to login while preserving %s', async (path) => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ providers: [] })))
     renderRoute(path)
 
     expect(await screen.findByRole('heading', { name: '登录 Everplain' })).toBeVisible()

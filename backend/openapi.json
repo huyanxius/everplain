@@ -2639,6 +2639,461 @@
         "title": "AnalysisRecordStatus",
         "type": "string"
       },
+      "ApiCostFilters": {
+        "properties": {
+          "endpoint_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint Id"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "provider_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Host"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "model",
+          "provider_host",
+          "endpoint_id",
+          "user_id"
+        ],
+        "title": "ApiCostFilters",
+        "type": "object"
+      },
+      "ApiCostGroupResponse": {
+        "properties": {
+          "active_reserved_attempts": {
+            "title": "Active Reserved Attempts",
+            "type": "integer"
+          },
+          "active_reserved_cost_pico": {
+            "title": "Active Reserved Cost Pico",
+            "type": "string"
+          },
+          "actual_procurement_cost_pico": {
+            "description": "Unavailable: current ledger has no verifiable procurement receipts",
+            "title": "Actual Procurement Cost Pico",
+            "type": "null"
+          },
+          "attempt_count": {
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "cache_read_reported_attempts": {
+            "title": "Cache Read Reported Attempts",
+            "type": "integer"
+          },
+          "cache_read_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Read Tokens"
+          },
+          "cache_write_reported_attempts": {
+            "title": "Cache Write Reported Attempts",
+            "type": "integer"
+          },
+          "cache_write_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Write Tokens"
+          },
+          "confirmed_token_attempts": {
+            "title": "Confirmed Token Attempts",
+            "type": "integer"
+          },
+          "confirmed_usage_attempts": {
+            "title": "Confirmed Usage Attempts",
+            "type": "integer"
+          },
+          "group_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Value"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "missing_token_attempts": {
+            "title": "Missing Token Attempts",
+            "type": "integer"
+          },
+          "not_sent_attempts": {
+            "title": "Not Sent Attempts",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "pending_unknown_attempts": {
+            "title": "Pending Unknown Attempts",
+            "type": "integer"
+          },
+          "pending_unknown_cost_pico": {
+            "title": "Pending Unknown Cost Pico",
+            "type": "string"
+          },
+          "reasoning_reported_attempts": {
+            "title": "Reasoning Reported Attempts",
+            "type": "integer"
+          },
+          "reasoning_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Tokens"
+          },
+          "reference_cost_pico": {
+            "description": "Persisted reference picoUSD; never invoice cost",
+            "title": "Reference Cost Pico",
+            "type": "string"
+          },
+          "unknown_usage_attempts": {
+            "title": "Unknown Usage Attempts",
+            "type": "integer"
+          },
+          "unpriced_attempts": {
+            "title": "Unpriced Attempts",
+            "type": "integer"
+          },
+          "unverified_procurement_attempts": {
+            "title": "Unverified Procurement Attempts",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "attempt_count",
+          "confirmed_usage_attempts",
+          "confirmed_token_attempts",
+          "unpriced_attempts",
+          "unknown_usage_attempts",
+          "not_sent_attempts",
+          "active_reserved_attempts",
+          "pending_unknown_attempts",
+          "missing_token_attempts",
+          "unverified_procurement_attempts",
+          "input_tokens",
+          "output_tokens",
+          "cache_read_tokens",
+          "cache_write_tokens",
+          "reasoning_tokens",
+          "cache_read_reported_attempts",
+          "cache_write_reported_attempts",
+          "reasoning_reported_attempts",
+          "reference_cost_pico",
+          "active_reserved_cost_pico",
+          "pending_unknown_cost_pico",
+          "group_value"
+        ],
+        "title": "ApiCostGroupResponse",
+        "type": "object"
+      },
+      "ApiCostMetrics": {
+        "properties": {
+          "active_reserved_attempts": {
+            "title": "Active Reserved Attempts",
+            "type": "integer"
+          },
+          "active_reserved_cost_pico": {
+            "title": "Active Reserved Cost Pico",
+            "type": "string"
+          },
+          "actual_procurement_cost_pico": {
+            "description": "Unavailable: current ledger has no verifiable procurement receipts",
+            "title": "Actual Procurement Cost Pico",
+            "type": "null"
+          },
+          "attempt_count": {
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "cache_read_reported_attempts": {
+            "title": "Cache Read Reported Attempts",
+            "type": "integer"
+          },
+          "cache_read_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Read Tokens"
+          },
+          "cache_write_reported_attempts": {
+            "title": "Cache Write Reported Attempts",
+            "type": "integer"
+          },
+          "cache_write_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Write Tokens"
+          },
+          "confirmed_token_attempts": {
+            "title": "Confirmed Token Attempts",
+            "type": "integer"
+          },
+          "confirmed_usage_attempts": {
+            "title": "Confirmed Usage Attempts",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "missing_token_attempts": {
+            "title": "Missing Token Attempts",
+            "type": "integer"
+          },
+          "not_sent_attempts": {
+            "title": "Not Sent Attempts",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "pending_unknown_attempts": {
+            "title": "Pending Unknown Attempts",
+            "type": "integer"
+          },
+          "pending_unknown_cost_pico": {
+            "title": "Pending Unknown Cost Pico",
+            "type": "string"
+          },
+          "reasoning_reported_attempts": {
+            "title": "Reasoning Reported Attempts",
+            "type": "integer"
+          },
+          "reasoning_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Tokens"
+          },
+          "reference_cost_pico": {
+            "description": "Persisted reference picoUSD; never invoice cost",
+            "title": "Reference Cost Pico",
+            "type": "string"
+          },
+          "unknown_usage_attempts": {
+            "title": "Unknown Usage Attempts",
+            "type": "integer"
+          },
+          "unpriced_attempts": {
+            "title": "Unpriced Attempts",
+            "type": "integer"
+          },
+          "unverified_procurement_attempts": {
+            "title": "Unverified Procurement Attempts",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "attempt_count",
+          "confirmed_usage_attempts",
+          "confirmed_token_attempts",
+          "unpriced_attempts",
+          "unknown_usage_attempts",
+          "not_sent_attempts",
+          "active_reserved_attempts",
+          "pending_unknown_attempts",
+          "missing_token_attempts",
+          "unverified_procurement_attempts",
+          "input_tokens",
+          "output_tokens",
+          "cache_read_tokens",
+          "cache_write_tokens",
+          "reasoning_tokens",
+          "cache_read_reported_attempts",
+          "cache_write_reported_attempts",
+          "reasoning_reported_attempts",
+          "reference_cost_pico",
+          "active_reserved_cost_pico",
+          "pending_unknown_cost_pico"
+        ],
+        "title": "ApiCostMetrics",
+        "type": "object"
+      },
+      "ApiCostReportResponse": {
+        "properties": {
+          "coverage": {
+            "const": "durable_billing_attempts_only",
+            "title": "Coverage",
+            "type": "string"
+          },
+          "currency": {
+            "const": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "date_basis": {
+            "const": "attempt_created_at",
+            "title": "Date Basis",
+            "type": "string"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ApiCostFilters"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "group_by": {
+            "enum": [
+              "day",
+              "model",
+              "provider_host",
+              "endpoint_id",
+              "user_id"
+            ],
+            "title": "Group By",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ApiCostGroupResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "key_attribution_available": {
+            "const": false,
+            "title": "Key Attribution Available",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "procurement_evidence_status": {
+            "const": "unavailable",
+            "title": "Procurement Evidence Status",
+            "type": "string"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ApiCostMetrics"
+          },
+          "timezone": {
+            "const": "UTC",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "total_groups": {
+            "title": "Total Groups",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start_date",
+          "end_date",
+          "timezone",
+          "date_basis",
+          "currency",
+          "group_by",
+          "filters",
+          "summary",
+          "items",
+          "total_groups",
+          "next_cursor",
+          "procurement_evidence_status",
+          "key_attribution_available",
+          "coverage",
+          "generated_at"
+        ],
+        "title": "ApiCostReportResponse",
+        "type": "object"
+      },
       "AuditActorType": {
         "enum": [
           "user",
@@ -19105,6 +19560,192 @@
         "summary": "Revoke Account Session",
         "tags": [
           "account"
+        ]
+      }
+    },
+    "/api/admin/api-costs": {
+      "get": {
+        "operationId": "get_admin_api_costs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "default": "model",
+              "enum": [
+                "day",
+                "model",
+                "provider_host",
+                "endpoint_id",
+                "user_id"
+              ],
+              "title": "Group By",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider_host",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Provider Host"
+            }
+          },
+          {
+            "in": "query",
+            "name": "endpoint_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Endpoint Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 2147483647,
+              "minimum": 0,
+              "title": "Cursor",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiCostReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Active administrator required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Admin Api Costs",
+        "tags": [
+          "admin"
         ]
       }
     },

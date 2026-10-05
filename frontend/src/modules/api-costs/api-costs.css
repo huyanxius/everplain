@@ -1,0 +1,43 @@
+.ep-api-costs { width: 100%; min-width: 0; padding: var(--qx-space-10) var(--qx-space-6); }
+.ep-api-costs__header { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: var(--qx-space-4); margin-bottom: var(--qx-space-6); }
+.ep-api-costs__header h1, .ep-api-costs__metric h2, .ep-api-costs__empty h2 { margin: 0; }
+.ep-api-costs__header p { margin: var(--qx-space-3) 0 0; }
+.ep-api-costs__filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--qx-space-4); }
+.ep-api-costs__filters > label { display: flex; flex-direction: column; gap: var(--qx-space-2); min-width: 0; font-family: var(--qx-font-ui); font-size: var(--qx-text-control); line-height: var(--qx-text-control--line-height); color: var(--qx-color-ink-soft); }
+.ep-api-costs__filters .qx-input, .ep-api-costs__filters .qx-select { width: 100%; min-width: 0; }
+.ep-api-costs__filter-footer, .ep-api-costs__validation { grid-column: 1 / -1; }
+.ep-api-costs__filter-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--qx-space-4); }
+.ep-api-costs__filter-footer p { margin: 0; flex: 1; min-width: 50%; }
+.ep-api-costs__notice { margin-block: var(--qx-space-5); }
+.ep-api-costs__notice p { margin: 0; }
+.ep-api-costs__notice p + p { margin-top: var(--qx-space-2); }
+.ep-api-costs__scope { margin-block: var(--qx-space-5); overflow-wrap: anywhere; }
+.ep-api-costs__summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--qx-space-4); margin-bottom: var(--qx-space-6); }
+.ep-api-costs__metric { display: flex; flex-direction: column; gap: var(--qx-space-3); min-width: 0; }
+.ep-api-costs__metric strong { font-family: var(--qx-font-mono); font-size: var(--qx-text-title); line-height: var(--qx-text-title--line-height); font-weight: var(--qx-text-title--font-weight); overflow-wrap: anywhere; }
+.ep-api-costs__metric p { margin: 0; }
+.ep-api-costs__details { display: flex; flex-direction: column; gap: var(--qx-space-1); overflow-wrap: anywhere; }
+.ep-api-costs__ledger { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--qx-space-5); margin: 0; }
+.ep-api-costs__ledger dt { color: var(--qx-color-muted); font-size: var(--qx-text-meta); line-height: var(--qx-text-meta--line-height); }
+.ep-api-costs__ledger dd { margin: var(--qx-space-2) 0 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ep-api-costs__ledger dd span { display: block; color: var(--qx-color-muted); font-size: var(--qx-text-meta); line-height: var(--qx-text-meta--line-height); }
+.ep-api-costs__table-scroll { width: 100%; overflow-x: auto; border: 1px solid var(--qx-color-rule); border-radius: var(--qx-radius-card); }
+.ep-api-costs__table { width: 100%; border-collapse: collapse; font-family: var(--qx-font-ui); font-size: var(--qx-text-control); line-height: var(--qx-text-control--line-height); font-variant-numeric: tabular-nums; }
+.ep-api-costs__table caption { padding: var(--qx-space-4); text-align: start; font-size: var(--qx-text-heading); line-height: var(--qx-text-heading--line-height); font-weight: var(--qx-text-heading--font-weight); }
+.ep-api-costs__table th, .ep-api-costs__table td { padding: var(--qx-space-4); text-align: start; vertical-align: top; border-top: 1px solid var(--qx-color-rule); min-width: 11em; }
+.ep-api-costs__table thead { background: var(--qx-color-surface-muted); }
+.ep-api-costs__table th { font-weight: var(--qx-text-heading--font-weight); }
+.ep-api-costs__table tbody th { max-width: 20em; overflow-wrap: anywhere; }
+.ep-api-costs__pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--qx-space-4); margin-block: var(--qx-space-5); }
+.ep-api-costs__pagination > div { display: flex; flex-wrap: wrap; gap: var(--qx-space-3); }
+.ep-api-costs__empty p { margin-bottom: 0; }
+@media (max-width: 1000px) {
+  .ep-api-costs__filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ep-api-costs__summary { grid-template-columns: minmax(0, 1fr); }
+  .ep-api-costs__ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .ep-api-costs { padding: var(--qx-space-6) var(--qx-space-4); }
+  .ep-api-costs__filters { grid-template-columns: minmax(0, 1fr); }
+  .ep-api-costs__ledger { grid-template-columns: minmax(0, 1fr); }
+}
