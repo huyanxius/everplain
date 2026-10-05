@@ -87,6 +87,9 @@ superseded. This deploys the checked main snapshot, not every intermediate commi
   reviews under its candidate-start retention boundary; this rollback controller
   does not. See [the quota 0600 review](QUOTA_0600_REVIEW.md) for the incompatible
   old writer and the approved forward-stop release semantics.
+  The [OAuth 0620 review](OAUTH_0620_REVIEW.md) binds the exact 0615-to-0620
+  edge to the same copied-data and forward-stop boundary; it does not authorize
+  old-app rollback, in-place interrupted-DDL retry or skipping the import head.
 - `EVERPLAIN_MIGRATIONS_MANAGED=1` is set only by this controller. API startup then skips
   implicit migration. That permits the old compatible app to run against a newer schema
   it cannot name in its old Alembic history. Existing Compose/manual startup retains its

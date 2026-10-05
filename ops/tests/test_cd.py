@@ -143,6 +143,11 @@ class FilesystemSafetyTests(unittest.TestCase):
         storage["schema/sqlite_index.py"] = hashlib.sha256(
             (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
         ).hexdigest()
+        oauth_hash = hashlib.sha256(json.dumps(storage, sort_keys=True).encode()).hexdigest()
+        del storage["migrations/versions/20261005_0620_federated_login.py"]
+        import_hash = hashlib.sha256(json.dumps(storage, sort_keys=True).encode()).hexdigest()
+        # Historical reviews must exclude both later additive migrations.
+        del storage["migrations/versions/20261005_0615_incremental_import_attachments.py"]
         journal_hash = hashlib.sha256(json.dumps(storage, sort_keys=True).encode()).hexdigest()
         quota_storage = {k: v for k, v in storage.items()
                          if k != "migrations/versions/20261005_0610_agent_output_journal.py"}
@@ -193,10 +198,14 @@ class FilesystemSafetyTests(unittest.TestCase):
         self.assertEqual(policy["reviewed_forward_only_migration_transitions"], [
             {"from": new_hash, "to": quota_hash},
             {"from": quota_hash, "to": journal_hash},
+            {"from": import_hash, "to": oauth_hash},
         ])
         with self.assertRaisesRegex(ValueError, "rollback compatibility"):
             deploy.check_compatible({"migration_tree": quota_hash},
                                     {"migration_tree": journal_hash}, policy)
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            deploy.check_compatible({"migration_tree": import_hash},
+                                    {"migration_tree": oauth_hash}, policy)
         changed = dict(scope_storage)
         changed["migrations/versions/20261005_0590_user_avatar.py"] = "0" * 64
         changed_hash = hashlib.sha256(json.dumps(changed, sort_keys=True).encode()).hexdigest()
