@@ -113,8 +113,14 @@ class Billing:
     ],
 )
 def test_worker_persists_only_fixed_stage_reason_and_preserves_limits(
-    billing, generation, publication, expected, terminal, caplog
+    billing, generation, publication, expected, terminal, caplog, monkeypatch
 ):
+    from qunxue_api.application import conversation_summary
+
+    # Earlier migration fixtures use fileConfig(disable_existing_loggers=True).
+    # Isolate this capture test while preserving and restoring that global state.
+    monkeypatch.setattr(conversation_summary.logger, "disabled", False)
+    monkeypatch.setattr(conversation_summary.logger, "propagate", True)
     repository = Repository(publication)
 
     @contextmanager
@@ -128,7 +134,7 @@ def test_worker_persists_only_fixed_stage_reason_and_preserves_limits(
         return {}, 80, 20
 
     worker = ConversationSummaryWorker(scope, generate=generate, billing=billing)
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING, logger=conversation_summary.logger.name):
         assert worker.run_once()
     assert repository.claimed == [{"idle_seconds": 600, "daily_calls": 8, "daily_tokens": 64000}]
     assert repository.failures == [{"terminal": terminal, "code": expected}]
