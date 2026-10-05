@@ -15,7 +15,19 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from sqlalchemy import text
 
-from qunxue_api.modules.billing import PICO_USD, PriceBook, Tariff, TavilyPrice, UnknownPrice
+from qunxue_api.adapters.sqlite.quota_periods import (
+    ensure_quota_period,
+    get_quota_period,
+    settle_quota_period,
+)
+from qunxue_api.modules.billing import (
+    PICO_USD,
+    BillingContextMissing,
+    PriceBook,
+    Tariff,
+    TavilyPrice,
+    UnknownPrice,
+)
 from qunxue_api.modules.billing import (
     BillingBudgetExceeded as BillingBudgetExceeded,
 )
@@ -33,7 +45,8 @@ SCHEMA = (
       exempt INTEGER NOT NULL, price_json TEXT NOT NULL, credit_pico TEXT NOT NULL DEFAULT '0',
       original_credit_pico TEXT NOT NULL DEFAULT '0',
       charged_points INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""",
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      quota_period_epoch INTEGER)""",
     """CREATE TABLE billing_attempts (
       attempt_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES billing_operations(run_id),
       endpoint_id TEXT NOT NULL, route_id TEXT, request_hash TEXT NOT NULL,
@@ -81,6 +94,7 @@ class DurableBilling:
         max_attempts: int = 64,
         clock=None,
         billing_policy="actual_usage_v1",
+        plan_limits=None,
     ):
         values = max_attempt_pico, max_operation_pico, daily_budget_pico, max_attempts
         if any(type(n) is not int or n <= 0 for n in values):
@@ -95,6 +109,7 @@ class DurableBilling:
         if billing_policy not in {"actual_usage_v1", "delivery_v1"}:
             raise ValueError("unknown billing policy")
         self.billing_policy = billing_policy
+        self.plan_limits = plan_limits
 
     @contextmanager
     def _transaction(self):
@@ -173,16 +188,18 @@ class DurableBilling:
 
     def _available(self, conn, user_id):
         row = self._one(
-            conn, "SELECT balance FROM credit_accounts WHERE user_id=:user", user=user_id
+            conn, "SELECT * FROM credit_accounts WHERE user_id=:user", user=user_id
         )
         if row is None:
             raise BillingBudgetExceeded("credit account is missing", reason="credits_depleted")
         held = conn.scalar(
             text(
                 "SELECT coalesce(sum(hold_points),0) FROM billing_operations "
-                "WHERE user_id=:user AND status='active'"
+                "WHERE user_id=:user AND status='active' "
+                + ("AND quota_period_epoch=:epoch" if row.get("quota_period_epoch") is not None
+                   else "")
             ),
-            {"user": user_id},
+            {"user": user_id, "epoch": row.get("quota_period_epoch")},
         )
         return max(0, row["balance"] - held)
 
@@ -190,7 +207,7 @@ class DurableBilling:
         with self.engine.connect() as conn:
             return self._available(conn, str(user_id))
 
-    def start(self, *, user_id, run_id, fingerprint, exempt=False, resume=False):
+    def start(self, *, user_id, run_id, fingerprint, exempt=False, resume=False, quota_start=True):
         run_id, user_id = str(run_id), str(user_id)
         with self._transaction() as conn:
             previous = self._one(
@@ -207,6 +224,27 @@ class DurableBilling:
             actual_usage = self._actual_usage(previous) if previous else (
                 self.billing_policy == "actual_usage_v1"
             )
+            period = ensure_quota_period(
+                conn, user_id, self.clock(), plan_limits=self.plan_limits, start=quota_start
+            ) if actual_usage and not exempt else None
+            if actual_usage and not exempt and not quota_start and period is None and conn.scalar(
+                text("SELECT 1 FROM sqlite_master WHERE type='table' "
+                     "AND name='credit_quota_periods'")
+            ):
+                raise BillingContextMissing(
+                    "user quota period requires an accepted message",
+                    reason="quota_period_not_started",
+                )
+            if previous and not exempt and not period:
+                account = self._one(conn, "SELECT * FROM credit_accounts WHERE user_id=:user",
+                                    user=user_id)
+                epoch = account.get("quota_period_epoch") if account else None
+                if epoch is not None and previous.get("quota_period_epoch") != epoch:
+                    raise BillingReplayBlocked(
+                        "paused operation belongs to an expired quota period"
+                    )
+            if previous and period and previous.get("quota_period_epoch") != period["epoch"]:
+                raise BillingReplayBlocked("paused operation belongs to an expired quota period")
             available = 0 if exempt else self._available(conn, user_id)
             cap = ceil(Fraction(book.maximum_credit_numerator(self.max_operation_pico), PICO_USD))
             if previous:
@@ -236,8 +274,9 @@ class DurableBilling:
                 text(
                     "INSERT INTO billing_operations "
                     "(run_id,user_id,fingerprint,status,hold_points,exempt,price_json,creat"
-                    "ed_at,updated_at) "
-                    "VALUES (:run,:user,:fingerprint,'active',:hold,:exempt,:price,:now,:now)"
+                    "ed_at,updated_at,quota_period_epoch) "
+                    "VALUES (:run,:user,:fingerprint,'active',:hold,:exempt,:price,"
+                    ":now,:now,:epoch)"
                 ),
                 {
                     "run": run_id,
@@ -247,6 +286,7 @@ class DurableBilling:
                     "exempt": int(exempt),
                     "price": self._operation_snapshot(),
                     "now": now,
+                    "epoch": period["epoch"] if period else None,
                 },
             )
         return run_id
@@ -288,6 +328,12 @@ class DurableBilling:
             )
             if run is None or run["status"] != "active":
                 raise BillingReplayBlocked("operation is not active")
+            if run.get("quota_period_epoch") is not None and not run["exempt"]:
+                period = ensure_quota_period(
+                    conn, run["user_id"], self.clock(), plan_limits=self.plan_limits, start=False
+                )
+                if period is None or period["epoch"] != run["quota_period_epoch"]:
+                    raise BillingReplayBlocked("operation belongs to an expired quota period")
             if requested_service_tier not in {None, "default", "standard"}:
                 raise UnknownPrice("requested service tier has no configured tariff")
             book = self._book(run["price_json"]).lock_dispatch(model, self.clock())
@@ -486,29 +532,39 @@ class DurableBilling:
                         if a["outcome"] == "in_flight")
         points = 0
         if not run["exempt"]:
-            previous = self._one(conn,
-                                 "SELECT total_credit_pico FROM billing_precision WHERE user_id=:u",
-                                 u=run["user_id"])
+            epoch = run.get("quota_period_epoch")
+            period = get_quota_period(conn, run["user_id"], epoch) if epoch is not None else None
+            if epoch is not None and period is None:
+                raise BillingReplayBlocked("operation quota period is missing")
+            previous = period or self._one(
+                conn, "SELECT total_credit_pico FROM billing_precision WHERE user_id=:u",
+                u=run["user_id"]
+            )
             old_total = Fraction(previous["total_credit_pico"]) if previous else 0
             new_total = old_total - Fraction(run["credit_pico"]) + numerator
             points = new_total // PICO_USD - old_total // PICO_USD
             # Existing provider-overrun/mismatch guards remain. Confirmed ordinary
             # usage must fit its own live reservation, never another run's funds.
-            account = self._one(conn, "SELECT balance FROM credit_accounts WHERE user_id=:u",
-                                u=run["user_id"])
+            account = period or self._one(
+                conn, "SELECT balance FROM credit_accounts WHERE user_id=:u", u=run["user_id"]
+            )
             if points < 0 or points > run["hold_points"] or points > account["balance"]:
                 raise BillingBudgetExceeded("confirmed usage exceeds available credits",
                                             reason="credits_depleted")
             if new_total != old_total:
-                conn.execute(text(
-                    "INSERT INTO billing_precision(user_id,total_credit_pico) VALUES (:u,:total) "
-                    "ON CONFLICT(user_id) DO UPDATE SET "
-                    "total_credit_pico=excluded.total_credit_pico"
-                ), {"u": run["user_id"], "total": str(new_total)})
-                conn.execute(text(
-                    "UPDATE credit_accounts SET balance=balance-:points,updated_at=:now "
-                    "WHERE user_id=:u"
-                ), {"u": run["user_id"], "points": points, "now": self._now()})
+                if period:
+                    settle_quota_period(conn, run["user_id"], epoch,
+                                        account["balance"] - points, str(new_total), self.clock())
+                else:
+                    conn.execute(text(
+                        "INSERT INTO billing_precision(user_id,total_credit_pico) "
+                        "VALUES (:u,:total) ON CONFLICT(user_id) DO UPDATE SET "
+                        "total_credit_pico=excluded.total_credit_pico"
+                    ), {"u": run["user_id"], "total": str(new_total)})
+                    conn.execute(text(
+                        "UPDATE credit_accounts SET balance=balance-:points,updated_at=:now "
+                        "WHERE user_id=:u"
+                    ), {"u": run["user_id"], "points": points, "now": self._now()})
                 self._ledger(conn, run, -points, credit_numerator=numerator,
                              receipt_attempt_id=receipt_attempt_id)
         conn.execute(text(
@@ -782,10 +838,11 @@ class DurableBilling:
 
     def _ledger(self, conn, run, points, *, refund=False, credit_numerator=0,
                 receipt_attempt_id=None):
-        balance = conn.scalar(
+        epoch = run.get("quota_period_epoch")
+        period = get_quota_period(conn, run["user_id"], epoch) if epoch is not None else None
+        balance = period["balance"] if period else conn.scalar(
             text("SELECT balance FROM credit_accounts WHERE user_id=:user"),
-            {"user": run["user_id"]},
-        )
+            {"user": run["user_id"]})
         ident = (
             str(uuid5(NAMESPACE_URL, "billing-refund:" + run["run_id"]))
             if refund
@@ -826,6 +883,9 @@ class DurableBilling:
                 "now": self._now(),
             },
         )
+        if epoch is not None:
+            conn.execute(text("UPDATE credit_ledger SET quota_period_epoch=:epoch "
+                              "WHERE entry_id=:id"), {"epoch": epoch, "id": ident})
 
     def finish(self, *, run_id, outcome, connection=None):
         if outcome not in {"success", "paused", "error", "cancelled"}:
@@ -880,7 +940,11 @@ class DurableBilling:
                 self._attempt_credit(a)
                 for a in attempts if a["outcome"] == "success" and a["billable"]
             ) if delivered else 0
-            previous = self._one(
+            epoch = run.get("quota_period_epoch")
+            period = get_quota_period(conn, run["user_id"], epoch) if epoch is not None else None
+            if epoch is not None and period is None:
+                raise BillingReplayBlocked("operation quota period is missing")
+            previous = period or self._one(
                 conn, "SELECT total_credit_pico FROM billing_precision WHERE user_id=:user",
                 user=run["user_id"],
             )
@@ -889,37 +953,45 @@ class DurableBilling:
             new_total = previous_total
             charged = run["charged_points"]
             if not run["exempt"]:
+                account = period or self._one(
+                    conn, "SELECT balance FROM credit_accounts WHERE user_id=:user",
+                    user=run["user_id"],
+                )
                 new_total = previous_total - old_exact + numerator
                 # Integer rounding belongs to the account's shared exact total.
                 # Removing a run also removes its fraction: refund the signed
                 # change in that total's floor, not this run's historical debit.
                 # Other runs/phases may have consumed its fractional carry.
                 points = new_total // PICO_USD - previous_total // PICO_USD
-                if delivered:
-                    account = self._one(
-                        conn, "SELECT balance FROM credit_accounts WHERE user_id=:user",
-                        user=run["user_id"],
-                    )
-                    if points < 0 or points > run["hold_points"] or points > account["balance"]:
-                        outcome, delivered = "error", False
-                        numerator = 0
-                        new_total = previous_total - old_exact
-                        points = new_total // PICO_USD - previous_total // PICO_USD
+                if delivered and (
+                    points < 0 or points > run["hold_points"] or points > account["balance"]
+                ):
+                    outcome, delivered = "error", False
+                    numerator = 0
+                    new_total = previous_total - old_exact
+                    points = new_total // PICO_USD - previous_total // PICO_USD
                 if new_total != previous_total:
-                    conn.execute(
-                        text("INSERT INTO billing_precision(user_id,total_credit_pico) "
-                             "VALUES (:user,:total) ON CONFLICT(user_id) DO UPDATE SET "
-                             "total_credit_pico=excluded.total_credit_pico"),
-                        {"user": run["user_id"], "total": str(new_total)},
-                    )
+                    if period:
+                        settle_quota_period(
+                            conn, run["user_id"], epoch,
+                            account["balance"] - points, str(new_total), self.clock()
+                        )
+                    else:
+                        conn.execute(
+                            text("INSERT INTO billing_precision(user_id,total_credit_pico) "
+                                 "VALUES (:user,:total) ON CONFLICT(user_id) DO UPDATE SET "
+                                 "total_credit_pico=excluded.total_credit_pico"),
+                            {"user": run["user_id"], "total": str(new_total)},
+                        )
                 # Record a zero-point fractional withdrawal as well; the stable
                 # refund receipt and terminal status make repeated refunds no-ops.
                 if points or numerator != old_exact:
-                    conn.execute(
-                        text("UPDATE credit_accounts SET balance=balance+:change,updated_at=:now "
-                             "WHERE user_id=:user"),
-                        {"change": -points, "user": run["user_id"], "now": self._now()},
-                    )
+                    if not period:
+                        conn.execute(
+                            text("UPDATE credit_accounts SET balance=balance+:change,"
+                                 "updated_at=:now WHERE user_id=:user"),
+                            {"change": -points, "user": run["user_id"], "now": self._now()},
+                        )
                     self._ledger(conn, run, -points, refund=not delivered,
                                  credit_numerator=numerator)
                 charged = charged + points if delivered else 0

@@ -247,6 +247,7 @@ def test_startup_releases_recent_actual_request_without_waiving_known_cost(actua
 
 
 def test_sqlite_application_finalizer_failure_still_pays_confirmed_usage(plain_client):
+    from dataclasses import replace
     from uuid import UUID
 
     from test_application_metering import Runner
@@ -262,10 +263,16 @@ def test_sqlite_application_finalizer_failure_still_pays_confirmed_usage(plain_c
     with database.session() as session:
         application, runtime, _ = build_application(database, session, runner=FailingRunner())
         runtime.billing_policy = "actual_usage_v1"
+        # This real migrated account now starts a Free30 period on its first
+        # accepted message. Keep the synthetic provider cap affordable within it.
+        runtime.book = replace(runtime.book, credits_per_usd=1000)
         with pytest.raises(RuntimeError, match="synthetic application failure"):
             application.run_turn(user_id=user, conversation_id=None, prompt="synthetic",
                                  idempotency_key="actual-failure")
-        assert runtime.available_balance(user) == 2908
+        assert runtime.available_balance(user) == 21
+        assert session.scalar(text("SELECT total_credit_pico FROM billing_precision")) == (
+            "9200000000000"
+        )
         assert session.scalar(text("SELECT status FROM billing_operations")) == "error"
         assert session.scalar(text("SELECT count(*) FROM credit_ledger WHERE kind='usage'")) == 1
         assert session.scalar(text(

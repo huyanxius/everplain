@@ -1244,7 +1244,9 @@ def create_app(
                     ),
                     rollback=session.rollback,
                     credits=CreditService(
-                        SqliteCreditRepository(session),
+                        SqliteCreditRepository(
+                            session, plan_limits=resolved_settings.billing_plan_weekly_points
+                        ),
                         exempt_user_ids=getattr(
                             app.state,
                             "credit_exempt_user_ids",
@@ -1995,4 +1997,5 @@ def _billing_runtime(settings, database):
         max_operation_pico=settings.billing_max_operation_usd_micro * 10**6,
         daily_budget_pico=settings.billing_daily_budget_usd_micro * 10**6,
         max_attempts=settings.billing_max_attempts,
+        plan_limits=settings.billing_plan_weekly_points,
     )

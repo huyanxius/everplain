@@ -137,7 +137,7 @@ def _assert_responses_text_budget(payload):
 
 class OperationScope:
     def __init__(self, runtime, *, user_id, run_id, fingerprint, exempt=False,
-                 before_network=None, resume=False, settlement_connection=None):
+                 before_network=None, resume=False, settlement_connection=None, quota_start=True):
         self.runtime = runtime
         self.run_id = str(run_id)
         self.user_id = str(user_id)
@@ -148,6 +148,7 @@ class OperationScope:
         self.resume = resume
         self.settlement_connection = settlement_connection
         self.response_attempts = {}
+        self.quota_start = quota_start
 
     def __enter__(self):
         self.runtime.start(
@@ -156,6 +157,7 @@ class OperationScope:
             fingerprint=self.fingerprint,
             exempt=self.exempt,
             **({"resume": True} if self.resume else {}),
+            **({"quota_start": False} if not self.quota_start else {}),
         )
         self.token = _current_operation.set(self)
         self.last_token = _last_attempt.set(None)
