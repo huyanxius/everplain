@@ -38,7 +38,7 @@ import { LibrarySharedPage } from './courses/LibrarySharedPage'
 import { LibraryGraphPage, LegacyLibraryKnowledgeRoute } from './courses/LibraryGraphPage'
 import { OnboardingGate, WelcomeSetupPage } from './welcome/WelcomeSetupPage'
 import { PageContent, PageShell, RailStateProvider } from './ui/PageShell'
-import { ErrorState, LoadingState } from './ui/States'
+import { ErrorState, LoadingState, SessionRecoveryState } from './ui/States'
 import { RouteMotionSurface } from './route-motion'
 import { SettingsModal } from './ui/SettingsModal'
 
@@ -76,6 +76,8 @@ function LoginRoute({ sessionState }: { sessionState: SessionState }) {
   if (sessionState.status === 'authenticated') {
     return <Navigate replace to={destination} />
   }
+  if (sessionState.status === 'loading') return <LoadingState message="正在确认登录状态" />
+  if (sessionState.status === 'error') return <SessionRecoveryState onRetry={account.retrySession} />
 
   return (
     <PageShell immersive>
@@ -98,6 +100,8 @@ function RegisterRoute({ sessionState }: { sessionState: SessionState }) {
   if (sessionState.status === 'authenticated') {
     return <Navigate replace to={destination} />
   }
+  if (sessionState.status === 'loading') return <LoadingState message="正在确认登录状态" />
+  if (sessionState.status === 'error') return <SessionRecoveryState onRetry={account.retrySession} />
 
   return (
     <PageShell immersive>
@@ -207,13 +211,14 @@ function ProtectedRoute({
   children: ReactNode
 }) {
   const location = useLocation()
+  const account = useAccount()
 
   if (sessionState.status === 'loading') {
     return <LoadingState message="正在确认登录状态" />
   }
   if (sessionState.status === 'authenticated') return children
   if (sessionState.status === 'error') {
-    return <ErrorState detail="暂时无法确认登录状态，请稍后重试。" />
+    return <SessionRecoveryState onRetry={account.retrySession} />
   }
 
   const redirect = `${location.pathname}${location.search}${location.hash}`
@@ -243,7 +248,10 @@ export function AppRoutes({
     <ProtectedRoute sessionState={resolvedSessionState}><OnboardingGate userId={authenticatedUserId}>{element}</OnboardingGate></ProtectedRoute>
   )
   const productHome = (
-    <FoundationPage authenticated={resolvedSessionState.status === 'authenticated'} checkingSession={resolvedSessionState.status === 'loading'} />
+    <>
+      {resolvedSessionState.status === 'error' ? <SessionRecoveryState onRetry={account.retrySession} /> : null}
+      <FoundationPage authenticated={resolvedSessionState.status === 'authenticated'} checkingSession={resolvedSessionState.status === 'loading'} />
+    </>
   )
 
   return (

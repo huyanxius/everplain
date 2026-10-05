@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-
 import {
   getCurrentSessionViaApi,
   listMyResearchViaApi,
   loginViaApi,
+  watchSessionRejection,
 } from './accountApi'
+
+const SESSION_READ_TIMEOUT_MS = 15_000
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 const sessionResponse = {
@@ -150,5 +153,84 @@ describe('account API adapter', () => {
       taskId: 'task-1',
       updatedAt: '2026-08-21T09:00:00Z',
     }])
+  })
+})
+
+
+describe('bounded cookie-session reads', () => {
+  it('ends a non-returning request at its deadline, even when fetch ignores abort', async () => {
+    vi.useFakeTimers()
+    let request: Request | undefined
+    vi.stubGlobal('fetch', vi.fn((input: Request) => {
+      request = input
+      return new Promise<Response>(() => undefined)
+    }))
+    const read = getCurrentSessionViaApi()
+    const rejected = expect(read).rejects.toThrow('登录状态读取超时')
+    await vi.advanceTimersByTimeAsync(SESSION_READ_TIMEOUT_MS - 1)
+    expect(request?.signal.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    await rejected
+    expect(request?.signal.aborted).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('bounds a stalled response body as well as connection headers', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      new ReadableStream({ start() { /* The response body never completes. */ } }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )))
+    const rejected = expect(getCurrentSessionViaApi()).rejects.toThrow('登录状态读取超时')
+    await vi.advanceTimersByTimeAsync(SESSION_READ_TIMEOUT_MS)
+    await rejected
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('cancels immediately with its lifecycle and ignores a late 401 before interception', async () => {
+    vi.useFakeTimers()
+    const lifecycle = new AbortController()
+    let finish: (response: Response) => void = () => undefined
+    const rejectedSession = vi.fn()
+    const unsubscribe = watchSessionRejection(rejectedSession)
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { finish = resolve })))
+    try {
+      const read = getCurrentSessionViaApi({ signal: lifecycle.signal })
+      const rejected = expect(read).rejects.toMatchObject({ name: 'AbortError' })
+      await vi.advanceTimersByTimeAsync(0)
+      lifecycle.abort()
+      await rejected
+      finish(new Response('{}', { status: 401, headers: { 'Content-Type': 'application/json' } }))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(rejectedSession).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally { unsubscribe() }
+  })
+
+  it('does not start an already-cancelled lifecycle', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(getCurrentSessionViaApi({ signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('finishes a slow response before the deadline and cleans up its timer', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => {
+      setTimeout(() => resolve(new Response(JSON.stringify(sessionResponse), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      })), SESSION_READ_TIMEOUT_MS - 1)
+    })))
+    const read = getCurrentSessionViaApi()
+    await vi.advanceTimersByTimeAsync(SESSION_READ_TIMEOUT_MS - 1)
+    await expect(read).resolves.toMatchObject({ sessionId: sessionResponse.session_id })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('turns a disconnected network into a recoverable read failure, not anonymous', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch') }))
+    await expect(getCurrentSessionViaApi()).rejects.toThrow('登录状态读取失败。')
   })
 })

@@ -1,4 +1,4 @@
-import { apiClient } from '../../api/client'
+import { apiClient, fetchActiveSession } from '../../api/client'
 import { ApiRequestError } from '../../api/error'
 import { subscribeToSessionRejected } from '../../api/sessionEvents'
 import {
@@ -12,6 +12,7 @@ import {
   type SessionResponse,
 } from '../../api/generated'
 import type { AccountSession, MyResearchItem } from './types'
+import { readSessionWithDeadline } from '../../api/sessionRead'
 
 export function watchSessionRejection(listener: () => void) {
   return subscribeToSessionRejected(listener)
@@ -33,11 +34,20 @@ function toAccountSession(response: SessionResponse): AccountSession {
   }
 }
 
-export async function getCurrentSessionViaApi(): Promise<AccountSession | null> {
-  const { data, response } = await getCurrentSession({ client: apiClient })
-  if (data) return toAccountSession(data)
-  if (response?.status === 401) return null
-  throw new ApiRequestError('登录状态读取失败。', response?.status)
+export function getCurrentSessionViaApi(
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<AccountSession | null> {
+  return readSessionWithDeadline(async (readSignal) => {
+    const { data, response } = await getCurrentSession({
+      client: apiClient,
+      signal: readSignal,
+      fetch: fetchActiveSession,
+    })
+    readSignal.throwIfAborted()
+    if (data) return toAccountSession(data)
+    if (response?.status === 401) return null
+    throw new ApiRequestError('登录状态读取失败。', response?.status)
+  }, signal)
 }
 
 export async function loginViaApi(
