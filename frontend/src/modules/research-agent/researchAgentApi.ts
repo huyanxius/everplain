@@ -551,6 +551,8 @@ function isConversationContextSummary(value: unknown): value is ConversationCont
     && Number.isInteger(data.omitted_messages) && Number(data.omitted_messages) >= 0
     && validSources(data.summary_sources)
     && (data.updated_at === null || typeof data.updated_at === 'string')
+    && (data.status_reason == null || ['queued', 'active_run', 'idle_wait', 'generating', 'retry_wait', 'daily_budget', 'attempt_limit', 'generation_failed', 'generator_unavailable'].includes(String(data.status_reason)))
+    && (data.retry_at == null || typeof data.retry_at === 'string' && Number.isFinite(Date.parse(data.retry_at)))
     && Array.isArray(data.cards) && data.cards.length <= 3
     && data.cards.every(card => {
       if (!card || typeof card !== 'object') return false

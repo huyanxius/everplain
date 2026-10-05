@@ -18,9 +18,10 @@ from pydantic_ai.usage import UsageLimits
 from qunxue_api.adapters.model.metering import MeteredOpenAIChatModel
 from qunxue_api.modules.agent_conversation import ContextSummaryGenerationFailure
 
-from .pydantic_runner import _is_deepseek_flash
+from .pydantic_runner import _is_deepseek_flash, _responses_input_token_estimate
 
 _INSTRUCTIONS = (Path(__file__).parent / "prompts" / "conversation_summary.md").read_text()
+_OUTPUT_TOKENS = 1800
 
 
 def _generation_failure(error: Exception) -> ContextSummaryGenerationFailure:
@@ -74,6 +75,22 @@ class PydanticConversationSummarizer:
         self.base_url, self.api_key, self.model = base_url, api_key, model
         self.timeout, self.headers = timeout_seconds, extra_headers
 
+    def reservation_tokens(self, sources, omitted_messages=0):
+        """Same bounded input, estimated with the existing context safety margin.
+
+        o200k is an approximation for this configured proxy, not its certified
+        tokenizer. Include instructions, source JSON and the actual output schema,
+        then reserve the finite provider output cap. Provider usage remains truth.
+        Cash/risk guards at the final wire boundary are unchanged.
+        """
+        serialized = json.dumps(
+            {"instructions": _INSTRUCTIONS, "sources": sources,
+             "omitted_messages": omitted_messages,
+             "output_schema": ActivitySummary.model_json_schema()},
+            ensure_ascii=False,
+        )
+        return _responses_input_token_estimate(serialized) + _OUTPUT_TOKENS
+
     def __call__(self, batch):
         try:
             return asyncio.run(self.summarize(batch))
@@ -93,7 +110,7 @@ class PydanticConversationSummarizer:
             model = MeteredOpenAIChatModel(
                 self.model, provider=OpenAIProvider(openai_client=client), require_billing=True
             )
-            settings = {"timeout": self.timeout, "max_tokens": 1800}
+            settings = {"timeout": self.timeout, "max_tokens": _OUTPUT_TOKENS}
             if _is_deepseek_flash(base_url=self.base_url, model=self.model):
                 settings["extra_body"] = {"thinking": {"type": "disabled"}}
             if self.headers:

@@ -161,6 +161,66 @@ describe('shared cached conversation suggestions', () => {
     expect(screen.queryByRole('region')).not.toBeInTheDocument()
   })
 
+  it.each([
+    ['pending', 'idle_wait', '最近对话刚刚更新，稍后会自动整理建议。'],
+    ['pending', 'active_run', '当前对话还在进行，结束后会整理建议。'],
+    ['pending', 'queued', '对话建议已排队，会自动更新。'],
+    ['failed', 'retry_wait', '这次整理没有成功，稍后会自动重试。'],
+    ['failed', 'attempt_limit', '这批对话的建议生成未成功，已暂停重试。新对话后会重新检查。'],
+    ['failed', 'generator_unavailable', '对话建议的生成服务暂时不可用。'],
+  ] as const)('explains %s/%s without pretending a model is running', async (status, status_reason, message) => {
+    vi.mocked(getConversationContextSummary).mockResolvedValue({ ...empty, status, status_reason })
+    render(surface(client(), 'reader-1'))
+    expect(await screen.findByText(message)).toBeVisible()
+    expect(document.querySelectorAll('.cv-suggestions__card')).toHaveLength(0)
+  })
+
+  it('automatically recovers after a scheduled failure retry and shares three actual cards', async () => {
+    vi.useFakeTimers()
+    const queryClient = client()
+    const three = { ...ready, cards: [...ready.cards, {
+      ...ready.cards[1], title: '核对读书会对照例子的篇幅', description: '五分钟展示需要保留原先提到的对照例子，可以具体分配篇幅。',
+    }] }
+    vi.mocked(getConversationContextSummary).mockResolvedValueOnce({
+      ...empty, status: 'failed', status_reason: 'retry_wait',
+      retry_at: new Date(Date.now() + 45_000).toISOString(),
+    }).mockResolvedValue(three)
+    const first = render(surface(queryClient, 'reader-1'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(screen.getByRole('alert')).toHaveTextContent('稍后会自动重试')
+    await act(async () => { await vi.advanceTimersByTimeAsync(45_001) })
+    expect(getConversationContextSummary).toHaveBeenCalledTimes(2)
+    expect(first.container.querySelectorAll('.cv-suggestions__card')).toHaveLength(3)
+    const second = render(surface(queryClient, 'reader-1'))
+    expect(second.container.textContent).toBe(first.container.textContent)
+    expect(second.container.querySelectorAll('.cv-suggestions__card')).toHaveLength(3)
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000) })
+    expect(getConversationContextSummary).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports unavailable daily budget and waits for renewal rather than spinning', async () => {
+    vi.useFakeTimers()
+    vi.mocked(getConversationContextSummary).mockResolvedValue({
+      ...empty, status: 'failed', status_reason: 'daily_budget',
+      retry_at: new Date(Date.now() + 3_600_000).toISOString(),
+    })
+    render(surface(client(), 'reader-1'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_001) })
+    expect(screen.getByRole('alert')).toHaveTextContent('今天的对话建议额度已用完')
+    expect(screen.queryByText('正在根据最近的对话整理建议…')).not.toBeInTheDocument()
+    expect(getConversationContextSummary).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops pending cache reads when the surface leaves without touching the backend worker', async () => {
+    vi.useFakeTimers()
+    vi.mocked(getConversationContextSummary).mockResolvedValue({ ...empty, status: 'pending', status_reason: 'generating' })
+    const view = render(surface(client(), 'reader-1'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    view.unmount()
+    await act(async () => { await vi.advanceTimersByTimeAsync(180_000) })
+    expect(getConversationContextSummary).toHaveBeenCalledTimes(1)
+  })
+
   it('stops a pending polling loop when the next read fails', async () => {
     vi.useFakeTimers()
     vi.mocked(getConversationContextSummary).mockResolvedValueOnce({ ...empty, status: 'pending' }).mockRejectedValueOnce(new Error('HTTP 503'))

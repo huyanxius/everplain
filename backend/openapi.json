@@ -4263,6 +4263,18 @@
             "title": "Omitted Messages",
             "type": "integer"
           },
+          "retry_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry At"
+          },
           "scope": {
             "const": "conversation_messages",
             "title": "Scope",
@@ -4278,6 +4290,28 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "queued",
+                  "active_run",
+                  "idle_wait",
+                  "generating",
+                  "retry_wait",
+                  "daily_budget",
+                  "attempt_limit",
+                  "generation_failed",
+                  "generator_unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
           },
           "summary": {
             "title": "Summary",
