@@ -1,15 +1,16 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import cytoscape, { type Core } from 'cytoscape'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import type { KnowledgeGraphProjection } from './types'
 import { ObsidianKnowledgeGraph } from './ObsidianKnowledgeGraph'
 
 vi.mock('./graphLayout', () => ({ layoutOptions: () => ({ name: 'preset' }), fitView: vi.fn() }))
 vi.mock('./graphLayoutCache', () => ({ layoutCacheKey: () => 'motion-test', readLayout: () => ({}), saveLayout: vi.fn(), positionedElements: (elements: unknown) => elements }))
 vi.mock('cytoscape', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('cytoscape')>()
+  const actual = await importOriginal<{ default: typeof cytoscape }>()
   return { default: vi.fn((options) => actual.default({ ...options, container: undefined, headless: true, styleEnabled: true })) }
 })
-const projection = { releaseId: 'motion', nodes: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }], edges: [{ id: 'ab', source: 'a', target: 'b', relationType: 'related' }] }
+const projection: KnowledgeGraphProjection = { releaseId: 'motion', nodes: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }], edges: [{ id: 'ab', source: 'a', target: 'b', relationType: 'related', direction: 'undirected' }] }
 const engine = () => vi.mocked(cytoscape).mock.results.at(-1)!.value as Core
 beforeEach(() => {
   vi.mocked(cytoscape).mockClear()

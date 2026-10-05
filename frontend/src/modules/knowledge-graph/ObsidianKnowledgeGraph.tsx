@@ -169,7 +169,7 @@ const graphStyle = (): cytoscape.StylesheetJson => [
       'text-outline-width': 2,
       'text-valign': 'top',
       'transition-duration': 420,
-      'transition-property': 'background-color, border-color, height, opacity, text-opacity, width',
+      'transition-property': 'background-color, border-color, height, opacity, text-opacity, width, underlay-opacity, underlay-padding',
       'transition-timing-function': 'ease-out-cubic',
       width: 10,
       'z-index': 2,
@@ -537,9 +537,10 @@ export function ObsidianKnowledgeGraph({
     y: number
   }>()
   const activationTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const initialFocus = personal ? undefined : focusNodeId
   const elements = useMemo(
-    () => graphElements(projection),
-    [projection],
+    () => graphElements(projection, initialFocus),
+    [projection, initialFocus],
   )
   const cacheKey = useMemo(() => layoutCacheKey(projection, `${layoutScope}:${personal ? 'personal' : variant}`), [projection, layoutScope, personal, variant])
   const hasEdges = projection.edges.length > 0
@@ -560,8 +561,8 @@ export function ObsidianKnowledgeGraph({
   }, [reduceMotion])
 
   const fit = useCallback(() => {
-    if (graphRef.current) fitView(graphRef.current, focusNodeId, variant === 'preview', motionDuration())
-  }, [focusNodeId, variant, motionDuration])
+    if (graphRef.current) fitView(graphRef.current, focusNodeId, variant === 'preview', personal ? motionDuration() : 0)
+  }, [focusNodeId, variant, personal, motionDuration])
 
   const relayout = useCallback(() => {
     const graph = graphRef.current
@@ -753,7 +754,7 @@ export function ObsidianKnowledgeGraph({
           { selector: 'node.node--self', style: { width: 70, height: 70, 'background-opacity': 0, 'border-width': 0, 'background-image': 'data(image)', 'background-fit': 'contain', 'text-margin-y': -5 } },
           { selector: 'node.node--topic', style: { width: 18, height: 18, 'background-color': graphColor('faint'), 'font-size': 12 } },
           { selector: 'node.node--knowledge', style: { width: 6, height: 6, 'background-color': graphColor('faint'), 'font-size': 9 } },
-        ] : variant === 'preview' ? previewGraphStyle() : workspaceGraphStyle(motion),
+        ] : variant === 'preview' ? previewGraphStyle() : workspaceGraphStyle(),
         userPanningEnabled: true,
         userZoomingEnabled: variant === 'workspace',
       })
@@ -885,23 +886,24 @@ export function ObsidianKnowledgeGraph({
 
   useEffect(() => {
     const graph = graphRef.current
-    if (!graph || variant === 'preview') return
+    if (!graph || !personal || variant === 'preview') return
     const nodeClasses = graphElements(projection, focusNodeId)
     graph.batch(() => {
       for (const element of nodeClasses) {
         const target = graph.getElementById(String(element.data.id))
-        target.classes(element.classes as string)
+        target.removeClass('node--focus node--neighbor node--context edge--neighbor edge--context')
+        target.addClass(element.classes as string)
       }
     })
     fitView(graph, focusNodeId, false, motionDuration())
-  }, [focusNodeId, projection, variant, motionDuration])
+  }, [focusNodeId, projection, variant, personal, motionDuration])
 
   const zoomBy = (factor: number) => {
     const graph = graphRef.current
     if (!graph) return
     const level = Math.min(graph.maxZoom(), Math.max(graph.minZoom(), graph.zoom() * factor))
     const center = { x: graph.width() / 2, y: graph.height() / 2 }
-    if (reduceMotion) {
+    if (reduceMotion || !personal) {
       graph.zoom({ level, renderedPosition: center })
       return
     }
