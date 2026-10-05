@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowClockwiseIcon, DotsThreeIcon, FileTextIcon, ImageIcon, PresentationIcon, TrashIcon, WarningCircleIcon } from '@phosphor-icons/react'
+import { ArrowClockwiseIcon, DotsThreeIcon, FileTextIcon, GlobeIcon, ImageIcon, PresentationIcon, TrashIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import { Link } from 'react-router'
-import { documentKind } from './libraryMaterials'
+import { documentKind, documentTitle, siteIconUrl } from './libraryMaterials'
 import { formatMaterialSize } from '../../modules/research-materials'
 import type { SharedCourse, SharedDocument } from '../../modules/shared-knowledge'
 
-export type LibraryMaterialSource = { source?: string; url?: string | null; image?: string | null }
+export type LibraryMaterialSource = { source?: string; title?: string | null; url?: string | null; image?: string | null }
 
 function sourceLabel(source: LibraryMaterialSource | undefined, document: SharedDocument) {
   if (source?.url) {
@@ -20,6 +20,8 @@ export function LibraryMaterialCard({ course, document, showLibrary, source, bus
 }) {
   const [menu, setMenu] = useState(false)
   const [imageFailed, setImageFailed] = useState(false)
+  const [iconFailed, setIconFailed] = useState(false)
+  useEffect(() => { setIconFailed(false) }, [source?.url])
   const anchor = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   useEffect(() => {
@@ -29,8 +31,10 @@ export function LibraryMaterialCard({ course, document, showLibrary, source, bus
     window.document.addEventListener('mousedown', outside); window.document.addEventListener('keydown', key)
     return () => { window.document.removeEventListener('mousedown', outside); window.document.removeEventListener('keydown', key) }
   }, [menu])
-  const kind = documentKind(document)
-  const Icon = kind === '图片' ? ImageIcon : kind === '演示文稿' ? PresentationIcon : FileTextIcon
+  const kind = documentKind(document, source)
+  const title = documentTitle(document, source)
+  const siteIcon = kind === '网页' ? siteIconUrl(source) : null
+  const Icon = kind === '图片' ? ImageIcon : kind === '演示文稿' ? PresentationIcon : kind === '网页' ? GlobeIcon : FileTextIcon
   const retryable = document.status === 'ready' && (document.knowledgeStatus === 'failed' || document.indexStatus === 'failed')
   const states: string[] = []
   if (document.status === 'processing') states.push('正在解析，完成后即可阅读原文')
@@ -42,7 +46,7 @@ export function LibraryMaterialCard({ course, document, showLibrary, source, bus
   const errors = [document.errorMessage, document.knowledgeError, document.indexError].filter(Boolean)
   const failed = document.status === 'failed' || retryable
   return <article className="qx-card qx-card--interactive ep-library-card" data-failed={failed}>
-    <div className="ep-library-card__top"><span className="qx-meta"><Icon size={16} />{kind}</span>
+    <div className="ep-library-card__top"><span className="qx-meta">{siteIcon && !iconFailed ? <img className="ep-library__source-logo" src={siteIcon} alt="站点图标" loading="lazy" referrerPolicy="no-referrer" onError={() => setIconFailed(true)} /> : <Icon size={16} />}{kind}</span>
       {showLibrary && <Link className="qx-meta ep-library-card__library" to={`/library?kb_id=${encodeURIComponent(course.id)}`}>{course.name}</Link>}
       {!readOnly && <div className="ep-library-card__menu-anchor" ref={anchor}>
         <button ref={trigger} type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label={`管理资料 ${document.filename}`} aria-expanded={menu} disabled={busy} onClick={() => setMenu(value => !value)}><DotsThreeIcon weight="bold" /></button>
@@ -54,7 +58,7 @@ export function LibraryMaterialCard({ course, document, showLibrary, source, bus
       </div>}
     </div>
     {kind === '图片' && <div className="qx-media-preview">{source?.image && !imageFailed ? <img src={source.image} alt={document.filename} loading="lazy" onError={() => setImageFailed(true)} /> : <span className="qx-meta"><ImageIcon size={28} aria-hidden="true" />图片预览暂不可用</span>}</div>}
-    <h2 className="qx-card__title">{document.status === 'ready' ? <Link to={href ?? `/library?kb_id=${encodeURIComponent(course.id)}&document_id=${encodeURIComponent(document.id)}`}>{document.filename}</Link> : document.filename}</h2>
+    <h2 className="qx-card__title">{document.status === 'ready' ? <Link to={href ?? `/library?kb_id=${encodeURIComponent(course.id)}&document_id=${encodeURIComponent(document.id)}`}>{title}</Link> : title}</h2>
     {document.status === 'processing' ? <div className="ep-library-card__skeleton" aria-label="正在读取内容"><i className="qx-skeleton" /><i className="qx-skeleton" /><i className="qx-skeleton" /></div> : <p className="qx-card__body ep-library-card__summary">{document.status === 'failed' ? '资料解析失败，可查看原因后重新上传。' : document.knowledge?.summary || '原文已保存，知识摘要将在整理完成后显示。'}</p>}
     {states.length > 0 && <div className="qx-meta ep-library-card__state" data-failed={failed}>
       {failed ? <WarningCircleIcon size={16} /> : <ArrowClockwiseIcon size={16} />}
