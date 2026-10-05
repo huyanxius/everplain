@@ -329,6 +329,22 @@ class SqliteSharedKnowledgeRepository:
         ).first()
         return (_kb(row[0]), _document(row[1])) if row else None
 
+    def source_attachments(self, user_id, document_id):
+        from .knowledge_import import ImportAttachmentRow, attachment_view
+
+        # Private binary attachments are never made public or shared implicitly.
+        return [
+            attachment_view(row)
+            for row in self.session.scalars(
+                select(ImportAttachmentRow)
+                .where(
+                    ImportAttachmentRow.user_id == str(user_id),
+                    ImportAttachmentRow.document_id == str(document_id),
+                )
+                .order_by(ImportAttachmentRow.relative_path)
+            )
+        ]
+
     def quota_guard(self, user_id):
         from sqlalchemy import text
 
@@ -342,13 +358,21 @@ class SqliteSharedKnowledgeRepository:
     def storage_usage(self, user_id):
         from sqlalchemy import func
 
+        from .knowledge_import import ImportAttachmentRow
+
         # Only attached documents occupy quota; removed content is purged below.
-        return self.session.scalar(
+        documents = self.session.scalar(
             select(func.coalesce(func.sum(SharedDocumentRow.size_bytes), 0)).where(
                 SharedDocumentRow.owner_user_id == str(user_id),
                 SharedDocumentRow.id.in_(select(SharedKnowledgeDocumentRow.document_id)),
             )
         )
+        attachments = self.session.scalar(
+            select(func.coalesce(func.sum(ImportAttachmentRow.size_bytes), 0)).where(
+                ImportAttachmentRow.user_id == str(user_id)
+            )
+        )
+        return documents + attachments
 
     def update_knowledge(self, document_id, value):
         row = self.session.get(SharedDocumentRow, str(document_id))
@@ -530,12 +554,15 @@ class SqliteSharedKnowledgeRepository:
             if row is not None:
                 from sqlalchemy import update
 
-                from .knowledge_import import ImportItemRow
+                from .knowledge_import import ImportAttachmentRow, ImportItemRow
 
                 self.session.execute(
                     update(ImportItemRow)
                     .where(ImportItemRow.document_id == removed_id)
                     .values(content=b"")
+                )
+                self.session.execute(
+                    delete(ImportAttachmentRow).where(ImportAttachmentRow.document_id == removed_id)
                 )
                 row.content = b""
                 row.segments = []
@@ -590,6 +617,38 @@ class SqliteSharedKnowledgeRepository:
         )
         self.session.flush()
         return doc
+
+    def replace_document(self, doc, *, content, request_key, kb_id, expected_parse_id):
+        row = self.session.get(SharedDocumentRow, str(doc.id), populate_existing=True)
+        if (
+            row is None
+            or row.owner_user_id != str(doc.owner_user_id)
+            or row.parse_id != str(expected_parse_id)
+            or not row.segments
+        ):
+            raise ValueError("资料已变化，请重新导入。")
+        row.request_key = request_key
+        row.filename, row.media_type = doc.filename, doc.media_type
+        row.content_hash, row.content, row.size_bytes = doc.content_hash, content, doc.size_bytes
+        row.parse_id, row.status = str(doc.parse_id), doc.status
+        row.segments, row.warnings = list(doc.segments), list(doc.warnings)
+        row.error_message = doc.error_message
+        # New parse IDs invalidate existing citations; revoking the job lease also
+        # prevents a stale indexing worker from overwriting the new document.
+        row.vectors, row.knowledge, row.knowledge_checkpoints = {}, None, {}
+        row.knowledge_status, row.index_status = "queued", "queued"
+        row.knowledge_error, row.index_error = None, None
+        row.job_token, row.job_started_at = None, None
+        for publication in self.session.scalars(select(SharedKnowledgePublicationRow)):
+            if row.id in publication.document_ids:
+                publication.document_ids = [id for id in publication.document_ids if id != row.id]
+        key = (str(kb_id), row.id)
+        if self.session.get(SharedKnowledgeDocumentRow, key) is None:
+            self.session.add(
+                SharedKnowledgeDocumentRow(knowledge_base_id=key[0], document_id=key[1])
+            )
+        self.session.flush()
+        return _document(row)
 
     def vector_cache(self, documents):
         return SharedDocumentVectorCache(

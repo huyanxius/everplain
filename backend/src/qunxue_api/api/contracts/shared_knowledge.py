@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
+from qunxue_api.api.contracts.knowledge_import import ImportAttachmentResponse
 from qunxue_api.api.contracts.research_materials import ResearchMaterialLocatorResponse
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
@@ -136,6 +137,7 @@ class SharedDocumentSourceResponse(BaseModel):
     knowledge_base_id: UUID
     knowledge_base_name: str
     segments: list[SharedSourceSegmentResponse]
+    attachments: list[ImportAttachmentResponse] = Field(default_factory=list)
 
 
 class KnowledgeStorageResponse(BaseModel):

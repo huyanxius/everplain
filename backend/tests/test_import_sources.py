@@ -231,3 +231,79 @@ class KeepFallbackTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_folder_attachment_resolution_is_local_bounded_and_binary_safe():
+    text = (
+        "# A\n![[image.png]] [local](../assets/report.pdf#page=2) "
+        "![remote](https://example.org/image.png) [private](file:///etc/secret.pdf) "
+        "![root](/assets/root.png) [escape](../../../escape.pdf) "
+        "\n```md\n![[example.png]]\n```\n`![[example.png]]`"
+    )
+    files = [
+        ("Vault/notes/A.md", text.encode()),
+        ("Vault/assets/image.png", b"\xff\x00"),
+        ("Vault/assets/report.pdf", b"pdf"),
+        ("Vault/assets/example.png", b"code example"),
+        ("Vault/.obsidian/config.md", b"# private"),
+        ("Vault/.trash/deleted.md", b"# deleted"),
+        ("Vault/.env", b"SECRET=do-not-read"),
+        ("Vault/node_modules/pkg.md", b"# config"),
+        ("Vault/__MACOSX/private.md", b"# system"),
+        ("Vault/assets/unused.png", b"unused"),
+    ]
+    parsed = parse_import("obsidian", files)
+    assert len(parsed) == 1 and parsed[0]["content"] == text.encode()
+    assets = {asset["relative_path"]: asset for asset in parsed[0]["attachments"]}
+    assert set(assets) == {"Vault/assets/image.png", "Vault/assets/report.pdf"}
+    assert assets["Vault/assets/image.png"]["content"] == b"\xff\x00"
+    assert assets["Vault/assets/report.pdf"]["references"] == ["../assets/report.pdf#page=2"]
+
+
+def test_zip_fallback_preserves_local_attachments_and_skips_private_paths():
+    files = [
+        ("A.md", b"# A\n![[image.png]]"),
+        ("assets/image.png", b"\xff\x00"),
+        (".obsidian/private.md", b"# private"),
+        (".git/config.md", b"# config"),
+    ]
+    parsed = parse_import("obsidian", [("Vault.zip", archive(files))])
+    assert len(parsed) == 1 and parsed[0]["relative_path"] == "Vault/A.md"
+    assert parsed[0]["attachments"][0]["relative_path"] == "Vault/assets/image.png"
+    assert parsed[0]["attachments"][0]["content"] == b"\xff\x00"
+
+
+def test_ambiguous_wiki_attachment_is_not_guessed():
+    parsed = parse_import(
+        "obsidian",
+        [
+            ("Vault/A.md", b"# A\n![[same.png]]"),
+            ("Vault/a/same.png", b"one"),
+            ("Vault/b/same.png", b"two"),
+        ],
+    )
+    assert parsed[0]["attachments"] == []
+
+
+def test_attachment_input_limits_apply_to_binary_assets(monkeypatch):
+    from qunxue_api.adapters.import_sources import parser
+
+    monkeypatch.setattr(parser, "MAX_FILE_BYTES", 4)
+    with unittest.TestCase().assertRaises(ImportParseError):
+        parse_import("obsidian", [("Vault/assets/image.png", b"12345")])
+    monkeypatch.setattr(parser, "MAX_FILE_BYTES", 100)
+    monkeypatch.setattr(parser, "MAX_TOTAL_BYTES", 9)
+    parsed = parse_import(
+        "obsidian", [("Vault/A.md", b"# A"), ("Vault/assets/image.png", b"1234567")]
+    )
+    assert (
+        next(item["error"] for item in parsed if "error" in item)
+        == "import size/count limit exceeded"
+    )
+    monkeypatch.setattr(parser, "MAX_TOTAL_BYTES", 100)
+    monkeypatch.setattr(parser, "MAX_FILES", 1)
+    parsed = parse_import("obsidian", [("Vault/A.md", b"# A"), ("Vault/assets/image.png", b"x")])
+    assert (
+        next(item["error"] for item in parsed if "error" in item)
+        == "import size/count limit exceeded"
+    )

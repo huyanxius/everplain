@@ -60,3 +60,18 @@ it('uses knowledge and question tabs without unmounting drafts or hiding selecte
   expect(screen.getByRole('tab', { name: '结合本库提问' })).toHaveFocus()
   expect(screen.getByRole('textbox', { name: '研究草稿' })).toHaveValue('保留这段草稿')
 })
+
+it('retains original note text and exposes only owner-authenticated local attachments', () => {
+  const safeUrl = '/api/imports/assets/doc-1/attachments/image-1'
+  const privateSource: SharedSource = { ...source, attachments: [
+    { id: 'image-1', filename: 'photo.png', relativePath: 'Vault/assets/photo.png', mediaType: 'image/png', sizeBytes: 1234, references: ['assets/photo.png'], url: safeUrl },
+    { id: 'bad', filename: 'external.png', relativePath: 'external.png', mediaType: 'image/png', sizeBytes: 1234, references: [], url: 'https://example.org/private-data' },
+  ] }
+  render(<ReadOnlyMaterialReader source={privateSource} onBack={() => {}} />)
+  expect(screen.getByRole('link', { name: 'photo.png' })).toHaveAttribute('href', safeUrl)
+  expect(screen.getByRole('link', { name: 'photo.png' })).toHaveAttribute('download', 'photo.png')
+  expect(screen.queryByRole('link', { name: 'external.png' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByText('预览图片'))
+  expect(screen.getByRole('img', { name: 'photo.png' })).toHaveAttribute('src', safeUrl)
+  expect(screen.getByText('课堂原文 0')).toBeVisible()
+})

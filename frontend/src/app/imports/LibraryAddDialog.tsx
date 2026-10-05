@@ -2,21 +2,23 @@ import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { ArrowClockwiseIcon, ArrowRightIcon, BooksIcon, CheckCircleIcon, FileTextIcon, PuzzlePieceIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
-import { importBilibili, importFiles, readImportBatches, retryImport, type ImportSourceType } from '../../modules/knowledge-import'
+import { importBilibili, importFiles, readImportBatches, retryImport, prepareNoteFolderFiles, isNoteFolderFile, isNoteFolderPath, type ImportSourceType } from '../../modules/knowledge-import'
 import { createCourse, getCourse, readKnowledgeStorage, uploadCourseDocument, type SharedCourse, type SharedDocument } from '../../modules/shared-knowledge'
 import { useAnimatedDismiss } from '../../ui/usePresence'
 import { AgentLoading } from '../ui/AgentLoading'
 import { ExtensionInstallGuide } from './ExtensionInstallGuide'
 import { ExtensionDownloadDialog } from './ExtensionDownloadDialog'
+import { NoteFolderPicker } from './NoteFolderPicker'
+import { ImportAttachments } from './ImportAttachments'
 import chromeLogo from '../../assets/brand/chrome.svg'
 import { libraryImportSources as sources, type ImportSourceDescriptor as Source } from './importSources'
 import './library-add-dialog.css'
 
 const importFileLimit = 16 * 1024 * 1024
 const importBatchLimit = 64 * 1024 * 1024
-const itemStatus = { imported: '已入库', duplicate: '已存在', queued: '等待处理', running: '正在处理', failed: '失败' }
+const itemStatus = { imported: '已入库', updated: '已更新', duplicate: '已存在', queued: '等待处理', running: '正在处理', failed: '失败' }
 type QueueEntry = { id: string; file: File; libraryId: string; state: 'queued' | 'uploading' | 'done' | 'failed'; error?: string; document?: SharedDocument }
-export type LibraryAddDialogProps = { userId: string | null; libraries: SharedCourse[]; initialLibraryId?: string; initialSource?: string; onClose(): void; onChanged(): void }
+export type LibraryAddDialogProps = { userId: string | null; libraries: SharedCourse[]; initialLibraryId?: string; initialSource?: string; initialBatchId?: string; onClose(): void; onChanged(): void }
 function size(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   const unit = bytes >= 1024 ** 3 ? 1024 ** 3 : bytes >= 1024 ** 2 ? 1024 ** 2 : 1024
@@ -30,7 +32,7 @@ function accepts(source: Source, file: File) {
 /** Keep account changes from retaining filenames, queue state, or an in-flight continuation. */
 export function LibraryAddDialog(props: LibraryAddDialogProps) { return <LibraryAddDialogContent key={props.userId ?? 'signed-out'} {...props} /> }
 
-function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialSource = 'extension', onClose, onChanged }: LibraryAddDialogProps) {
+function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialSource = 'extension', initialBatchId, onClose, onChanged }: LibraryAddDialogProps) {
   const [selected, setSelected] = useState(sources.some(source => source.id === initialSource) || initialSource === 'records' ? initialSource : 'extension')
   const [created, setCreated] = useState<SharedCourse | null>(null)
   const owned = libraries.filter(library => library.access === 'owner')
@@ -39,6 +41,7 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
   const targetLibrary = destinations.find(library => library.id === target) ?? destinations[0]
   const [uid, setUid] = useState('')
   const [busy, setBusy] = useState(false)
+  const [readingFolder, setReadingFolder] = useState(false)
   const busyRef = useRef(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -49,7 +52,6 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
   const extensionDownloadButton = useRef<HTMLButtonElement>(null)
   const boundary = useRef<HTMLDialogElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
-  const folderInput = useRef<HTMLInputElement>(null)
   const guideButton = useRef<HTMLButtonElement>(null)
   const alive = useRef(true)
   const changed = useRef(onChanged)
@@ -60,6 +62,13 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
     refetchInterval: query => query.state.data?.some(batch => batch.status === 'processing') ? 1500 : false })
   const batchVersion = batches.data?.map(batch => `${batch.id}:${batch.status}:${batch.finished}:${batch.failed}`).join('|')
   const previousVersion = useRef<string | undefined>(undefined)
+  const focusedReceipt = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (initialBatchId && focusedReceipt.current !== initialBatchId && batches.data?.some(batch => batch.id === initialBatchId)) {
+      document.getElementById(`library-import-${initialBatchId}`)?.scrollIntoView?.({ block: 'nearest' })
+      focusedReceipt.current = initialBatchId
+    }
+  }, [initialBatchId, batches.data])
   useEffect(() => {
     if (batchVersion !== undefined && previousVersion.current !== undefined && previousVersion.current !== batchVersion) changed.current()
     previousVersion.current = batchVersion
@@ -142,10 +151,14 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
     if (!files.length || busyRef.current || !source || source.id === 'bilibili') return
     if (source.id === 'file') { await uploadDocuments(files); return }
     const selectedSource = source
+    if (selectedSource.id === 'obsidian' && files.some(file => file.webkitRelativePath || file.name.includes('/'))) {
+      try { files = prepareNoteFolderFiles(files).files } catch (failure) { setError(errorMessage(failure)); return }
+    }
+    const isFolder = selectedSource.id === 'obsidian' && files.some(file => file.webkitRelativePath || file.name.includes('/'))
     await run(async () => {
       const limits = await currentQuota()
       if (limits.used_bytes >= limits.max_bytes) throw new Error('存储空间已满，请先整理资料。')
-      if (files.some(file => !(selectedSource.id === 'obsidian' && file.webkitRelativePath) && !accepts(selectedSource, file))) throw new Error(`请选择${selectedSource.formats}文件。`)
+      if (files.some(file => !isFolder && !accepts(selectedSource, file))) throw new Error(`请选择${selectedSource.formats}文件。`)
       if (files.some(file => file.size > importFileLimit)) throw new Error('单个导入文件最多 16 MB，请缩小文件后重试。')
       if (files.reduce((total, file) => total + file.size, 0) > importBatchLimit) throw new Error('每批导入文件最多 64 MB，请分批导入。')
       // Do not forward the file destination. knowledge_import owns its default 我的资料 library.
@@ -174,11 +187,15 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
     // Folder selection preserves webkitRelativePath; dropped folders are resolved before submission.
     const entries = selected === 'obsidian' ? Array.from(event.dataTransfer.items ?? []).map(item => item.webkitGetAsEntry?.()).filter((entry): entry is FileSystemEntry => !!entry) : []
     if (!entries.some(entry => entry.isDirectory)) { await upload(files); return }
-    busyRef.current = true; setBusy(true); setError(''); setNotice('正在读取文件夹…')
+    busyRef.current = true; setBusy(true); setReadingFolder(true); setError(''); setNotice('正在读取文件夹…')
     let dropped: File[] | undefined
-    try { dropped = (await Promise.all(entries.map(entry => readDroppedEntry(entry)))).flat() }
+    try {
+      const budget = { files: 0, bytes: 0 }
+      dropped = []
+      for (const entry of entries) dropped.push(...await readDroppedEntry(entry, '', budget))
+    }
     catch (caught) { if (alive.current) setError(errorMessage(caught)) }
-    finally { busyRef.current = false; if (alive.current) { setBusy(false); setNotice('') } }
+    finally { busyRef.current = false; if (alive.current) { setBusy(false); setReadingFolder(false); setNotice('') } }
     if (alive.current && dropped) await upload(dropped)
   }
   const sourceButton = (item: Source) => <button type="button" key={item.id} className="qx-item" aria-current={selected === item.id ? 'true' : undefined} disabled={busy} onClick={() => select(item.id)}>{item.logo ? <img className="ep-library-add__logo" src={item.logo} alt="" /> : <item.icon aria-hidden />}<span>{item.title}</span></button>
@@ -198,17 +215,18 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
           {error && <p role="alert" className="qx-notice qx-notice--danger">{error}</p>}
           {notice && <p role="status" className="qx-notice">{notice}</p>}
           {source ? <>
+            {source.id === 'obsidian' && <NoteFolderPicker disabled={unavailable} onFiles={files => upload(files)} onBusy={value => { busyRef.current = value; setBusy(value); setReadingFolder(value) }} onError={setError} />}
             <div className="ep-library-ferry" data-over={over} data-disabled={unavailable} role={source.id === 'bilibili' ? undefined : 'button'} tabIndex={source.id === 'bilibili' || unavailable ? undefined : 0} aria-disabled={source.id === 'bilibili' ? undefined : unavailable} aria-label={source.id === 'bilibili' ? undefined : `选择${source.formats}，放进「${destinationName}」`}
               onClick={() => { if (!unavailable && source.id !== 'bilibili') fileInput.current?.click() }} onKeyDown={event => { if ((event.key === 'Enter' || event.key === ' ') && source.id !== 'bilibili') { event.preventDefault(); if (!unavailable) fileInput.current?.click() } }}
               onDragEnter={event => { event.preventDefault(); if (!unavailable && source.id !== 'bilibili') setOver(true) }} onDragOver={event => event.preventDefault()} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(false) }} onDrop={event => { if (source.id !== 'bilibili') void drop(event); else event.preventDefault() }}>
               <div className="ep-library-ferry__pile" aria-hidden="true"><span className="ep-library-ferry__sheet" /><span className="ep-library-ferry__sheet" /><span className="ep-library-ferry__sheet ep-library-ferry__sheet--top"><source.icon size={28} /><span>{source.id === 'file' && queue.length ? queue[queue.length - 1].file.name : source.formats}</span></span></div>
               <span className="ep-library-ferry__path" aria-hidden="true"><ArrowRightIcon size={22} /></span>
               <div className="ep-library-ferry__library" aria-hidden="true"><BooksIcon size={28} /><strong>{destinationName}</strong><span className="qx-meta">Everplain 知识库</span></div>
-              <p className="ep-library-ferry__cta">{source.id === 'bilibili' ? <span className="qx-meta">读取公开收藏夹里的视频，转成可检索的笔记</span> : <><strong>{busy ? '正在上传…' : over ? '松手就放进来' : '把文件拖到这里'}</strong><span className="qx-meta">或点击选择 · {source.formats}</span></>}</p>
+              <p className="ep-library-ferry__cta">{source.id === 'bilibili' ? <span className="qx-meta">读取公开收藏夹里的视频，转成可检索的笔记</span> : <><strong>{readingFolder ? '正在读取文件夹…' : busy ? '正在上传…' : over ? '松手就放进来' : '把文件拖到这里'}</strong><span className="qx-meta">或点击选择 · {source.formats}</span></>}</p>
             </div>
             {source.id !== 'bilibili' && <input ref={fileInput} className="ep-library-add__file-input" type="file" tabIndex={-1} aria-label="选择文件" multiple accept={source.accept} disabled={unavailable} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void upload(files) }} />}
             {source.id === 'bilibili' && <form className="ep-library-add__uid" onSubmit={event => { event.preventDefault(); void favorites() }}><input className="qx-input" aria-label="公开账户 UID" inputMode="numeric" pattern="[0-9]{1,20}" required maxLength={20} placeholder="公开账户 UID，例如 123456" disabled={busy} value={uid} onChange={event => setUid(event.target.value)} /><button type="submit" className="qx-btn qx-btn--primary" disabled={unavailable}>{busy ? '正在读取…' : '读取公开收藏'}</button></form>}
-            <div className="ep-library-add__row"><ol className="ep-library-add__steps">{source.steps.map(step => <li key={step}>{step}</li>)}</ol><div className="ep-library-add__destination">{source.id === 'file' ? destinations.length ? <label>放进<select className="qx-input" aria-label="放进哪个知识库" value={targetLibrary?.id ?? ''} disabled={busy} onChange={event => setTarget(event.target.value)}>{destinations.map(library => <option value={library.id} key={library.id}>{library.name || '未命名知识库'}</option>)}</select></label> : <p className="qx-meta">上传时将创建「我的资料」知识库</p> : <p className="qx-meta">统一放进「我的资料」，重复的自动跳过。</p>}{source.id === 'obsidian' && <><button type="button" className="qx-btn qx-btn--secondary" disabled={unavailable} onClick={() => folderInput.current?.click()}>选择整个文件夹</button><input ref={folderInput} className="ep-library-add__file-input" tabIndex={-1} type="file" multiple {...{ webkitdirectory: '' }} aria-label="选择整个文件夹" disabled={unavailable} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; void upload(files) }} /></>}</div></div>
+            <div className="ep-library-add__row"><ol className="ep-library-add__steps">{source.steps.map(step => <li key={step}>{step}</li>)}</ol><div className="ep-library-add__destination">{source.id === 'file' ? destinations.length ? <label>放进<select className="qx-input" aria-label="放进哪个知识库" value={targetLibrary?.id ?? ''} disabled={busy} onChange={event => setTarget(event.target.value)}>{destinations.map(library => <option value={library.id} key={library.id}>{library.name || '未命名知识库'}</option>)}</select></label> : <p className="qx-meta">上传时将创建「我的资料」知识库</p> : <p className="qx-meta">统一放进「我的资料」，相同内容自动跳过，有变化的资料会更新。</p>}</div></div>
             {source.id === 'file' && queue.length > 0 && <ul className="ep-library-upload-queue" aria-label="上传队列">{queue.map(entry => <li key={entry.id} data-state={entry.state}><span className="ep-library-upload-queue__name">{entry.file.name}<small>{size(entry.file.size)}{entry.error ? ` · ${entry.error}` : ''}</small></span>{entry.state === 'uploading' && <progress aria-label={`${entry.file.name} 上传中`} />}<span className="ep-library-upload-queue__state">{entry.state === 'done' ? <><CheckCircleIcon aria-hidden />已上传</> : entry.state === 'uploading' ? '上传中' : entry.state === 'failed' ? <><WarningCircleIcon aria-hidden />失败</> : '排队中'}</span>{entry.state === 'failed' && <button type="button" className="qx-btn qx-btn--ghost" disabled={busy} onClick={() => void uploadDocuments([entry.file], entry)}>{entry.document ? '重新上传' : '重试上传'}</button>}{entry.document && <Link className="qx-btn qx-btn--ghost" aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} onClick={event => { if (busyRef.current) event.preventDefault() }} to={`/library?kb_id=${encodeURIComponent(entry.libraryId)}${entry.document.status === 'ready' ? `&document_id=${encodeURIComponent(entry.document.id)}` : ''}`}>{entry.document.status === 'ready' ? '打开' : '查看处理状态'}</Link>}</li>)}</ul>}
             {source.id === 'file' ? <p className="qx-meta">{quota ? `单份不超过 ${size(quota.max_file_bytes)}，每个知识库最多 ${quota.max_documents_per_library} 份。` : '正在读取上传限制。'}{source.note}</p> : <p className="qx-meta">{source.id !== 'bilibili' && '单个文件最多 16 MB，每批最多 64 MB。'}{source.note}</p>}
             {full && <p role="alert" className="qx-notice">{targetLibrary ? '当前知识库已满，请选择其他知识库。' : '知识库数量已达上限，请先整理已有知识库。'}</p>}
@@ -225,7 +243,7 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
             <header className="ep-library-add__head ep-library-add__head--row"><h3 className="qx-heading">导入记录</h3><button type="button" className="qx-btn qx-btn--ghost" disabled={busy || batches.isFetching || !userId} onClick={() => void refresh()}><ArrowClockwiseIcon size={16} />刷新</button></header>
             {batches.isPending && userId && <AgentLoading message="正在读取记录…" />}{batches.isError && <p role="alert" className="qx-notice qx-notice--danger">{errorMessage(batches.error)}</p>}{batches.data?.length === 0 && <p className="qx-meta">还没有导入记录。</p>}
             {processing > 0 && <AgentLoading compact state="work" message="正在整理导入的资料…" />}
-            <ul className="ep-library-add__batches">{batches.data?.map(batch => <li key={batch.id}><section className="ep-library-add__batch"><header>{batch.status === 'processing' ? <ArrowClockwiseIcon aria-hidden /> : batch.failed ? <WarningCircleIcon aria-hidden /> : <CheckCircleIcon aria-hidden />}<strong>{sources.find(item => item.id === batch.source_type)?.title ?? batch.source_type}</strong><span className="qx-meta">{batch.finished} / {batch.total}</span><Link className="qx-btn qx-btn--ghost" aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} onClick={event => { if (busyRef.current) event.preventDefault() }} to={`/library?kb_id=${encodeURIComponent(batch.library_id)}`}>打开资料库<ArrowRightIcon size={14} /></Link></header><progress aria-label="导入进度" value={batch.finished} max={Math.max(batch.total, 1)} /><p className="qx-meta">{batch.imported} 条已入库 · {batch.duplicates} 条重复{batch.failed ? ` · ${batch.failed} 条待重试` : ''}</p><details><summary>查看条目</summary><ul className="ep-library-add__items">{batch.items.map(item => <li key={item.id} data-failed={item.status === 'failed'}><span>{item.title}<small>{item.error ?? itemStatus[item.status]}</small></span>{item.status === 'failed' && <button type="button" className="qx-btn qx-btn--ghost" disabled={busy} onClick={() => void retry(batch.id, item.id)}>重试</button>}</li>)}</ul></details></section></li>)}</ul>
+            <ul className="ep-library-add__batches">{batches.data?.map(batch => <li key={batch.id} id={`library-import-${batch.id}`}><section className="ep-library-add__batch" data-current={initialBatchId === batch.id}><header>{batch.status === 'processing' ? <ArrowClockwiseIcon aria-hidden /> : batch.failed ? <WarningCircleIcon aria-hidden /> : <CheckCircleIcon aria-hidden />}<strong>{sources.find(item => item.id === batch.source_type)?.title ?? batch.source_type}</strong><span className="qx-meta">{batch.finished} / {batch.total}</span><Link className="qx-btn qx-btn--ghost" aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} onClick={event => { if (busyRef.current) event.preventDefault() }} to={`/library?kb_id=${encodeURIComponent(batch.library_id)}`}>打开资料库<ArrowRightIcon size={14} /></Link></header><progress aria-label="导入进度" value={batch.finished} max={Math.max(batch.total, 1)} /><p className="qx-meta">{batch.imported} 条已入库 · {batch.duplicates} 条重复{batch.updated ? ` · ${batch.updated} 条已更新` : ''}{batch.attachment_count ? ` · ${batch.attachment_count} 个附件` : ''}{batch.failed ? ` · ${batch.failed} 条待重试` : ''}</p><details><summary>查看条目</summary><ul className="ep-library-add__items">{batch.items.map(item => <li key={item.id} data-failed={item.status === 'failed'}><span>{item.title}<small>{item.error ?? itemStatus[item.status]}</small><ImportAttachments item={item} /></span>{item.status === 'failed' && <button type="button" className="qx-btn qx-btn--ghost" disabled={busy} onClick={() => void retry(batch.id, item.id)}>重试</button>}</li>)}</ul></details></section></li>)}</ul>
           </>}
         </section>
       </div>
@@ -234,10 +252,14 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
   </dialog>
 }
 
-async function readDroppedEntry(entry: FileSystemEntry, parent = ''): Promise<File[]> {
+async function readDroppedEntry(entry: FileSystemEntry, parent = '', budget = { files: 0, bytes: 0 }): Promise<File[]> {
   const path = `${parent}${entry.name}`
+  if (!isNoteFolderPath(path)) return []
   if (entry.isFile) {
+    if (!isNoteFolderFile(path)) return []
     const file = await new Promise<File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject))
+    budget.files += 1; budget.bytes += file.size
+    if (file.size > importFileLimit || budget.files > 2000 || budget.bytes > importBatchLimit) throw new Error('文件夹超过单文件 16 MB、每批 64 MB 或 2000 个文件的限制。')
     Object.defineProperty(file, 'webkitRelativePath', { value: path, configurable: true })
     return [file]
   }
@@ -248,5 +270,7 @@ async function readDroppedEntry(entry: FileSystemEntry, parent = ''): Promise<Fi
     if (!batch.length) break
     children.push(...batch)
   }
-  return (await Promise.all(children.map(child => readDroppedEntry(child, `${path}/`)))).flat()
+  const files: File[] = []
+  for (const child of children) files.push(...await readDroppedEntry(child, `${path}/`, budget))
+  return files
 }

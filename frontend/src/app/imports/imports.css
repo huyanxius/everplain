@@ -20,6 +20,7 @@
 .ep-import__history > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--qx-space-3); }
 .ep-import__batches, .ep-import__items { display: grid; gap: var(--qx-space-2); padding: 0; margin: 0; list-style: none; }
 .ep-import__batch { display: grid; gap: var(--qx-space-2); border-radius: var(--qx-radius-item); background: var(--qx-color-surface-muted); padding: var(--qx-space-3); }
+.ep-import__batch[data-current='true'] { box-shadow: var(--qx-shadow-ring); }
 .ep-import__batch > header { display: flex; align-items: center; gap: var(--qx-space-3); min-height: 44px; }
 .ep-import__batch > header > strong { flex: 1; font-size: var(--qx-text-control); font-weight: 500; }
 .ep-import__batch > p { margin: 0; }

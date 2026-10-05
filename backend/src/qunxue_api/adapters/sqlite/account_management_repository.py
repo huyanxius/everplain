@@ -655,6 +655,7 @@ class SqliteAccountRepository:
             audit.user_agent = None
         # Library foreign keys predate account lifecycle support and do not cascade.
         # Delete links before their owned parents; no other user's files are selected.
+        from qunxue_api.adapters.sqlite.knowledge_import import ImportBatchRow, ImportSourceRow
         from qunxue_api.adapters.sqlite.shared_knowledge import (
             CourseProfileRow,
             SharedDocumentRow,
@@ -662,6 +663,12 @@ class SqliteAccountRepository:
             SharedKnowledgeDocumentRow,
             SharedKnowledgeSubscriptionRow,
         )
+
+        # Import source identities point at documents and batches at libraries.
+        # Erase only this owner's import records before either parent. Item and
+        # attachment bytes cascade from the owned batches.
+        self._db.execute(delete(ImportSourceRow).where(ImportSourceRow.user_id == user_key))
+        self._db.execute(delete(ImportBatchRow).where(ImportBatchRow.user_id == user_key))
 
         owned_libraries = select(SharedKnowledgeBaseRow.id).where(
             SharedKnowledgeBaseRow.owner_user_id == user_key

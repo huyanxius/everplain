@@ -36,6 +36,7 @@ export interface SharedSource {
   document: SharedDocument
   knowledgeBaseId: string
   knowledgeBaseName: string
+  attachments?: Array<{ id: string; filename: string; relativePath: string; mediaType: string; sizeBytes: number; references: string[]; url: string | null }>
   segments: Array<{
     id: string
     parseId: string

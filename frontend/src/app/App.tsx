@@ -1,6 +1,7 @@
 import { WritingHomePage } from './writing/WritingHomePage'
 import { WritingDocumentPage } from './writing/WritingDocumentPage'
 import { CoursesPage } from './courses/CoursesPage'
+import { ImportsRedirect } from './imports/ImportsRedirect'
 import {
   BrowserRouter,
   Navigate,
@@ -264,7 +265,7 @@ export function AppRoutes({
       <Route path="/shared/:libraryId" element={protectedRoute(<LibrarySharedPage />)} />
       <Route path="/discover" element={<PublicDirectoryPage />} />
       <Route path="/discover/:libraryId" element={<SharedReaderPage publicView />} />
-      <Route path="/imports" element={protectedRoute(<Navigate replace to="/library?add=extension" />)} />
+      <Route path="/imports" element={protectedRoute(<ImportsRedirect />)} />
       <Route path="/my/graph" element={protectedRoute(<LibraryGraphPage userId={authenticatedUserId} />)} />
       <Route path="/app" element={protectedRoute(<AppHomePage />)} />
       <Route path="/agent" element={protectedRoute(<ResearchAgentPage userId={authenticatedUserId} introSessionId={authenticatedSessionId} entryNavigationType={entryNavigationType} />)} />
