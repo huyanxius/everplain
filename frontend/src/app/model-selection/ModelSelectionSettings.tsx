@@ -73,7 +73,7 @@ export function ModelSelectionSettings({ state, disabled, activeRequest }: {
       menu.style.top = `${upwards ? Math.max(top, rect.top - Math.min(menu.scrollHeight, above, 400) - 8) : rect.bottom + 8}px`
     }
     place()
-    const firstControl = menu.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]:not(:disabled)') ?? menu.querySelector<HTMLElement>('button:not(:disabled)') ?? menu
+    const firstControl = menu.querySelector<HTMLElement>('[data-model-summary]:not(:disabled)') ?? menu.querySelector<HTMLElement>('button:not(:disabled)') ?? menu
     firstControl.focus()
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place)
     observer?.observe(menu)
@@ -98,7 +98,7 @@ export function ModelSelectionSettings({ state, disabled, activeRequest }: {
         : <span>{summary}</span>}<CaretDownIcon size={12} aria-hidden="true" /></button>
     {motion.present && <div ref={panel} id={id} className="qx-menu model-selection-settings__popover" data-motion-surface="popover" {...motion.props} popover="manual" role="dialog" tabIndex={-1} aria-label={text('选择模型与思考强度', 'Choose model and reasoning effort')}>
     {state.status === 'ready' && selection && supported ? <>
-      <ModelSelectionControl className="model-selection--compact" catalog={state.catalog} value={selection} onChange={value => { if (!disabled) state.onChange(value) }} disabled={disabled} />
+      <ModelSelectionControl className="model-selection--compact" catalog={state.catalog} value={selection} active={open} onChange={value => { if (!disabled) state.onChange(value) }} disabled={disabled} />
       {state.runtimeMode === 'mock' && <p className="qx-meta">{text('当前是隔离测试模型。', 'This is the isolated test runtime.')}</p>}
     </> : <p className="qx-meta" role="status">{activeUsesDefault
       ? text('本轮沿用服务端默认设置，结束后可调整。', 'This turn uses server defaults. You can change this after it finishes.')
