@@ -46,6 +46,16 @@ describe('server-owned conversation context adapter', () => {
     expect(await getConversationContextSummary(controller.signal)).toEqual(summary)
     expect(get).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ url: '/api/agent/context-summary', credentials: 'include', signal: controller.signal, cache: 'no-store' }))
   })
+  it.each([
+    { status: 'pending', is_stale: true, usage_status: 'pending' },
+    { status: 'failed', status_reason: 'daily_budget', is_stale: true, usage_status: 'known' },
+    { status: 'ready', is_stale: false, usage_status: 'pending' },
+    { status: 'ready', usage_status: null },
+  ])('accepts actual cached content independently of freshness and usage metadata: %o', async metadata => {
+    const payload = { ...summary, ...metadata }
+    get.mockResolvedValue({ data: payload })
+    expect(await getConversationContextSummary()).toEqual(payload)
+  })
   it.each([{ items: [] }, { ...summary, scope: 'assistant_messages' }, { ...summary, cards: [{ ...summary.cards[0], sources: [] }] }])('does not invent cards for an invalid cached response', async payload => {
     get.mockResolvedValue({ data: payload })
     await expect(getConversationContextSummary()).rejects.toThrow('最近对话建议暂时不可用')
@@ -53,6 +63,10 @@ describe('server-owned conversation context adapter', () => {
   it('exposes an honest read failure instead of falling back to a template', async () => {
     get.mockResolvedValue({ error: { detail: 'unavailable' }, response: new Response(null, { status: 503 }) })
     await expect(getConversationContextSummary()).rejects.toThrow('无法读取最近对话建议')
+  })
+  it.each([{ is_stale: 'true' }, { is_stale: null }, { usage_status: 'unknown' }, { usage_status: 1 }])('rejects malformed freshness/usage metadata: %o', async metadata => {
+    get.mockResolvedValue({ data: { ...summary, ...metadata } })
+    await expect(getConversationContextSummary()).rejects.toThrow('最近对话建议暂时不可用')
   })
 })
 
