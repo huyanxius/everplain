@@ -118,7 +118,8 @@ function ProfilePanel({ controller: c }: PanelProps) {
           </div>
         </form> : <div className="ep-settings-inline"><span>{name}</span><button className="qx-btn qx-btn--secondary" type="button" aria-label={c.text('修改显示名称', 'Edit display name')} onClick={() => c.setEditingName(true)}>{c.text('修改', 'Edit')}</button></div>}
       </SettingRow>
-      <SettingRow label={c.text('邮箱', 'Email')}><span>{account.email}</span><small className="qx-meta">{c.text('变更请联系管理员', 'Contact an administrator to change')}</small></SettingRow>
+      {account.loginMode === 'federated' ? <SettingRow label={c.text('登录方式', 'Sign-in method')}><span>{c.text('第三方账户', 'Provider account')}</span></SettingRow> : null}
+      {account.email ? <SettingRow label={c.text('邮箱', 'Email')}><span>{account.email}</span><small className="qx-meta">{c.text('变更请联系管理员', 'Contact an administrator to change')}</small></SettingRow> : null}
     </div>
     <dl className="ep-settings-profile__metadata">
       <div><dt>{c.text('账户类型', 'Account type')}</dt><dd>{account.role === 'admin' ? c.text('管理员', 'Administrator') : c.text('个人账户', 'Personal account')}</dd></div>
@@ -193,14 +194,13 @@ function CreditsPanel({ controller: c }: PanelProps) {
 function SecurityPanel({ controller: c, onOAuthNavigate, oauthError }: PanelProps & { onOAuthNavigate?(url: string): void; oauthError?: string | null }) {
   const fields = [['current', '当前密码', 'Current password'], ['next', '新密码', 'New password'], ['confirmation', '确认新密码', 'Confirm new password']] as const
   return <div className="ep-settings-fields">
-    <form onSubmit={c.changePassword} noValidate>
+    {c.state.account.loginMode === 'federated' ? <p className="qx-meta">{c.text('此账户使用已绑定的 Google 或 GitHub 登录，没有本地邮箱和密码。第三方邮箱不会启用邮箱登录或密码重设。', 'This account signs in with a linked Google or GitHub identity and has no local email or password. A provider email does not enable email sign-in or password reset.')}</p> : <form onSubmit={c.changePassword} noValidate>
       <fieldset className="ep-settings-password"><legend className="qx-heading">{c.text('登录密码', 'Sign-in password')}</legend>
-        <p className="qx-meta">{c.text('使用第三方注册且还没有本地密码？请联系管理员在核验身份后获取一次性密码重设链接。设置后可使用邮箱和密码登录；重设会撤销所有旧会话。', 'Signed up with Google or GitHub and have no local password? Contact an administrator to verify your identity and obtain a one-time password reset link. You can then sign in with email and password. Resetting signs out all existing sessions.')}</p>
         {fields.map(([key, zh, en]) => <SettingRow key={key} label={c.text(zh, en)}><input className="qx-input" type="password" aria-label={c.text(zh, en)} value={c.password[key]} onChange={event => c.setPassword(current => ({ ...current, [key]: event.target.value }))} autoComplete={key === 'current' ? 'current-password' : 'new-password'} minLength={key === 'current' ? undefined : 12} maxLength={128} required /></SettingRow>)}
       </fieldset>
       <label className="ep-settings-check"><input type="checkbox" checked={c.password.revokeOtherSessions} onChange={event => c.setPassword(current => ({ ...current, revokeOtherSessions: event.target.checked }))} /><span>{c.text('撤销其他设备的会话', 'Sign out other devices')}<small className="qx-meta">{c.text('当前设备不会退出。', 'Your current device stays signed in.')}</small></span></label>
       <div className="ep-settings-actions"><button className="qx-btn qx-btn--primary" disabled={c.pending || !c.password.current}>{c.pendingAction === 'password' ? c.text('正在更新…', 'Updating…') : c.text('更新密码', 'Update password')}</button></div>
-    </form>
+    </form>}
     <OAuthCallbackNotice code={oauthError} />
     <OAuthActions returnPath="/settings?section=security" link onNavigate={onOAuthNavigate} />
     <section className="ep-settings-history" aria-label={c.text('活跃会话', 'Active sessions')}>
@@ -229,6 +229,7 @@ function PrivacyPanel({ controller: c }: PanelProps) {
 }
 
 function AccountStatusPanel({ controller: c }: PanelProps) {
+  if (c.state.account.loginMode === 'federated') return <p className="qx-meta">{c.text('停用或注销此账户需要重新验证第三方身份，目前请联系管理员处理。', 'Deactivating or deleting this account requires fresh provider verification. Contact an administrator for now.')}</p>
   if (c.state.account.isProtectedAdmin) return <div className="ep-settings-protection"><h3 className="qx-heading">{c.text('部署管理员保护', 'Deployment admin protection')}</h3><p className="qx-meta">{c.text('此账户不能被降级、停用或删除。仍可更新密码与撤销其他会话。', 'This account cannot be demoted, deactivated, or deleted. You can still update its password and revoke sessions.')}</p></div>
   return <div className="ep-settings-fields">
     <SettingRow label={c.text('停用', 'Deactivate')}><button className="qx-btn qx-btn--secondary" type="button" disabled={c.pending} onClick={event => c.openConfirmation({ kind: 'deactivate' }, event.currentTarget)}>{c.text('停用账户', 'Deactivate account')}</button><p className="qx-meta">{c.text('退出所有设备并暂停访问。研究数据保留，管理员可在核验后恢复账户。', 'Sign out all devices and pause access. Your data is retained; an administrator can restore access.')}</p></SettingRow>
@@ -267,8 +268,8 @@ function SettingsConfirmation({ controller: c }: PanelProps) {
     description = c.text('账户、研究任务、派生文档与个人模型交互记录将被永久删除。删除后无法恢复。', 'Your account, research tasks, derived documents, and personal model interaction records will be permanently deleted. This cannot be undone.')
     confirmLabel = c.text('确认永久删除', 'Permanently delete')
     pendingLabel = c.text('正在删除…', 'Deleting…')
-    disabled = !c.deletion.password || c.deletion.email.trim().toLowerCase() !== c.state.account.email.toLowerCase()
-    children = <div className="ep-settings-confirm-fields"><label className="qx-field"><span>{c.text('账户邮箱', 'Account email')}</span><input className="qx-input" autoComplete="email" placeholder={c.state.account.email} value={c.deletion.email} onChange={event => c.setDeletion(current => ({ ...current, email: event.target.value }))} /></label><label className="qx-field"><span>{c.text('当前密码', 'Current password')}</span><input className="qx-input" type="password" autoComplete="current-password" value={c.deletion.password} onChange={event => c.setDeletion(current => ({ ...current, password: event.target.value }))} /></label></div>
+    disabled = !c.state.account.email || !c.deletion.password || c.deletion.email.trim().toLowerCase() !== c.state.account.email.toLowerCase()
+    children = <div className="ep-settings-confirm-fields"><label className="qx-field"><span>{c.text('账户邮箱', 'Account email')}</span><input className="qx-input" autoComplete="email" placeholder={c.state.account.email ?? undefined} value={c.deletion.email} onChange={event => c.setDeletion(current => ({ ...current, email: event.target.value }))} /></label><label className="qx-field"><span>{c.text('当前密码', 'Current password')}</span><input className="qx-input" type="password" autoComplete="current-password" value={c.deletion.password} onChange={event => c.setDeletion(current => ({ ...current, password: event.target.value }))} /></label></div>
   }
   return <AccountConfirmationDialog title={title} description={description} confirmLabel={confirmLabel} pendingLabel={pendingLabel} cancelLabel={c.text('取消', 'Cancel')} pending={c.pending} confirmDisabled={disabled} tone={action.kind === 'delete' || action.kind === 'deactivate' ? 'danger' : 'default'} error={c.error} triggerRef={c.confirmationTrigger} onCancel={c.cancelConfirmation} onConfirm={c.confirmAction}>{children}</AccountConfirmationDialog>
 }

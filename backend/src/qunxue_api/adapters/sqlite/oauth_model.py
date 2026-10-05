@@ -20,6 +20,7 @@ class FederatedIdentityRow(Base):
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    verified_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
 
 
 class OAuthTransactionRow(Base):

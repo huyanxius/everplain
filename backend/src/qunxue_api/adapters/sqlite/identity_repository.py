@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from qunxue_api.adapters.sqlite import RegistrationVerificationRow, UserRow, UserSessionRow
 from qunxue_api.adapters.sqlite.oauth_model import FederatedIdentityRow
 from qunxue_api.modules.identity import (
+    AccountLoginMode,
     AccountRole,
     AccountStatus,
     EmailAlreadyRegistered,
@@ -48,6 +49,7 @@ class SqliteIdentityRepository(IdentityRepository):
                 subject=identity.subject,
                 user_id=str(identity.user_id),
                 created_at=identity.created_at,
+                verified_email=identity.verified_email,
             )
         )
         self._db_session.flush()
@@ -68,10 +70,13 @@ class SqliteIdentityRepository(IdentityRepository):
             subject=row.subject,
             user_id=UUID(row.user_id),
             created_at=_as_utc(row.created_at),
+            verified_email=row.verified_email,
         )
 
     def get_user_by_email(self, email: str) -> User | None:
-        row = self._db_session.scalar(select(UserRow).where(UserRow.email == email))
+        row = self._db_session.scalar(
+            select(UserRow).where(UserRow.email == email, UserRow.login_mode == "email_password")
+        )
         return self._user(row) if row is not None else None
 
     def add_user(self, user: User) -> User:
@@ -82,6 +87,7 @@ class SqliteIdentityRepository(IdentityRepository):
         row = UserRow(
             user_id=str(user.user_id),
             email=user.email,
+            login_mode=user.login_mode.value,
             password_hash=user.password_hash,
             display_name=user.display_name,
             role=user.role.value,
@@ -235,6 +241,7 @@ class SqliteIdentityRepository(IdentityRepository):
         return User(
             user_id=UUID(row.user_id),
             email=row.email,
+            login_mode=AccountLoginMode(row.login_mode),
             password_hash=row.password_hash,
             display_name=row.display_name,
             created_at=_as_utc(row.created_at),

@@ -124,6 +124,14 @@
         "title": "AccountAuditPageResponse",
         "type": "object"
       },
+      "AccountLoginMode": {
+        "enum": [
+          "email_password",
+          "federated"
+        ],
+        "title": "AccountLoginMode",
+        "type": "string"
+      },
       "AccountPreferencesResponse": {
         "properties": {
           "consent_policy_version": {
@@ -194,8 +202,15 @@
             "title": "Display Name"
           },
           "email": {
-            "title": "Email",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
           },
           "is_protected_admin": {
             "title": "Is Protected Admin",
@@ -212,6 +227,10 @@
               }
             ],
             "title": "Last Login At"
+          },
+          "login_mode": {
+            "$ref": "#/components/schemas/AccountLoginMode",
+            "default": "email_password"
           },
           "preferences": {
             "$ref": "#/components/schemas/AccountPreferencesResponse"
@@ -535,8 +554,15 @@
             "title": "Display Name"
           },
           "email": {
-            "title": "Email",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
           },
           "is_current_user": {
             "title": "Is Current User",
@@ -557,6 +583,10 @@
               }
             ],
             "title": "Last Active At"
+          },
+          "login_mode": {
+            "$ref": "#/components/schemas/AccountLoginMode",
+            "default": "email_password"
           },
           "role": {
             "$ref": "#/components/schemas/AccountRole"
@@ -15463,8 +15493,19 @@
             "title": "Display Name"
           },
           "email": {
-            "title": "Email",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "login_mode": {
+            "$ref": "#/components/schemas/AccountLoginMode",
+            "default": "email_password"
           },
           "user_id": {
             "format": "uuid",

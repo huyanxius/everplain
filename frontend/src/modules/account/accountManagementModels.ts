@@ -13,7 +13,8 @@ export type AccountPreferences = {
 
 export type AccountProfile = {
   userId: string
-  email: string
+  email: string | null
+  loginMode?: 'email_password' | 'federated'
   displayName: string | null
   role: AccountRole
   status: AccountStatus
@@ -105,7 +106,8 @@ export type PersonalDataExport = {
 
 export type AdminUser = {
   userId: string
-  email: string
+  email: string | null
+  loginMode?: 'email_password' | 'federated'
   displayName: string | null
   role: AccountRole
   status: AccountStatus
