@@ -23,6 +23,7 @@ class CreditAccountRow(Base):
         primary_key=True,
     )
     balance: Mapped[int] = mapped_column(Integer, nullable=False)
+    quota_period_epoch: Mapped[int | None] = mapped_column(Integer, nullable=True)
     active_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     active_run_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -51,6 +52,7 @@ class CreditLedgerRow(Base):
         nullable=False,
     )
     run_id: Mapped[str | None] = mapped_column(String(36), nullable=True, unique=True)
+    quota_period_epoch: Mapped[int | None] = mapped_column(Integer, nullable=True)
     kind: Mapped[str] = mapped_column(String(24), nullable=False)
     points: Mapped[int] = mapped_column(Integer, nullable=False)
     balance_after: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -95,3 +97,39 @@ class CreditRedemptionCodeRow(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+
+
+class CreditQuotaPeriodRow(Base):
+    __tablename__ = "credit_quota_periods"
+    __table_args__ = (
+        CheckConstraint(
+            "balance >= 0 AND limit_points > 0 AND epoch >= 0", name="ck_credit_quota_period_values"
+        ),
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="CASCADE"), primary_key=True
+    )
+    epoch: Mapped[int] = mapped_column(Integer, primary_key=True)
+    plan_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    limit_points: Mapped[int] = mapped_column(Integer, nullable=False)
+    started_at: Mapped[str] = mapped_column(String, nullable=False)
+    expires_at: Mapped[str] = mapped_column(String, nullable=False)
+    balance: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_credit_pico: Mapped[str] = mapped_column(String, nullable=False)
+    closed_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    reason: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class BillingPrecisionAdjustmentRow(Base):
+    __tablename__ = "billing_precision_adjustments"
+    reset_id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
+    reason: Mapped[str] = mapped_column(String, nullable=False)
+    before_precision: Mapped[str] = mapped_column(String, nullable=False)
+    delta_precision: Mapped[str] = mapped_column(String, nullable=False)
+    after_precision: Mapped[str] = mapped_column(String, nullable=False)
+    before_balance: Mapped[int] = mapped_column(Integer, nullable=False)
+    delta_points: Mapped[int] = mapped_column(Integer, nullable=False)
+    after_balance: Mapped[int] = mapped_column(Integer, nullable=False)
+    closed_operation_ids: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[str] = mapped_column(String, nullable=False)

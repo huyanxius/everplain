@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal, cast
+from typing import Annotated, Literal, cast
 from urllib.parse import parse_qs, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
@@ -109,9 +109,7 @@ class AgentSelectableModelSettings(BaseModel):
     label: str = Field(min_length=1, max_length=120)
     provider: str = Field(min_length=1, max_length=80)
     model: str = Field(min_length=1, max_length=120)
-    reasoning_efforts: tuple[
-        Literal["none", "low", "medium", "high", "xhigh", "max"], ...
-    ] = ()
+    reasoning_efforts: tuple[Literal["none", "low", "medium", "high", "xhigh", "max"], ...] = ()
     default_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] | None = None
     capabilities: tuple[Literal["chat", "tools", "vision", "reasoning"], ...] = ("chat",)
 
@@ -156,8 +154,11 @@ class ModelTariffSettings(BaseModel):
         if (self.long_threshold is None) != (self.long_rates is None):
             raise ValueError("long-context threshold and all four long rates must be paired")
         if self.long_rates is not None and (
-            any(type(rate) is not int or not 0 <= rate <= 1_000_000_000_000
-                for rate in self.long_rates) or not any(self.long_rates)
+            any(
+                type(rate) is not int or not 0 <= rate <= 1_000_000_000_000
+                for rate in self.long_rates
+            )
+            or not any(self.long_rates)
         ):
             raise ValueError("long-context rates must be exact nonnegative integers")
         return self
@@ -293,6 +294,22 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5196",
         "http://localhost:5196",
     )
+    billing_plan_weekly_points: dict[str, Annotated[int, Field(strict=True, gt=0)]] = Field(
+        default_factory=dict
+    )
+
+    @field_validator("billing_plan_weekly_points")
+    @classmethod
+    def validate_weekly_plan_points(cls, value):
+        if any(
+            not key.strip() or type(points) is not int or points <= 0
+            for key, points in value.items()
+        ):
+            raise ValueError("weekly plan quotas must be positive integer points")
+        if "free" in value and value["free"] != 30:
+            raise ValueError("Free weekly quota is fixed at 30")
+        return value
+
     billing_credits_per_usd: int | None = Field(default=None, gt=0)
     billing_price_version: str | None = None
     billing_model_tariffs: dict[str, ModelTariffSettings] = Field(default_factory=dict)
