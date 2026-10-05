@@ -2278,6 +2278,10 @@ export type ConversationSummaryResponse = {
      */
     omitted_messages: number;
     /**
+     * Retry At
+     */
+    retry_at?: string | null;
+    /**
      * Scope
      */
     scope: 'conversation_messages';
@@ -2285,6 +2289,10 @@ export type ConversationSummaryResponse = {
      * Status
      */
     status: 'ready' | 'pending' | 'empty' | 'disabled' | 'failed';
+    /**
+     * Status Reason
+     */
+    status_reason?: 'queued' | 'active_run' | 'idle_wait' | 'generating' | 'retry_wait' | 'daily_budget' | 'attempt_limit' | 'generation_failed' | 'generator_unavailable' | null;
     /**
      * Summary
      */

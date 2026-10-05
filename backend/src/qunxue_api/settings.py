@@ -278,6 +278,7 @@ class Settings(BaseSettings):
 
     memory_learning_enabled: bool = True
     conversation_summary_enabled: bool = True
+    conversation_summary_idle_seconds: int = Field(default=60, ge=0, le=3600)
     memory_learning_idle_seconds: int = Field(default=600, ge=60)
     memory_learning_daily_calls: int = Field(default=8, ge=0, le=32)
     memory_learning_daily_tokens: int = Field(default=64000, ge=0, le=256000)

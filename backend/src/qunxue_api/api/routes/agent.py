@@ -144,11 +144,17 @@ def list_recent_conversation_context(request: Request, current: CurrentSessionDe
 def read_conversation_summary(request: Request, current: CurrentSessionDependency,
                               response: Response) -> ConversationSummaryResponse:
     response.headers["Cache-Control"] = "private, no-store"
+    worker = request.app.state.context_summary_worker
     with request.app.state.context_summary_scope() as repository:
-        result = repository.read(current.user.user_id)
-    if result["status"] == "pending" and request.app.state.context_summary_worker.generate is None:
+        result = repository.read(
+            current.user.user_id, idle_seconds=worker.idle_seconds,
+            daily_calls=worker.daily_calls, daily_tokens=worker.daily_tokens,
+        )
+    if result["status"] in {"pending", "failed"} and worker.generate is None:
         # No configured background generator means no awaited result can arrive.
         result["status"] = "failed"
+        result["status_reason"] = "generator_unavailable"
+        result["retry_at"] = None
     return ConversationSummaryResponse(**result)
 
 

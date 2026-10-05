@@ -384,3 +384,8 @@ class ConversationSummaryResponse(BaseModel):
     updated_at: datetime | None
     scope: Literal["conversation_messages"]
     omitted_messages: int
+    status_reason: Literal[
+        "queued", "active_run", "idle_wait", "generating", "retry_wait",
+        "daily_budget", "attempt_limit", "generation_failed", "generator_unavailable",
+    ] | None = None
+    retry_at: datetime | None = None
