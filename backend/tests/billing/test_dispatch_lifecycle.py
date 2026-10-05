@@ -9,6 +9,9 @@ from openai import AsyncOpenAI
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import ModelAPIError
 from pydantic_ai.providers.openai import OpenAIProvider
+from sqlalchemy import text
+from test_durable_billing import wallet  # noqa: F401
+
 from qunxue_api.adapters.model.dispatch import DispatchEvidence
 from qunxue_api.adapters.model.metering import (
     MeteredOpenAIChatModel,
@@ -16,8 +19,6 @@ from qunxue_api.adapters.model.metering import (
     OperationScope,
 )
 from qunxue_api.modules.billing import BillingReplayBlocked
-from sqlalchemy import text
-from test_durable_billing import wallet  # noqa: F401
 
 
 def seed(runtime):

@@ -4,10 +4,11 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from qunxue_api.modules.billing import BillingReplayBlocked, UnknownPrice
 from sqlalchemy import event, text
 from sqlalchemy.exc import DatabaseError
 from test_durable_billing import wallet  # noqa: F401
+
+from qunxue_api.modules.billing import BillingReplayBlocked, UnknownPrice
 
 
 def failed_receipt(runtime):
