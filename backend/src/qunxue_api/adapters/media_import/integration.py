@@ -2,16 +2,17 @@
 
 import hashlib
 import mimetypes
+import re
 from dataclasses import asdict
 from html import escape
 
 from qunxue_api.adapters.import_sources import parse_import
 
+from .bilibili import metadata_content
+from .video import validate_video_url
+
 MESSAGES = {
     "vision_not_configured": "尚未配置 Everplain 专用图像模型，请配置后重试",
-    "transcription_not_configured": "此视频没有字幕，尚未配置专用转写服务",
-    "yt_dlp_not_configured": "字幕读取组件尚未安装",
-    "empty_transcript": "视频没有可读取的字幕或转写正文",
 }
 
 
@@ -49,8 +50,8 @@ def discovery_item(uid):
 
 
 class MediaImportGateway:
-    def __init__(self, favorites, video, image):
-        self.favorites, self.video, self.image = favorites, video, image
+    def __init__(self, favorites, image):
+        self.favorites, self.image = favorites, image
 
     def clip(self, url, title, html):
         bookmarks = f'<DL><DT><A HREF="{escape(url, quote=True)}">{escape(title)}</A></DL>'
@@ -73,7 +74,6 @@ class MediaImportGateway:
         result = []
         for item in report.items:
             value = asdict(item)
-            value["content"] = b""
             value["relative_path"] = value["relative_path"] or value["filename"]
             result.append(value)
         for error in report.errors:
@@ -96,6 +96,20 @@ class MediaImportGateway:
         return result
 
     def convert(self, item):
+        if item["source_type"] == "bilibili":
+            url = item.get("source_url") or ""
+            if not validate_video_url(url):
+                raise ValueError("收藏视频链接无效或不可用")
+            metadata = item["details"].get("metadata", {}) | {"text_source": "metadata"}
+            title = item["title"].strip() or url.rstrip("/").rsplit("/", 1)[-1]
+            filename = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", title).strip(" .")[:120]
+            # Rebuild from durable metadata so pre-fix failures with empty content can retry.
+            return {
+                "content": metadata_content(title, url, str(metadata.get("description") or "")),
+                "filename": (filename or "B站视频") + ".md",
+                "media_type": "text/markdown",
+                "metadata": metadata,
+            }
         if item["source_type"] == "image":
             result = self.image.import_image(
                 filename=item["filename"],
@@ -104,7 +118,7 @@ class MediaImportGateway:
                 relative_path=item["relative_path"],
             )
         else:
-            result = self.video.import_video(item["source_url"])
+            raise ValueError("不支持的媒体导入类型")
         if result.error:
             raise ValueError(MESSAGES.get(result.error.code, result.error.message))
         return asdict(result.item)

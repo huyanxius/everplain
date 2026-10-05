@@ -16,7 +16,7 @@ const sources = [
   { id: 'notion', title: 'Notion', description: 'HTML 或 Markdown 导出包', accept: '.zip,.html,.htm,.md', icon: NotebookIcon },
   { id: 'flomo', title: 'flomo', description: '导出的 HTML 笔记文件', accept: '.html,.htm', icon: NotebookIcon },
   { id: 'keep', title: 'Google Keep', description: 'Google Takeout ZIP 或 JSON', accept: '.zip,.json,.html', icon: NotebookIcon },
-  { id: 'bilibili', title: 'B 站公开收藏', description: '输入 UID，先读字幕，再按配置转写', accept: '', icon: PlayCircleIcon },
+  { id: 'bilibili', title: 'B 站公开收藏', description: '输入 UID，保存视频标题与简介', accept: '', icon: PlayCircleIcon },
   { id: 'image', title: '图片与截图', description: '保留图片，提取文字与内容描述', accept: 'image/png,image/jpeg,image/webp,image/gif', icon: ImageIcon },
 ] as const
 
@@ -43,7 +43,7 @@ export function ImportsPage({ userId }: { userId: string | null }) {
   async function favorites() {
     if (busy) return
     setBusy(true); setError(''); setNotice('')
-    try { await importBilibili(uid.trim()); setNotice('已开始读取公开收藏，字幕提取会在后台继续'); await batches.refetch() }
+    try { await importBilibili(uid.trim()); setNotice('已开始读取公开收藏，标题与简介会在后台整理'); await batches.refetch() }
     catch (e) { setError(e instanceof Error ? e.message : '暂时无法读取收藏') }
     finally { setBusy(false) }
   }
@@ -51,7 +51,7 @@ export function ImportsPage({ userId }: { userId: string | null }) {
     <KnowledgePageHead title="导入资料" actions={<Link className="qx-btn qx-btn--ghost" to="/library"><ArrowLeftIcon size={18} />知识库</Link>}><p className="qx-meta">选择来源，保留原文。重复导入会自动去重，失败的条目可以单独再试。</p></KnowledgePageHead>
     <div className="ep-import">
       <section aria-label="添加资料" className="ep-import__create">
-        {selected === 'bilibili' ? <form className="qx-panel ep-import__bilibili" onSubmit={event => { event.preventDefault(); void favorites() }}><PlayCircleIcon size={28} /><h2 className="qx-card__title">B 站公开收藏</h2><label>公开账户 UID<input className="qx-input" value={uid} onChange={event => setUid(event.target.value)} inputMode="numeric" pattern="[0-9]{1,20}" required placeholder="例如：123456" /></label><button className="qx-btn qx-btn--primary" disabled={busy}>{busy ? '正在开始…' : '读取公开收藏'}<ArrowRightIcon size={15} /></button><p className="qx-meta">只读取匿名可见的公开收藏，不需要 Cookie。无字幕的视频需要专用转写服务。</p></form> : <>
+        {selected === 'bilibili' ? <form className="qx-panel ep-import__bilibili" onSubmit={event => { event.preventDefault(); void favorites() }}><PlayCircleIcon size={28} /><h2 className="qx-card__title">B 站公开收藏</h2><label>公开账户 UID<input className="qx-input" value={uid} onChange={event => setUid(event.target.value)} inputMode="numeric" pattern="[0-9]{1,20}" required placeholder="例如：123456" /></label><button className="qx-btn qx-btn--primary" disabled={busy}>{busy ? '正在开始…' : '读取公开收藏'}<ArrowRightIcon size={15} /></button><p className="qx-meta">只读取匿名可见的公开收藏，保存视频标题、简介和来源链接，不需要 Cookie。</p></form> : <>
           <label className="ep-import__dropzone" data-busy={busy} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); void upload(Array.from(event.dataTransfer.files)) }}>
             <FileArrowUpIcon size={28} /><strong>{busy ? '正在上传…' : '拖文件到这里，或点击选择'}</strong><span>{source.title}</span><small>{source.description}</small><input type="file" aria-label="选择文件" multiple accept={source.accept} disabled={busy} onChange={event => { void upload(event.target.files); event.target.value = '' }} />
           </label>

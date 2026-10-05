@@ -130,7 +130,7 @@ it('submits only the entered public UID to Bilibili and preserves background acc
   mount({ initialSource: 'bilibili', initialLibraryId: 'owned' })
   const submit = screen.getByRole('button', { name: '读取公开收藏' }); await waitFor(() => expect(submit).not.toBeDisabled())
   fireEvent.change(screen.getByRole('textbox', { name: '公开账户 UID' }), { target: { value: '123456' } }); fireEvent.click(submit)
-  await screen.findByText('已开始读取公开收藏，字幕提取会在后台继续')
+  await screen.findByText('已开始读取公开收藏，标题与简介会在后台整理')
   expect(importBilibili).toHaveBeenCalledWith('123456')
 })
 

@@ -161,7 +161,7 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
       if (limits.used_bytes >= limits.max_bytes) throw new Error('存储空间已满，请先整理资料。')
       await importBilibili(uid.trim())
       if (!alive.current) return
-      setNotice('已开始读取公开收藏，字幕提取会在后台继续'); changed.current(); await refresh()
+      setNotice('已开始读取公开收藏，标题与简介会在后台整理'); changed.current(); await refresh()
     })
   }
   async function retry(batchId: string, itemId: string) {

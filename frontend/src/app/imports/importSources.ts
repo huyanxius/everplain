@@ -24,7 +24,7 @@ const descriptors: ImportSourceDescriptor[] = [
   { id: 'notion', title: 'Notion', accept: '.zip,.html,.htm,.md', formats: 'HTML 或 Markdown 导出包', icon: NotebookIcon, logo: notionLogo, steps: ['在 Notion 设置里导出全部内容', '格式选择 HTML 或 Markdown', '把下载的导出包拖进来'] },
   { id: 'flomo', title: 'flomo', accept: '.html,.htm', formats: 'HTML', icon: NotebookIcon, logo: flomoLogo, steps: ['在 flomo 里导出全部笔记', '得到 HTML 文件', '把导出的文件拖进来'] },
   { id: 'keep', title: 'Google Keep', accept: '.zip,.json,.html', formats: 'Google Takeout ZIP、JSON 或 HTML', icon: NotebookIcon, logo: keepLogo, steps: ['打开 Google Takeout', '只勾选 Keep 并导出', '把下载的文件拖进来'] },
-  { id: 'bilibili', title: 'B 站公开收藏', accept: '', formats: '公开账户 UID', icon: PlayCircleIcon, logo: bilibiliLogo, steps: ['填写公开账户 UID', '先读取视频字幕', '没有字幕时按配置转写'], note: '只读取匿名可见的公开收藏，不需要 Cookie。无字幕的视频需要专用转写服务。' },
+  { id: 'bilibili', title: 'B 站公开收藏', accept: '', formats: '公开账户 UID', icon: PlayCircleIcon, logo: bilibiliLogo, steps: ['填写公开账户 UID', '读取视频标题与简介', '整理成可检索的资料'], note: '只读取匿名可见的公开收藏，保存视频标题、简介和来源链接，不需要 Cookie。' },
 ]
 
 const hints: Record<SourceId, string> = {
