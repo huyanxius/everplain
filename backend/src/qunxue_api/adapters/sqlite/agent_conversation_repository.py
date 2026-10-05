@@ -734,7 +734,7 @@ class SqliteConversationRepository:
             return ()
         rows = self._session.scalars(select(AgentOutputEventRow).where(
             AgentOutputEventRow.run_id == str(run_id), AgentOutputEventRow.sequence > after,
-        ).order_by(AgentOutputEventRow.sequence).limit(limit))
+        ).order_by(AgentOutputEventRow.sequence).limit(min(200, max(1, limit))))
         return tuple(AgentOutputEvent(
             run_id=run_id, attempt_id=row.attempt_id, sequence=row.sequence,
             name=row.name, payload=dict(row.payload),

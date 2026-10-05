@@ -11551,6 +11551,49 @@ export type LookupAgentRunResponses = {
 
 export type LookupAgentRunResponse = LookupAgentRunResponses[keyof LookupAgentRunResponses];
 
+export type SubscribeAgentRunEventsData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: {
+        /**
+         * After
+         */
+        after?: number;
+    };
+    url: '/api/agent/runs/{run_id}/events';
+};
+
+export type SubscribeAgentRunEventsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type SubscribeAgentRunEventsError = SubscribeAgentRunEventsErrors[keyof SubscribeAgentRunEventsErrors];
+
+export type SubscribeAgentRunEventsResponses = {
+    /**
+     * Successful Response
+     */
+    200: string;
+};
+
+export type SubscribeAgentRunEventsResponse = SubscribeAgentRunEventsResponses[keyof SubscribeAgentRunEventsResponses];
+
 export type StopAgentRunData = {
     body?: never;
     headers: {

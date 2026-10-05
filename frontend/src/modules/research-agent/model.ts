@@ -172,8 +172,21 @@ export type AgentToolStep = {
   detail?: string | null
 }
 
-export type AgentEvent =
+export type AgentStreamResume = { runId: string; after: number }
+
+export type AgentRunLookup = AgentRunStopResult & {
+  conversation_id: string
+  idempotency_key: string
+  partial_answer: string
+  output_attempts?: AgentOutputAttempt[]
+  last_event_sequence: number
+}
+
+export type AgentEvent = AgentEventData & { event_id?: string; attempt_id?: string }
+
+type AgentEventData =
   | { type: 'turn_started'; conversation_id: string; run_id: string; replayed: boolean; runtime_mode?: AgentRuntimeMode; attempt_id?: string; output_attempts?: AgentOutputAttempt[] }
+  | { type: 'turn_snapshot'; run: AgentRunLookup }
   | { type: 'agent_status'; status: 'thinking' | 'answering' }
   | {
       type: 'tool_started'
@@ -198,7 +211,8 @@ export type AgentEvent =
       error_code: string | null
       detail: string | null
     }
-  | { type: 'assistant_delta'; delta: string }
+  | { type: 'assistant_delta'; delta: string; persisted?: boolean }
+  | { type: 'output_persistence_failed'; message: string }
   | { type: 'research_ask'; question: string; options: string[] }
   | { type: 'research_plan'; title: string; steps: string[] }
   | { type: 'research_step'; step: string; status?: string }

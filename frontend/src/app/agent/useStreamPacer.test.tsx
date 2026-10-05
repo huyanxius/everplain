@@ -7,6 +7,15 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals() })
 const advance = (ms: number) => act(() => { vi.advanceTimersByTime(ms) })
 
 describe('real stream pacing', () => {
+  it('shows the complete received body immediately on an interrupted or failed terminal', () => {
+    const body = '已收到的完整正文'.repeat(1000)
+    const { result, rerender } = renderHook(({ immediate }) => useStreamPacer(body, true, immediate), { initialProps: { immediate: false } })
+    advance(48)
+    expect(result.current.visible.length).toBeLessThan(body.length)
+    rerender({ immediate: true })
+    expect(result.current.visible).toBe(body)
+  })
+
   it('paces source offsets without starvation under rapid deltas, then drains after completion', () => {
     const { result, rerender, unmount } = renderHook(({ answer, streaming }) => useStreamPacer(answer, streaming), { initialProps: { answer: '', streaming: true } })
     const answer = '第一段 **粗体**，随后是正文。😀'.repeat(4)

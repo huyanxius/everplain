@@ -19,6 +19,8 @@ import type {
   AgentResearchMapPatch,
   AgentTurnRequest,
   AgentRunStopResult,
+  AgentRunLookup,
+  AgentStreamResume,
 } from './model'
 import type { ResearchStartJourney } from './researchStart'
 
@@ -47,6 +49,8 @@ function toResearchStartJourney(response: AgentResearchJourneyResponse): Researc
 export function parseAgentEventStream(stream: string): AgentEvent[] {
   const events: AgentEvent[] = []
   for (const block of stream.split(/\n\n+/)) {
+    const before = events.length
+    const eventId = block.match(/^id:\s*(.+)$/m)?.[1]
     const eventName = block.match(/^event:\s*(.+)$/m)?.[1]
     const data = block.match(/^data:\s*(.+)$/m)?.[1]
     if (!eventName || !data) continue
@@ -85,7 +89,9 @@ export function parseAgentEventStream(stream: string): AgentEvent[] {
       if ('input' in payload) event.input = payload.input
       events.push(event)
     } else if (eventName === 'assistant_delta' && typeof payload.delta === 'string') {
-      events.push({ type: eventName, delta: payload.delta })
+      events.push({ type: eventName, delta: payload.delta, ...(payload.persisted === false ? { persisted: false } : {}) })
+    } else if (eventName === 'output_persistence_failed') {
+      events.push({ type: eventName, message: String(payload.message ?? '正文尚未保存，请先复制保留。') })
     } else if (eventName === 'research_ask' && typeof payload.question === 'string' && Array.isArray(payload.options)) {
       events.push({
         type: eventName,
@@ -135,6 +141,8 @@ export function parseAgentEventStream(stream: string): AgentEvent[] {
           ? { runtime_mode: payload.runtime_mode }
           : {}),
       })
+    } else if (eventName === 'turn_snapshot' && typeof payload.run_id === 'string') {
+      events.push({ type: eventName, run: payload as unknown as AgentRunLookup })
     } else if (eventName === 'turn_completed' && payload.conversation) {
       events.push({
         type: eventName,
@@ -155,6 +163,10 @@ export function parseAgentEventStream(stream: string): AgentEvent[] {
         code: String(payload.code ?? 'agent_unavailable'),
         message: String(payload.message ?? 'Agent 暂时无法完成回答。'),
       })
+    }
+    if (events.length > before) {
+      if (eventId) events[events.length - 1].event_id = eventId
+      if (typeof payload.attempt_id === 'string') events[events.length - 1].attempt_id = payload.attempt_id
     }
   }
   return events
@@ -326,12 +338,11 @@ export async function confirmResearchStartProposal(
   throw new Error('研究暂时未能建立，你的内容已保留。')
 }
 
-async function streamAgentTurnOnce(
+async function startAgentTurn(
   payload: AgentTurnRequest & { idempotencyKey: string },
-  onEvent: (event: AgentEvent) => void,
   signal?: AbortSignal,
-): Promise<void> {
-  const response = await fetch(apiClient.buildUrl({ url: '/api/agent/turns' }), {
+): Promise<Response> {
+  return fetch(apiClient.buildUrl({ url: '/api/agent/turns' }), {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -362,70 +373,121 @@ async function streamAgentTurnOnce(
     } satisfies AgentTurnRequestDto),
     signal,
   })
+}
+
+type StreamState = { runId?: string; after: number; terminal: boolean }
+
+function terminalEvent(event: AgentEvent) {
+  return ['turn_completed', 'turn_interrupted', 'turn_failed', 'research_waiting', 'knowledge_index_choice_required'].includes(event.type)
+}
+
+function deliverEvent(event: AgentEvent, state: StreamState, onEvent: (event: AgentEvent) => void) {
+  if (event.event_id) {
+    const index = event.event_id.lastIndexOf(':')
+    const runId = event.event_id.slice(0, index)
+    const sequence = Number(event.event_id.slice(index + 1))
+    if (index < 0 || !Number.isSafeInteger(sequence) || sequence < 1) throw new Error('事件续接标识无效。')
+    if (state.runId && state.runId !== runId) throw new Error('事件属于另一轮回答。')
+    state.runId = runId
+    if (sequence <= state.after) return
+    state.after = sequence
+  }
+  if (event.type === 'turn_started') state.runId = event.run_id
+  if (event.type === 'turn_snapshot') {
+    state.runId = event.run.run_id
+    state.after = Math.max(state.after, event.run.last_event_sequence ?? 0)
+  }
+  state.terminal ||= terminalEvent(event)
+  onEvent(event)
+}
+
+async function consumeAgentResponse(response: Response, state: StreamState, onEvent: (event: AgentEvent) => void) {
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) throw new Error('登录状态已失效，请重新登录后继续研究。')
     if (response.status === 422) {
       const failure = await response.json().catch(() => null) as { detail?: unknown } | null
-      throw new Error(typeof failure?.detail === 'string'
-        ? failure.detail
-        : payload.model_id ? '问题或模型设置不符合要求，请检查后重试。' : '问题长度或格式不符合要求，请修改后重试。')
+      throw new Error(typeof failure?.detail === 'string' ? failure.detail : '问题长度或格式不符合要求，请修改后重试。')
     }
-    throw new Error('Agent 暂时无法连接')
+    throw new TypeError('Agent 暂时无法连接')
   }
-  if (!response.body) throw new Error('Agent 暂时无法连接')
+  if (!response.body) throw new TypeError('Agent 暂时无法连接')
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
-  let terminalEventSeen = false
-  while (true) {
-    const { done, value } = await reader.read()
-    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done })
-    const blocks = buffer.split(/\n\n+/)
-    buffer = blocks.pop() ?? ''
-    for (const event of parseAgentEventStream(`${blocks.join('\n\n')}\n\n`)) {
-      if (event.type === 'turn_completed' || event.type === 'turn_interrupted' || event.type === 'turn_failed' || event.type === 'research_waiting' || event.type === 'knowledge_index_choice_required') {
-        terminalEventSeen = true
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done })
+      const blocks = buffer.split(/\n\n+/)
+      buffer = blocks.pop() ?? ''
+      for (const event of parseAgentEventStream(`${blocks.join('\n\n')}\n\n`)) deliverEvent(event, state, onEvent)
+      if (done) {
+        if (buffer.trim()) {
+          try { for (const event of parseAgentEventStream(buffer)) deliverEvent(event, state, onEvent) }
+          catch (cause) { if (cause instanceof SyntaxError) throw new TypeError('最后事件不完整，请重新连接。'); throw cause }
+        }
+        break
       }
-      onEvent(event)
     }
-    if (done) break
+    if (!state.terminal) throw new TypeError('Agent 流在完成前中断，请重新连接。')
+  } finally {
+    await reader.cancel().catch(() => undefined)
+    reader.releaseLock()
   }
-  if (buffer.trim()) {
-    for (const event of parseAgentEventStream(buffer)) {
-      if (event.type === 'turn_completed' || event.type === 'turn_interrupted' || event.type === 'turn_failed' || event.type === 'research_waiting' || event.type === 'knowledge_index_choice_required') {
-        terminalEventSeen = true
-      }
-      onEvent(event)
-    }
-  }
-  if (!terminalEventSeen) throw new Error('Agent 流在完成前中断，请重试。')
+}
+
+async function reconnectDelay(attempt: number, signal?: AbortSignal) {
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  await new Promise<void>((resolve, reject) => {
+    const abort = () => { globalThis.clearTimeout(timeout); reject(new DOMException('Aborted', 'AbortError')) }
+    const timeout = globalThis.setTimeout(() => { signal?.removeEventListener('abort', abort); resolve() }, Math.min(4000, 250 * 2 ** attempt))
+    signal?.addEventListener('abort', abort, { once: true })
+  })
 }
 
 export async function streamAgentTurn(
   payload: AgentTurnRequest & { idempotencyKey: string },
   onEvent: (event: AgentEvent) => void,
   signal?: AbortSignal,
+  resume?: AgentStreamResume,
 ): Promise<void> {
+  const state: StreamState = { runId: resume?.runId, after: resume?.after ?? 0, terminal: false }
+  let reconnect = Boolean(resume)
   for (let attempt = 0; ; attempt += 1) {
     try {
-      await streamAgentTurnOnce(payload, onEvent, signal)
+      let response: Response
+      if (!reconnect) {
+        // Exactly one execution command. Any uncertainty is reconciled with
+        // owner-scoped reads; a transport retry never posts a new generation.
+        response = await startAgentTurn(payload, signal)
+      } else {
+        if (!state.runId) {
+          const lookup = await fetch(apiClient.buildUrl({ url: '/api/agent/runs/by-idempotency-key' }), {
+            credentials: 'include', cache: 'no-store', signal,
+            headers: { 'Idempotency-Key': payload.idempotencyKey },
+          })
+          if (lookup.status === 404) throw new TypeError('原请求仍未确认，保留内容并等待记录。')
+          if (!lookup.ok) throw new Error('无法核对原回答，请重新登录后连接。')
+          const run = await lookup.json() as AgentRunLookup
+          state.runId = run.run_id
+          state.after = run.last_event_sequence ?? 0
+          // If the initial response was completely lost, reconcile its exact
+          // body/attempt snapshot once, then stream only events after that cursor.
+          onEvent({ type: 'turn_snapshot', run })
+        }
+        response = await fetch(apiClient.buildUrl({
+          url: '/api/agent/runs/{run_id}/events', path: { run_id: state.runId },
+          query: { after: state.after },
+        }), { credentials: 'include', signal, headers: { 'Accept': 'text/event-stream' } })
+      }
+      await consumeAgentResponse(response, state, onEvent)
       return
     } catch (cause: unknown) {
+      if (state.terminal) return
       if (signal?.aborted || (cause as { name?: string } | null)?.name === 'AbortError') throw cause
-      const recoverable = cause instanceof TypeError
-        || (cause instanceof Error && cause.message.includes('完成前中断'))
-      if (!recoverable || attempt >= 3) throw cause
-      await new Promise<void>((resolve, reject) => {
-        const abort = () => {
-          globalThis.clearTimeout(timeout)
-          reject(new DOMException('Aborted', 'AbortError'))
-        }
-        const timeout = globalThis.setTimeout(() => {
-          signal?.removeEventListener('abort', abort)
-          resolve()
-        }, 250 * 2 ** attempt)
-        signal?.addEventListener('abort', abort, { once: true })
-      })
+      if (!(cause instanceof TypeError) || attempt >= 3) throw cause
+      reconnect = true
+      await reconnectDelay(attempt, signal)
     }
   }
 }

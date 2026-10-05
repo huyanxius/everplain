@@ -11,6 +11,7 @@ export {
 export type {
   AgentCitation,
   AgentOutputAttempt,
+  AgentStreamResume,
   AgentConversation,
   AgentConversationSummary,
   AgentTurnRequest,

@@ -15,6 +15,7 @@ from qunxue_api.modules.agent_conversation import (
     AgentModelRouteFailure,
     AgentModelSelection,
     AgentModelSelectionUnavailable,
+    AgentOutputStorageFailure,
     AgentResearchEvent,
     AgentRunResult,
     AgentRuntimeIdentity,
@@ -167,6 +168,15 @@ class DisciplinaryAgentApplication:
             user_id=user_id,
             idempotency_key=idempotency_key,
         )
+
+    def find_run_by_id(self, *, user_id: UUID, run_id: UUID):
+        return self._conversations.find_run_by_id(user_id=user_id, run_id=run_id)
+
+    def append_output_event(self, **kwargs):
+        return self._conversations.append_output_event(**kwargs)
+
+    def read_output_events(self, **kwargs):
+        return self._conversations.read_output_events(**kwargs)
 
     def request_cancel(self, *, user_id: UUID, run_id: UUID):
         run = self._conversations.request_cancel(user_id=user_id, run_id=run_id)
@@ -568,6 +578,7 @@ class DisciplinaryAgentApplication:
             else ()
         )
         tool_events: list[AgentToolEvent] = []
+        pending_tool_events: list[AgentToolEvent] = []
         active_tool_calls: set[str] = set()
         tool_events_lock = threading.RLock()
         received_delta = False
@@ -632,10 +643,21 @@ class DisciplinaryAgentApplication:
             # Original body is durable before any transport callback. An attempt's
             # output is append-only and independent of finalization/usage success.
             with tool_events_lock:
-                event = self._conversations.append_output_event(
-                    user_id=user_id, run_id=run.run_id, attempt_id=run.lease_token,
-                    name="assistant_delta", payload={"delta": delta},
-                )
+                try:
+                    event = self._conversations.append_output_event(
+                        user_id=user_id, run_id=run.run_id, attempt_id=run.lease_token,
+                        name="assistant_delta", payload={"delta": delta},
+                    )
+                except Exception as error:
+                    # A failed local write must not silently swallow lawful body
+                    # already received from the provider. Present this chunk with
+                    # an explicit unsaved flag, then stop unsafe new operations.
+                    if on_delta is not None:
+                        if "persisted" in signature(on_delta).parameters:
+                            on_delta(delta, persisted=False)
+                        else:
+                            on_delta(delta)
+                    raise AgentOutputStorageFailure("Received body could not be saved") from error
                 if event is None:
                     raise AgentInterrupted("Agent execution lease was replaced")
                 received_delta = True
@@ -889,13 +911,31 @@ class DisciplinaryAgentApplication:
 
             def record_tool_event(event: AgentToolEvent) -> None:
                 with tool_events_lock:
+                    # A tool may leave a complete business write in the shared
+                    # transaction. Never have its callback wait on that same
+                    # SQLite writer through an independent journal connection.
+                    was_idle = not active_tool_calls
                     tool_events.append(event)
                     if event.phase == "started":
+                        if was_idle:
+                            checkpoint(force=True)
                         active_tool_calls.add(event.call_id)
+                        if was_idle and on_tool_event is not None:
+                            on_tool_event(event)
+                        else:
+                            pending_tool_events.append(event)
                     else:
                         active_tool_calls.discard(event.call_id)
-                if on_tool_event is not None:
-                    on_tool_event(event)
+                        pending_tool_events.append(event)
+                        if not active_tool_calls:
+                            # All tool operations have returned a business result;
+                            # this is the existing safe checkpoint boundary, not
+                            # an output callback committing a half-written tool.
+                            checkpoint(force=True)
+                            if on_tool_event is not None:
+                                for pending_event in pending_tool_events:
+                                    on_tool_event(pending_event)
+                            pending_tool_events.clear()
 
             # 澄清、确认、执行各是一次独立调用，所以这里量到的就是真正跑研究那一段，不含
             # 用户思考的时间。不限定在 confirm 之后，是为了让没经过暂停的深入研究也留痕。

@@ -370,7 +370,7 @@ class _MemoryRepository:
         if self.find_run_by_id(user_id=user_id, run_id=run_id) is None:
             raise ConversationNotFound(str(run_id))
         return tuple(event for event in self.output_events.get(run_id, [])
-                     if event.sequence > after)[:limit]
+                     if event.sequence > after)[:min(200, max(1, limit))]
 
     def request_cancel(self, *, user_id: UUID, run_id: UUID) -> AgentRun:
         run = self.find_run_by_id(user_id=user_id, run_id=run_id)

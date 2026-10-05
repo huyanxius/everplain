@@ -181,3 +181,83 @@ def test_migration_preserves_exact_legacy_body_without_fabricating_stream_events
         assert saved == original
         assert connection.execute(text("SELECT last_event_sequence FROM agent_runs")).scalar() == 0
         assert connection.execute(text("SELECT count(*) FROM agent_output_events")).scalar() == 0
+
+
+def test_journal_waits_for_business_rollback_without_committing_business_state(client):
+    import threading
+
+    from sqlalchemy import text
+
+    user_id = registered_user(client)
+    database = client.app.state.database
+    with database.session() as session:
+        repo = SqliteConversationRepository(session)
+        service = ConversationService(repo)
+        conversation = service.create_conversation(user_id=user_id, title="事务隔离")
+        run = service.start_run(user_id=user_id, conversation_id=conversation.conversation_id,
+                                idempotency_key="transaction-isolation",
+                                knowledge_release_id="release-a")
+        session.execute(text("CREATE TABLE output_business_probe (value TEXT)"))
+        repo.commit()
+        session.execute(text("INSERT INTO output_business_probe VALUES ('uncommitted-tool')"))
+        started, delivered = threading.Event(), threading.Event()
+        errors = []
+
+        def save_body():
+            started.set()
+            try:
+                repo.append_output_event(user_id=user_id, run_id=run.run_id,
+                                         attempt_id=run.lease_token, name="assistant_delta",
+                                         payload={"delta": "body survives tool rollback"})
+                delivered.set()
+            except Exception as error:
+                errors.append(error)
+
+        worker = threading.Thread(target=save_body)
+        worker.start()
+        assert started.wait(1)
+        assert not delivered.wait(0.1), "journal incorrectly committed the business transaction"
+        session.rollback()
+        worker.join(5)
+        assert not worker.is_alive()
+        assert errors == []
+        assert delivered.is_set()
+    with database.session() as other:
+        assert other.execute(text("SELECT count(*) FROM output_business_probe")).scalar() == 0
+        saved = SqliteConversationRepository(other).find_run_by_id(
+            user_id=user_id, run_id=run.run_id,
+        )
+        assert saved.output_attempts[0].answer == "body survives tool rollback"
+
+
+def test_one_thousand_small_deltas_preserve_order_and_remain_bounded(client):
+    import time
+
+    user_id = registered_user(client)
+    with client.app.state.database.session() as session:
+        repo = SqliteConversationRepository(session)
+        service = ConversationService(repo)
+        conversation = service.create_conversation(user_id=user_id, title="输出吞吐")
+        run = service.start_run(user_id=user_id, conversation_id=conversation.conversation_id,
+                                idempotency_key="one-thousand-deltas",
+                                knowledge_release_id="release-a")
+        repo.commit()
+        started = time.monotonic()
+        for index in range(1000):
+            event = repo.append_output_event(user_id=user_id, run_id=run.run_id,
+                                             attempt_id=run.lease_token, name="assistant_delta",
+                                             payload={"delta": str(index % 10)})
+            assert event.sequence == index + 1
+        elapsed = time.monotonic() - started
+        print(f"1000 journal transactions: {elapsed:.3f}s")
+        assert elapsed < 15, "small-delta journal writes became pathologically slow"
+        saved = repo.find_run_by_id(user_id=user_id, run_id=run.run_id)
+        assert saved.output_attempts[0].answer == "0123456789" * 100
+        assert saved.last_event_sequence == 1000
+        page = repo.read_output_events(user_id=user_id, run_id=run.run_id, after=500)
+        assert [event.sequence for event in page] == list(range(501, 701))
+        from sqlalchemy import text
+        plan = session.execute(text("""EXPLAIN QUERY PLAN SELECT sequence FROM agent_output_events
+            WHERE run_id = :run AND sequence > 500 ORDER BY sequence LIMIT 200
+        """), {"run": str(run.run_id)}).all()
+        assert any("INDEX" in str(row) and "run_id=? AND sequence>?" in str(row) for row in plan)

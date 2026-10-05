@@ -20,15 +20,17 @@ import {
 beforeEach(() => {
   buildUrl.mockReset()
   get.mockReset()
-  buildUrl.mockImplementation(({ path, url }: {
+  buildUrl.mockImplementation(({ path, url, query }: {
     path?: Record<string, unknown>
     url: string
+    query?: Record<string, unknown>
   }) => {
     const resolvedPath = Object.entries(path ?? {}).reduce(
       (current, [key, value]) => current.replace(`{${key}}`, encodeURIComponent(String(value))),
       url,
     )
-    return `https://api.qunxue.test${resolvedPath}`
+    const suffix = query ? `?${new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)]))}` : ''
+    return `https://api.qunxue.test${resolvedPath}${suffix}`
   })
 })
 
@@ -476,5 +478,64 @@ describe('knowledge readiness SSE decisions', () => {
   })
   it('rejects malformed status payloads rather than inventing counts', () => {
     expect(parseAgentEventStream('event: knowledge_index_choice_required\ndata: {"status":{"state":"missing_index"}}\n\n')).toEqual([])
+  })
+})
+
+
+describe('cursor subscription recovery', () => {
+  function frame(id: number, name: string, body: unknown) {
+    return `id: run-1:${id}\nevent: ${name}\ndata: ${JSON.stringify(body)}\n\n`
+  }
+  const completed = { conversation: { conversation_id: 'conversation-1', turns: [] }, knowledge_release_id: 'release-1' }
+
+  it('replays by event identity without duplicated text or another POST', async () => {
+    let body = ''
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(frame(1, 'turn_started', { run_id: 'run-1', conversation_id: 'conversation-1', replayed: false }) + frame(2, 'assistant_delta', { delta: 'ABC' })))
+      .mockResolvedValueOnce(new Response(frame(2, 'assistant_delta', { delta: 'ABC' }) + frame(3, 'assistant_delta', { delta: 'DEF' }) + frame(4, 'turn_completed', completed)))
+    vi.stubGlobal('fetch', fetch)
+    await streamAgentTurn({ message: 'question', idempotencyKey: 'key' }, event => { if (event.type === 'assistant_delta') body += event.delta })
+    expect(body).toBe('ABCDEF')
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
+    expect(fetch.mock.calls[1][0]).toBe('https://api.qunxue.test/api/agent/runs/run-1/events?after=2')
+  })
+
+  it('reconciles lost initial headers with the original snapshot then subscribes after its cursor', async () => {
+    let body = ''
+    const snapshot = { run_id: 'run-1', conversation_id: 'conversation-1', idempotency_key: 'key', status: 'running', partial_answer: 'already persisted', last_event_sequence: 7, output_attempts: [{ attempt_id: 'attempt-1', ordinal: 1, status: 'running', answer: 'already persisted', created_at: '2026-10-05T00:00:00Z' }] }
+    const fetch = vi.fn()
+      .mockRejectedValueOnce(new TypeError('headers lost'))
+      .mockResolvedValueOnce(new Response(JSON.stringify(snapshot)))
+      .mockResolvedValueOnce(new Response(frame(8, 'assistant_delta', { delta: ' tail' }) + frame(9, 'turn_completed', completed)))
+    vi.stubGlobal('fetch', fetch)
+    await streamAgentTurn({ message: 'question', idempotencyKey: 'key' }, event => {
+      if (event.type === 'turn_snapshot') body = event.run.partial_answer
+      if (event.type === 'assistant_delta') body += event.delta
+    })
+    expect(body).toBe('already persisted tail')
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
+    expect(fetch.mock.calls[1][0]).toBe('https://api.qunxue.test/api/agent/runs/by-idempotency-key')
+    expect(fetch.mock.calls[2][0]).toBe('https://api.qunxue.test/api/agent/runs/run-1/events?after=7')
+  })
+
+  it('recovers an incomplete final frame by GET without regenerating', async () => {
+    const received: string[] = []
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(frame(1, 'turn_started', { run_id: 'run-1', conversation_id: 'conversation-1' }) + frame(2, 'assistant_delta', { delta: 'body' }) + 'id: run-1:3\nevent: turn_completed\ndata: {"conversation":'))
+      .mockResolvedValueOnce(new Response(frame(3, 'turn_completed', completed)))
+    vi.stubGlobal('fetch', fetch)
+    await streamAgentTurn({ message: 'question', idempotencyKey: 'key' }, event => received.push(event.type))
+    expect(received).toEqual(['turn_started', 'assistant_delta', 'turn_completed'])
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
+    expect(fetch.mock.calls[1][0]).toBe('https://api.qunxue.test/api/agent/runs/run-1/events?after=2')
+  })
+
+  it('resumes a server-running restored turn with no execution command', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(frame(10, 'turn_completed', completed)))
+    vi.stubGlobal('fetch', fetch)
+    await streamAgentTurn({ message: 'question', idempotencyKey: 'key' }, () => undefined, undefined, { runId: 'run-1', after: 9 })
+    expect(fetch.mock.calls).toHaveLength(1)
+    expect(fetch.mock.calls[0][0]).toBe('https://api.qunxue.test/api/agent/runs/run-1/events?after=9')
+    expect(fetch.mock.calls[0][1]?.method).toBeUndefined()
   })
 })
