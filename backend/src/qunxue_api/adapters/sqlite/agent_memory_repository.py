@@ -17,7 +17,13 @@ from qunxue_api.modules.agent_memory import (
     validate_content,
 )
 
-from .agent_memory_model import MemoryRequestRow, MemoryRevisionRow, MemoryRow, MemoryScopeRow
+from .agent_memory_model import (
+    MemoryRequestRow,
+    MemoryRevisionRow,
+    MemoryRow,
+    MemoryScopeRow,
+    invalidate_conversation_summary,
+)
 from .research_intake_model import ResearchTaskRow
 
 
@@ -113,6 +119,8 @@ class SqliteMemoryRepository:
         )
         if result.rowcount != 1:
             raise MemoryConflict("记忆已更新，请重新读取后提交")
+        if manual:
+            invalidate_conversation_summary(self.session, scope.user_id)
 
     def list(self, user_id: UUID, task_id: UUID | None) -> tuple[Memory, ...]:
         self.scope(user_id, task_id)
@@ -287,4 +295,5 @@ class SqliteMemoryRepository:
             )
             .values(use_memory=use_memory, learn_memory=learn_memory)
         )
+        invalidate_conversation_summary(self.session, user_id)
         return self.scope(user_id, task_id)

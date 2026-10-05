@@ -1,6 +1,9 @@
 import { Select } from '../ui/Select'
 import { ArrowCounterClockwiseIcon, ClockCounterClockwiseIcon, PencilSimpleIcon, PlusIcon, SlidersHorizontalIcon, TrashIcon, XIcon } from '@phosphor-icons/react'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useContext, useEffect, useRef, useState, type FormEvent } from 'react'
+import { QueryClientContext } from '@tanstack/react-query'
+import { useAccount } from '../../modules/account'
+import { conversationContextSummaryKey } from '../conversation-view/useConversationContextSummary'
 import { Link, useSearchParams } from 'react-router'
 import { loadMemoryOverview, loadMemories, loadMemoryHistory, memoryPreviewLimits, removeMemory, saveMemory, saveMemorySettings, type ResearchMemory, type ResearchMemoryLimits, type ResearchMemorySettings } from '../../modules/research-memory'
 import { memoryPreview } from './researchMemoryPreview'
@@ -11,6 +14,9 @@ const date = (value: string) => new Date(value).toLocaleDateString('zh-CN', { mo
 const message = (error: unknown) => error instanceof Error ? error.message : '操作未完成，请重试。'
 
 export function ResearchMemoryPanel({ taskId, projectName, preview = false }: { taskId: string | null; projectName?: string; preview?: boolean }) {
+  const account = useAccount()
+  const queryClient = useContext(QueryClientContext)
+  const userId = account.sessionState.status === 'authenticated' ? account.sessionState.session.user.userId : null
   const [params] = useSearchParams()
   const exitParams = new URLSearchParams(params); exitParams.delete('preview')
   const [items, setItems] = useState<ResearchMemory[]>(() => preview ? memoryPreview(taskId) : [])
@@ -79,7 +85,16 @@ export function ResearchMemoryPanel({ taskId, projectName, preview = false }: { 
     setReload(value => value + 1)
   }
 
+  async function resetRecentActivity() {
+    if (preview || !queryClient || !userId) return
+    const queryKey = conversationContextSummaryKey(userId)
+    await queryClient.cancelQueries({ queryKey, exact: true })
+    // Reset removes old cards immediately while the fresh permission-fenced read runs.
+    await queryClient.resetQueries({ queryKey, exact: true })
+  }
+
   async function refreshAfterWrite() {
+    await resetRecentActivity()
     // A successful write invalidates the old summary before the next render or refresh response.
     overviewRequest.current?.abort()
     setSummary(''); setSummaryError(''); setSummaryBusy(false)
@@ -130,6 +145,7 @@ export function ResearchMemoryPanel({ taskId, projectName, preview = false }: { 
     setBusy(true); setError('')
     try {
       const updated = preview ? { ...settings, [field]: !settings[field], version: settings.version + 1 } : await saveMemorySettings(settings, field, !settings[field])
+      if (!preview) await resetRecentActivity()
       if (alive.current) { setSettings(updated); setNotice(preview ? '示例设置已更新。' : '记忆设置已保存。') }
     } catch (cause) { if (alive.current) setError(message(cause)) }
     finally { if (alive.current) setBusy(false) }

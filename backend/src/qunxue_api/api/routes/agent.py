@@ -33,6 +33,7 @@ from qunxue_api.api.contracts.agent import (
     AgentTurnResponse,
     ConfirmResearchStartRequest,
     ConfirmResearchStartResponse,
+    ConversationSummaryResponse,
     KnowledgeIndexRepairRequest,
     KnowledgeIndexStatusResponse,
     RecentConversationContextsResponse,
@@ -136,6 +137,19 @@ def list_recent_conversation_context(request: Request, current: CurrentSessionDe
     response.headers["Cache-Control"] = "private, no-store"
     with request.app.state.conversation_context_scope() as (repository, _):
         return RecentConversationContextsResponse(items=repository.recent(current.user.user_id))
+
+
+@router.get("/context-summary", response_model=ConversationSummaryResponse,
+            operation_id="read_conversation_summary")
+def read_conversation_summary(request: Request, current: CurrentSessionDependency,
+                              response: Response) -> ConversationSummaryResponse:
+    response.headers["Cache-Control"] = "private, no-store"
+    with request.app.state.context_summary_scope() as repository:
+        result = repository.read(current.user.user_id)
+    if result["status"] == "pending" and request.app.state.context_summary_worker.generate is None:
+        # No configured background generator means no awaited result can arrive.
+        result["status"] = "failed"
+    return ConversationSummaryResponse(**result)
 
 
 @router.post(

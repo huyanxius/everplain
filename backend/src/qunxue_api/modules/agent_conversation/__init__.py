@@ -52,6 +52,8 @@ from .model_selection import (
 
 __all__ = [
     "excerpt",
+    "ContextSummaryBatch",
+    "ContextSummaryRepository",
     "merge_digest",
     "render_recent_context",
     "AgentModelRouteFailure",
@@ -94,3 +96,5 @@ __all__ = [
     "normalize_research_map_patch",
     "patches_from_tool_summary",
 ]
+
+from .summary import ContextSummaryBatch, ContextSummaryRepository
