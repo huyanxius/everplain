@@ -22,7 +22,7 @@
 
 收起或 Escape 不会提交，也不会清空本次弹窗的选择。未登录时打开同一浏览器的 Everplain 完成登录，再返回提交；权限拒绝不会读取书签或提交资料。
 
-同一弹窗会阻止并发提交；相同内容的请求键和 SHA-256 摘要只暂存在浏览器内存 `storage.session`，不保存书签正文或登录凭据。已打开的 Everplain 文档内保留按当前账号隔离的请求回执，重复点击或重新打开弹窗只读取该批进度。网络中断或不完整响应会提示“提交结果尚未确认”，先查看导入记录，避免静默重发。目标站点刷新/导航或浏览器重启后该内存回执不再存在，服务端的重复资料去重仍以自己的记录为准。
+同一弹窗会阻止并发提交；请求键、SHA-256 摘要与接收确认状态只暂存在浏览器内存 `storage.session`，不保存书签正文或登录凭据。已打开的 Everplain 文档内保留按当前账号隔离的请求回执，同一次请求的并发操作共用提交结果。网络中断或不完整响应会提示“提交结果尚未确认”，再次提交仍复用本次请求键；服务端按账号隔离的幂等记录避免创建第二个批次。确认接收成功后，下次主动点击会使用新的请求键，允许检查所选网页正文是否变化；相同资料仍由服务端去重。目标站点刷新/导航或浏览器重启后内存回执不再存在，服务端记录仍以自己的状态为准。
 
 API 使用依据：[Chrome 书签树](https://developer.chrome.com/docs/extensions/reference/api/bookmarks)、[点击时申请可选权限](https://developer.chrome.com/docs/extensions/reference/api/permissions)、[仅内存的会话存储](https://developer.chrome.com/docs/extensions/reference/api/storage)、[隔离世界脚本注入](https://developer.chrome.com/docs/extensions/reference/api/scripting)。不增加自动内容脚本、后台读取、Cookie 权限或长期认证信息。
 

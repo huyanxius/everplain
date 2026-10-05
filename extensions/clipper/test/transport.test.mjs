@@ -93,15 +93,33 @@ test('receipts are owner scoped so changing accounts never exposes the other acc
   assert.equal(posts, 2)
 })
 
-test('unknown network outcome does not silently create a second batch', async t => {
+test('unknown network outcome is recovered with the same key and then keeps the successful receipt', async t => {
   let posts = 0
-  fixture(t, async path => {
+  const keys = []
+  fixture(t, async (path, options) => {
     if (path === '/api/session') return json({ user: { user_id: 'owner-1' } })
-    posts++; throw new Error('connection lost after submission')
+    if (path === '/api/imports/batch-1') return json(batch)
+    keys.push(options.headers['Idempotency-Key'])
+    if (++posts === 1) throw new Error('connection lost after submission')
+    return json(batch, 202)
+  })
+  assert.equal((await submitImport(origin, payload, 'same-key')).uncertain, true)
+  assert.deepEqual(await submitImport(origin, payload, 'same-key'), { batch })
+  assert.deepEqual(keys, ['same-key', 'same-key'])
+  assert.deepEqual(await submitImport(origin, payload, 'same-key'), { batch })
+  assert.equal(posts, 2)
+})
+
+test('unavailable retry still reports unknown and never changes the request key', async t => {
+  const keys = []
+  fixture(t, async (path, options) => {
+    if (path === '/api/session') return json({ user: { user_id: 'owner-1' } })
+    keys.push(options.headers['Idempotency-Key'])
+    throw new Error('network remains unavailable')
   })
   assert.equal((await submitImport(origin, payload, 'same-key')).uncertain, true)
   assert.equal((await submitImport(origin, payload, 'same-key')).uncertain, true)
-  assert.equal(posts, 1)
+  assert.deepEqual(keys, ['same-key', 'same-key'])
 })
 
 test('server errors and malformed acceptance keep unknown-outcome guard', async t => {

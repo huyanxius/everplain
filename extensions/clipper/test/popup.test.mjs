@@ -47,6 +47,7 @@ async function fixture(t, options = {}) {
       if (path !== '/api/imports/clip') return json(batch)
     }
     submissions.push({ path, init })
+    if (options.failFirstSubmission && submissions.length === 1) throw new Error('response lost after submission')
     return json({ ...batch, total: options.total ?? 1 }, 202)
   })
   t.after(() => {
@@ -99,10 +100,29 @@ test('popup only reads bookmarks on explicit click; folders select descendants, 
   assert.match(ui.get('status').textContent, /已提交 1 条资料/)
   assert.equal(ui.get('progress').getAttribute('href'), origin + '/imports?batch=batch-1')
   assert.match(ui.get('batch-id').textContent, /batch-1/)
+  const firstKey = ui.submissions[0].init.headers['Idempotency-Key']
+  assert.equal(ui.session.everplainImportIntent.completed, true)
   ui.dispatch('import-selected'); await ui.settle()
-  assert.equal(ui.submissions.length, 1)
+  assert.equal(ui.submissions.length, 2)
+  assert.notEqual(ui.submissions[1].init.headers['Idempotency-Key'], firstKey)
+  assert.equal(ui.session.everplainImportIntent.completed, true)
   assert.equal(typeof ui.session.everplainImportIntent.signature, 'string')
-  assert.deepEqual(Object.keys(ui.session.everplainImportIntent).sort(), ['key', 'signature'])
+  assert.deepEqual(Object.keys(ui.session.everplainImportIntent).sort(), ['completed', 'key', 'signature'])
+})
+
+test('unknown submission retries keep the pending key; next confirmed deliberate refresh gets a fresh key', async t => {
+  const ui = await fixture(t, { failFirstSubmission: true })
+  ui.dispatch('bookmarks'); await ui.settle(); ui.change('Alpha', true)
+  ui.dispatch('import-selected'); await ui.settle()
+  const pendingKey = ui.submissions[0].init.headers['Idempotency-Key']
+  assert.match(ui.get('status').textContent, /提交结果尚未确认/)
+  assert.equal(ui.session.everplainImportIntent.completed, false)
+  ui.dispatch('import-selected'); await ui.settle()
+  assert.equal(ui.submissions[1].init.headers['Idempotency-Key'], pendingKey)
+  assert.match(ui.get('status').textContent, /已提交/)
+  assert.equal(ui.session.everplainImportIntent.completed, true)
+  ui.dispatch('import-selected'); await ui.settle()
+  assert.notEqual(ui.submissions[2].init.headers['Idempotency-Key'], pendingKey)
 })
 
 test('close/reopen retains selection and never submits; all and clear are explicit', async t => {

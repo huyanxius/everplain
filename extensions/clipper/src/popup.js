@@ -71,12 +71,21 @@ async function send(destination, payload) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([destination.origin, payload])))
   const signature = [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2, '0')).join('')
   const { everplainImportIntent: previous } = await chrome.storage.session.get('everplainImportIntent')
-  const intent = previous?.signature === signature && typeof previous.key === 'string' ? previous : { signature, key: crypto.randomUUID() }
+  const intent = previous?.signature === signature && typeof previous.key === 'string' && !previous.completed
+    ? previous : { signature, key: crypto.randomUUID(), completed: false }
   // Only the intent hash/key is held in browser memory, never payloads or credentials.
   await chrome.storage.session.set({ everplainImportIntent: intent })
   const [result] = await chrome.scripting.executeScript({ target: { tabId: destination.id }, func: submitImport, args: [destination.origin, payload, intent.key] })
   const response = result?.result
-  if (response?.batch) return response.batch
+  if (response?.batch) {
+    showLink(destination.origin, response.batch.id)
+    importSummary(response.batch)
+    // Once acceptance is confirmed, a later deliberate click is a fresh import
+    // so the backend can check whether the selected pages have changed.
+    const { everplainImportIntent: current } = await chrome.storage.session.get('everplainImportIntent')
+    if (current?.key === intent.key) await chrome.storage.session.set({ everplainImportIntent: { ...intent, completed: true } })
+    return response.batch
+  }
   if (response?.batchId) showLink(destination.origin, response.batchId)
   throw new Error(response?.error || '提交结果未能确认，请先在 Everplain 查看导入记录')
 }

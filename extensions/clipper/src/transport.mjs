@@ -16,7 +16,6 @@ export async function submitImport(origin, data, requestKey) {
   const receiptKey = `${session.user.user_id}:${requestKey}`
   const previous = requests.get(receiptKey)
   if (previous?.promise) return await previous.promise
-  if (previous?.uncertain) return { error: '提交结果尚未确认。请先查看导入记录，避免重复提交', uncertain: true }
   if (previous?.batchId) {
     try {
       const response = await fetch(`/api/imports/${encodeURIComponent(previous.batchId)}`, { credentials: 'same-origin', cache: 'no-store' })
@@ -25,6 +24,9 @@ export async function submitImport(origin, data, requestKey) {
     } catch { /* Keep the receipt; don't silently submit a second batch. */ }
     return { error: '这一批已经提交，请在 Everplain 查看最新进度', batchId: previous.batchId }
   }
+  // A deliberate retry after an unknown outcome uses the SAME key. The backend
+  // persists owner-scoped idempotency, so it returns the existing batch if the
+  // first submission was accepted. Concurrent retries still share one promise.
   const record = {}
   requests.set(receiptKey, record)
   record.promise = (async () => {
@@ -43,7 +45,7 @@ export async function submitImport(origin, data, requestKey) {
       if (!response.ok) {
         if (response.status >= 500 || response.status === 408) {
           record.uncertain = true
-          return { error: '服务响应中断，提交结果尚未确认。请先查看导入记录，避免重复提交', uncertain: true }
+          return { error: '服务响应中断，提交结果尚未确认。可用同一请求重试，或先查看导入记录', uncertain: true }
         }
         requests.delete(receiptKey)
         if (response.status === 401) return { error: '请先在同一浏览器的 Everplain 页面登录，再回来提交', login: true }
@@ -51,13 +53,13 @@ export async function submitImport(origin, data, requestKey) {
       }
       if (!result.id) {
         record.uncertain = true
-        return { error: '已收到响应，但批次编号不完整。请先查看导入记录', uncertain: true }
+        return { error: '已收到响应，但批次编号不完整。可用同一请求重试，或先查看导入记录', uncertain: true }
       }
       record.batchId = result.id
       return { batch: result }
     } catch {
       record.uncertain = true
-      return { error: '网络中断，提交结果尚未确认。请先查看导入记录，避免重复提交', uncertain: true }
+      return { error: '网络中断，提交结果尚未确认。可用同一请求重试，或先查看导入记录', uncertain: true }
     }
   })()
   try { return await record.promise } finally { delete record.promise }
