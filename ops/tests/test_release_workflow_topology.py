@@ -15,6 +15,25 @@ def job(source: str, name: str) -> str:
 
 
 class ReleaseWorkflowTopologyTests(unittest.TestCase):
+    def test_backend_budget_preserves_complete_checks_and_release_safety(self):
+        backend = job((WORKFLOWS / 'ci.yml').read_text(), 'backend')
+        self.assertRegex(backend, r'(?m)^    timeout-minutes: 25$')
+        self.assertIn(
+            '      - name: Run backend checks\n'
+            "        if: needs.changes.outputs.backend == 'true'\n"
+            '        run: make check-backend\n',
+            backend,
+        )
+        self.assertIn(
+            '      - name: Check release safety\n'
+            '        run: |\n'
+            '          cd backend\n'
+            '          uv run ruff check --config pyproject.toml '
+            '../ops/cd ../ops/tests/test_cd.py\n'
+            '          uv run python -m unittest discover -s ../ops/tests -v\n',
+            backend,
+        )
+
     def test_build_is_parallel_but_deploy_retains_both_gates(self):
         text = (WORKFLOWS / 'deploy.yml').read_text()
         self.assertNotIn('needs: checks', job(text, 'build'))
