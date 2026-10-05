@@ -1,7 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const listModels = vi.hoisted(() => vi.fn())
-vi.mock('../../api/client', () => ({ apiClient: { buildUrl: ({ url }: { url: string }) => `https://synthetic.test${url}` } }))
+vi.mock('../../api/client', () => ({ apiClient: { buildUrl: ({ url, path, query }: {
+  url: string
+  path?: Record<string, unknown>
+  query?: Record<string, unknown>
+}) => {
+  const resolvedPath = Object.entries(path ?? {}).reduce(
+    (current, [key, value]) => current.replace(`{${key}}`, encodeURIComponent(String(value))),
+    url,
+  )
+  const suffix = query ? `?${new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)]))}` : ''
+  return `https://synthetic.test${resolvedPath}${suffix}`
+} } }))
 vi.mock('../../api/generated', () => ({ listAgentModels: listModels, editAgentCanvasNode: vi.fn() }))
 import { getAgentModelCatalog, streamAgentTurn } from './researchAgentApi'
 import type { AgentReasoningEffort } from './model'
@@ -40,16 +51,77 @@ describe('per-turn model selection API', () => {
     expect(body).not.toHaveProperty('reasoning_effort')
   })
 
-  it('preserves the selected model and effort through transport retries', async () => {
+  it.each([0, 2])('preserves the original model and effort through read-only recovery after %i cursor GET failures', async cursorFailures => {
     vi.useFakeTimers()
-    const fetch = vi.fn().mockRejectedValueOnce(new TypeError('synthetic offline')).mockImplementation(async () => terminal())
+    const originalRequest = { message: 'synthetic', model_id: 'gpt-6-luna', reasoning_effort: 'high' as const }
+    const snapshot = {
+      run_id: 'run-1',
+      conversation_id: 'conversation-1',
+      idempotency_key: 'retry',
+      status: 'running',
+      request: originalRequest,
+      partial_answer: 'already persisted',
+      last_event_sequence: 7,
+      cancel_requested: false,
+    }
+    const fetch = vi.fn()
+      .mockRejectedValueOnce(new TypeError('synthetic initial response lost'))
+      .mockResolvedValueOnce(new Response(JSON.stringify(snapshot), { headers: { 'Content-Type': 'application/json' } }))
+    for (let failure = 0; failure < cursorFailures; failure += 1) {
+      fetch.mockRejectedValueOnce(new TypeError('synthetic cursor transport failure'))
+    }
+    fetch.mockResolvedValueOnce(new Response('id: run-1:8\nevent: turn_interrupted\ndata: {"code":"interrupted","message":"synthetic"}\n\n', { headers: { 'Content-Type': 'text/event-stream' } }))
     vi.stubGlobal('fetch', fetch)
-    const request = streamAgentTurn({ message: 'synthetic', model_id: 'gpt-6-luna', reasoning_effort: 'high', idempotencyKey: 'retry' }, () => undefined)
-    await vi.advanceTimersByTimeAsync(250)
+    const events = vi.fn()
+    const request = streamAgentTurn({ ...originalRequest, idempotencyKey: 'retry' }, events)
+    await vi.runAllTimersAsync()
     await request
-    expect(fetch).toHaveBeenCalledTimes(2)
-    expect(fetch.mock.calls[0][1].body).toBe(fetch.mock.calls[1][1].body)
-    expect(fetch.mock.calls[0][1].headers['Idempotency-Key']).toBe(fetch.mock.calls[1][1].headers['Idempotency-Key'])
+
+    const calls = fetch.mock.calls as [string, RequestInit][]
+    const executionCalls = calls.filter(([, init]) => init.method === 'POST')
+    expect(executionCalls).toHaveLength(1)
+    expect(executionCalls[0][0]).toBe('https://synthetic.test/api/agent/turns')
+    expect(executionCalls[0][1]).toMatchObject({
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream', 'Idempotency-Key': 'retry' },
+    })
+    expect(JSON.parse(executionCalls[0][1].body as string)).toEqual({
+      ...originalRequest,
+      mode: 'standard',
+      workspace: 'agent',
+      web_search: false,
+      task_id: null,
+      document_id: null,
+      section_id: null,
+      document_version: null,
+      theory_plan_id: null,
+      material_ids: [],
+      reference_knowledge_base_id: null,
+      knowledge_index_action: null,
+      deep_research_run_id: null,
+      deep_research_action: null,
+      deep_research_selection: null,
+    })
+
+    const [lookupUrl, lookup] = calls[1]
+    expect(lookupUrl).toBe('https://synthetic.test/api/agent/runs/by-idempotency-key')
+    expect(lookup.method ?? 'GET').toBe('GET')
+    expect(lookup).toMatchObject({ credentials: 'include', cache: 'no-store', headers: { 'Idempotency-Key': 'retry' } })
+    expect(lookup).not.toHaveProperty('body')
+
+    const cursorCalls = calls.slice(2)
+    expect(cursorCalls).toHaveLength(cursorFailures + 1)
+    for (const [url, subscription] of cursorCalls) {
+      expect(url).toBe('https://synthetic.test/api/agent/runs/run-1/events?after=7')
+      expect(subscription.method ?? 'GET').toBe('GET')
+      expect(subscription).toMatchObject({ credentials: 'include', headers: { 'Accept': 'text/event-stream' } })
+      expect(subscription).not.toHaveProperty('body')
+    }
+    expect(events.mock.calls.map(([event]) => event)).toEqual([
+      { type: 'turn_snapshot', run: snapshot },
+      { type: 'turn_interrupted', code: 'interrupted', message: 'synthetic', event_id: 'run-1:8' },
+    ])
+    expect(events.mock.calls[0][0].run.request).toEqual(originalRequest)
   })
 
   it('surfaces a clear server model-selection rejection without retrying it', async () => {
