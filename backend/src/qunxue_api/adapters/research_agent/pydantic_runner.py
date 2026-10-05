@@ -841,10 +841,16 @@ class PydanticAIKnowledgeRunner:
         route_executor: ModelRouteExecutor | None = None,
         model_api_mock: bool = False,
         require_billing: bool = False,
-        protocol: Literal["chat_completions", "responses"] = "chat_completions",
+        protocol: Literal[
+            "chat_completions", "responses", "gemini_generate_content", "anthropic_messages"
+        ] = "chat_completions",
         model_capacities: Mapping[str, AgentModelCapacityMetadata] | None = None,
+        native_cache_omission_is_zero: bool = False,
+        native_authentication: Literal["native", "bearer"] = "native",
     ) -> None:
-        if (protocol == "responses" or reasoning_settings is not None) and fallback_endpoints:
+        if (
+            protocol != "chat_completions" or reasoning_settings is not None
+        ) and fallback_endpoints:
             raise ValueError("explicit model selections require strict-model routing")
         self._model = MODEL_API_MOCK_NAME if model_api_mock else model
         self.runtime_identity = AgentRuntimeIdentity(
@@ -871,13 +877,13 @@ class PydanticAIKnowledgeRunner:
                 endpoint_settings["openai_store"] = False
             if extra_headers:
                 endpoint_settings["extra_headers"] = dict(extra_headers)
-            if reasoning_settings is not None:
+            if reasoning_settings is not None and protocol in {"chat_completions", "responses"}:
                 # Native controls are the exact server-registered wire for this level.
                 # Never also send a generic effort or the legacy DeepSeek-off override.
                 endpoint_settings.update(cast(
                     OpenAIChatModelSettings, reasoning_settings.model_dump(exclude_none=True),
                 ))
-            elif reasoning_effort is not None:
+            elif reasoning_effort is not None and protocol in {"chat_completions", "responses"}:
                 endpoint_settings["openai_reasoning_effort"] = reasoning_effort
             if reasoning_settings is None and _is_deepseek_flash(
                 base_url=endpoint_url,
@@ -918,6 +924,41 @@ class PydanticAIKnowledgeRunner:
         if model_api_mock:
             # Only the model boundary changes; keep the real Agent/tool workflow.
             model_instance = unconfigured_model()
+        elif protocol in {"gemini_generate_content", "anthropic_messages"}:
+            from qunxue_api.adapters.research_agent.native_models import build_native_agent_model
+
+            def native_context():
+                correlation = _agent_route_correlation.get() or {}
+                return ModelRouteContext(
+                    trace_id=uuid4(), request_id=uuid4(), operation="agent_completion",
+                    task_id=_uuid_correlation(correlation.get("task_id")),
+                    agent_run_id=_uuid_correlation(correlation.get("agent_run_id")),
+                    capability="agent_completion",
+                )
+
+            def native_error(error):
+                if isinstance(error, ModelAttemptFailure):
+                    return AgentModelRouteError.from_attempt(error)
+                if isinstance(error, ModelRoutesUnavailable):
+                    return AgentModelRouteError("agent_model_unavailable")
+                if isinstance(error, ModelHTTPError | ModelAPIError):
+                    return AgentModelRouteError.from_attempt(ModelAttemptFailure(
+                        code=_model_attempt_failure_code(error),
+                        retryable=_is_retryable_model_error(error),
+                    ))
+                return error
+
+            if route_executor is None or route_executor.endpoint_ids != ("primary",):
+                raise ValueError("native Agent requires a strict single-endpoint route executor")
+            model_instance = build_native_agent_model(
+                protocol=protocol, base_url=base_url, api_key=api_key, model=model,
+                timeout_seconds=timeout_seconds, extra_headers=dict(extra_headers or {}),
+                capacity=self.model_capacity, effort=reasoning_settings,
+                route_executor=route_executor, route_context_factory=native_context,
+                route_error=native_error, require_billing=require_billing,
+                cache_omission_is_zero=native_cache_omission_is_zero,
+                native_authentication=native_authentication,
+            )
         else:
             fallback_models: dict[str, OpenAIChatModel] = {}
             native_output_parameters = (

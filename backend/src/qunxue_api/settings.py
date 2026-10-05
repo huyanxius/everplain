@@ -102,8 +102,11 @@ class AgentProviderSettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     base_url: str
-    protocol: Literal["chat_completions", "responses"]
+    protocol: Literal[
+        "chat_completions", "responses", "gemini_generate_content", "anthropic_messages"
+    ]
     api_key_env: str = Field(pattern=r"^EVERPLAIN_[A-Z0-9_]+_API_KEY$")
+    native_authentication: Literal["native", "bearer"] = "native"
 
     @field_validator("base_url")
     @classmethod
@@ -117,7 +120,9 @@ class AgentModelCapacitySettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
     context_window_tokens: int = Field(gt=0, strict=True)
     max_output_tokens: int = Field(gt=0, strict=True)
-    output_token_parameter: Literal["max_tokens", "max_completion_tokens", "max_output_tokens"]
+    output_token_parameter: Literal[
+        "max_tokens", "max_completion_tokens", "max_output_tokens", "maxOutputTokens"
+    ]
     source: str = Field(min_length=1, max_length=1000)
 
     @field_validator("source")
@@ -142,9 +147,28 @@ class AgentModelEffortSettings(BaseModel):
         Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None
     ) = None
     extra_body: dict[str, JsonValue] = Field(default_factory=dict)
+    google_thinking_level: Literal["minimal", "low", "medium", "high"] | None = None
+    anthropic_effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    anthropic_thinking: Literal["adaptive", "between_tools"] | None = None
 
     @model_validator(mode="after")
     def require_wire_control(self):
+        native = self.google_thinking_level is not None or self.anthropic_effort is not None
+        if native:
+            if self.openai_reasoning_effort is not None or self.extra_body:
+                raise ValueError("native SDK controls cannot mix OpenAI wire settings")
+            if self.google_thinking_level is not None and (
+                self.anthropic_effort is not None or self.anthropic_thinking is not None
+            ):
+                raise ValueError("native reasoning controls must target one protocol")
+            if self.anthropic_effort is not None and self.anthropic_thinking is None:
+                raise ValueError("native Anthropic effort requires an explicit thinking mode")
+            if (self.anthropic_thinking == "between_tools"
+                and self.anthropic_effort in {"xhigh", "max"}):
+                raise ValueError("between-tools thinking supports only low, medium and high")
+            return self
+        if self.anthropic_thinking is not None:
+            raise ValueError("native thinking mode requires an effort")
         if self.openai_reasoning_effort is None and not self.extra_body:
             raise ValueError("reasoning level needs an explicit upstream wire control")
         if set(self.extra_body) - {"thinking", "reasoning_effort", "output_config", "extra_body"}:
@@ -222,7 +246,12 @@ class AgentSelectableModelSettings(BaseModel):
         if self.effort_settings:
             controls = [
                 {**value.extra_body, **({"reasoning_effort": value.openai_reasoning_effort}
-                 if value.openai_reasoning_effort is not None else {})}
+                 if value.openai_reasoning_effort is not None else {}),
+                 **({"google_thinking_level": value.google_thinking_level}
+                    if value.google_thinking_level is not None else {}),
+                 **({"anthropic_effort": value.anthropic_effort,
+                     "anthropic_thinking": value.anthropic_thinking}
+                    if value.anthropic_effort is not None else {})}
                 for value in self.effort_settings.values()
             ]
             if any(value in controls[:index] for index, value in enumerate(controls)):
@@ -462,13 +491,18 @@ class Settings(BaseSettings):
         normalized = {}
         for key, capacity in value.items():
             parts = key.split("|")
-            if len(parts) != 3 or parts[1] not in {"chat_completions", "responses"}:
+            if len(parts) != 3 or parts[1] not in {
+                "chat_completions", "responses", "gemini_generate_content", "anthropic_messages"
+            }:
                 raise ValueError("capacity keys must be base URL | protocol | model")
             base_url, protocol, model = parts
-            if (
-                (protocol == "responses")
-                != (capacity.output_token_parameter == "max_output_tokens")
-            ):
+            expected = {
+                "responses": {"max_output_tokens"},
+                "chat_completions": {"max_tokens", "max_completion_tokens"},
+                "anthropic_messages": {"max_tokens"},
+                "gemini_generate_content": {"maxOutputTokens"},
+            }
+            if capacity.output_token_parameter not in expected[protocol]:
                 raise ValueError("native output token parameter must match the route protocol")
             route = "|".join((
                 _normalize_model_base_url(base_url), protocol, _normalize_model_name(model),
@@ -574,6 +608,25 @@ class Settings(BaseSettings):
     def validate_model_fallback_runtime(self):
         if self.allow_model_fallback and self.runtime_mode != "base":
             raise ValueError("model fallback requires runtime_mode=base")
+        return self
+
+    @model_validator(mode="after")
+    def validate_native_agent_protocols(self):
+        for model in self.agent_selectable_models:
+            provider = self.agent_providers.get(model.provider)
+            if provider is None:
+                continue  # Registry resolution reports missing providers as before.
+            for effort in model.effort_settings.values():
+                google = effort.google_thinking_level is not None
+                anthropic = effort.anthropic_effort is not None
+                if google != (provider.protocol == "gemini_generate_content") or anthropic != (
+                    provider.protocol == "anthropic_messages"
+                ):
+                    raise ValueError("reasoning controls must match the provider protocol")
+            if provider.protocol == "anthropic_messages":
+                key = f"{provider.base_url}|{provider.protocol}|{model.model}"
+                if key not in self.agent_model_capacities:
+                    raise ValueError("Anthropic requires a verified explicit max_tokens capacity")
         return self
 
     @field_validator("model_base_url")

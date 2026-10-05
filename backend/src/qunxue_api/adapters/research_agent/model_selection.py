@@ -91,3 +91,9 @@ def registered_agent_effort_settings(settings, selection: AgentModelSelection):
     return AgentModelEffortSettings.model_validate(
         entry.effort_settings[selection.reasoning_effort].model_dump()
     )
+
+
+def registered_agent_native_authentication(settings, selection: AgentModelSelection):
+    entry = next((item for item in settings.agent_selectable_models
+                  if item.model_id == selection.model_id), None)
+    return settings.agent_providers[entry.provider].native_authentication if entry else "native"

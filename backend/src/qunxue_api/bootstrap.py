@@ -490,6 +490,7 @@ def create_app(
     from qunxue_api.adapters.research_agent.model_selection import (
         registered_agent_effort_settings,
         registered_agent_models,
+        registered_agent_native_authentication,
         selectable_agent_model,
     )
     from qunxue_api.modules.agent_conversation import MOCK_AGENT_MODEL_CHOICES
@@ -1214,7 +1215,15 @@ def create_app(
                     reasoning_settings=registered_agent_effort_settings(
                         resolved_settings, selection,
                     ),
+                    native_cache_omission_is_zero=(
+                        resolved_settings.billing_usage_policies.get(
+                            f"{httpx.URL(route_endpoint.base_url).host}:{route_endpoint.model}"
+                        ) == "omitted_cache_subsets_are_zero"
+                    ),
                     protocol=route_protocol,
+                    native_authentication=registered_agent_native_authentication(
+                        resolved_settings, selection,
+                    ),
                     route_executor=route_executor,
                     model_capacities=resolved_settings.agent_model_capacities,
                     require_billing=True,
