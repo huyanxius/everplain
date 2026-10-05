@@ -53,6 +53,7 @@ from .model_selection import (
 __all__ = [
     "excerpt",
     "ContextSummaryBatch",
+    "ContextSummaryGenerationFailure",
     "ContextSummaryRepository",
     "merge_digest",
     "render_recent_context",
@@ -97,4 +98,8 @@ __all__ = [
     "patches_from_tool_summary",
 ]
 
-from .summary import ContextSummaryBatch, ContextSummaryRepository
+from .summary import (
+    ContextSummaryBatch,
+    ContextSummaryGenerationFailure,
+    ContextSummaryRepository,
+)

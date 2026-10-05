@@ -3,9 +3,83 @@
 import logging
 from contextlib import nullcontext
 
-from qunxue_api.modules.billing import BillingBudgetExceeded
+from qunxue_api.modules.agent_conversation import ContextSummaryGenerationFailure
+from qunxue_api.modules.billing import (
+    BillingBudgetExceeded,
+    BillingContextMissing,
+    BillingReplayBlocked,
+    BillingRouteMismatch,
+    ModelDeliveryRejected,
+    UnknownPrice,
+    UnknownTokenUsage,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class _SummaryLeaseLost(RuntimeError):
+    pass
+
+
+def _failure_diagnostic(error, stage):
+    """Only fixed categories/status numbers; never exception strings or payloads."""
+    chain, seen, current = [], set(), error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    reasons = (
+        (BillingBudgetExceeded, "budget_exceeded"),
+        (BillingContextMissing, "billing_context_missing"),
+        (BillingReplayBlocked, "billing_replay_blocked"),
+        (BillingRouteMismatch, "billing_route_mismatch"),
+        (UnknownTokenUsage, "usage_unknown"),
+        (UnknownPrice, "price_unknown"),
+        (ModelDeliveryRejected, "delivery_rejected"),
+        (_SummaryLeaseLost, "lease_lost"),
+    )
+    reason = next(
+        (code for kind, code in reasons if any(isinstance(item, kind) for item in chain)),
+        None,
+    )
+    if reason == "billing_context_missing":
+        missing = next(item for item in chain if isinstance(item, BillingContextMissing))
+        supplied = getattr(missing, "reason", None)
+        if type(supplied) is str and supplied in {
+            "phase_policy_missing", "billing_runtime_missing"
+        }:
+            reason = supplied
+    if reason is None and any(
+        any(
+            (kind.__module__ == "sqlite3" and kind.__name__ == "Error")
+            or (kind.__module__ == "sqlalchemy.exc" and kind.__name__ == "SQLAlchemyError")
+            for kind in type(item).__mro__
+        )
+        for item in chain
+    ):
+        reason = "storage_error"
+    if reason is None:
+        generated = next(
+            (item for item in chain if isinstance(item, ContextSummaryGenerationFailure)), None
+        )
+        if generated is not None:
+            allowed = {
+                "http_error", "timeout", "transport_error", "invalid_output",
+                "request_limit", "model_config", "model_error",
+            }
+            supplied = getattr(generated, "reason", None)
+            reason = supplied if type(supplied) is str and supplied in allowed else "model_error"
+            status = getattr(generated, "http_status", None)
+            if (
+                reason == "http_error"
+                and type(status) is int
+                and 100 <= status <= 599
+            ):
+                reason = f"http_{status}"
+    stage = stage if stage in {
+        "billing_open", "billing_start", "model", "publish", "settle"
+    } else "unknown_stage"
+    return f"{stage}:{reason or 'summary_failed'}", reason == "budget_exceeded"
 
 
 class ConversationSummaryWorker:
@@ -35,6 +109,7 @@ class ConversationSummaryWorker:
             )
         if batch is None:
             return False
+        stage = "billing_open"
         try:
             operation = (
                 self.billing.open(
@@ -46,27 +121,28 @@ class ConversationSummaryWorker:
                 if self.billing
                 else nullcontext()
             )
+            stage = "billing_start"
             with operation as billing:
+                stage = "model"
                 output, input_tokens, output_tokens = generate(batch)
+                stage = "publish"
                 with self.scope() as repository:
                     completed = repository.complete(batch, output, input_tokens, output_tokens)
                 if not completed:
-                    raise RuntimeError("context_summary_lease_lost")
+                    raise _SummaryLeaseLost("context_summary_lease_lost")
+                stage = "settle"
                 if billing:
                     billing.finish("success")
         except Exception as error:
-            current, seen, budget_blocked = error, set(), False
-            while current is not None and id(current) not in seen:
-                seen.add(id(current))
-                if isinstance(current, BillingBudgetExceeded):
-                    budget_blocked = True
-                    break
-                current = current.__cause__ or current.__context__
-            logger.warning("Recent conversation summary failed; original conversations are intact.")
+            code, budget_blocked = _failure_diagnostic(error, stage)
+            logger.warning(
+                "Recent conversation summary failed (code=%s); original conversations are intact.",
+                code,
+            )
             with self.scope() as repository:
                 repository.failed(
                     batch,
                     terminal=budget_blocked,
-                    code="budget_exceeded" if budget_blocked else "summary_failed",
+                    code=code,
                 )
         return True

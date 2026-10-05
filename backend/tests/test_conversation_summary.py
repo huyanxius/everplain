@@ -180,7 +180,7 @@ def test_failed_generation_backoff_budget_and_no_static_fallback(plain_client):
         usage = session.get(MemoryUsageRow, (str(owner), datetime.now(UTC).date().isoformat()))
         assert usage.budget_tokens == 24000
         row = session.get(ConversationSummaryRow, str(owner))
-        assert row.last_error == "summary_failed"
+        assert row.last_error == "model:summary_failed"
     assert len(calls) == 1
 
 
@@ -383,7 +383,7 @@ def test_wrapped_budget_denial_is_terminal_for_same_source_watermark(plain_clien
     assert not worker(plain_client).run_once(generate=blocked)
     with plain_client.app.state.database.session() as session:
         row = session.get(ConversationSummaryRow, str(owner))
-        assert row.attempts == 3 and row.last_error == "budget_exceeded"
+        assert row.attempts == 3 and row.last_error == "model:budget_exceeded"
         assert row.retry_after is None
     body = plain_client.get("/api/agent/context-summary").json()
     assert body["status"] == "failed" and not body["cards"]

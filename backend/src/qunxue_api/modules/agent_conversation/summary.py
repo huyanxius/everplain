@@ -5,6 +5,32 @@ from typing import Protocol
 from uuid import UUID
 
 
+class ContextSummaryGenerationFailure(RuntimeError):
+    """Content-free model failure facts, with the original cause kept internally."""
+
+    _reasons = frozenset(
+        {
+            "http_error",
+            "timeout",
+            "transport_error",
+            "invalid_output",
+            "request_limit",
+            "model_config",
+            "model_error",
+        }
+    )
+
+    def __init__(self, reason: str, *, http_status: int | None = None):
+        if type(reason) is not str or reason not in self._reasons:
+            raise ValueError("invalid_context_summary_failure_reason")
+        if http_status is not None and (
+            type(http_status) is not int or not 100 <= http_status <= 599
+        ):
+            raise ValueError("invalid_context_summary_http_status")
+        self.reason, self.http_status = reason, http_status
+        super().__init__("context_summary_generation_failed")
+
+
 @dataclass(frozen=True)
 class ContextSummaryBatch:
     user_id: UUID
