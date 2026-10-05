@@ -42,6 +42,18 @@ function libraryFixture(documents: SharedDocument[] = [], access: SharedCourse['
 }
 
 describe('six-step additions', () => {
+  it('uses the prototype blue for a new profile without changing saved companion colors', async () => {
+    profile.color = '#b8bfa6'
+    const first = show()
+    await screen.findByRole('heading', { name: '先选一位伙伴' })
+    expect(screen.getByRole('button', { name: '伙伴 1' }).querySelector('svg')?.style.getPropertyValue('--aa-color')).toBe('#5d8fe6')
+    first.unmount()
+    profile.version = 5
+    show()
+    await screen.findByRole('heading', { name: '先选一位伙伴' })
+    expect(screen.getByRole('button', { name: '伙伴 1' }).querySelector('svg')?.style.getPropertyValue('--aa-color')).toBe('#b8bfa6')
+  })
+
   it('shows unnamed partners and saves the clicked partner directly into the name step', async () => {
     show()
     await screen.findByRole('heading', { name: '先选一位伙伴' })

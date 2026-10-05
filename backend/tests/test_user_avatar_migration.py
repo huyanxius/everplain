@@ -9,8 +9,7 @@ from alembic.operations import Operations
 from sqlalchemy import create_engine, inspect, text
 
 MIGRATION_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "migrations/versions/20261005_0590_user_avatar.py"
+    Path(__file__).resolve().parents[1] / "migrations/versions/20261005_0590_user_avatar.py"
 )
 
 
@@ -43,13 +42,17 @@ def _seed_profiles(connection):
 
 
 def _rows(connection):
-    return connection.execute(
-        text(
-            "SELECT user_id, name, avatar_id, color, speaking_style, setup_step, "
-            "setup_completed, questionnaire, memory_ids, version, soul_text "
-            "FROM agent_profiles ORDER BY user_id"
+    return (
+        connection.execute(
+            text(
+                "SELECT user_id, name, avatar_id, color, speaking_style, setup_step, "
+                "setup_completed, questionnaire, memory_ids, version, soul_text "
+                "FROM agent_profiles ORDER BY user_id"
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
 
 
 def _assert_upgraded_profiles(connection, before):
@@ -63,9 +66,12 @@ def _assert_upgraded_profiles(connection, before):
         c for c in inspect(connection).get_columns("agent_profiles") if c["name"] == "user_avatar"
     )
     assert column["nullable"] is True
-    assert connection.execute(
-        text("SELECT COUNT(*) FROM agent_profiles WHERE user_avatar IS NOT NULL")
-    ).scalar_one() == 0
+    assert (
+        connection.execute(
+            text("SELECT COUNT(*) FROM agent_profiles WHERE user_avatar IS NOT NULL")
+        ).scalar_one()
+        == 0
+    )
 
 
 def test_user_avatar_migration_preserves_profiles_and_maps_unfinished_steps(tmp_path):
@@ -113,14 +119,21 @@ def test_user_avatar_revision_upgrades_from_the_integrated_predecessor(tmp_path,
             _seed_profiles(connection)
             before = _rows(connection)
             memory_schema = connection.execute(
-                text("SELECT name, sql FROM sqlite_master WHERE name LIKE '%memor%' ORDER BY name")
+                text("SELECT name, sql FROM sqlite_master "
+                        "WHERE name LIKE '%memor%' ORDER BY name")
             ).all()
         command.upgrade(config, revision.revision)
         with engine.connect() as connection:
             _assert_upgraded_profiles(connection, before)
-            assert connection.execute(
-                text("SELECT name, sql FROM sqlite_master WHERE name LIKE '%memor%' ORDER BY name")
-            ).all() == memory_schema
+            assert (
+                connection.execute(
+                    text(
+                        "SELECT name, sql FROM sqlite_master "
+                        "WHERE name LIKE '%memor%' ORDER BY name"
+                    )
+                ).all()
+                == memory_schema
+            )
         command.downgrade(config, revision.down_revision)
         with engine.connect() as connection:
             assert "user_avatar" not in {
@@ -128,3 +141,175 @@ def test_user_avatar_revision_upgrades_from_the_integrated_predecessor(tmp_path,
             }
     finally:
         engine.dispose()
+
+
+def test_0570_to_0590_copy_preserves_old_readers_writers_and_reset_fence(
+    plain_client, tmp_path, monkeypatch, alembic_config
+):
+    """A candidate-copy upgrade leaves the original DB and legacy columns intact."""
+    import sqlite3
+    from uuid import uuid4
+
+    import pytest
+    from test_research_material_api import _authenticate
+
+    client = plain_client
+    _authenticate(client)
+    owner = client.get("/api/session").json()["user"]["user_id"]
+    saved = client.patch(
+        "/api/agent-profile",
+        headers={"Idempotency-Key": str(uuid4())},
+        json={
+            "expected_version": 0,
+            "name": "旧伙伴",
+            "soul_text": "保留的人格",
+            "setup_step": 4,
+            "questionnaire": {"occupation": "研究者", "goals": ["整理资料"]},
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    _authenticate(client)
+    second_owner = client.get("/api/session").json()["user"]["user_id"]
+    original_path = client.app.state.database.engine.url.database
+    command.downgrade(alembic_config, "20261005_0570")
+    candidate_path = tmp_path / "avatar-candidate.db"
+    schema = Path(__file__).parent / "fixtures/billing_reset_schema.sql"
+    columns = (
+        "user_id",
+        "name",
+        "avatar_id",
+        "color",
+        "speaking_style",
+        "setup_step",
+        "setup_completed",
+        "questionnaire",
+        "memory_ids",
+        "version",
+        "soul_text",
+    )
+    protected_sql = (
+        "SELECT type,name,sql FROM sqlite_master WHERE name IN "
+        "('billing_precision_adjustments','billing_reset_terminal_fence') ORDER BY name"
+    )
+    with sqlite3.connect(original_path) as source:
+        source.executescript(schema.read_text())
+        source.execute(
+            "INSERT INTO billing_operations(run_id,user_id,fingerprint,status,hold_points,"
+            "exempt,price_json,credit_pico,created_at,updated_at) "
+            "VALUES ('old-op',?,'fixture','success',0,0,'{}','100','2026-10-05','2026-10-05')",
+            (owner,),
+        )
+        source.execute(
+            "INSERT INTO billing_precision_adjustments VALUES "
+            "('synthetic-reset',?,'fixture','100','-100','0',29,1,30,'[\"old-op\"]','2026-10-05')",
+            (owner,),
+        )
+        source.commit()
+        tables = (
+            "users",
+            "agent_memories",
+            "agent_conversation_summaries",
+            "credit_accounts",
+            "credit_ledger",
+            "billing_operations",
+            "billing_attempts",
+            "billing_precision_adjustments",
+        )
+        snapshots = {
+            name: source.execute(f"SELECT * FROM {name} ORDER BY 1").fetchall() for name in tables
+        }
+        original_profile = source.execute(
+            f"SELECT {','.join(columns)} FROM agent_profiles WHERE user_id=?",
+            (owner,),
+        ).fetchone()
+        assert original_profile[5] == 2
+        protected = source.execute(protected_sql).fetchall()
+        with sqlite3.connect(candidate_path) as candidate:
+            source.backup(candidate)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", f"sqlite:///{candidate_path}")
+    command.upgrade(alembic_config, "20261005_0590")
+    avatar = {"id": "cat", "hair": "#ffffff", "blush": False}
+    with sqlite3.connect(candidate_path) as candidate:
+        for table, expected in snapshots.items():
+            assert candidate.execute(f"SELECT * FROM {table} ORDER BY 1").fetchall() == expected
+        legacy = candidate.execute(
+            f"SELECT {','.join(columns)} FROM agent_profiles WHERE user_id=?",
+            (owner,),
+        ).fetchone()
+        expected = list(original_profile)
+        expected[5] = 4
+        assert tuple(expected) == legacy
+        assert (
+            candidate.execute(
+                "SELECT user_avatar FROM agent_profiles WHERE user_id=?",
+                (owner,),
+            ).fetchone()[0]
+            is None
+        )
+        candidate.execute(
+            "UPDATE agent_profiles SET user_avatar=? WHERE user_id=?", (json.dumps(avatar), owner)
+        )
+        # The old ORM selects and writes only its named columns, never the new avatar.
+        values = dict(zip(columns, legacy, strict=True))
+        values["name"] = "旧应用仍能保存"
+        values["version"] += 1
+        candidate.execute(
+            "UPDATE agent_profiles SET "
+            + ",".join(f"{key}=:{key}" for key in columns[1:])
+            + " WHERE user_id=:user_id",
+            values,
+        )
+        assert (
+            json.loads(
+                candidate.execute(
+                    "SELECT user_avatar FROM agent_profiles WHERE user_id=?",
+                    (owner,),
+                ).fetchone()[0]
+            )
+            == avatar
+        )
+        candidate.execute(
+            f"INSERT INTO agent_profiles ({','.join(columns)}) "
+            f"VALUES ({','.join('?' for _ in columns)})",
+            (second_owner, "旧新增", "cheng", "#5d8fe6", "clear", 0, 0, "{}", "{}", 1, ""),
+        )
+        assert (
+            candidate.execute(
+                "SELECT user_avatar FROM agent_profiles WHERE user_id=?",
+                (second_owner,),
+            ).fetchone()[0]
+            is None
+        )
+        candidate.commit()
+        with pytest.raises(sqlite3.IntegrityError, match="predates account reset"):
+            candidate.execute("UPDATE billing_operations SET status='error' WHERE run_id='old-op'")
+    command.downgrade(alembic_config, "20261005_0570")
+    with sqlite3.connect(candidate_path) as candidate:
+        assert "user_avatar" not in {
+            row[1] for row in candidate.execute("PRAGMA table_info(agent_profiles)")
+        }
+        assert candidate.execute(protected_sql).fetchall() == protected
+        assert candidate.execute(
+            "SELECT name, setup_step, version FROM agent_profiles WHERE user_id=?",
+            (owner,),
+        ).fetchone() == ("旧应用仍能保存", 2, original_profile[9] + 1)
+        for table, expected in snapshots.items():
+            assert candidate.execute(f"SELECT * FROM {table} ORDER BY 1").fetchall() == expected
+        with pytest.raises(sqlite3.IntegrityError, match="predates account reset"):
+            candidate.execute(
+                "UPDATE billing_operations SET charged_points=2 WHERE run_id='old-op'"
+            )
+    with sqlite3.connect(original_path) as source:
+        assert (
+            source.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+            == "20261005_0570"
+        )
+        assert (
+            source.execute(
+                f"SELECT {','.join(columns)} FROM agent_profiles WHERE user_id=?",
+                (owner,),
+            ).fetchone()
+            == original_profile
+        )
+        for table, expected in snapshots.items():
+            assert source.execute(f"SELECT * FROM {table} ORDER BY 1").fetchall() == expected

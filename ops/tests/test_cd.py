@@ -144,7 +144,11 @@ class FilesystemSafetyTests(unittest.TestCase):
             (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
         ).hexdigest()
         new_hash = hashlib.sha256(json.dumps(storage, sort_keys=True).encode()).hexdigest()
-        dispatch_storage = {k: v for k, v in storage.items()
+        summary_storage = {k: v for k, v in storage.items()
+                           if k != "migrations/versions/20261005_0590_user_avatar.py"}
+        summary_hash = hashlib.sha256(
+            json.dumps(summary_storage, sort_keys=True).encode()).hexdigest()
+        dispatch_storage = {k: v for k, v in summary_storage.items()
                             if k != "migrations/versions/20261005_0570_conversation_summary.py"}
         dispatch_hash = hashlib.sha256(
             json.dumps(dispatch_storage, sort_keys=True).encode()).hexdigest()
@@ -158,14 +162,23 @@ class FilesystemSafetyTests(unittest.TestCase):
         old_hash = hashlib.sha256(json.dumps(old_storage, sort_keys=True).encode()).hexdigest()
         self.assertEqual(policy["rollback_compatible_migration_trees"], [])
         for previous, candidate in ((old_hash, context_hash), (context_hash, dispatch_hash),
-                                    (dispatch_hash, new_hash)):
+                                    (dispatch_hash, summary_hash), (summary_hash, new_hash)):
             self.assertIn({"from": previous, "to": candidate},
                           policy["reviewed_migration_transitions"])
             deploy.check_compatible({"migration_tree": previous}, {"migration_tree": candidate},
                                     policy)
-        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
-            deploy.check_compatible({"migration_tree": old_hash}, {"migration_tree": new_hash},
-                                    policy)
+        # Only the exact published 0570 tree may advance to this exact 0590 tree.
+        for previous in (old_hash, context_hash, dispatch_hash):
+            with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+                deploy.check_compatible({"migration_tree": previous}, {"migration_tree": new_hash},
+                                        policy)
+        changed = dict(storage)
+        changed["migrations/versions/20261005_0590_user_avatar.py"] = "0" * 64
+        changed_hash = hashlib.sha256(json.dumps(changed, sort_keys=True).encode()).hexdigest()
+        for previous, candidate in ((new_hash, summary_hash), (summary_hash, changed_hash)):
+            with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+                deploy.check_compatible({"migration_tree": previous}, {"migration_tree": candidate},
+                                        policy)
 
 
 class ArtifactTests(unittest.TestCase):

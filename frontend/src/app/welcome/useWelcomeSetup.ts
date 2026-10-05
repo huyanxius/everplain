@@ -36,7 +36,8 @@ function draftFrom(profile: PersonalAgentProfile): Draft {
   return {
     name: profile.name === 'Everplain' ? '' : profile.name,
     avatar: agentAvatarPresets.some(preset => preset.id === profile.avatar_id) ? profile.avatar_id as AgentAvatarId : 'cheng',
-    color: profile.color,
+    // A fresh, unsaved profile uses the prototype's first blue partner.
+    color: profile.version === 0 ? agentColors[0] : profile.color,
     style: speakingStyles.some(item => item.id === profile.speaking_style) ? profile.speaking_style as Draft['style'] : 'clear',
     occupation: profile.questionnaire.occupation ?? '', industry: profile.questionnaire.industry ?? '',
     goals: profile.questionnaire.goals ?? [], interests: (profile.questionnaire.interests ?? []).join('、'),
