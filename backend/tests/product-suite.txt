@@ -93,6 +93,7 @@ tests/test_writing_errors.py
 tests/test_writing_concurrency.py
 tests/test_writing_output_limits.py
 tests/test_writing_release_policy.py
+tests/test_writing_scope_migration.py
 
 # Explicit model routing and versioned additional-provider billing.
 tests/test_agent_model_selection.py

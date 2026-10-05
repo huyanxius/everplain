@@ -47,6 +47,7 @@ import {
 
 import './shared-editor.css'
 import { splitMarkdown, joinMarkdown, canEditProperties } from './markdownSource'
+import { mapMarkdownSelection, type MarkdownSelection } from './markdownSelection'
 
 import { Callout, Highlight, Image, Search, Table, TableCell, TableHeader, TableRow, TagDecor, WikiLink, findMatches, searchKey, tableCommands, tableJSON } from './extensions'
 
@@ -65,7 +66,7 @@ import { Callout, Highlight, Image, Search, Table, TableCell, TableHeader, Table
  */
 
 export type Property = { key: string; value: string }
-export type SelectionAction = { id: string; label: string; icon?: ReactNode; disabled?: boolean; run: (editor: Editor, text: string) => void }
+export type SelectionAction = { id: string; label: string; icon?: ReactNode; disabled?: boolean; run: (editor: Editor, text: string, selection: MarkdownSelection) => void }
 
 type Menu = { kind: 'slash' | 'wiki'; query: string; from: number; x: number; y: number; index: number } | null
 
@@ -90,7 +91,7 @@ export function SharedEditor({
   onOpenLink?: (target: string) => void
   onReady?: (editor: Editor) => void
   onChange?: (markdown: string) => void
-  onSelectionChange?: (selection: { start: number; end: number; text: string } | null) => void
+  onSelectionChange?: (selection: MarkdownSelection) => void
   saveState?: 'saved' | 'dirty' | 'saving' | 'error'
   readOnly?: boolean
 }) {
@@ -116,6 +117,12 @@ export function SharedEditor({
   const shell = useRef<HTMLDivElement>(null)
   const imageInput = useRef<HTMLInputElement>(null)
   const [imageError, setImageError] = useState('')
+  const [selectionError, setSelectionError] = useState('')
+  const reportSelection = (selection: MarkdownSelection) => {
+    setSelectionError(selection && 'error' in selection ? selection.error : '')
+    selectionCallback.current?.(selection)
+    return selection
+  }
   const insertImage = (file: File, target: Editor) => {
     if (!file.type.startsWith('image/')) return
     if (file.size > 48 * 1024) { setImageError('内嵌图片请小于 48 KB；较大的图片可先放到资料库，再在源码中添加链接。'); return }
@@ -214,12 +221,7 @@ export function SharedEditor({
   useEffect(() => {
     if (!editor) return
     const changed = () => {
-      const { from, to, empty } = editor.state.selection
-      if (empty) { selectionCallback.current?.(null); return }
-      const text = editor.state.doc.textBetween(from, to, '\n')
-      const start = raw.current.indexOf(text)
-      // Never invent offsets for formatted or ambiguous repeated text.
-      selectionCallback.current?.(text && start >= 0 && start === raw.current.lastIndexOf(text) ? { start, end: start + text.length, text } : null)
+      reportSelection(mapMarkdownSelection(editor, raw.current))
     }
     editor.on('selectionUpdate', changed)
     editor.on('update', changed)
@@ -388,6 +390,7 @@ export function SharedEditor({
     <div className="se" data-focus={focusMode} data-wide={wide} inert={readOnly} onBeforeInputCapture={() => { userEditing.current = true }} onPasteCapture={() => { userEditing.current = true }} onDropCapture={() => { userEditing.current = true }} onKeyDownCapture={event => { if (event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Enter' || event.key.length === 1) userEditing.current = true }} onClickCapture={event => { const button = (event.target as Element).closest('button'); if (button && button.getAttribute('role') !== 'tab') userEditing.current = true }}>
       <input ref={imageInput} hidden type="file" accept="image/*" onChange={event => { const file = event.currentTarget.files?.[0]; if (file && editor) insertImage(file, editor); event.currentTarget.value = '' }} />
       {imageError && <p className="qx-notice qx-notice--danger" role="alert">{imageError}</p>}
+      {selectionError && <p className="qx-notice qx-notice--danger" role="alert">{selectionError}</p>}
       <div className="se-toolbar" role="toolbar" aria-label="编辑工具">
         <T label="撤销" kbd="⌘Z" onClick={() => editor.chain().focus().undo().run()}><ArrowCounterClockwiseIcon /></T>
         <T label="重做" kbd="⇧⌘Z" onClick={() => editor.chain().focus().redo().run()}><ArrowClockwiseIcon /></T>
@@ -461,7 +464,7 @@ export function SharedEditor({
         <div className="se-page">
           {source === null && (propertySourceOnly ? <button type="button" className="qx-btn qx-btn--ghost" onClick={toSource}>在源码中编辑属性（保留完整 YAML）</button> : <Properties props={props} onChange={updateProperties} />)}
           {source !== null ? (
-            <textarea className="se-source" onSelect={event => { const el = event.currentTarget; selectionCallback.current?.(el.selectionStart < el.selectionEnd ? { start: el.selectionStart, end: el.selectionEnd, text: el.value.slice(el.selectionStart, el.selectionEnd) } : null) }} value={source} spellCheck={false} readOnly={readOnly} onChange={(e) => { setSource(e.target.value); raw.current = e.target.value; callback.current?.(e.target.value) }} aria-label="Markdown 源码" />
+            <textarea className="se-source" onSelect={event => { const el = event.currentTarget; reportSelection(el.selectionStart < el.selectionEnd ? { start: el.selectionStart, end: el.selectionEnd, text: el.value.slice(el.selectionStart, el.selectionEnd) } : null) }} value={source} spellCheck={false} readOnly={readOnly} onChange={(e) => { const el = e.currentTarget; setSource(el.value); raw.current = el.value; callback.current?.(el.value); reportSelection(el.selectionStart < el.selectionEnd ? { start: el.selectionStart, end: el.selectionEnd, text: el.value.slice(el.selectionStart, el.selectionEnd) } : null) }} aria-label="Markdown 源码" />
           ) : (
             <EditorContent editor={editor} />
           )}
@@ -504,7 +507,7 @@ export function SharedEditor({
           <button type="button" aria-label="链接" aria-pressed={editor.isActive('link')} onClick={openLink}><LinkIcon /></button>
           {selectionActions.length ? <span className="se-bubble__sep" /> : null}
           {selectionActions.map((a) => (
-            <button key={a.id} type="button" className="qx-btn qx-btn--ghost se-bubble__text" disabled={a.disabled} onClick={() => { const { from, to } = editor.state.selection; a.run(editor, editor.state.doc.textBetween(from, to, ' ')) }}>{a.icon}{a.label}</button>
+            <button key={a.id} type="button" className="qx-btn qx-btn--ghost se-bubble__text" disabled={a.disabled} onMouseDown={event => event.preventDefault()} onClick={() => { const { from, to } = editor.state.selection; a.run(editor, editor.state.doc.textBetween(from, to, ' '), reportSelection(mapMarkdownSelection(editor, raw.current))) }}>{a.icon}{a.label}</button>
           ))}
         </div>
       </BubbleMenu>

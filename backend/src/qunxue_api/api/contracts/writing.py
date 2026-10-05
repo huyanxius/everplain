@@ -105,6 +105,9 @@ class WritingRevisionResponse(BaseModel):
     after_markdown: str
     status: Literal["pending", "accepted", "rejected", "stale"]
     warnings: list[str]
+    # User-authorized source scope, not the minimal model patch. Legacy rows are null.
+    selection_start: int | None = Field(default=None, ge=0)
+    selection_end: int | None = Field(default=None, ge=0)
     created_at: datetime
 
 

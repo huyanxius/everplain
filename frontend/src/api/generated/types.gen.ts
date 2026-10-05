@@ -9828,6 +9828,14 @@ export type WritingRevisionResponse = {
      */
     revision_id: string;
     /**
+     * Selection End
+     */
+    selection_end?: number | null;
+    /**
+     * Selection Start
+     */
+    selection_start?: number | null;
+    /**
      * Status
      */
     status: 'pending' | 'accepted' | 'rejected' | 'stale';

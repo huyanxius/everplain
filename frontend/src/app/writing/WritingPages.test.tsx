@@ -1,4 +1,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useEffect, useState } from 'react'
+import { Editor } from '@tiptap/core'
+import StarterKit from '@tiptap/starter-kit'
+import { Markdown } from '@tiptap/markdown'
+import { mapMarkdownSelection, type MarkdownSelection } from '../../modules/shared-editor'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,7 +16,18 @@ vi.mock('../../modules/agent-profile', () => ({ readAgentProfile: vi.fn(async ()
 vi.mock('../../modules/agent-avatar', () => ({ AgentAvatar: () => <span>头像</span> }))
 vi.mock('../ui/PageShell', () => ({ PageShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }))
 vi.mock('../ui/Select', () => ({ Select: ({ options, onChange, ...props }: { options: { value: string; label: string }[]; onChange(value: string): void }) => <select {...props} onChange={event => onChange(event.target.value)}>{options.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select> }))
-vi.mock('../../modules/shared-editor', () => ({ SharedEditor: ({ markdown, onChange, readOnly }: { markdown: string; onChange(value: string): void; readOnly?: boolean }) => <textarea aria-label="Markdown 源码" value={markdown} onChange={event => onChange(event.target.value)} readOnly={readOnly} /> }))
+const shared = vi.hoisted(() => ({ editor: null as Editor | null, selection: null as null | ((value: MarkdownSelection) => void) }))
+vi.mock('../../modules/shared-editor', async importOriginal => ({
+  ...await importOriginal<typeof import('../../modules/shared-editor')>(),
+  SharedEditor: ({ markdown, onChange, onReady, onSelectionChange, readOnly }: { markdown: string; onChange(value: string): void; onReady?(editor: Editor): void; onSelectionChange?(value: MarkdownSelection): void; readOnly?: boolean }) => {
+    const [editor] = useState(() => new Editor({ extensions: [StarterKit, Markdown], content: markdown, contentType: 'markdown' }))
+    shared.editor = editor; shared.selection = onSelectionChange ?? null
+    useEffect(() => { onReady?.(editor); return () => editor.destroy() }, [editor, onReady])
+    useEffect(() => { editor.commands.setContent(markdown, { contentType: 'markdown', emitUpdate: false }) }, [editor, markdown])
+    useEffect(() => { const select = () => onSelectionChange?.(mapMarkdownSelection(editor, markdown)); editor.on('selectionUpdate', select); return () => { editor.off('selectionUpdate', select) } }, [editor, markdown, onSelectionChange])
+    return <textarea aria-label="Markdown 源码" value={markdown} onChange={event => onChange(event.target.value)} onSelect={event => { const input = event.currentTarget; onSelectionChange?.(input.selectionStart < input.selectionEnd ? { start: input.selectionStart, end: input.selectionEnd, text: input.value.slice(input.selectionStart, input.selectionEnd) } : null) }} readOnly={readOnly} />
+  },
+}))
 const agent = vi.hoisted(() => ({ props: null as null | { prepareWritingContext: () => Promise<unknown>; onTurnCompleted: () => void; onConversationStarted: (identity: { conversation_id: string }) => void; conversationId: string | null; writingAction?: { id: string; text: string } | null; onWritingActionFinished?: (id: string) => void } }))
 vi.mock('../agent/ResearchAgentConversationPage', () => ({ ResearchAgentConversationPage: (props: NonNullable<typeof agent.props>) => { agent.props = props; return <div>公共 Agent 面板<button>Agent 发送消息</button></div> } }))
 const doc = { document_id: 'doc-1', title: '原题', genre: 'essay' as const, markdown: '原文内容', version: 1, created_at: '2026-10-04T00:00:00Z', updated_at: '2026-10-04T00:00:00Z' }
@@ -19,7 +35,7 @@ const revision = { revision_id: 'rev-1', document_id: 'doc-1', base_version: 1, 
 function Location() { return <div data-testid="location">{useLocation().pathname}</div> }
 function wrap(element: React.ReactNode) { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/writing']}><Routes><Route path="*" element={<>{element}<Location /></>} /></Routes></MemoryRouter></QueryClientProvider>) }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done }); return { promise, resolve } }
-beforeEach(() => { vi.resetAllMocks(); sessionStorage.clear(); vi.mocked(writingApi.summary).mockResolvedValue({ sample_count: 0, genres: [], documents: [] }); vi.mocked(writingApi.samples).mockResolvedValue({ items: [] }); vi.mocked(writingApi.document).mockResolvedValue(doc); vi.mocked(writingApi.revisions).mockResolvedValue({ items: [] }); vi.mocked(writingApi.create).mockResolvedValue(doc); vi.mocked(writingApi.update).mockImplementation(async (_id, body) => ({ ...doc, ...body, version: 2 })); vi.mocked(writingApi.propose).mockResolvedValue(revision); vi.mocked(writingApi.resolve).mockResolvedValue({ document: { ...doc, markdown: '建议内容', version: 2 }, revision: { ...revision, status: 'accepted' } }); HTMLElement.prototype.scrollIntoView = vi.fn() })
+beforeEach(() => { vi.resetAllMocks(); shared.editor = null; shared.selection = null; sessionStorage.clear(); vi.mocked(writingApi.summary).mockResolvedValue({ sample_count: 0, genres: [], documents: [] }); vi.mocked(writingApi.samples).mockResolvedValue({ items: [] }); vi.mocked(writingApi.document).mockResolvedValue(doc); vi.mocked(writingApi.revisions).mockResolvedValue({ items: [] }); vi.mocked(writingApi.create).mockResolvedValue(doc); vi.mocked(writingApi.update).mockImplementation(async (_id, body) => ({ ...doc, ...body, version: 2 })); vi.mocked(writingApi.propose).mockResolvedValue(revision); vi.mocked(writingApi.resolve).mockResolvedValue({ document: { ...doc, markdown: '建议内容', version: 2 }, revision: { ...revision, status: 'accepted' } }); HTMLElement.prototype.scrollIntoView = vi.fn() })
 afterEach(cleanup)
 describe('real writing home integration', () => {
   it('renders zero real samples and no fake recent article', async () => { wrap(<WritingHomePage userId="u1" />); expect(await screen.findByText('还没有文稿。说说想写什么，或从下方新建。')).toBeInTheDocument(); expect(screen.queryByText('便利店与第三空间')).not.toBeInTheDocument(); expect(screen.getByText('0')).toBeInTheDocument() })
@@ -94,5 +110,108 @@ describe('direct writing controls', () => {
     expect(screen.getByRole('region', { name: '待定修订预览' })).toHaveTextContent('建议内容')
     expect(screen.getByRole('button', { name: '接受修订' })).toBeDisabled()
     expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('我正在写的新内容')
+  })
+})
+
+describe('precise selection and rich revision acceptance', () => {
+  it('passes the same repeated rich-text UTF-16 range to chat and direct optimization', async () => {
+    const markdown = '😀前 **重复**\n\n重复'
+    vi.mocked(writingApi.document).mockResolvedValue({ ...doc, markdown })
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+    await screen.findByText('公共 Agent 面板')
+    await waitFor(() => expect(shared.editor?.isInitialized).toBe(true))
+    let pos = 0; shared.editor!.state.doc.descendants((node, at) => { if (node.text === '重复') pos = at })
+    act(() => { shared.editor!.commands.setTextSelection({ from: pos, to: pos + 2 }) })
+    const context = { document_id: 'doc-1', document_version: 1, selection_start: markdown.lastIndexOf('重复'), selection_end: markdown.length }
+    await act(async () => { expect(await agent.props!.prepareWritingContext()).toEqual(context) })
+    fireEvent.click(screen.getByRole('button', { name: '优化选区' }))
+    await waitFor(() => expect(agent.props!.writingAction?.text).toContain('优化当前选区'))
+    await act(async () => { expect(await agent.props!.prepareWritingContext()).toEqual(context) })
+    expect(writingApi.propose).not.toHaveBeenCalled()
+  })
+
+  it('blocks chat and optimization for an unmappable selection until explicitly cleared', async () => {
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); await screen.findByText('公共 Agent 面板')
+    act(() => shared.selection!({ error: '选区无法准确定位，请重新选择。' }))
+    await act(async () => { await expect(agent.props!.prepareWritingContext()).rejects.toThrow('选区无法准确定位') })
+    fireEvent.click(screen.getByRole('button', { name: '优化选区' }))
+    await screen.findByText('选区无法准确定位，请重新选择。')
+    expect(agent.props!.writingAction).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '清除选区' }))
+    await act(async () => { expect(await agent.props!.prepareWritingContext()).toEqual({ document_id: 'doc-1', document_version: 1 }) })
+  })
+
+  it('rejects stale source coordinates rather than silently sending the whole article', async () => {
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+    const input = await screen.findByRole('textbox', { name: 'Markdown 源码' }) as HTMLTextAreaElement
+    input.setSelectionRange(0, 2); fireEvent.select(input)
+    fireEvent.change(input, { target: { value: '改稿内容' } })
+    await act(async () => { await expect(agent.props!.prepareWritingContext()).rejects.toThrow('选区已变化') })
+    expect(agent.props!.writingAction).toBeNull()
+  })
+
+  it('accepts correctly closed partial-bold revisions after clearing selection, and can undo them', async () => {
+    const before = '**前半后半** 外面', after = '**前半优化** 外面新版'
+    const partial = { ...revision, before_markdown: before, after_markdown: after, selection_start: 4, selection_end: before.length }
+    vi.mocked(writingApi.document).mockResolvedValue({ ...doc, markdown: before })
+    vi.mocked(writingApi.resolve).mockResolvedValue({ document: { ...doc, markdown: after, version: 2 }, revision: { ...partial, status: 'accepted' } })
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); await screen.findByText('公共 Agent 面板')
+    await waitFor(() => expect(shared.editor?.isInitialized).toBe(true))
+    act(() => { shared.editor!.commands.setTextSelection({ from: 3, to: 8 }) })
+    await act(async () => { expect(await agent.props!.prepareWritingContext()).toEqual({ document_id: 'doc-1', document_version: 1, selection_start: 4, selection_end: 11 }) })
+    fireEvent.click(screen.getByRole('button', { name: '清除选区' }))
+    vi.mocked(writingApi.revisions).mockResolvedValue({ items: [partial] }); act(() => agent.props!.onTurnCompleted())
+    const accept = await screen.findByRole('button', { name: '接受修订' })
+    await waitFor(() => expect(accept).toBeEnabled()); fireEvent.click(accept)
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(after))
+    vi.mocked(writingApi.update).mockImplementation(async (_id, body) => ({ ...doc, ...body, version: 3 }))
+    fireEvent.click(screen.getByRole('button', { name: '撤销最近优化' }))
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(before))
+    expect(writingApi.update).toHaveBeenCalledWith('doc-1', expect.objectContaining({ markdown: before, expected_version: 2 }), expect.any(String))
+  })
+
+  it.each([
+    { before: '**前半后半** 外面', after: '**前半优化 外面新版', start: 4, problem: 'formatting' },
+    { before: '[保留前缀选择](https://old.test) 后文', after: '[保留前缀改写](https://new.test) 后文新', start: 5, problem: 'link attributes' },
+  ])('blocks unsafe restored pending revisions that change outside $problem', async ({ before, after, start }) => {
+    vi.mocked(writingApi.document).mockResolvedValue({ ...doc, markdown: before })
+    const restored = { ...revision, before_markdown: before, after_markdown: after, selection_start: start, selection_end: before.length }
+    vi.mocked(writingApi.revisions).mockResolvedValue({ items: [restored] })
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+    const accept = await screen.findByRole('button', { name: '接受修订' })
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('选区外'))
+    expect(accept).toBeDisabled(); fireEvent.click(accept)
+    fireEvent.click(screen.getByRole('tab', { name: '修订 · 1' }))
+    expect(screen.getByRole('button', { name: '接受' })).toBeDisabled()
+    expect(writingApi.resolve).not.toHaveBeenCalled()
+    expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(before)
+  })
+
+  it.each(['whole', 'selected-link', 'source-url', 'legacy'] as const)('allows legitimate URL changes for $0 scope', async scope => {
+    const before = '前 [文](https://old.test) 后', after = '前 [文](https://new.test) 后'
+    const metadata = scope === 'legacy' ? {} : { selection_start: scope === 'whole' ? 0 : scope === 'source-url' ? before.indexOf('https://') : 2, selection_end: scope === 'whole' ? before.length : scope === 'source-url' ? before.indexOf(')') : before.length - 2 }
+    const change = { ...revision, before_markdown: before, after_markdown: after, ...metadata }
+    vi.mocked(writingApi.document).mockResolvedValue({ ...doc, markdown: before })
+    vi.mocked(writingApi.revisions).mockResolvedValue({ items: [change] })
+    vi.mocked(writingApi.resolve).mockResolvedValue({ document: { ...doc, markdown: after, version: 2 }, revision: { ...change, status: 'accepted' } })
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+    const accept = await screen.findByRole('button', { name: '接受修订' })
+    await waitFor(() => expect(accept).toBeEnabled()); fireEvent.click(accept)
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(after))
+  })
+
+  it('sends a partial hard-break selection and accepts a source-preserving cross-line revision', async () => {
+    const before = '保留第一行  \n第二行尾巴', after = '保留优化一行  \n优化二行尾巴'
+    const scoped = { ...revision, before_markdown: before, after_markdown: after, selection_start: 2, selection_end: before.length - 2 }
+    vi.mocked(writingApi.document).mockResolvedValue({ ...doc, markdown: before })
+    vi.mocked(writingApi.resolve).mockResolvedValue({ document: { ...doc, markdown: after, version: 2 }, revision: { ...scoped, status: 'accepted' } })
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />); await screen.findByText('公共 Agent 面板')
+    await waitFor(() => expect(shared.editor?.isInitialized).toBe(true))
+    act(() => { shared.editor!.commands.setTextSelection({ from: 3, to: 10 }) })
+    await act(async () => { expect(await agent.props!.prepareWritingContext()).toEqual({ document_id: 'doc-1', document_version: 1, selection_start: 2, selection_end: before.length - 2 }) })
+    vi.mocked(writingApi.revisions).mockResolvedValue({ items: [scoped] }); act(() => agent.props!.onTurnCompleted())
+    const accept = await screen.findByRole('button', { name: '接受修订' })
+    await waitFor(() => expect(accept).toBeEnabled()); fireEvent.click(accept)
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(after))
   })
 })

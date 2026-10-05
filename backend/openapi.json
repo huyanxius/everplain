@@ -17738,6 +17738,30 @@
             "title": "Revision Id",
             "type": "string"
           },
+          "selection_end": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection End"
+          },
+          "selection_start": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Start"
+          },
           "status": {
             "enum": [
               "pending",
