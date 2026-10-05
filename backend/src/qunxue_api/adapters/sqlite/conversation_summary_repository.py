@@ -30,6 +30,7 @@ _PREFLIGHT_FAILURES = {
     "billing_open:phase_policy_missing", "billing_open:billing_runtime_missing",
 }
 _SOURCE_BYTES = 16000
+_MAX_IDLE_WAIT_SECONDS = 300
 _GENERIC_TITLES = {
     "理清下一步",
     "比较可选方案",
@@ -151,7 +152,22 @@ class SqliteConversationSummaryRepository:
                     omitted += 1
         return fingerprint, tuple(sources), latest, omitted
 
-    def read(self, user_id):
+    @staticmethod
+    def _idle_deadline(sources, latest, row, idle_seconds):
+        # Continuous completed turns cannot postpone an unread source forever.
+        # Successful-cache time is the watermark; no extra queue/schema is needed.
+        uncovered = [
+            utc(datetime.fromisoformat(source["created_at"])) for source in sources
+            if row is None or row.updated_at is None
+            or utc(datetime.fromisoformat(source["created_at"])) > utc(row.updated_at)
+        ]
+        first = min(uncovered, default=latest)
+        return min(
+            latest + timedelta(seconds=idle_seconds),
+            first + timedelta(seconds=_MAX_IDLE_WAIT_SECONDS),
+        )
+
+    def read(self, user_id, *, idle_seconds=60, daily_calls=8, daily_tokens=64000):
         empty = {
             "summary": "",
             "summary_sources": [],
@@ -159,21 +175,26 @@ class SqliteConversationSummaryRepository:
             "updated_at": None,
             "scope": "conversation_messages",
             "omitted_messages": 0,
+            "status_reason": None,
+            "retry_at": None,
         }
         snapshot = self.snapshot(user_id)
         if snapshot is None:
             return {**empty, "status": "disabled"}
-        fingerprint, sources, _, omitted = snapshot
+        fingerprint, sources, latest, omitted = snapshot
         if not sources:
             return {**empty, "status": "empty", "omitted_messages": omitted}
         row = self.session.get(ConversationSummaryRow, str(user_id))
         if row is None or row.fingerprint != fingerprint:
             if row and row.attempted_fingerprint != fingerprint:
                 invalidate_conversation_summary(self.session, user_id)
-            failed = row and row.attempted_fingerprint == fingerprint and row.last_error
+            state = self._waiting_state(
+                user_id, fingerprint, sources, latest, row,
+                idle_seconds=idle_seconds, daily_calls=daily_calls, daily_tokens=daily_tokens,
+            )
             return {
                 **empty,
-                "status": "failed" if failed else "pending",
+                **state,
                 "omitted_messages": omitted,
             }
         # Exact source text and permissions are rechecked on EVERY read. A deleted
@@ -186,6 +207,49 @@ class SqliteConversationSummaryRepository:
             "updated_at": utc(row.updated_at).isoformat() if row.updated_at else None,
             "omitted_messages": omitted,
         }
+
+    def _waiting_state(
+        self, user_id, fingerprint, sources, latest, row,
+        *, idle_seconds, daily_calls, daily_tokens,
+    ):
+        now = datetime.now(UTC)
+        if row and row.lease_until and utc(row.lease_until) > now:
+            return {"status": "pending", "status_reason": "generating"}
+        if row and row.attempted_fingerprint == fingerprint and row.attempts >= 3:
+            return {"status": "failed", "status_reason": "attempt_limit"}
+        usage = self.session.get(MemoryUsageRow, (str(user_id), now.date().isoformat()))
+        configured = daily_calls > 0 and daily_tokens >= SUMMARY_RESERVATION
+        if not configured or usage and (
+            usage.calls >= daily_calls or usage.budget_tokens + SUMMARY_RESERVATION > daily_tokens
+        ):
+            return {
+                "status": "failed", "status_reason": "daily_budget",
+                "retry_at": (
+                    datetime.combine(now.date() + timedelta(days=1), datetime.min.time(), UTC)
+                    .isoformat() if configured else None
+                ),
+            }
+        if row and row.attempted_fingerprint == fingerprint:
+            if row.retry_after and utc(row.retry_after) > now:
+                return {
+                    "status": "failed", "status_reason": "retry_wait",
+                    "retry_at": utc(row.retry_after).isoformat(),
+                }
+            if row.last_error and not row.retry_after:
+                return {"status": "failed", "status_reason": "generation_failed"}
+        if self.session.scalar(
+            select(AgentRunRow.run_id).where(
+                AgentRunRow.user_id == str(user_id), AgentRunRow.status == "running",
+            ).limit(1)
+        ):
+            return {"status": "pending", "status_reason": "active_run"}
+        deadline = self._idle_deadline(sources, latest, row, idle_seconds)
+        if deadline > now:
+            return {
+                "status": "pending", "status_reason": "idle_wait",
+                "retry_at": deadline.isoformat(),
+            }
+        return {"status": "pending", "status_reason": "queued"}
 
     @staticmethod
     def validate(output, sources):
@@ -284,7 +348,6 @@ class SqliteConversationSummaryRepository:
                 ),
             )
             .where(
-                AgentConversationRow.updated_at <= now - timedelta(seconds=idle_seconds),
                 or_(
                     MemoryUsageRow.user_id.is_(None),
                     and_(
@@ -296,9 +359,20 @@ class SqliteConversationSummaryRepository:
                     AgentRunRow.user_id == AgentConversationRow.user_id,
                     AgentRunRow.status == "running",
                 ),
-                ~exists().where(
-                    newer_conversation.user_id == AgentConversationRow.user_id,
-                    newer_conversation.updated_at > now - timedelta(seconds=idle_seconds),
+                or_(
+                    ~exists().where(
+                        newer_conversation.user_id == AgentConversationRow.user_id,
+                        newer_conversation.updated_at > now - timedelta(seconds=idle_seconds),
+                    ),
+                    exists().where(
+                        AgentMessageRow.conversation_id == AgentConversationRow.conversation_id,
+                        AgentMessageRow.created_at
+                        <= now - timedelta(seconds=_MAX_IDLE_WAIT_SECONDS),
+                        or_(
+                            ConversationSummaryRow.updated_at.is_(None),
+                            AgentMessageRow.created_at > ConversationSummaryRow.updated_at,
+                        ),
+                    ),
                 ),
                 or_(
                     MemoryScopeRow.user_id.is_(None),
@@ -349,7 +423,10 @@ class SqliteConversationSummaryRepository:
                     )
                 )
                 continue
-            if latest is None or latest > now - timedelta(seconds=idle_seconds):
+            previous = self.session.get(ConversationSummaryRow, owner, populate_existing=True)
+            if latest is None or self._idle_deadline(
+                sources, latest, previous, idle_seconds
+            ) > now:
                 continue
             if self.session.scalar(
                 select(AgentRunRow.run_id)
