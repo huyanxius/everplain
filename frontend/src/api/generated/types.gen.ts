@@ -11736,6 +11736,10 @@ export type DispatchChannelMessageResponses = {
      * Successful Response
      */
     200: ChannelDispatchResponse;
+    /**
+     * Durably admitted; read the event cursor for completion
+     */
+    202: ChannelDispatchResponse;
 };
 
 export type DispatchChannelMessageResponse = DispatchChannelMessageResponses[keyof DispatchChannelMessageResponses];

@@ -644,6 +644,9 @@ def test_revoke_invalidates_unclaimed_codes_for_same_owner_and_bot(channels):
 def test_async_post_cursor_is_read_only_and_cancel_uses_private_scope(channels):
     import threading
 
+    responses = channels.client.app.openapi()["paths"][PATH]["post"]["responses"]
+    assert "202" in responses and "200" in responses
+
     bind(channels)
     emitted, release = threading.Event(), threading.Event()
     calls = []

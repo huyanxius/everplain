@@ -21095,6 +21095,16 @@
             },
             "description": "Successful Response"
           },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelDispatchResponse"
+                }
+              }
+            },
+            "description": "Durably admitted; read the event cursor for completion"
+          },
           "422": {
             "content": {
               "application/json": {

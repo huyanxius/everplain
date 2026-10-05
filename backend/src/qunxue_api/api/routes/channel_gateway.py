@@ -177,6 +177,8 @@ def revoke_binding(binding_id: UUID, current: CurrentSessionDependency, app: App
 @router.post(
     "/api/channel-gateway/dispatch",
     response_model=ChannelDispatchResponse,
+    responses={202: {"model": ChannelDispatchResponse,
+                     "description": "Durably admitted; read the event cursor for completion"}},
     operation_id="dispatch_channel_message",
 )
 def dispatch(
