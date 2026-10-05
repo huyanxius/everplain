@@ -25,7 +25,6 @@ from pydantic_ai import (
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError
 from pydantic_ai.messages import (
     ModelMessage,
-    ModelMessagesTypeAdapter,
     ModelRequest,
     ModelResponse,
     TextPart,
@@ -574,11 +573,22 @@ class _RetryingOpenAIChatModel(MeteredOpenAIChatModel):
                 merge_model_settings(model.settings, runtime_overrides) or {},
             )
             if self._route_executor.max_input_tokens is not None:
-                serialized = ModelMessagesTypeAdapter.dump_json(messages)
-                contracts = json.dumps(
-                    model_request_parameters.__dict__, default=str, ensure_ascii=False
-                ).encode()
-                if len(serialized) + len(contracts) + 4096 > self._route_executor.max_input_tokens:
+                # Match the outgoing Chat shape, not internal history bytes.
+                # Chinese UTF-8 bytes are not model tokens; instructions in the
+                # internal history also repeat across steps before SDK mapping.
+                mapped_messages = await model._map_messages(
+                    messages, model_request_parameters, model_settings=endpoint_settings,
+                )
+                tools, _ = model._get_tool_choice(endpoint_settings, model_request_parameters)
+                payload = {"messages": mapped_messages, "tools": tools}
+                if model_request_parameters.output_mode == "native":
+                    payload["response_format"] = model._map_json_schema(
+                        model_request_parameters.output_object
+                    )
+                serialized = json.dumps(payload, default=str, ensure_ascii=False)
+                if _responses_input_token_estimate(serialized) > (
+                    self._route_executor.max_input_tokens
+                ):
                     raise ModelAttemptFailure(code="model_input_limit", retryable=False)
             if self._route_executor.max_output_tokens is not None:
                 endpoint_settings["max_tokens"] = min(
@@ -619,7 +629,7 @@ class _RetryingOpenAIChatModel(MeteredOpenAIChatModel):
 
 
 def _responses_input_token_estimate(serialized: str) -> int:
-    """Conservative local context estimate; no provider token-count request.
+    """Conservative Chat/Responses context estimate; no provider count request.
 
     The image preloads the public o200k encoding. The 25% margin and 4096-token
     overhead tolerate model/serialization differences. Usage and cash billing
