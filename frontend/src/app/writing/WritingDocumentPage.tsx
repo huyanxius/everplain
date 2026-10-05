@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState, type CSSProperties } from 'react'
 import type { Editor } from '@tiptap/core'
 import { Link, useLocation, useParams } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
@@ -12,6 +12,9 @@ import { draftKey, readDraft, saveDraft, message, useRequestKeys } from './writi
 import { revisionDiff } from './revisionDiff'
 import { WritingRevisionBubble } from './WritingRevisionBubble'
 import { WritingRevisionComparison, WritingRevisionPreview } from './WritingRevisionPreview'
+import { stopAgentRun, type WritingPreviewEvent } from '../../modules/research-agent'
+import { WritingLivePreview } from './WritingLivePreview'
+import { applyWritingPreview, liveWritingMarkdown, readLiveWritingDraft, writingPreviewKey, type WritingLiveDraft } from './writingLivePreviewState'
 import { useWritingPanelWidth } from './useWritingPanelWidth'
 import './reference-workbench.css'
 import './writing.css'
@@ -39,6 +42,8 @@ export function WritingDocumentEditor({ userId, documentId }: { userId: string |
   const [editor, setEditor] = useState<Editor | null>(null)
   const [compareId, setCompareId] = useState<string | null>(null), [editingRevisionId, setEditingRevisionId] = useState<string | null>(null)
   const [acceptedAnimation, setAcceptedAnimation] = useState<WritingRevision | null>(null)
+  const [liveDraft, setLiveDraft] = useState<WritingLiveDraft | null>(null), [cancellingDraft, setCancellingDraft] = useState(false)
+  const dismissedCalls = useRef(new Set<string>()), discardedRevisions = useRef(new Set<string>()), discardAttempts = useRef(new Set<string>()), invalidRevisions = useRef(new Set<string>())
   const selectionRef = useRef(selection)
   const updateSelection = useCallback((value: MarkdownSelection) => { selectionRef.current = value; setSelection(value) }, [])
   const rememberConversation = useCallback(({ conversation_id }: { conversation_id: string }) => {
@@ -51,9 +56,54 @@ export function WritingDocumentEditor({ userId, documentId }: { userId: string |
   const dirty = Boolean(document && (title !== document.title || genre !== document.genre || markdown !== document.markdown))
   const hasLocalChanges = () => { const base = documentRef.current, draft = draftRef.current; return Boolean(base && (draft.title !== base.title || draft.genre !== base.genre || draft.markdown !== base.markdown)) }
   const sameDraft = (draft: typeof draftRef.current) => { const latest = draftRef.current; return latest.title === draft.title && latest.genre === draft.genre && latest.markdown === draft.markdown }
+  const liveStorage = userId ? `everplain.writing.preview:${userId}:${documentId}` : null
+  useEffect(() => {
+    if (!liveStorage || !draftReady.current) return
+    try { if (liveDraft) sessionStorage.setItem(liveStorage, JSON.stringify(liveDraft)); else sessionStorage.removeItem(liveStorage) } catch { /* The in-memory draft stays unsaved and usable. */ }
+  }, [liveDraft, liveStorage])
   const pending = revisions.find(item => item.status === 'pending')
+  const discardedPending = Boolean(pending && discardedRevisions.current.has(pending.revision_id))
+  const liveConflict = Boolean(pending && invalidRevisions.current.has(pending.revision_id))
   const preview = pending ? revisionDiff(pending.before_markdown, pending.after_markdown) : null
-  const inlinePending = Boolean(pending && !dirty && pending.base_version === document?.version && pending.before_markdown === markdown && editingRevisionId !== pending.revision_id)
+  const inlinePending = Boolean(pending && !discardedPending && !liveConflict && !dirty && pending.base_version === document?.version && pending.before_markdown === markdown && editingRevisionId !== pending.revision_id)
+  const liveVisible = Boolean(liveDraft && !pending && !dirty && document && liveDraft.state !== 'invalidated' && liveDraft.base_version === document.version && liveDraft.original_markdown === markdown && !dismissedCalls.current.has(writingPreviewKey(liveDraft)))
+  const refreshRevisions = useCallback(() => {
+    const epoch = ++revisionFetchEpoch.current
+    void writingApi.revisions(documentId).then(rows => { if (alive.current && epoch === revisionFetchEpoch.current) setRevisions(rows.items) }).catch(failure => { if (alive.current && epoch === revisionFetchEpoch.current) setError(message(failure)) })
+  }, [documentId])
+  const receiveWritingPreview = useCallback((event: WritingPreviewEvent) => {
+    const current = documentRef.current
+    if (!alive.current || !current || event.document_id !== documentId) return
+    if (dismissedCalls.current.has(writingPreviewKey(event))) {
+      if (event.state === 'ready' && event.revision_id) { discardedRevisions.current.add(event.revision_id); refreshRevisions() }
+      return
+    }
+    setLiveDraft(draft => applyWritingPreview(draft, event, current, performance.now()))
+    if (event.state === 'ready') refreshRevisions()
+    if (event.state === 'invalidated') setActionNotice('生成草稿未通过核对，原文已保留。请重新发起修改。')
+  }, [documentId, refreshRevisions])
+  const finishWritingPreview = useCallback(() => { setLiveDraft(draft => draft && draft.state === 'streaming' ? { ...draft, incomplete: true } : draft) }, [])
+  useEffect(() => {
+    if (liveDraft?.state === 'ready' && pending?.revision_id === liveDraft.revision_id) {
+      if (pending.before_markdown === liveDraft.original_markdown && pending.after_markdown === liveWritingMarkdown(liveDraft)) setLiveDraft(null)
+      else { invalidRevisions.current.add(pending.revision_id); setLiveDraft(draft => draft ? { ...draft, state: 'invalidated', revision_id: undefined, replacement_text: '', revealedAt: [] } : null); setActionNotice('生成草稿与最终修订不一致，已保留原文，请核对最终修订。') }
+    }
+  }, [liveDraft, pending])
+  const rejectDiscarded = useEffectEvent((row: WritingRevision) => { void resolve(row, 'reject') })
+  useEffect(() => {
+    const row = revisions.find(item => item.status === 'pending' && discardedRevisions.current.has(item.revision_id) && !discardAttempts.current.has(item.revision_id))
+    if (!row || busy) return
+    discardAttempts.current.add(row.revision_id)
+    rejectDiscarded(row)
+  }, [revisions, busy])
+  async function cancelWritingPreview() {
+    if (!liveDraft || cancellingDraft) return
+    dismissedCalls.current.add(writingPreviewKey(liveDraft)); setLiveDraft(null); setCancellingDraft(true)
+    try { if (liveStorage) sessionStorage.setItem(`${liveStorage}:dismissed`, JSON.stringify([...dismissedCalls.current].slice(-32))) } catch { /* The in-memory cancellation fence remains. */ }
+    if (liveDraft.revision_id) { discardedRevisions.current.add(liveDraft.revision_id); refreshRevisions() }
+    try { await stopAgentRun(liveDraft.run_id) } catch (failure) { if (alive.current) setError(message(failure)) }
+    finally { if (alive.current) setCancellingDraft(false) }
+  }
   useEffect(() => {
     if (!acceptedAnimation) return
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || markdown !== acceptedAnimation.after_markdown) { setAcceptedAnimation(null); return }
@@ -68,11 +118,15 @@ export function WritingDocumentEditor({ userId, documentId }: { userId: string |
       if (!alive.current) return
       const draft = draftStorage ? readDraft(draftStorage) : null
       updateBase(value, true); setRevisions(revisionList.items)
+      if (liveStorage) {
+        setLiveDraft(readLiveWritingDraft(liveStorage, value))
+        try { const discarded = JSON.parse(sessionStorage.getItem(`${liveStorage}:dismissed`) ?? '[]'); if (Array.isArray(discarded)) dismissedCalls.current = new Set(discarded.filter((key): key is string => typeof key === 'string').slice(-32)) } catch { /* No discarded preview is restored. */ }
+      }
       if (draft) { setTitle(draft.title); setGenre(draft.genre); setMarkdown(draft.markdown); if (draft.version !== value.version) setRefreshNotice('已恢复此浏览器中的修改。服务器也有新版本，请核对后再保存。') }
       draftReady.current = true
     }).catch(failure => { if (alive.current && !controller.signal.aborted) setError(message(failure)) }).finally(() => { if (alive.current) setLoading(false) })
     return () => { alive.current = false; controller.abort() }
-  }, [documentId, draftStorage, updateBase, userId])
+  }, [documentId, draftStorage, updateBase, userId, liveStorage])
   useEffect(() => { if (draftStorage && draftReady.current && document) saveDraft(draftStorage, dirty ? { title, genre, markdown, version: document.version } : null) }, [document, draftStorage, title, genre, markdown, dirty])
   useEffect(() => { const warn = (event: BeforeUnloadEvent) => { if (dirty || busy) { event.preventDefault(); event.returnValue = '' } }; window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn) }, [dirty, busy])
   async function saveCurrent() {
@@ -109,10 +163,6 @@ export function WritingDocumentEditor({ userId, documentId }: { userId: string |
         ...(range ? { selection_start: range.start, selection_end: range.end } : {}) }
     } finally { mutex.current = false; if (alive.current) setBusy(false) }
   }
-  const refreshRevisions = useCallback(() => {
-    const epoch = ++revisionFetchEpoch.current
-    void writingApi.revisions(documentId).then(rows => { if (alive.current && epoch === revisionFetchEpoch.current) setRevisions(rows.items) }).catch(failure => { if (alive.current && epoch === revisionFetchEpoch.current) setError(message(failure)) })
-  }, [documentId])
   async function optimize(kind: 'rewrite' | 'personalize' | 'continue', selected = selectionRef.current) {
     if (!userId || actionGate.current || busy || agentBusy) return
     if (pending) { setActionNotice('请先接受或撤回左侧待定修订，再开始下一次优化。自由聊天仍可继续。'); return }
@@ -180,6 +230,7 @@ export function WritingDocumentEditor({ userId, documentId }: { userId: string |
     {refreshNotice && <div className="qx-notice writing-notice"><p>{refreshNotice}</p><details><summary>查看服务器正文</summary><pre className="writing-raw">{document.markdown}</pre></details></div>}
     <div className="wr-body" ref={panel.layoutRef} data-resizing={panel.resizing} style={{ '--writing-agent-width': `${panel.width}px` } as CSSProperties}><section className="wr-editor">
       {actionNotice && <div className="qx-notice writing-action-notice" role="status"><p>{actionNotice}</p>{actionNotice.includes('样文') && <Link className="qx-btn qx-btn--ghost" to="/writing">管理同文体样文</Link>}</div>}
+      {liveVisible && liveDraft && <div className="writing-action-notice" role="status"><p className="qx-meta">{liveDraft.incomplete ? '生成已中断，以下仅为未完成草稿，原文未保存。' : liveDraft.state === 'ready' ? '正文生成完成，正在读取可确认修订…' : '正文正在流式生成，尚未保存。'}</p><button type="button" className="qx-btn qx-btn--ghost" disabled={cancellingDraft} onClick={() => void cancelWritingPreview()}>取消生成草稿</button></div>}
       {pending && (dirty || pending.base_version !== document.version || pending.before_markdown !== markdown || pending.warnings.length > 0 || editingRevisionId === pending.revision_id) && <div className="writing-action-notice" role="status">
         {editingRevisionId === pending.revision_id && !dirty && <p className="qx-meta">正在编辑原文。修改会保留；建议稿可用“对照”查看。保存原文后需重新生成修订。</p>}
         {dirty && <p className="qx-meta">你有新的手写修改，已保留；请先核对，当前修订不会覆盖它。</p>}
@@ -188,16 +239,16 @@ export function WritingDocumentEditor({ userId, documentId }: { userId: string |
       </div>}
       <div className="writing-editor-canvas">
         <SharedEditor markdown={markdown} onChange={setMarkdown} onReady={setEditor} saveState={dirty ? busy ? 'saving' : 'dirty' : 'saved'} onSelectionChange={updateSelection} selectionActions={selectionActions}
-          bodyPreview={editor && inlinePending && pending ? <WritingRevisionPreview key={pending.revision_id} editor={editor} before={pending.before_markdown} after={pending.after_markdown} /> : editor && acceptedAnimation && markdown === acceptedAnimation.after_markdown ? <WritingRevisionPreview key={`accepted:${acceptedAnimation.revision_id}`} editor={editor} before={acceptedAnimation.before_markdown} after={acceptedAnimation.after_markdown} animate /> : undefined}
+          bodyPreview={editor && inlinePending && pending ? <WritingRevisionPreview key={pending.revision_id} editor={editor} before={pending.before_markdown} after={pending.after_markdown} /> : liveVisible && liveDraft ? <WritingLivePreview draft={liveDraft} /> : editor && acceptedAnimation && markdown === acceptedAnimation.after_markdown ? <WritingRevisionPreview key={`accepted:${acceptedAnimation.revision_id}`} editor={editor} before={acceptedAnimation.before_markdown} after={acceptedAnimation.after_markdown} animate /> : undefined}
           statusContent={<><label className="writing-status-genre">文体<Select aria-label="文稿文体" disabled={busy} value={genre} onChange={value => setGenre(value as Genre)} options={genres.map(item => ({ value: item.id, label: item.label }))} /></label><span>版本 {document.version}</span>{revisions.find(item => item.status === 'accepted' && item.after_markdown === document.markdown) && <button type="button" className="qx-btn qx-btn--ghost" disabled={busy || dirty} onClick={() => { setAcceptedAnimation(null); void undoRevision(revisions.find(item => item.status === 'accepted' && item.after_markdown === document.markdown)!) }}>撤销最近优化</button>}</>} />
         {preview && pending && <WritingRevisionBubble editor={editor} markdown={pending.before_markdown} offset={preview.prefix.length} previewKey={inlinePending ? pending.revision_id : 'original'}>
-          <div className="se-bubble" role="toolbar" aria-label="确认当前正文修订"><button type="button" disabled={busy} title="返回原文编辑，再次点击继续预览建议" aria-pressed={editingRevisionId === pending.revision_id} onClick={() => setEditingRevisionId(editingRevisionId === pending.revision_id ? null : pending.revision_id)}>修改</button><button type="button" disabled={!editor} aria-expanded={compareId === pending.revision_id} onClick={() => setCompareId(compareId === pending.revision_id ? null : pending.revision_id)}>对照</button><button type="button" disabled={busy} onClick={() => void resolve(pending, 'reject')}>取消</button><button type="button" disabled={busy || dirty || pending.base_version !== document.version || pending.before_markdown !== markdown} onClick={() => void resolve(pending, 'accept')}>同意</button></div>
+          <div className="se-bubble" role="toolbar" aria-label="确认当前正文修订"><button type="button" disabled={busy} title="返回原文编辑，再次点击继续预览建议" aria-pressed={editingRevisionId === pending.revision_id} onClick={() => setEditingRevisionId(editingRevisionId === pending.revision_id ? null : pending.revision_id)}>修改</button><button type="button" disabled={!editor} aria-expanded={compareId === pending.revision_id} onClick={() => setCompareId(compareId === pending.revision_id ? null : pending.revision_id)}>对照</button><button type="button" disabled={busy} onClick={() => void resolve(pending, 'reject')}>取消</button><button type="button" disabled={busy || dirty || discardedPending || liveConflict || pending.base_version !== document.version || pending.before_markdown !== markdown} onClick={() => void resolve(pending, 'accept')}>同意</button></div>
         </WritingRevisionBubble>}
         {editor && pending && compareId === pending.revision_id && <WritingRevisionComparison editor={editor} before={pending.before_markdown} after={pending.after_markdown} onClose={() => setCompareId(null)} />}
       </div>
     </section><div className="writing-resize" role="separator" tabIndex={0} aria-label="调整写作 Agent 侧栏宽度" aria-orientation="vertical" aria-controls="writing-agent-panel" title="拖动调整宽度；左右键微调，Home/End到最小/最大，双击恢复默认" {...panel.separatorProps} /><aside id="writing-agent-panel" className="wr-side"><div className="writing-agent" aria-label="写作 Agent">
         <div className="writing-agent-context"><span className="qx-meta">当前文稿 · 版本 {document.version}{dirty ? ' · 发送时保存最新内容' : ''}</span>{selection && <span className="qx-meta">{'error' in selection ? '选区待重新定位' : `已选 ${selection.text.length} 字符`}<button type="button" className="qx-btn qx-btn--ghost" onClick={() => updateSelection(null)}>清除选区</button></span>}</div>
-        <ResearchAgentConversationPage userId={userId} embedded workspace="agent" writingDocumentId={documentId} writingAction={writingAction} onWritingActionFinished={actionFinished} onBusyChange={setAgentBusy} initialWritingMessage={location.state?.writingSubmissionKey && location.state?.writingInstruction ? { id: location.state.writingSubmissionKey, text: location.state.writingInstruction } : null} prepareWritingContext={prepareWritingContext} conversationId={conversationId} onConversationStarted={rememberConversation} onConversationChange={rememberConversation} onTurnCompleted={refreshRevisions} onWritingRevisionCreated={refreshRevisions} showConversationManagement={false} composerAriaLabel="写作旁的 Agent 对话" suggestedPrompt={agentPrompt?.text} suggestedPromptKey={agentPrompt?.key} />
+        <ResearchAgentConversationPage userId={userId} embedded workspace="agent" writingDocumentId={documentId} writingAction={writingAction} onWritingActionFinished={actionFinished} onBusyChange={setAgentBusy} initialWritingMessage={location.state?.writingSubmissionKey && location.state?.writingInstruction ? { id: location.state.writingSubmissionKey, text: location.state.writingInstruction } : null} prepareWritingContext={prepareWritingContext} conversationId={conversationId} onConversationStarted={rememberConversation} onConversationChange={rememberConversation} onTurnCompleted={refreshRevisions} onWritingRevisionCreated={refreshRevisions} onWritingPreview={receiveWritingPreview} onWritingPreviewEnded={finishWritingPreview} showConversationManagement={false} composerAriaLabel="写作旁的 Agent 对话" suggestedPrompt={agentPrompt?.text} suggestedPromptKey={agentPrompt?.key} />
       </div>
     </aside></div>
   </div></div>

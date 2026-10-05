@@ -28,6 +28,7 @@ __all__ = [
     "protected_markers",
     "output_issues",
     "instruction_artifacts",
+    "preview_safe_prefix",
     "utf16_slice",
     "redact_style_contacts",
     "sample_import_preview",
@@ -278,3 +279,37 @@ def utf16_slice(
         )
     except UnicodeDecodeError as exc:
         raise ValueError("选区不能拆开一个字符") from exc
+
+
+def preview_safe_prefix(original, candidate, samples, *, runtime_instructions="", complete=False):
+    """Hold a privacy tail until existing forbidden-span guards can evaluate it.
+
+    This is only a lexical leak guard. Final proposal validation remains required.
+    Whitespace is excluded from the tail count, as trusted-instruction/sample
+    checks normalize it. Long known contacts extend the held tail conservatively.
+    """
+    from .grounding import _CONTACTS, _TAGGED_HANDLE
+
+    candidate.encode("utf-16-le")  # No unpaired surrogate reaches JSON/SSE consumers.
+    if len(candidate) > 30000:
+        raise WritingUnsafeOutput("replacement_too_long")
+    if instruction_artifacts(original, candidate, runtime_instructions=runtime_instructions):
+        raise WritingUnsafeOutput("instruction_artifact")
+    if set(output_issues(original, candidate, samples)) & {
+        "sample_contact_leak", "copied_sample_span",
+    }:
+        raise WritingUnsafeOutput("private_sample_artifact")
+    if complete:
+        return candidate
+    tail = 128
+    for sample in samples:
+        for pattern in (_CONTACTS, _TAGGED_HANDLE):
+            for match in pattern.finditer(sample.text):
+                tail = max(tail, len(re.sub(r"\s+", "", match.group())) + 8)
+    remaining = tail
+    end = len(candidate)
+    while end and remaining:
+        end -= 1
+        if not candidate[end].isspace():
+            remaining -= 1
+    return candidate[:end]

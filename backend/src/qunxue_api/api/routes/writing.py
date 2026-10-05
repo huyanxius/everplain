@@ -239,6 +239,7 @@ def update_document(
     operation_id="list_writing_revisions",
 )
 def revisions(document_id: UUID, current: CurrentSessionDependency, app: Application):
+    app.repository.reconcile_abandoned_agent_revisions(current.user.user_id, document_id)
     return {"items": app.repository.revisions(current.user.user_id, document_id)}
 
 

@@ -15,10 +15,11 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from qunxue_api.modules.writing import StyleSample, WritingConflict, fingerprint
 
+from .agent_conversation_model import AgentOutputEventRow, AgentRunRow
 from .base import Base
 
 
@@ -271,6 +272,63 @@ class SqliteWritingRepository:
         )
         return self.get(user_id, document_id)
 
+    def _abandoned_agent_revision(self, revision):
+        operation = self.session.scalar(select(WritingOperationRow).where(
+            WritingOperationRow.user_id == revision.user_id,
+            WritingOperationRow.target == f"revision:{revision.document_id}",
+            WritingOperationRow.result["revision_id"].as_string() == revision.revision_id,
+        ))
+        provenance = (operation.result or {}).get("_agent_provenance") if operation else None
+        if not isinstance(provenance, dict):
+            return False
+        run = self.session.get(AgentRunRow, provenance.get("run_id"))
+        if run is not None and run.status == "completed":
+            return False
+        ready = self.session.scalar(select(AgentOutputEventRow.sequence).where(
+            AgentOutputEventRow.run_id == provenance["run_id"],
+            AgentOutputEventRow.name == "writing_preview",
+            AgentOutputEventRow.payload["state"].as_string() == "ready",
+            AgentOutputEventRow.payload["revision_id"].as_string() == revision.revision_id,
+        ).limit(1))
+        if ready is not None:
+            return False
+        expiry = run.lease_expires_at if run is not None else None
+        if expiry is not None and expiry.tzinfo is None:
+            expiry = expiry.replace(tzinfo=UTC)
+        return (run is None or run.cancel_requested or run.status != "running"
+                or expiry is None or expiry <= datetime.now(UTC))
+
+    def reconcile_abandoned_agent_revisions(self, user_id, document_id):
+        # Used only by the read-only HTTP revisions entrypoint, never a model
+        # callback or an in-flight business transaction. The independent cleanup
+        # cannot accidentally commit another tool's half-written operation.
+        self.get(user_id, document_id)
+        with Session(self.session.get_bind()) as session:
+            repository = SqliteWritingRepository(session)
+            # Acquire the SQLite write reservation before reading run/ready
+            # proof. Renewal, retry and ready publication cannot interleave with
+            # the subsequent pending rejection inside this same transaction.
+            session.execute(update(WritingRevisionRow).where(
+                WritingRevisionRow.user_id == str(user_id),
+                WritingRevisionRow.document_id == str(document_id),
+                WritingRevisionRow.status == "pending",
+            ).values(status=WritingRevisionRow.status).execution_options(
+                synchronize_session=False,
+            ))
+            pending = session.scalars(select(WritingRevisionRow).where(
+                WritingRevisionRow.user_id == str(user_id),
+                WritingRevisionRow.document_id == str(document_id),
+                WritingRevisionRow.status == "pending",
+            )).all()
+            for revision in pending:
+                if repository._abandoned_agent_revision(revision):
+                    session.execute(update(WritingRevisionRow).where(
+                        WritingRevisionRow.revision_id == revision.revision_id,
+                        WritingRevisionRow.user_id == str(user_id),
+                        WritingRevisionRow.status == "pending",
+                    ).values(status="rejected"))
+            session.commit()
+
     def revisions(self, user_id, document_id):
         self.get(user_id, document_id)
         return [
@@ -307,6 +365,69 @@ class SqliteWritingRepository:
         self.session.flush()
         return revision_dict(row)
 
+    def require_agent_execution(self, user_id, fence):
+        run = self.session.scalar(select(AgentRunRow).where(
+            AgentRunRow.run_id == str(fence["run_id"]), AgentRunRow.user_id == str(user_id),
+            AgentRunRow.lease_token == fence["lease_token"], AgentRunRow.status == "running",
+            AgentRunRow.cancel_requested.is_(False),
+            AgentRunRow.lease_expires_at > datetime.now(UTC),
+        ).execution_options(populate_existing=True))
+        if run is None:
+            raise WritingConflict("写作请求已取消或执行租约已失效，未创建修订")
+
+    def discard_agent_revision(self, user_id, document_id, run_id, revision, expected_fence=None):
+        # Provenance binds cleanup to the exact revision created by this logical
+        # run. A late cleanup cannot reject unrelated or already accepted work.
+        self.session.execute(update(WritingRevisionRow).where(
+            WritingRevisionRow.user_id == str(user_id),
+            WritingRevisionRow.document_id == str(document_id),
+            WritingRevisionRow.revision_id == revision.get("revision_id"),
+            WritingRevisionRow.status == "pending",
+        ).values(status=WritingRevisionRow.status).execution_options(synchronize_session=False))
+        if expected_fence is not None:
+            current = self.session.scalar(select(AgentRunRow).where(
+                AgentRunRow.run_id == str(run_id), AgentRunRow.user_id == str(user_id),
+            ).execution_options(populate_existing=True))
+            if current is not None and current.lease_token != expected_fence["lease_token"]:
+                expiry = current.lease_expires_at
+                if expiry is not None and expiry.tzinfo is None:
+                    expiry = expiry.replace(tzinfo=UTC)
+                healthy = (current.status == "running" and not current.cancel_requested
+                           and expiry is not None and expiry > datetime.now(UTC))
+                ready = self.session.scalar(select(AgentOutputEventRow.sequence).where(
+                    AgentOutputEventRow.run_id == str(run_id),
+                    AgentOutputEventRow.attempt_id != expected_fence["lease_token"],
+                    AgentOutputEventRow.name == "writing_preview",
+                    AgentOutputEventRow.payload["state"].as_string() == "ready",
+                    AgentOutputEventRow.payload["revision_id"].as_string()
+                    == revision.get("revision_id"),
+                ).limit(1))
+                if healthy or ready is not None:
+                    self.session.commit()
+                    return False
+        operation = self.session.scalar(select(WritingOperationRow).where(
+            WritingOperationRow.user_id == str(user_id),
+            WritingOperationRow.request_key.startswith(f"agent-writing:{run_id}:"),
+            WritingOperationRow.target == f"revision:{document_id}",
+            WritingOperationRow.result["revision_id"].as_string() == revision.get("revision_id"),
+        ))
+        if operation is None:
+            self.session.commit()
+            return False
+        changed = self.session.execute(update(WritingRevisionRow).where(
+            WritingRevisionRow.user_id == str(user_id),
+            WritingRevisionRow.document_id == str(document_id),
+            WritingRevisionRow.revision_id == revision.get("revision_id"),
+            WritingRevisionRow.status == "pending",
+            WritingRevisionRow.base_version == revision.get("base_version"),
+            WritingRevisionRow.before_markdown == revision.get("before_markdown"),
+            WritingRevisionRow.after_markdown == revision.get("after_markdown"),
+        ).values(status="rejected"))
+        if changed.rowcount == 1:
+            operation.result = {**operation.result, "status": "rejected"}
+        self.session.commit()
+        return changed.rowcount == 1
+
     def resolve(self, user_id, document_id, revision_id, decision, expected_version):
         document = self.get(user_id, document_id)
         row = self.session.scalar(
@@ -318,8 +439,8 @@ class SqliteWritingRepository:
         )
         if row is None:
             raise LookupError(revision_id)
-        if row.status != "pending":
-            raise WritingConflict("这条修订已处理或过期，请刷新后查看")
+        if row.status != "pending" or self._abandoned_agent_revision(row):
+            raise WritingConflict("这条修订已处理、取消或过期，请刷新后查看")
         if document["version"] != expected_version or row.base_version != expected_version:
             raise WritingConflict("原文已改变，请重新生成修订")
         # The in-memory row may have been read before another request resolved

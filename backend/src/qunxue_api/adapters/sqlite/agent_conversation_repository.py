@@ -18,6 +18,7 @@ from qunxue_api.adapters.sqlite.research_material_model import (
     ResearchMaterialBlockRow,
     ResearchMaterialRow,
 )
+from qunxue_api.adapters.sqlite.writing_preview_storage import safe_writing_preview
 from qunxue_api.modules.agent_conversation import (
     AgentCitation,
     AgentMaterialAttachment,
@@ -673,7 +674,23 @@ class SqliteConversationRepository:
             AgentOutputEventRow.attempt_id == row.lease_token,
             AgentOutputEventRow.name == "agent_delivery_state",
         ).order_by(AgentOutputEventRow.sequence.desc()).limit(1))), None)
-        return replace(_run_from_row(row), delivery_state=dict(metadata.payload)
+        preview_rows = self._session.scalars(select(AgentOutputEventRow).where(
+            AgentOutputEventRow.run_id == row.run_id,
+            AgentOutputEventRow.attempt_id == row.lease_token,
+            AgentOutputEventRow.name == "writing_preview",
+        ).order_by(AgentOutputEventRow.sequence.desc()))
+        latest_previews = {}
+        for preview in preview_rows:
+            call_id = preview.payload.get("call_id")
+            if call_id not in latest_previews:
+                latest_previews[call_id] = {
+                    **safe_writing_preview(self._session, row, preview.payload),
+                    "attempt_id": preview.attempt_id,
+                }
+        return replace(_run_from_row(row), writing_previews=tuple(sorted(
+            latest_previews.values(), key=lambda item: item["sequence"],
+        )),
+                       delivery_state=dict(metadata.payload)
                        if metadata is not None else {}, output_attempts=tuple(
             AgentOutputAttempt(
                 attempt_id=item.attempt_id, ordinal=item.ordinal, status=item.status,
@@ -699,6 +716,16 @@ class SqliteConversationRepository:
         self, *, user_id: UUID, run_id: UUID, attempt_id: str,
         name: str, payload: dict[str, object],
     ) -> AgentOutputEvent | None:
+        # Dedicated previews never use the assistant body projection or tool traces.
+        if name == "writing_preview":
+            row = self._session.scalar(select(AgentRunRow).where(
+                AgentRunRow.run_id == str(run_id), AgentRunRow.user_id == str(user_id),
+            ).execution_options(populate_existing=True))
+            if row is None:
+                return None
+            if self._safe_unfinished_run(row).output_redacted:
+                return None
+            payload = safe_writing_preview(self._session, row, payload, strict=True)
         # Sequence allocation and the body projection are one fenced transaction.
         query = update(AgentRunRow).where(
             AgentRunRow.run_id == str(run_id), AgentRunRow.user_id == str(user_id),
@@ -706,12 +733,37 @@ class SqliteConversationRepository:
         )
         if name == "assistant_delta":
             query = query.where(AgentRunRow.status == "running")
-        sequence = self._session.execute(query.values(
+        elif name == "writing_preview":
+            query = query.where(
+                AgentRunRow.status == "running", AgentRunRow.cancel_requested.is_(False),
+                AgentRunRow.lease_expires_at > datetime.now(UTC),
+            )
+        sequence = self._session.execute(query.execution_options(synchronize_session=False).values(
             last_event_sequence=AgentRunRow.last_event_sequence + 1
         )
             .returning(AgentRunRow.last_event_sequence)).scalar_one_or_none()
         if sequence is None:
             return None
+        if name == "writing_preview":
+            # Journal sequence is monotonic across attempts/reconnections, while
+            # the replacement remains a cumulative snapshot, never append text.
+            payload = {**payload, "sequence": sequence}
+            if payload["state"] == "invalidated":
+                prior_previews = self._session.scalars(select(AgentOutputEventRow).where(
+                    AgentOutputEventRow.run_id == str(run_id),
+                    AgentOutputEventRow.attempt_id == attempt_id,
+                    AgentOutputEventRow.name == "writing_preview",
+                    AgentOutputEventRow.payload["call_id"].as_string() == payload["call_id"],
+                ))
+                for prior in prior_previews:
+                    # Never replay an invalidated draft's old plaintext at an
+                    # earlier cursor. Invalidation and erasure commit atomically.
+                    prior.payload = {
+                        **{key: value for key, value in prior.payload.items()
+                           if key != "revision_id"},
+                        "state": "invalidated", "replacement_text": "",
+                        "error_code": payload["error_code"],
+                    }
         if name == "assistant_delta":
             delta = str(payload["delta"])
             answer = self._session.execute(update(AgentOutputAttemptRow).where(
@@ -741,12 +793,14 @@ class SqliteConversationRepository:
         # Apply the same deleted-source policy to replay and archived bodies.
         if run.output_redacted:
             return ()
+        run_row = self._session.get(AgentRunRow, str(run_id))
         rows = self._session.scalars(select(AgentOutputEventRow).where(
             AgentOutputEventRow.run_id == str(run_id), AgentOutputEventRow.sequence > after,
         ).order_by(AgentOutputEventRow.sequence).limit(min(200, max(1, limit))))
         return tuple(AgentOutputEvent(
             run_id=run_id, attempt_id=row.attempt_id, sequence=row.sequence,
-            name=row.name, payload=dict(row.payload),
+            name=row.name, payload=(safe_writing_preview(self._session, run_row, row.payload)
+                                   if row.name == "writing_preview" else dict(row.payload)),
         ) for row in rows)
 
     def find_run(self, *, user_id: UUID, idempotency_key: str) -> AgentRun | None:
@@ -776,6 +830,7 @@ class SqliteConversationRepository:
             run, tool_summary=turn.tool_summary, output_attempts=turn.output_attempts,
             partial_answer=_DELETED_MATERIAL_ANSWER if unavailable else run.partial_answer,
             output_redacted=unavailable,
+            writing_previews=() if unavailable else run.writing_previews,
         )
 
     def find_run_by_id(self, *, user_id: UUID, run_id: UUID) -> AgentRun | None:
@@ -799,6 +854,7 @@ class SqliteConversationRepository:
             run, tool_summary=turn.tool_summary, output_attempts=turn.output_attempts,
             partial_answer=_DELETED_MATERIAL_ANSWER if unavailable else run.partial_answer,
             output_redacted=unavailable,
+            writing_previews=() if unavailable else run.writing_previews,
         )
 
     def finish_run(
@@ -857,7 +913,8 @@ class SqliteConversationRepository:
 
     def _safe_unfinished_run(self, row: AgentRunRow) -> AgentRun:
         run = self._run_with_output(row)
-        if not run.partial_answer and not run.tool_summary:
+        if (not run.partial_answer and not run.tool_summary and not run.writing_previews
+                and not run.material_attachments):
             return run
         attachments = {
             str(item.material_id): str(item.parse_id) for item in run.material_attachments
@@ -880,6 +937,7 @@ class SqliteConversationRepository:
             run,
             partial_answer=_DELETED_MATERIAL_ANSWER,
             output_redacted=True,
+            writing_previews=(),
             output_attempts=tuple(replace(item, answer=_DELETED_MATERIAL_ANSWER)
                                   for item in run.output_attempts),
             request_snapshot={

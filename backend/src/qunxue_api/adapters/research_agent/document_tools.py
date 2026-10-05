@@ -249,6 +249,17 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
             raise ValueError("writing workspace tools are unavailable")
         return self._writing.read_document()
 
+    def bind_writing_execution_fence(self, lease_token):
+        self._writing.bind_execution_fence(lease_token)
+
+    def discard_writing_proposal(self, revision):
+        return self._writing.discard_proposal(revision)
+
+    def writing_preview_target(self, payload, replacement, complete, **kwargs):
+        if not self.writing_tools_enabled:
+            raise ValueError("writing workspace tools are unavailable")
+        return self._writing.preview_target(payload, replacement, complete, **kwargs)
+
     def propose_writing_edit(self, **payload):
         if not self.writing_tools_enabled:
             raise ValueError("writing workspace tools are unavailable")

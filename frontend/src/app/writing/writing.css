@@ -94,6 +94,8 @@
 .writing-status-genre { display: inline-flex; align-items: center; gap: var(--qx-space-1); }
 .writing-status-genre .qx-select { min-width: 0; }
 .writing-revision-prose { overflow-wrap: anywhere; }
+.writing-live-preview { --stream-light: var(--glow); overflow-wrap: anywhere; }
+.writing-live-preview[data-streaming='true']::after { content: ''; display: inline-block; width: 2px; height: 1em; margin-left: 3px; background: currentColor; animation: writing-stream-caret 1s steps(2, start) infinite; vertical-align: text-bottom; }
 .writing-revision-prose .wr-p-wrap { margin-bottom: 0; }
 .writing-revision-prose .writing-revision-deleted, .writing-revision-prose .wr-p-wrap[data-phase='sweeping'] .writing-revision-deleted { display: inline-block; max-width: 100%; white-space: pre-wrap; vertical-align: bottom; overflow: hidden; animation: wr-strike 1.1s ease both, writing-delete-collapse .5s ease 1.1s both; }
 @keyframes writing-delete-collapse { to { max-width: 0; max-height: 0; opacity: 0; } }

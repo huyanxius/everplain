@@ -1067,6 +1067,8 @@ type ResearchAgentConversationPageProps = {
   theoryPlanId?: string | null
   onTurnCompleted?: () => void
   onWritingRevisionCreated?: () => void
+  onWritingPreview?: (event: import('../../modules/research-agent').WritingPreviewEvent) => void
+  onWritingPreviewEnded?: () => void
   onConversationStarted?: (identity: { conversation_id: string; task_id: string | null }) => void
   onConversationChange?: (conversation: AgentConversation) => void
   onStreamingTurnChange?: (turn: ResearchCanvasStreamingTurn | null) => void
@@ -1107,6 +1109,8 @@ export function ResearchAgentConversationPage({
   theoryPlanId = null,
   onTurnCompleted,
   onWritingRevisionCreated,
+  onWritingPreview,
+  onWritingPreviewEnded,
   onConversationChange,
   onConversationStarted,
   onStreamingTurnChange,
@@ -1188,7 +1192,7 @@ export function ResearchAgentConversationPage({
   const writingIntentStarted = useRef<string | null>(null)
   const writingActionStarted = useRef<string | null>(null)
   const quickWritingAttempt = useRef<string | null>(null)
-  const writingCallbacks = useRef({ onWritingActionFinished, onBusyChange }); writingCallbacks.current = { onWritingActionFinished, onBusyChange }
+  const writingCallbacks = useRef({ onWritingActionFinished, onBusyChange, onWritingPreview, onWritingPreviewEnded }); writingCallbacks.current = { onWritingActionFinished, onBusyChange, onWritingPreview, onWritingPreviewEnded }
   const writingPreparation = useRef(false)
   const [preparingWriting, setPreparingWriting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -2122,6 +2126,7 @@ export function ResearchAgentConversationPage({
             if (!pausePending.current) setStatus('thinking')
           } else if (event.type === 'turn_snapshot') {
             const run = event.run
+            for (const preview of run.writing_previews ?? []) if (preview.document_id === writingDocumentId) writingCallbacks.current.onWritingPreview?.(preview)
             activeRunId.current = run.status === 'running' ? run.run_id : null
             pendingConversationId.current = run.conversation_id
             activeTurnAttempt.current = { ...attempt, runId: run.run_id, conversationId: run.conversation_id }
@@ -2173,6 +2178,8 @@ export function ResearchAgentConversationPage({
               toolSteps: next,
               progressEnd: event.type === 'tool_started' ? current.answer.length : current.progressEnd,
             } : current)
+          } else if (event.type === 'writing_preview') {
+            if (event.document_id === writingDocumentId) writingCallbacks.current.onWritingPreview?.(event)
           } else if (event.type === 'assistant_delta') {
             if (!pausePending.current) setStatus('answering')
             if (!redactedStreamingMaterialIds.current.size) {
@@ -2347,6 +2354,7 @@ export function ResearchAgentConversationPage({
         setStatus('error')
       }
     } finally {
+      if (streamGeneration.current === runGeneration) writingCallbacks.current.onWritingPreviewEnded?.()
       if (streamAbortController.current === controller) {
         streamAbortController.current = null
         setStreamInFlight(false)

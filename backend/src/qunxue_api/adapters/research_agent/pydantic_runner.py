@@ -28,6 +28,8 @@ from pydantic_ai.messages import (
     ModelResponse,
     TextPart,
     TextPartDelta,
+    ToolCallPart,
+    ToolCallPartDelta,
     UserPromptPart,
 )
 from pydantic_ai.models import Model, ModelRequestParameters, StreamedResponse
@@ -68,6 +70,7 @@ from qunxue_api.adapters.research_agent.unconfigured_model import (
     MODEL_API_MOCK_NAME,
     unconfigured_model,
 )
+from qunxue_api.adapters.research_agent.writing_preview import WritingPreviewStream
 from qunxue_api.adapters.retrieval.errors import RetrievalPipelineUnavailable
 from qunxue_api.modules.agent_conversation import (
     AgentEvidence,
@@ -79,6 +82,7 @@ from qunxue_api.modules.agent_conversation import (
     AgentToolContext,
     AgentToolEvent,
     AgentTurn,
+    AgentWritingPreviewEvent,
 )
 from qunxue_api.modules.billing import BillingFailure
 from qunxue_api.modules.shared_knowledge import KnowledgeIndexChoiceRequired
@@ -1203,6 +1207,12 @@ class PydanticAIKnowledgeRunner:
         self._active_tool_event: ContextVar[Callable[[AgentToolEvent], None] | None] = ContextVar(
             f"agent_tool_event_{id(self)}",
             default=None,
+        )
+        self._active_writing_proposals: ContextVar[list[dict] | None] = ContextVar(
+            f"agent_writing_proposals_{id(self)}", default=None,
+        )
+        self._active_writing_preview: ContextVar[WritingPreviewStream | None] = ContextVar(
+            f"agent_writing_preview_{id(self)}", default=None,
         )
         self._active_cancelled: ContextVar[Callable[[], bool] | None] = ContextVar(
             f"agent_cancelled_{id(self)}",
@@ -2442,6 +2452,9 @@ class PydanticAIKnowledgeRunner:
                 # user memory/history/context remains data regardless of format.
                 # Neither becomes a model-controlled argument or event field.
                 arguments["runtime_instructions"] = "\n".join(self._writing_instruction_rules)
+            preview = self._active_writing_preview.get()
+            if tool_name == "propose_writing_edit" and preview is not None:
+                preview.validate_final(call_id, payload)
             result = getattr(ctx.deps, tool_name)(**arguments)
         except LookupError:
             result = {"error": "writing_document_unavailable", "message": "文稿不存在或不可访问"}
@@ -2449,31 +2462,56 @@ class PydanticAIKnowledgeRunner:
             result = {"error": "writing_edit_conflict", "message": str(error)}
         except Exception:
             result = {"error": "writing_tool_unavailable", "message": "写作工具暂时不可用"}
-        failed = bool(result.get("error"))
-        trace = result
-        if tool_name == "read_writing_document" and not failed:
-            trace = {key: result.get(key) for key in (
-                "document_id", "version", "context_stale", "pending_revision_ids",
-            )}
-        elif tool_name == "propose_writing_edit" and not failed:
-            trace = {key: result.get(key) for key in (
-                "revision_id", "document_id", "base_version", "action", "status",
-                "selection_start", "selection_end",
-            )}
-            trace.update(
-                before_characters=len(result.get("before_markdown", "")),
-                after_characters=len(result.get("after_markdown", "")),
-            )
-        self._emit_tool_event(AgentToolEvent(
-            tool=tool_name, phase="failed" if failed else "finished", call_id=call_id,
-            input=trace_input, output=trace,
-            detail=str(result["message"]) if failed else (
-                "已读取写作文稿" if tool_name == "read_writing_document"
-                else "已生成待接受或撤回的修订，正文尚未修改"
-            ),
-            error=str(result["error"]) if failed else None,
-        ))
-        return result
+        if tool_name == "propose_writing_edit" and not result.get("error"):
+            proposals = self._active_writing_proposals.get()
+            if proposals is not None:
+                proposals.append(result)
+        try:
+            cancelled = self._active_cancelled.get()
+            if tool_name == "propose_writing_edit" and cancelled is not None and cancelled():
+                raise AgentInterrupted("Writing proposal cancelled after persistence")
+            if tool_name == "propose_writing_edit":
+                preview = self._active_writing_preview.get()
+                if preview is not None:
+                    preview.finish(call_id, payload, result)
+            failed = bool(result.get("error"))
+            trace = result
+            if tool_name == "read_writing_document" and not failed:
+                trace = {key: result.get(key) for key in (
+                    "document_id", "version", "context_stale", "pending_revision_ids",
+                )}
+            elif tool_name == "propose_writing_edit" and not failed:
+                trace = {key: result.get(key) for key in (
+                    "revision_id", "document_id", "base_version", "action", "status",
+                    "selection_start", "selection_end",
+                )}
+                trace.update(
+                    before_characters=len(result.get("before_markdown", "")),
+                    after_characters=len(result.get("after_markdown", "")),
+                )
+            self._emit_tool_event(AgentToolEvent(
+                tool=tool_name, phase="failed" if failed else "finished", call_id=call_id,
+                input=trace_input, output=trace,
+                detail=str(result["message"]) if failed else (
+                    "已读取写作文稿" if tool_name == "read_writing_document"
+                    else "已生成待接受或撤回的修订，正文尚未修改"
+                ),
+                error=str(result["error"]) if failed else None,
+            ))
+            return result
+        except BaseException as error:
+            cancelled = self._active_cancelled.get()
+            explicit_stop = (isinstance(error, AgentInterrupted)
+                             or cancelled is not None and cancelled())
+            preview = self._active_writing_preview.get()
+            delivered = (preview is not None
+                         and result.get("revision_id") in preview.ready_revision_ids)
+            if (tool_name == "propose_writing_edit" and not result.get("error")
+                    and (explicit_stop or preview is not None and not delivered)):
+                discard = getattr(ctx.deps, "discard_writing_proposal", None)
+                if callable(discard):
+                    discard(result)
+            raise
 
     def _run_research_workflow_tool(
         self,
@@ -2648,6 +2686,7 @@ class PydanticAIKnowledgeRunner:
         tools: AgentToolContext,
         on_delta: Callable[[str], None],
         on_tool_event: Callable[[AgentToolEvent], None] | None = None,
+        on_writing_preview: Callable[[AgentWritingPreviewEvent], None] | None = None,
         is_cancelled: Callable[[], bool] | None = None,
         on_checkpoint: Callable[[], None] | None = None,
         can_cancel: Callable[[], bool] | None = None,
@@ -2656,12 +2695,43 @@ class PydanticAIKnowledgeRunner:
         cancel_token = self._active_cancelled.set(is_cancelled)
         route_token = _agent_route_correlation.set(_agent_route_context_from_tools(tools))
         visible_stream = VisibleTextStream(on_delta)
+        writing_preview = WritingPreviewStream(
+            tools, on_writing_preview, "\n".join(self._writing_instruction_rules),
+        )
+        preview_token = self._active_writing_preview.set(writing_preview)
+        proposals = []
+        proposals_token = self._active_writing_proposals.set(proposals)
 
         async def stream_text(
             _: RunContext[KnowledgeToolRegistry],
             events: AsyncIterable[AgentStreamEvent],
         ) -> None:
+            parts = {}  # SDK indexes restart for every model-response step.
             async for event in events:
+                if is_cancelled is not None and is_cancelled():
+                    raise AgentInterrupted("Agent run was interrupted during model stream")
+                if isinstance(event, PartStartEvent) and isinstance(event.part, ToolCallPart):
+                    part = event.part
+                    parts[event.index] = part
+                    if part.tool_name == "propose_writing_edit":
+                        writing_preview.append(part.tool_call_id, part.args, initial=True)
+                elif (
+                    isinstance(event, PartDeltaEvent)
+                    and isinstance(event.delta, ToolCallPartDelta)
+                ):
+                    part = parts.get(event.index)
+                    if isinstance(part, ToolCallPart):
+                        delta = event.delta
+                        changed = delta.apply(part)
+                        if (changed.tool_call_id != part.tool_call_id
+                                or changed.tool_name != part.tool_name):
+                            if part.tool_name == "propose_writing_edit":
+                                writing_preview.invalidate(part.tool_call_id,
+                                                           "writing_preview_identity_changed")
+                                writing_preview.append(changed.tool_call_id, "[]", initial=True)
+                        elif part.tool_name == "propose_writing_edit":
+                            writing_preview.append(part.tool_call_id, delta.args_delta)
+                        parts[event.index] = changed
                 if isinstance(event, PartStartEvent) and isinstance(event.part, TextPart):
                     if event.part.content:
                         visible_stream.push(event.part.content)
@@ -2740,12 +2810,29 @@ class PydanticAIKnowledgeRunner:
                 model=_result_model(result, self._model),
                 usage=_result_usage(result),
             )
+        except BaseException as error:
+            explicit_stop = (isinstance(error, AgentInterrupted)
+                             or is_cancelled is not None and is_cancelled())
+            discard = getattr(tools, "discard_writing_proposal", None)
+            if callable(discard) and on_writing_preview is not None:
+                for revision in proposals:
+                    if (explicit_stop
+                            or revision["revision_id"] not in writing_preview.ready_revision_ids):
+                        discard(revision)
+            writing_preview.interrupt(
+                "writing_preview_interrupted" if is_cancelled and is_cancelled()
+                else "writing_preview_stream_failed",
+            )
+            raise
         finally:
             try:
                 # Normal body tails survive upstream EOF, timeout, cancellation
                 # and truncated output. Hidden reasoning remains suppressed.
                 visible_stream.finish()
             finally:
+                writing_preview.interrupt("writing_preview_incomplete")
+                self._active_writing_preview.reset(preview_token)
+                self._active_writing_proposals.reset(proposals_token)
                 _agent_route_correlation.reset(route_token)
                 self._active_tool_event.reset(token)
                 self._active_cancelled.reset(cancel_token)

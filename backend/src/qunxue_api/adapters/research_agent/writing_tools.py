@@ -14,6 +14,8 @@ class WritingAgentTools:
         self.user_id = None
         self.run_id = None
         self.read_version = None
+        self.execution_fence = None
+        self.created_revision_ids = set()
 
     def validate_context(self, *, user_id, context):
         document_id = UUID(str(context["document_id"]))
@@ -33,6 +35,19 @@ class WritingAgentTools:
         self.validate_context(user_id=user_id, context=context)
         self.user_id, self.run_id, self.context = user_id, agent_run_id, dict(context)
         self.read_version = None
+        self.execution_fence = None
+        self.created_revision_ids = set()
+
+    def bind_execution_fence(self, lease_token):
+        self.execution_fence = {"run_id": str(self.run_id), "lease_token": lease_token}
+
+    def discard_proposal(self, revision):
+        if revision.get("revision_id") not in self.created_revision_ids:
+            return False
+        return self.application.discard_agent_proposal(
+            self.user_id, self.context["document_id"], self.run_id, revision,
+            self.execution_fence,
+        )
 
     def read_document(self):
         if self.context is None:
@@ -62,6 +77,36 @@ class WritingAgentTools:
                 ) if r["status"] == "pending"
             ],
         }
+
+    def preview_target(self, payload, replacement, complete, *, runtime_instructions="",
+                       revision=None):
+        if self.context is None:
+            raise WritingConflict("unbound_preview_context")
+        version = payload["expected_version"]
+        if version != self.context["document_version"] or self.read_version != version:
+            raise WritingConflict("unread_or_stale_preview_context")
+        start, end = self.context.get("selection_start"), self.context.get("selection_end")
+        request = dict(payload)
+        if start is not None and request.get("selection_start") is None and request.get(
+            "selection_end",
+        ) is None:
+            current = self.application.repository.get(self.user_id, self.context["document_id"])
+            if current["version"] != version:
+                raise WritingConflict("stale_preview_context")
+            _, selected, _ = utf16_slice(current["markdown"], start, end, allow_empty=True)
+            original = request["original_text"]
+            position = selected.find(original)
+            if (not original or position < 0 or selected.find(original, position + 1) >= 0):
+                raise WritingConflict("ambiguous_preview_anchor")
+            request["selection_start"] = start + len(selected[:position].encode("utf-16-le")) // 2
+            request["selection_end"] = (request["selection_start"]
+                                        + len(original.encode("utf-16-le")) // 2)
+        return self.application.preview_edit_target(
+            self.user_id, self.context["document_id"], request, replacement, complete,
+            runtime_instructions=runtime_instructions,
+            selection_scope={"start": start, "end": end} if start is not None else None,
+            revision=revision,
+        )
 
     def propose_edit(self, *, expected_version, original_text, replacement_text,
                      selection_start=None, selection_end=None, runtime_instructions=""):
@@ -112,6 +157,8 @@ class WritingAgentTools:
         return self.application.propose_edit(
             self.user_id, self.context["document_id"], key, payload,
             runtime_instructions=runtime_instructions,
+            execution_fence=self.execution_fence,
+            creation_observer=lambda result: self.created_revision_ids.add(result["revision_id"]),
             selection_scope=(
                 {"start": bound_start, "end": bound_end} if bound_start is not None else None
             ),

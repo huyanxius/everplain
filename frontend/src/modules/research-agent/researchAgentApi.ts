@@ -88,6 +88,9 @@ export function parseAgentEventStream(stream: string): AgentEvent[] {
       }
       if ('input' in payload) event.input = payload.input
       events.push(event)
+    } else if (eventName === 'writing_preview') {
+      const event = parseWritingPreview(payload)
+      if (event) events.push(event)
     } else if (eventName === 'assistant_delta' && typeof payload.delta === 'string') {
       events.push({ type: eventName, delta: payload.delta, ...(payload.persisted === false ? { persisted: false } : {}) })
     } else if (eventName === 'agent_delivery_state') {
@@ -144,7 +147,8 @@ export function parseAgentEventStream(stream: string): AgentEvent[] {
           : {}),
       })
     } else if (eventName === 'turn_snapshot' && typeof payload.run_id === 'string') {
-      events.push({ type: eventName, run: payload as unknown as AgentRunLookup })
+      const writingPreviews = writingPreviewsFromSnapshot(payload)
+      events.push({ type: eventName, run: { ...payload, writing_previews: writingPreviews } as unknown as AgentRunLookup })
     } else if (eventName === 'turn_completed' && payload.conversation) {
       events.push({
         type: eventName,
@@ -378,7 +382,7 @@ async function startAgentTurn(
   })
 }
 
-type StreamState = { runId?: string; after: number; terminal: boolean }
+type StreamState = { runId?: string; attemptId?: string; after: number; terminal: boolean }
 
 function terminalEvent(event: AgentEvent) {
   return ['turn_completed', 'turn_interrupted', 'turn_failed', 'research_waiting', 'knowledge_index_choice_required'].includes(event.type)
@@ -395,9 +399,12 @@ function deliverEvent(event: AgentEvent, state: StreamState, onEvent: (event: Ag
     if (sequence <= state.after) return
     state.after = sequence
   }
-  if (event.type === 'turn_started') state.runId = event.run_id
+  if (event.type === 'writing_preview' && state.runId && event.run_id !== state.runId) throw new Error('文稿预览属于另一轮回答。')
+  if (event.type === 'writing_preview' && state.attemptId && event.attempt_id !== state.attemptId) return
+  if (event.type === 'turn_started') { state.runId = event.run_id; state.attemptId = event.attempt_id }
   if (event.type === 'turn_snapshot') {
     state.runId = event.run.run_id
+    state.attemptId = event.run.output_attempts?.at(-1)?.attempt_id ?? event.run.writing_previews?.[0]?.attempt_id
     state.after = Math.max(state.after, event.run.last_event_sequence ?? 0)
   }
   state.terminal ||= terminalEvent(event)
@@ -471,12 +478,13 @@ export async function streamAgentTurn(
           })
           if (lookup.status === 404) throw new TypeError('原请求仍未确认，保留内容并等待记录。')
           if (!lookup.ok) throw new Error('无法核对原回答，请重新登录后连接。')
-          const run = await lookup.json() as AgentRunLookup
+          const raw = await lookup.json() as Record<string, unknown>
+          const run = { ...raw, writing_previews: writingPreviewsFromSnapshot(raw) } as unknown as AgentRunLookup
           state.runId = run.run_id
           state.after = run.last_event_sequence ?? 0
           // If the initial response was completely lost, reconcile its exact
           // body/attempt snapshot once, then stream only events after that cursor.
-          onEvent({ type: 'turn_snapshot', run })
+          deliverEvent({ type: 'turn_snapshot', run }, state, onEvent)
         }
         response = await fetch(apiClient.buildUrl({
           url: '/api/agent/runs/{run_id}/events', path: { run_id: state.runId },
@@ -580,3 +588,4 @@ export async function repairKnowledgeIndex(body: KnowledgeIndexRepair, idempoten
   if (!result.data) throw new Error(result.response?.status === 409 ? '资料已更新，请重新检查整理状态后再补齐。' : '补齐任务未能确认，请检查进度后再试。')
   return result.data
 }
+import { parseWritingPreview, writingPreviewsFromSnapshot } from './writingPreview'

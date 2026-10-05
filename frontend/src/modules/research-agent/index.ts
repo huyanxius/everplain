@@ -67,4 +67,6 @@ export type { ConversationContextSummary, ConversationContextSuggestion, Convers
 
 export { readKnowledgeIndexStatus, repairKnowledgeIndex } from './researchAgentGateway'
 export { isKnowledgeIndexStatus } from './knowledgeIndexReadiness'
+export type { WritingPreviewEvent } from './writingPreview'
+export { parseWritingPreview } from './writingPreview'
 export type { KnowledgeIndexStatus } from './model'

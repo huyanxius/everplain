@@ -11,6 +11,8 @@ import { WritingHomePage } from './WritingHomePage'
 import { WritingDocumentEditor } from './WritingDocumentPage'
 import { writingApi } from '../../modules/writing'
 import { draftKey } from './writingState'
+import { stopAgentRun, type WritingPreviewEvent } from '../../modules/research-agent'
+vi.mock('../../modules/research-agent', async importOriginal => ({ ...await importOriginal<typeof import('../../modules/research-agent')>(), stopAgentRun: vi.fn() }))
 vi.mock('../../modules/writing', async importOriginal => ({ ...await importOriginal<typeof import('../../modules/writing')>(), writingApi: { summary: vi.fn(), samples: vi.fn(), document: vi.fn(), revisions: vi.fn(), create: vi.fn(), update: vi.fn(), propose: vi.fn(), resolve: vi.fn(), upload: vi.fn(), previewSamples: vi.fn(), createSample: vi.fn(), deleteSample: vi.fn() } }))
 vi.mock('../../modules/agent-profile', () => ({ readAgentProfile: vi.fn(async () => ({ name: '澄', avatar_id: 'cheng', color: '#000' })) }))
 vi.mock('../../modules/agent-avatar', () => ({ AgentAvatar: () => <span>头像</span> }))
@@ -30,7 +32,7 @@ vi.mock('../../modules/shared-editor', async importOriginal => ({
     return <>{bodyPreview}<textarea aria-label="Markdown 源码" value={markdown} onChange={event => onChange(event.target.value)} onSelect={event => { const input = event.currentTarget; report(input.selectionStart < input.selectionEnd ? { start: input.selectionStart, end: input.selectionEnd, text: input.value.slice(input.selectionStart, input.selectionEnd) } : null) }} readOnly={readOnly} /><footer className="se-status">{statusContent}</footer>{selected && <div role="toolbar" aria-label="选区操作">{selectionActions.map(action => <button key={action.id} disabled={action.disabled} onClick={() => action.run(editor, 'start' in selected ? selected.text : '', selected)}>{action.label}</button>)}</div>}</>
   },
 }))
-const agent = vi.hoisted(() => ({ props: null as null | { prepareWritingContext: () => Promise<unknown>; onTurnCompleted: () => void; onConversationStarted: (identity: { conversation_id: string }) => void; conversationId: string | null; writingAction?: { id: string; text: string } | null; onWritingActionFinished?: (id: string) => void } }))
+const agent = vi.hoisted(() => ({ props: null as null | { prepareWritingContext: () => Promise<unknown>; onTurnCompleted: () => void; onConversationStarted: (identity: { conversation_id: string }) => void; conversationId: string | null; writingAction?: { id: string; text: string } | null; onWritingActionFinished?: (id: string) => void; onWritingPreview?: (event: WritingPreviewEvent) => void; onWritingPreviewEnded?: () => void } }))
 vi.mock('../agent/ResearchAgentConversationPage', () => ({ ResearchAgentConversationPage: (props: NonNullable<typeof agent.props>) => { agent.props = props; return <div>公共 Agent 面板<button>Agent 发送消息</button></div> } }))
 const doc = { document_id: 'doc-1', title: '原题', genre: 'essay' as const, markdown: '原文内容', version: 1, created_at: '2026-10-04T00:00:00Z', updated_at: '2026-10-04T00:00:00Z' }
 const revision = { revision_id: 'rev-1', document_id: 'doc-1', base_version: 1, action: 'rewrite' as const, before_markdown: '原文内容', after_markdown: '建议内容', status: 'pending' as const, warnings: [], created_at: doc.created_at }
@@ -331,4 +333,59 @@ it('makes 修改 return to original editing and never implies suggestion editing
   fireEvent.change(original, { target: { value: '我手动改的原文' } })
   expect(screen.getByRole('button', { name: '同意' })).toBeDisabled()
   expect(writingApi.resolve).not.toHaveBeenCalled(); expect(writingApi.update).not.toHaveBeenCalled()
+})
+
+const previewEvent: WritingPreviewEvent = { type: 'writing_preview', run_id: 'run-1', call_id: 'call-1', document_id: 'doc-1', base_version: 1, selection_start: 0, selection_end: 4, sequence: 1, replacement_text: '建议', state: 'streaming' }
+
+it('shows real document chunks as an unsaved draft and waits for the actual revision before agreement', async () => {
+  const view = wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+  await screen.findByText('公共 Agent 面板')
+  act(() => agent.props!.onWritingPreview!(previewEvent))
+  expect(view.container.querySelector('.writing-live-preview')).toHaveTextContent('建议')
+  expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('原文内容')
+  expect(screen.queryByRole('button', { name: '同意' })).not.toBeInTheDocument()
+  act(() => agent.props!.onWritingPreview!({ ...previewEvent, sequence: 2, replacement_text: '建议内容', state: 'ready', revision_id: 'rev-1' }))
+  await screen.findByText('正文生成完成，正在读取可确认修订…')
+  expect(screen.queryByRole('button', { name: '同意' })).not.toBeInTheDocument()
+  vi.mocked(writingApi.revisions).mockResolvedValue({ items: [revision] })
+  act(() => agent.props!.onTurnCompleted())
+  await waitFor(() => expect(screen.getByRole('button', { name: '同意' })).toBeEnabled())
+  expect(writingApi.resolve).not.toHaveBeenCalled(); expect(writingApi.update).not.toHaveBeenCalled()
+})
+
+it('keeps an interrupted stream as incomplete and protects new handwritten edits', async () => {
+  const view = wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+  const input = await screen.findByRole('textbox', { name: 'Markdown 源码' })
+  act(() => { agent.props!.onWritingPreview!(previewEvent); agent.props!.onWritingPreviewEnded!() })
+  expect(screen.getByText('生成已中断，以下仅为未完成草稿，原文未保存。')).toBeVisible()
+  expect(view.container.querySelector('.writing-live-preview')).toHaveTextContent('建议')
+  fireEvent.change(input, { target: { value: '自己的新正文' } })
+  expect(view.container.querySelector('.writing-live-preview')).not.toBeInTheDocument()
+  expect(input).toHaveValue('自己的新正文'); expect(writingApi.update).not.toHaveBeenCalled()
+})
+
+it('cancels an unfinished draft and reconciles a late completed revision without changing original text', async () => {
+  vi.mocked(stopAgentRun).mockResolvedValue({ run_id: 'run-1', status: 'interrupted', cancel_requested: true })
+  vi.mocked(writingApi.resolve).mockResolvedValue({ document: doc, revision: { ...revision, status: 'rejected' } })
+  const view = wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+  await screen.findByText('公共 Agent 面板')
+  act(() => agent.props!.onWritingPreview!(previewEvent))
+  fireEvent.click(screen.getByRole('button', { name: '取消生成草稿' }))
+  await waitFor(() => expect(stopAgentRun).toHaveBeenCalledWith('run-1'))
+  expect(view.container.querySelector('.writing-live-preview')).not.toBeInTheDocument()
+  vi.mocked(writingApi.revisions).mockResolvedValue({ items: [revision] })
+  act(() => agent.props!.onWritingPreview!({ ...previewEvent, sequence: 2, replacement_text: '建议内容', state: 'ready', revision_id: 'rev-1' }))
+  await waitFor(() => expect(writingApi.resolve).toHaveBeenCalledWith('doc-1', 'rev-1', { decision: 'reject', expected_version: 1 }, expect.any(String)))
+  expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue('原文内容')
+  expect(writingApi.update).not.toHaveBeenCalled()
+})
+
+it('blocks consent if the final revision differs from the verified stream binding', async () => {
+  wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+  await screen.findByText('公共 Agent 面板')
+  vi.mocked(writingApi.revisions).mockResolvedValue({ items: [revision] })
+  act(() => agent.props!.onWritingPreview!({ ...previewEvent, sequence: 2, replacement_text: '不同的建议稿', state: 'ready', revision_id: 'rev-1' }))
+  await screen.findByText('生成草稿与最终修订不一致，已保留原文，请核对最终修订。')
+  expect(screen.getByRole('button', { name: '同意' })).toBeDisabled()
+  expect(writingApi.resolve).not.toHaveBeenCalled()
 })
