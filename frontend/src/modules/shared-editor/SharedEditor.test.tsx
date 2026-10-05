@@ -23,6 +23,24 @@ Object.defineProperty(Range.prototype, 'getClientRects', { configurable: true, v
 Object.defineProperty(Range.prototype, 'getBoundingClientRect', { configurable: true, value: () => new DOMRect() })
 const source = '---\ntitle: "保留格式"\ntags:\n  - 一个\n  - 两个\n---\n\n# 标题\n\n[[笔记|别名]] ==高亮==\n\n> [!note] 提示\n> 内容\n\n- [x] 任务\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n```js\nconst a = 1\n```\n\n![图片](https://example.com/image.png)\n'
 describe('shared reference editor production persistence', () => {
+  it('keeps an accepted Markdown update editable as exact source if rich parsing fails', async () => {
+    const onReady = vi.fn(), onChange = vi.fn()
+    const view = render(<SharedEditor markdown="原文" onReady={onReady} onChange={onChange} />)
+    await waitFor(() => expect(onReady).toHaveBeenCalled())
+    const editor = onReady.mock.calls[0][0] as Editor
+    const parse = vi.spyOn(editor.markdown!, 'parse').mockImplementation(() => { throw new Error('parser unavailable') })
+    const accepted = '# 借伞\n\n**未闭合正文\n<script>alert(1)</script>\n'
+    view.rerender(<SharedEditor markdown={accepted} onReady={onReady} onChange={onChange} />)
+    const source = await screen.findByRole('textbox', { name: 'Markdown 源码' })
+    expect(source).toHaveValue(accepted); expect(onChange).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('tab', { name: '编辑' }))
+    expect(source).toHaveValue(accepted); expect(onChange).not.toHaveBeenCalled()
+    const edited = accepted + '我的手改\n'
+    fireEvent.change(source, { target: { value: edited } })
+    expect(onChange).toHaveBeenLastCalledWith(edited)
+    expect(view.container.querySelector('script')).not.toBeInTheDocument()
+    parse.mockRestore()
+  })
   it('destroys the real editor and drains deferred timers during fixture cleanup', () => {
     const onReady = vi.fn()
     render(<SharedEditor markdown="原文" onReady={onReady} />)

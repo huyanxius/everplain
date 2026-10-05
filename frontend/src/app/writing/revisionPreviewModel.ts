@@ -9,8 +9,10 @@ export function splitRevisionMarkdown(markdown: string) {
 }
 
 export function revisionDocuments(editor: Editor, before: string, after: string) {
-  if (!editor.markdown) throw new Error('编辑器尚未准备好。')
-  return { before: editor.schema.nodeFromJSON(editor.markdown.parse(splitRevisionMarkdown(before).body)), after: editor.schema.nodeFromJSON(editor.markdown.parse(splitRevisionMarkdown(after).body)) }
+  if (!editor.markdown) return null
+  try {
+    return { before: editor.schema.nodeFromJSON(editor.markdown.parse(splitRevisionMarkdown(before).body)), after: editor.schema.nodeFromJSON(editor.markdown.parse(splitRevisionMarkdown(after).body)) }
+  } catch { return null }
 }
 
 export function revisionChanges(before: ProseMirrorNode, after: ProseMirrorNode) {
