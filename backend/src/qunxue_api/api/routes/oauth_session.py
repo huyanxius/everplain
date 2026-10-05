@@ -158,7 +158,9 @@ async def callback(provider: OAuthProvider, request: Request):
         if transaction is None:
             raise OAuthIdentityInvalid("invalid flow")
         if transaction.link_session_id:
-            target = "/settings"
+            target = "/settings?section=security"
+        else:
+            target = "/login?" + urlencode({"redirect": transaction.return_path})
         if request.query_params.get("error"):
             failure = "cancelled"
             raise OAuthIdentityInvalid("authorization denied")
@@ -219,4 +221,8 @@ async def callback(provider: OAuthProvider, request: Request):
         pass
     except SQLAlchemyError:
         failure = "service_unavailable"
-    return _redirect(provider, f"{target}?{urlencode({'oauth_error': failure})}", request)
+    return _redirect(
+        provider,
+        f"{target}{'&' if '?' in target else '?'}{urlencode({'oauth_error': failure})}",
+        request,
+    )

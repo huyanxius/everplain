@@ -319,11 +319,14 @@ class Settings(BaseSettings):
     @field_validator("oauth_public_origin")
     @classmethod
     def validate_oauth_origin(cls, value: str | None) -> str | None:
-        if value is None:
+        if value is None or not value.strip():
             return None
         url = urlsplit(value)
         if (
-            url.scheme not in {"https", "http"}
+            value != value.strip()
+            or any(c.isspace() or ord(c) < 32 for c in value)
+            or url.port == 0
+            or url.scheme not in {"https", "http"}
             or not url.hostname
             or url.username is not None
             or url.password is not None
@@ -333,7 +336,7 @@ class Settings(BaseSettings):
             or (url.scheme == "http" and url.hostname not in {"localhost", "127.0.0.1", "::1"})
         ):
             raise ValueError("OAuth public origin must be HTTPS (HTTP only for loopback)")
-        return value.rstrip("/")
+        return f"{url.scheme}://{url.netloc.lower()}"
 
     account_initial_admin_email: str = ""
     account_initial_admin_password: SecretStr | None = None

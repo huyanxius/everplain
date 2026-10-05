@@ -4,6 +4,7 @@ import { useId, useRef, useState, type ReactNode } from 'react'
 import { AccountConfirmationDialog } from './SettingsConfirmation'
 import { AgentSettingsPanel } from './AgentSettingsPanel'
 import { UserAvatarSettingsPanel } from './UserAvatarSettingsPanel'
+import { OAuthActions, OAuthCallbackNotice } from './OAuthActions'
 import { SettingRow } from './SettingRow'
 import { ChannelBindingsPanel } from '../channel-gateway'
 import { Select } from '../../ui/Select'
@@ -14,7 +15,7 @@ import './account-settings.css'
 
 export { AccountConfirmationDialog } from './SettingsConfirmation'
 
-type SettingsProps = AccountSettingsOptions & { adminHref?: string; onLogout?(): void; onResetAgent?(): void }
+type SettingsProps = AccountSettingsOptions & { adminHref?: string; onLogout?(): void; onResetAgent?(): void; onOAuthNavigate?(url: string): void; oauthError?: string | null }
 type PanelProps = { controller: ReadySettingsController }
 
 const sections = [
@@ -36,7 +37,7 @@ function dateLabel(value: string | null, locale: string) {
   return date.toLocaleString(locale, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-export function AccountSettingsPage({ adminHref = '/admin/users', onLogout, onResetAgent, ...options }: SettingsProps) {
+export function AccountSettingsPage({ adminHref = '/admin/users', onLogout, onResetAgent, onOAuthNavigate, oauthError, ...options }: SettingsProps) {
   const controller = useAccountSettingsController(options)
   const { text, state } = controller
   const titleId = useId()
@@ -93,7 +94,7 @@ export function AccountSettingsPage({ adminHref = '/admin/users', onLogout, onRe
           {controller.section === 'profile' ? <ProfilePanel controller={ready} /> : null}
           {controller.section === 'credits' ? <CreditsPanel controller={ready} /> : null}
           {controller.section === 'preferences' ? <PreferencesPanel controller={ready} /> : null}
-          {controller.section === 'security' ? <SecurityPanel controller={ready} /> : null}
+          {controller.section === 'security' ? <SecurityPanel controller={ready} onOAuthNavigate={onOAuthNavigate} oauthError={oauthError} /> : null}
           {controller.section === 'privacy' ? <PrivacyPanel controller={ready} /> : null}
           {controller.section === 'danger' ? <AccountStatusPanel controller={ready} /> : null}
         </section>
@@ -189,7 +190,7 @@ function CreditsPanel({ controller: c }: PanelProps) {
   </div>
 }
 
-function SecurityPanel({ controller: c }: PanelProps) {
+function SecurityPanel({ controller: c, onOAuthNavigate, oauthError }: PanelProps & { onOAuthNavigate?(url: string): void; oauthError?: string | null }) {
   const fields = [['current', '当前密码', 'Current password'], ['next', '新密码', 'New password'], ['confirmation', '确认新密码', 'Confirm new password']] as const
   return <div className="ep-settings-fields">
     <form onSubmit={c.changePassword} noValidate>
@@ -199,6 +200,8 @@ function SecurityPanel({ controller: c }: PanelProps) {
       <label className="ep-settings-check"><input type="checkbox" checked={c.password.revokeOtherSessions} onChange={event => c.setPassword(current => ({ ...current, revokeOtherSessions: event.target.checked }))} /><span>{c.text('撤销其他设备的会话', 'Sign out other devices')}<small className="qx-meta">{c.text('当前设备不会退出。', 'Your current device stays signed in.')}</small></span></label>
       <div className="ep-settings-actions"><button className="qx-btn qx-btn--primary" disabled={c.pending || !c.password.current}>{c.pendingAction === 'password' ? c.text('正在更新…', 'Updating…') : c.text('更新密码', 'Update password')}</button></div>
     </form>
+    <OAuthCallbackNotice code={oauthError} />
+    <OAuthActions returnPath="/settings?section=security" link onNavigate={onOAuthNavigate} />
     <section className="ep-settings-history" aria-label={c.text('活跃会话', 'Active sessions')}>
       <h3 className="qx-heading">{c.text('活跃会话', 'Active sessions')}</h3>
       <ul className="ep-settings-list">{c.state.sessions.map(session => <li key={session.sessionId}>

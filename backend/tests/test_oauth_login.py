@@ -1,7 +1,9 @@
 """Synthetic provider traffic and real Authlib/JWKS verification; no third-party accounts."""
 
+from base64 import urlsafe_b64encode
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from time import time
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
@@ -12,6 +14,7 @@ from joserfc import jwt
 from joserfc.jwk import RSAKey
 from pydantic import SecretStr
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import SQLAlchemyError
 
 from qunxue_api.adapters.oauth import OAuthClients
 from qunxue_api.adapters.sqlite import UserRow, UserSessionRow
@@ -27,6 +30,7 @@ class Provider:
     def __init__(self, client):
         self.key = RSAKey.generate_key(2048, parameters={"kid": "synthetic-key"})
         self.claims = {}
+        self.signing_key = self.key
         self.subject = "synthetic-subject"
         self.email = "oauth@example.com"
         self.github_id = 12345
@@ -99,7 +103,7 @@ class Provider:
                     "access_token": "synthetic-access",
                     "token_type": "Bearer",
                     "id_token": jwt.encode(
-                        {"alg": "RS256", "kid": "synthetic-key"}, claims, self.key
+                        {"alg": "RS256", "kid": "synthetic-key"}, claims, self.signing_key
                     ),
                 },
             )
@@ -129,6 +133,10 @@ class Provider:
             row = db.scalar(
                 select(OAuthTransactionRow).order_by(OAuthTransactionRow.expires_at.desc())
             )
+            challenge = (
+                urlsafe_b64encode(sha256(row.code_verifier.encode()).digest()).rstrip(b"=").decode()
+            )
+            assert params["code_challenge"] == [challenge]
             code = str(uuid4())
             self.code_params[code] = {"verifier": row.code_verifier, "nonce": row.nonce}
         return params["state"][0], code
@@ -353,3 +361,117 @@ def test_atomic_state_claim_and_concurrent_subject_login(plain_client):
     with ThreadPoolExecutor(max_workers=4) as pool:
         assert len(set(pool.map(sign_in, range(4)))) == 1
     assert counts(plain_client) == (1, 4, 1)
+
+
+def test_wrong_signature_and_disabled_users_cannot_log_in(plain_client):
+    mock = Provider(plain_client)
+    mock.signing_key = RSAKey.generate_key(2048, parameters={"kid": "synthetic-key"})
+    state, code = mock.start(plain_client)
+    assert "invalid_flow" in mock.finish(plain_client, state, code).headers["location"]
+    assert counts(plain_client) == (0, 0, 0)
+    mock.signing_key = mock.key
+    state, code = mock.start(plain_client)
+    assert mock.finish(plain_client, state, code).headers["location"] == "/library"
+    plain_client.cookies.clear()
+    with plain_client.app.state.database.session() as db:
+        user = db.scalar(select(UserRow))
+        user.status = "disabled"
+    state, code = mock.start(plain_client)
+    assert "invalid_flow" in mock.finish(plain_client, state, code).headers["location"]
+    assert counts(plain_client) == (1, 1, 1)
+
+
+def test_cross_provider_and_duplicate_callback_parameters_cannot_replay(plain_client):
+    mock = Provider(plain_client)
+    state, code = mock.start(plain_client)
+    # Even transplanting the browser cookie cannot change the transaction's provider.
+    browser = plain_client.cookies.get("everplain_oauth_google")
+    plain_client.cookies.set("everplain_oauth_github", browser, path="/api/session/oauth/github")
+    assert "invalid_flow" in mock.finish(plain_client, state, code, "github").headers["location"]
+    assert not mock.exchanges
+    response = plain_client.get(
+        "/api/session/oauth/google/callback",
+        params=[("state", state), ("code", code), ("code", "extra")],
+        follow_redirects=False,
+    )
+    assert "invalid_flow" in response.headers["location"]
+    assert not mock.exchanges
+    assert counts(plain_client) == (0, 0, 0)
+    assert "invalid_flow" in mock.finish(plain_client, state, code).headers["location"]
+
+
+def test_swapping_logged_in_account_cannot_complete_an_old_link(plain_client):
+    mock = Provider(plain_client)
+    register(plain_client, "first@example.com")
+    state, code = mock.start(plain_client, link=True)
+    # Preserve the OAuth binding cookie while replacing the application session.
+    plain_client.cookies.delete("everplain_session")
+    register(plain_client, "second@example.com")
+    assert "invalid_flow" in mock.finish(plain_client, state, code).headers["location"]
+    assert not mock.exchanges
+    assert counts(plain_client) == (2, 2, 0)
+
+
+def test_account_identity_and_grant_roll_back_together_on_failure(plain_client, monkeypatch):
+    mock = Provider(plain_client)
+    factory = plain_client.app.state.build_identity_service
+
+    def broken(db):
+        service = factory(db)
+
+        def fail(_user):
+            raise SQLAlchemyError("synthetic transaction failure")
+
+        service._repository._on_user_created = fail
+        return service
+
+    monkeypatch.setattr(plain_client.app.state, "build_identity_service", broken)
+    state, code = mock.start(plain_client)
+    response = mock.finish(plain_client, state, code)
+    assert "service_unavailable" in response.headers["location"]
+    assert "synthetic transaction failure" not in response.text + str(response.headers)
+    assert counts(plain_client) == (0, 0, 0)
+    with plain_client.app.state.database.session() as db:
+        assert db.scalar(select(func.count()).select_from(CreditLedgerRow)) == 0
+        assert db.scalar(select(func.count()).select_from(OAuthTransactionRow)) == 0
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "http://evil.example",
+        "https://example.com/path",
+        "https://user@example.com",
+        "https://example.com?x=1",
+        "https://example.com:bad",
+        " https://example.com",
+        "https://exa mple.com",
+        "https://example.com:0",
+    ],
+)
+def test_configuration_rejects_unsafe_public_origins(origin):
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, oauth_public_origin=origin)
+
+
+def test_partial_configuration_stays_disabled_and_https_needs_secure_cookies():
+    assert (
+        OAuthClients(
+            Settings(
+                _env_file=None,
+                oauth_public_origin="https://example.com",
+                oauth_google_client_id="id-only",
+            )
+        ).enabled
+        == []
+    )
+    assert OAuthClients(Settings(_env_file=None, oauth_public_origin="")).enabled == []
+    with pytest.raises(ValueError, match="secure"):
+        OAuthClients(
+            Settings(
+                _env_file=None,
+                oauth_public_origin="https://example.com",
+                oauth_google_client_id="synthetic",
+                oauth_google_client_secret=SecretStr("synthetic"),
+            )
+        )

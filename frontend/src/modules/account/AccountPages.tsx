@@ -2,6 +2,7 @@ import { ArrowLeftIcon, EyeIcon, EyeSlashIcon } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 import { AgentAvatar, agentAvatarPresets } from '../agent-avatar'
 import { useLoginFlow, useRegisterFlow, type LoginPageProps, type RegisterPageProps } from './useAuthFlow'
+import { OAuthActions, OAuthCallbackNotice } from './OAuthActions'
 import './auth-flow.css'
 
 /** Mock Login's single-column composition, with only real authentication actions. */
@@ -37,6 +38,8 @@ export function LoginPage(props: LoginPageProps) {
     <AuthStage title={flow.step === 'email' ? '登录 Everplain' : '输入密码'} busy={flow.submitting}
       onBack={flow.step === 'password' ? flow.back : undefined}
       footer={<span>还没有账号？ <a href={props.registerHref}>创建账号</a></span>}>
+      <OAuthCallbackNotice code={props.oauthError} />
+      {flow.step === 'email' && <OAuthActions returnPath={props.returnPath ?? '/app'} busy={flow.submitting} onNavigate={props.onOAuthNavigate} />}
       {flow.step === 'password' && <p className="auth-stage__email">{flow.email}</p>}
       <form className="auth-stage__form" aria-label="登录到 Everplain" onSubmit={flow.step === 'email' ? flow.continueToPassword : flow.submit} noValidate>
         {props.sessionExpired && <p className="qx-notice" role="status">登录已过期，请重新登录后继续。</p>}
@@ -67,6 +70,8 @@ export function RegisterPage(props: RegisterPageProps) {
     <AuthStage title={flow.step === 'email' ? '注册' : flow.step === 'code' ? '查看你的邮箱' : '设置密码'} busy={flow.submitting}
       onBack={flow.step !== 'email' ? flow.back : undefined}
       footer={<span>已有账号？ <a href={props.loginHref}>返回登录</a></span>}>
+      <OAuthCallbackNotice code={props.oauthError} />
+      {flow.step === 'email' && <OAuthActions returnPath={props.returnPath ?? '/app'} busy={flow.submitting} onNavigate={props.onOAuthNavigate} />}
       <ol className="auth-stage__steps" aria-label={`第 ${stepNumber} 步，共 3 步`}>
         {[1, 2, 3].map(step => <li key={step} data-current={step === stepNumber} data-done={step < stepNumber} />)}
       </ol>

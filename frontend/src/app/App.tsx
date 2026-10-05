@@ -82,6 +82,9 @@ function LoginRoute({ sessionState }: { sessionState: SessionState }) {
         onLogin={account.login}
         onAuthenticated={() => navigate(destination, { replace: true })}
         registerHref={`/register?redirect=${encodeURIComponent(destination)}`}
+        onOAuthNavigate={url => window.location.assign(url)}
+        returnPath={destination}
+        oauthError={new URLSearchParams(search).get('oauth_error')}
         sessionExpired={sessionState.status === 'expired'}
       />
     </PageShell>
@@ -105,6 +108,9 @@ function RegisterRoute({ sessionState }: { sessionState: SessionState }) {
         onSendRegistrationCode={account.sendRegistrationCode}
         onAuthenticated={() => navigate(destination, { replace: true })}
         loginHref={`/login?redirect=${encodeURIComponent(destination)}`}
+        onOAuthNavigate={url => window.location.assign(url)}
+        returnPath={destination}
+        oauthError={new URLSearchParams(search).get('oauth_error')}
       />
     </PageShell>
   )
@@ -129,6 +135,9 @@ function AccountSettingsRoute() {
   return (
     <SettingsModal userId={account.sessionState.status === 'authenticated' ? account.sessionState.session.user.userId : undefined} accountName={account.sessionState.status === 'authenticated' ? account.sessionState.session.user.displayName || account.sessionState.session.user.email : undefined} onClose={() => location.state?.settingsBackground ? navigate(-1) : navigate('/app', { replace: true })}>
         <AccountSettingsPage
+          onOAuthNavigate={url => window.location.assign(url)}
+          oauthError={new URLSearchParams(location.search).get('oauth_error')}
+          initialSection={new URLSearchParams(location.search).get('section') === 'security' ? 'security' : 'profile'}
           onResetAgent={() => navigate('/welcome/setup')}
           onLogout={leaveAccount}
           onProfileUpdated={() => account.retrySession()}
