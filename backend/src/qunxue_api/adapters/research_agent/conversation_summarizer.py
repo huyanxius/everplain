@@ -3,17 +3,48 @@ import json
 from pathlib import Path
 from uuid import UUID
 
-from openai import AsyncOpenAI
-from pydantic import BaseModel, ConfigDict, Field
+from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic_ai import Agent
+from pydantic_ai.exceptions import (
+    ModelHTTPError,
+    UnexpectedModelBehavior,
+    UsageLimitExceeded,
+    UserError,
+)
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.usage import UsageLimits
 
 from qunxue_api.adapters.model.metering import MeteredOpenAIChatModel
+from qunxue_api.modules.agent_conversation import ContextSummaryGenerationFailure
 
 from .pydantic_runner import _is_deepseek_flash
 
 _INSTRUCTIONS = (Path(__file__).parent / "prompts" / "conversation_summary.md").read_text()
+
+
+def _generation_failure(error: Exception) -> ContextSummaryGenerationFailure:
+    current, seen = error, set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (APIStatusError, ModelHTTPError)):
+            status = current.status_code
+            return ContextSummaryGenerationFailure(
+                "http_error",
+                http_status=status if type(status) is int and 100 <= status <= 599 else None,
+            )
+        if isinstance(current, APITimeoutError):
+            return ContextSummaryGenerationFailure("timeout")
+        if isinstance(current, APIConnectionError):
+            return ContextSummaryGenerationFailure("transport_error")
+        if isinstance(current, (UnexpectedModelBehavior, ValidationError)):
+            return ContextSummaryGenerationFailure("invalid_output")
+        if isinstance(current, UsageLimitExceeded):
+            return ContextSummaryGenerationFailure("request_limit")
+        if isinstance(current, UserError):
+            return ContextSummaryGenerationFailure("model_config")
+        current = current.__cause__ or current.__context__
+    return ContextSummaryGenerationFailure("model_error")
 
 
 class SummarySource(BaseModel):
@@ -44,7 +75,10 @@ class PydanticConversationSummarizer:
         self.timeout, self.headers = timeout_seconds, extra_headers
 
     def __call__(self, batch):
-        return asyncio.run(self.summarize(batch))
+        try:
+            return asyncio.run(self.summarize(batch))
+        except Exception as error:
+            raise _generation_failure(error) from error
 
     async def summarize(self, batch):
         payload = json.dumps(
