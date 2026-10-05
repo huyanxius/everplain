@@ -496,7 +496,6 @@ class SqliteConversationRepository:
                 existing.status = "running"
                 existing.error = None
                 existing.completed_at = None
-                existing.started_at = datetime.now(UTC)
                 existing.knowledge_release_id = run.knowledge_release_id
                 existing.provider = run.provider
                 existing.model = run.model
@@ -769,7 +768,8 @@ class SqliteConversationRepository:
                 AgentRunRow.run_id == row.run_id, AgentRunRow.status == "running",
                 or_(AgentRunRow.lease_expires_at.is_(None), AgentRunRow.lease_expires_at <= now),
             ).values(status="interrupted", cancel_requested=True, updated_at=now,
-                     lease_expires_at=None, completed_at=now)).rowcount
+                     lease_expires_at=None, completed_at=now)
+                .execution_options(synchronize_session="fetch")).rowcount
             if changed:
                 recovered.append(_run_from_row(row))
         return tuple(recovered)

@@ -22,6 +22,8 @@ tests/test_identity_service.py
 tests/test_identity_and_ownership.py
 tests/test_registration_email_verification.py
 tests/test_agent_run_recovery.py
+tests/billing/test_agent_retry_billing.py
+tests/billing/test_planner_failure_propagation.py
 tests/test_agent_run_lookup.py
 tests/test_agent_stream_lifecycle.py
 tests/test_agent_task_binding.py

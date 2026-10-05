@@ -5,13 +5,14 @@ from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, replace
 from inspect import Parameter, signature
 from typing import Literal
-from uuid import NAMESPACE_URL, UUID, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from qunxue_api.modules.agent_conversation import (
     AgentCitation,
     AgentEvidence,
     AgentInterrupted,
     AgentModelChoice,
+    AgentModelRouteFailure,
     AgentModelSelection,
     AgentModelSelectionUnavailable,
     AgentResearchEvent,
@@ -30,7 +31,7 @@ from qunxue_api.modules.agent_conversation import (
     SubjectAgentRunner,
     resolve_agent_model_selection,
 )
-from qunxue_api.modules.billing import BillingOperations, CreditService
+from qunxue_api.modules.billing import BillingFailure, BillingOperations, CreditService
 from qunxue_api.modules.shared_knowledge import find_knowledge_index_choice
 
 
@@ -107,7 +108,7 @@ class DisciplinaryAgentApplication:
             self._conversations.commit()
             if self._billing is not None:
                 for run in expired:
-                    self._billing.close(run_id=run.run_id, outcome="error")
+                    self._billing.close(run_id=_billing_run_id(run), outcome="error")
         return self._conversations.get_conversation(
             user_id=user_id,
             conversation_id=conversation_id,
@@ -298,6 +299,15 @@ class DisciplinaryAgentApplication:
                 raise ValueError("idempotent Agent run material scope does not match")
             if existing_run.status == "running":
                 raise RunAlreadyActive(str(existing_run.conversation_id))
+            if self._billing is not None and existing_run.status in {"failed", "interrupted"}:
+                # Logical failure/recovery and financial settlement are separate
+                # commits. Repair a crash between them before replacing the only
+                # persisted operation ID or reserving the retry's credits.
+                self._conversations.commit()
+                self._billing.close(
+                    run_id=_billing_run_id(existing_run),
+                    outcome="cancelled" if existing_run.status == "interrupted" else "error",
+                )
             if existing_run.request_snapshot:
                 snapshot = existing_run.request_snapshot
                 if snapshot.get("_unavailable_materials"):
@@ -530,6 +540,13 @@ class DisciplinaryAgentApplication:
         billing_resume = existing_run is not None and existing_run.status in {
             "awaiting_clarification", "awaiting_plan_confirmation"
         }
+        if existing_run is not None:
+            # The logical request keeps its run ID, but a failed delivery's financial
+            # operation is terminal. Persist a fresh operation before executing again
+            # so late callbacks can only settle their own, already-closed operation.
+            request_snapshot["_billing_run_id"] = str(
+                _billing_run_id(existing_run) if billing_resume else uuid4()
+            )
         run = self._conversations.start_run(
             user_id=user_id,
             conversation_id=conversation.conversation_id,
@@ -622,7 +639,7 @@ class DisciplinaryAgentApplication:
                 self._conversations.commit()
                 billing_candidate = self._billing.open(
                     user_id=user_id,
-                    run_id=run.run_id,
+                    run_id=_billing_run_id(run),
                     payload=request_snapshot,
                     before_network=lambda: checkpoint(force=True),
                     **({"resume": True} if billing_resume else {}),
@@ -785,7 +802,7 @@ class DisciplinaryAgentApplication:
                         )
                         if cancelled():
                             raise AgentInterrupted("Agent run was interrupted during planning")
-                    except AgentInterrupted:
+                    except (AgentInterrupted, AgentModelRouteFailure, BillingFailure):
                         raise
                     except Exception:
                         planning_events.clear()
@@ -1058,6 +1075,10 @@ class DisciplinaryAgentApplication:
             replayed=False,
             tool_summary=completed_tool_summary,
         )
+
+
+def _billing_run_id(run) -> UUID:
+    return _snapshot_uuid(run.request_snapshot, "_billing_run_id") or run.run_id
 
 
 def _agent_citation(item) -> AgentCitation:
