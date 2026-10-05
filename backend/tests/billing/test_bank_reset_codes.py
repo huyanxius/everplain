@@ -133,3 +133,57 @@ def test_missing_paid_quota_rolls_back_code_consumption(account_client):
             user_id=user, code=code
         )
     assert reset.balance == 75 and reset.redeemed_points == 75
+
+
+def test_legacy_charge_mirrors_current_period_and_reset_fences_old_lease(account_client):
+    user = UUID(register(account_client, "legacy-period@example.com")["user"]["user_id"])
+    db = account_client.app.state.database
+    run = uuid4()
+    with db.session() as s:
+        service = CreditService(SqliteCreditRepository(s))
+        service.reserve(user_id=user, run_id=run)
+        entry = service.charge(
+            user_id=user, run_id=run, input_tokens=100, output_tokens=25, model="synthetic"
+        )
+        assert entry.quota_period_epoch == 1
+        assert entry.points == -2
+    with db.session() as s:
+        assert s.scalar(text("SELECT balance FROM credit_quota_periods WHERE epoch=1")) == 28
+        assert (
+            s.scalar(
+                text("SELECT total_credit_pico FROM billing_precision WHERE user_id=:u"),
+                {"u": str(user)},
+            )
+            == "2000000000000"
+        )
+    old_run = uuid4()
+    with db.session() as s:
+        CreditService(SqliteCreditRepository(s)).reserve(user_id=user, run_id=old_run)
+    code = generate(db, user)
+    with db.session() as s:
+        CreditService(SqliteCreditRepository(s)).redeem(user_id=user, code=code)
+    with pytest.raises(RuntimeError, match="not reserved"), db.session() as s:
+        CreditService(SqliteCreditRepository(s)).charge(
+            user_id=user,
+            run_id=old_run,
+            input_tokens=100,
+            output_tokens=25,
+            model="synthetic",
+        )
+    with db.session() as s:
+        assert (
+            s.scalar(text("SELECT balance FROM credit_accounts WHERE user_id=:u"), {"u": str(user)})
+            == 30
+        )
+
+
+def test_financial_quota_migration_forbids_destructive_downgrade():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).parents[2] / "migrations/versions/20261005_0600_weekly_quota.py"
+    spec = importlib.util.spec_from_file_location("weekly_quota_migration", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    with pytest.raises(RuntimeError, match="cannot be downgraded"):
+        module.downgrade()

@@ -48,8 +48,6 @@ def upgrade():
 
 
 def downgrade():
-    op.drop_table("credit_quota_periods")
-    op.drop_column("credit_ledger", "quota_period_epoch")
-    op.drop_column("billing_operations", "quota_period_epoch")
-    op.drop_column("credit_accounts", "quota_period_epoch")
-    # The shared audit table may predate this migration; never remove audit history.
+    raise RuntimeError(
+        "Financial quota evidence cannot be downgraded; restore a verified backup to a new target."
+    )

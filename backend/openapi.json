@@ -6214,6 +6214,7 @@
           "billing_replay_blocked",
           "billing_provider_error",
           "credit_code_unavailable",
+          "quota_configuration_unavailable",
           "credit_code_batch_conflict",
           "email_verification_invalid",
           "email_verification_rate_limited",

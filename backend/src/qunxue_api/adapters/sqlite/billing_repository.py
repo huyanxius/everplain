@@ -15,6 +15,7 @@ from qunxue_api.adapters.sqlite.billing_model import (
 from qunxue_api.adapters.sqlite.quota_periods import (
     ensure_quota_period,
     get_quota_period,
+    settle_quota_period,
 )
 from qunxue_api.modules.billing import (
     SIGNUP_GRANT,
@@ -190,8 +191,9 @@ class SqliteCreditRepository:
             "SELECT a.balance, p.total_credit_pico FROM credit_accounts a "
             "LEFT JOIN billing_precision p ON p.user_id=a.user_id WHERE a.user_id=:user"
             if precision_exists
-            else ("SELECT balance, NULL AS total_credit_pico "
-                  "FROM credit_accounts WHERE user_id=:user")
+            else (
+                "SELECT balance, NULL AS total_credit_pico FROM credit_accounts WHERE user_id=:user"
+            )
         )
         projection = self._session.execute(text(projection_sql), {"user": str(user_id)}).one()
         exact = Fraction(projection.total_credit_pico or "0") / 10**12
@@ -459,7 +461,20 @@ class SqliteCreditRepository:
             if changed.rowcount != 1:
                 self._session.expire(account)
                 continue
+            period = get_quota_period(
+                self._session.connection(), user_id, account.quota_period_epoch
+            )
+            if period:
+                settle_quota_period(
+                    self._session.connection(),
+                    user_id,
+                    period["epoch"],
+                    balance_after,
+                    str(Fraction(period["total_credit_pico"]) + charged_points * 10**12),
+                    now,
+                )
             row = CreditLedgerRow(
+                quota_period_epoch=account.quota_period_epoch,
                 entry_id=str(uuid4()),
                 user_id=str(user_id),
                 run_id=str(run_id),
