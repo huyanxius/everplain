@@ -183,7 +183,7 @@ export function AdminApiCostsPage({ api = apiCostsApi, onForbidden, onSessionExp
       {validation && <p className="qx-notice qx-notice--danger ep-api-costs__validation" role="alert">{validation}</p>}
     </form>
     <aside className="qx-notice ep-api-costs__notice" aria-label="统计口径">
-      <p>仅覆盖持久化调用账本，不代表所有供应商账单；无法按密钥归因。官方参考成本、预留金额和待核金额都不是实际采购账单，也不使用 1/35 折算来代替实付。</p>
+      <p>仅覆盖持久化调用账本，不代表所有供应商账单；无法按密钥归因。官方参考成本、预留金额和待核金额都不是实际采购账单；缺少可核验凭证时，不能据此推算实付金额。</p>
       <p>token 总量只计算输入 + 输出；缓存与推理为明细，不再重复相加。未知用量、未定价用量与有效预留单独列出，不视为零成本。</p>
     </aside>
     <section aria-label="成本统计结果" aria-busy={busy}>

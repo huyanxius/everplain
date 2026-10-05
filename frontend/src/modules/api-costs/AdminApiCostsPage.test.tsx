@@ -43,7 +43,7 @@ describe('Admin API costs read-only report', () => {
     expect(within(summary).getByText('推理 10')).toBeVisible()
     expect(within(summary).getByText('USD 5')).toBeVisible()
     expect(within(summary).getByText('USD 7')).toBeVisible()
-    expect(screen.getByText(/不使用 1\/35 折算/)).toBeVisible()
+    expect(screen.getByText(/缺少可核验凭证时，不能据此推算实付金额/)).toBeVisible()
     expect(screen.getByText(/token 总量只计算输入 \+ 输出/)).toBeVisible()
     expect(screen.getByRole('rowheader', { name: 'synthetic-model' })).toBeVisible()
     expect(screen.getByRole('button', { name: '上一页' })).toBeDisabled()
