@@ -11,8 +11,19 @@ export function ConversationContextSuggestions({ userId, onSelect }: { userId: s
   const failed = query.isError || data?.status === 'failed'
   const pending = query.isPending || data?.status === 'pending'
   const label = text('根据你最近的对话', 'From your recent conversations')
-  const message = failed ? text('暂时无法读取对话建议，请稍后重试。', 'Conversation suggestions are unavailable. Please try again later.')
-    : pending ? text('正在根据最近的对话整理建议…', 'Preparing suggestions from your recent conversations…')
+  const waitingMessage = data?.status_reason === 'active_run' ? text('当前对话还在进行，结束后会整理建议。', 'Suggestions will be prepared after the current conversation finishes.')
+    : data?.status_reason === 'idle_wait' ? text('最近对话刚刚更新，稍后会自动整理建议。', 'Your recent conversations just changed. Suggestions will update shortly.')
+    : data?.status_reason === 'queued' ? text('对话建议已排队，会自动更新。', 'Conversation suggestions are queued and will update automatically.')
+    : text('正在根据最近的对话整理建议…', 'Preparing suggestions from your recent conversations…')
+  const failureMessage = data?.status_reason === 'retry_wait' ? text('这次整理没有成功，稍后会自动重试。', 'Suggestions could not be prepared this time. They will retry automatically.')
+    : data?.status_reason === 'daily_budget' ? data.retry_at
+      ? text('今天的对话建议额度已用完，额度恢复后会自动更新。', 'Today’s conversation suggestion allowance is exhausted. Suggestions will update when it renews.')
+      : text('对话建议额度不足，暂时无法生成。', 'The conversation suggestion allowance is insufficient to generate suggestions.')
+    : data?.status_reason === 'attempt_limit' ? text('这批对话的建议生成未成功，已暂停重试。新对话后会重新检查。', 'Suggestions failed for these conversations and retries are paused. New conversation content will allow another check.')
+    : data?.status_reason === 'generator_unavailable' ? text('对话建议的生成服务暂时不可用。', 'The conversation suggestion generator is unavailable.')
+    : text('暂时无法读取对话建议，请稍后重试。', 'Conversation suggestions are unavailable. Please try again later.')
+  const message = failed ? failureMessage
+    : pending ? waitingMessage
     : data?.status === 'disabled' ? text('对话建议暂未启用。你可以直接输入问题。', 'Conversation suggestions are not enabled. You can still enter a question.')
     : data?.status === 'empty' ? text('最近的对话还没有足够内容形成建议。', 'There is not enough recent conversation content for suggestions yet.')
     : !data?.cards.length ? text('暂时没有可继续讨论的建议。', 'There are no suggested continuations right now.') : null

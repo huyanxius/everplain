@@ -232,6 +232,8 @@ export type ConversationContextSummary = {
   updated_at: string | null
   scope: 'conversation_messages'
   omitted_messages: number
+  status_reason?: 'queued' | 'active_run' | 'idle_wait' | 'generating' | 'retry_wait' | 'daily_budget' | 'attempt_limit' | 'generation_failed' | 'generator_unavailable' | null
+  retry_at?: string | null
 }
 
 export type KnowledgeIndexDocument = {

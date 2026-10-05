@@ -1445,7 +1445,7 @@ def create_app(
     app.state.context_summary_worker = ConversationSummaryWorker(
         context_summary_scope, generate=context_summarizer,
         billing=app.state.billing_operations if context_summarizer else None,
-        idle_seconds=resolved_settings.memory_learning_idle_seconds,
+        idle_seconds=resolved_settings.conversation_summary_idle_seconds,
         daily_calls=resolved_settings.memory_learning_daily_calls,
         daily_tokens=resolved_settings.memory_learning_daily_tokens,
     )

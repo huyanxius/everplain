@@ -97,15 +97,21 @@ class ConversationSummaryWorker:
         self.idle_seconds = idle_seconds
         self.daily_calls, self.daily_tokens = daily_calls, daily_tokens
 
+    def reservation_estimator(self, generate=None):
+        estimator = getattr(generate or self.generate, "reservation_tokens", None)
+        return estimator if callable(estimator) else None
+
     def run_once(self, *, generate=None):
         generate = generate or self.generate
         if generate is None:
             return False
+        estimator = self.reservation_estimator(generate)
         with self.scope() as repository:
             batch = repository.claim(
                 idle_seconds=self.idle_seconds,
                 daily_calls=self.daily_calls,
                 daily_tokens=self.daily_tokens,
+                **({"reservation_estimator": estimator} if estimator else {}),
             )
         if batch is None:
             return False
@@ -140,6 +146,8 @@ class ConversationSummaryWorker:
                 code,
             )
             with self.scope() as repository:
+                reconcile = getattr(repository, "reconcile_failed_usage", None)
+                reconciled = bool(reconcile and reconcile(batch))
                 preflight = code in {
                     "billing_open:phase_policy_missing",
                     "billing_open:billing_runtime_missing",
@@ -148,6 +156,6 @@ class ConversationSummaryWorker:
                     batch,
                     terminal=budget_blocked,
                     code=code,
-                    **({"release_reservation": True} if preflight else {}),
+                    **({"release_reservation": True} if preflight and not reconciled else {}),
                 )
         return True
