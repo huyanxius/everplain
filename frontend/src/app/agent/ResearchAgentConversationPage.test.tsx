@@ -118,6 +118,9 @@ function deferredStream(events: Array<[string, unknown]>) {
   }), { headers: { 'Content-Type': 'text/event-stream' } })
   return {
     response,
+    push(events: Array<[string, unknown]>) {
+      controller?.enqueue(encoder.encode(eventStream(events)))
+    },
     finish(finalEvents: Array<[string, unknown]>) {
       controller?.enqueue(encoder.encode(eventStream(finalEvents)))
       controller?.close()
@@ -1113,6 +1116,15 @@ describe('ResearchAgentConversationPage', () => {
         expect(within(agent).getByText('该回答引用的个人研究材料已删除，原回答内容已隐藏。')).toBeVisible()
         expect(within(agent).queryByText(leakedAnswer)).not.toBeInTheDocument()
       })
+      liveStream.push([['turn_snapshot', {
+        run_id: 'run-streaming-material', conversation_id: 'conversation-streaming-material',
+        status: 'running', partial_answer: leakedAnswer, last_event_sequence: 5,
+        delivery_state: { usage_status: 'pending', settlement_status: 'pending', receipt_persistence: 'saved', output_finish_reason: 'complete' },
+        output_attempts: [{ attempt_id: 'attempt-material', ordinal: 1, status: 'running', answer: leakedAnswer, created_at: '2026-10-05T00:00:00Z' }],
+      }]])
+      await within(agent).findByText('用量待 receipt，正文仍保留。')
+      expect(within(agent).queryByText(leakedAnswer)).not.toBeInTheDocument()
+      expect(within(agent).getByText('该回答引用的个人研究材料已删除，原回答内容已隐藏。')).toBeVisible()
       liveStream.finish([
         ['assistant_delta', { delta: '后续流式正文也不能重新出现。' }],
         ['turn_completed', { conversation: completed, knowledge_release_id: 'release-agent' }],
@@ -2645,4 +2657,69 @@ it('routes actual document chunks and recovery snapshots separately from assista
   await waitFor(() => expect(received).toHaveBeenLastCalledWith({ type: 'writing_preview', ...draft, sequence: 3, replacement_text: '真正正文😀继续' }))
   await act(async () => { controller.enqueue(encoder.encode(eventStream([['turn_interrupted', { code: 'stop', message: 'stopped' }]]))); controller.close() })
   await waitFor(() => expect(ended).toHaveBeenCalledTimes(1))
+})
+
+it.each(['delivered', 'lost', 'repeated', 'redacted', 'completed'] as const)('reconciles unsaved original when retry recovery is %s', async (transport) => {
+  const original = '数据库失败时仍显示的合法正文。'
+  const oldSaved = { attempt_id: 'attempt-unsaved', ordinal: 1, status: 'failed', answer: '数据库失败时', created_at: '2026-10-05T00:00:00Z' }
+  const retrySaved = { attempt_id: 'attempt-retry', ordinal: 2, status: 'running', answer: '重试的新正文。', created_at: '2026-10-05T00:00:01Z' }
+  const tombstone = '该回答引用的个人研究材料已删除，原回答内容已隐藏。'
+  const recoveredAttempts = transport === 'redacted' ? [oldSaved, retrySaved].map(output => ({ ...output, answer: tombstone })) : [oldSaved, retrySaved]
+  const snapshot = { run_id: 'run-unsaved', conversation_id: 'conversation-unsaved', status: 'running', partial_answer: transport === 'redacted' ? tombstone : retrySaved.answer, last_event_sequence: 5, output_attempts: recoveredAttempts }
+  const completed = conversationFixture({ id: 'conversation-unsaved', prompt: '问题', answer: retrySaved.answer })
+  completed.turns[0].output_attempts = [oldSaved, { ...retrySaved, status: 'completed' }]
+  let posts = 0
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const path = urlFor(input).pathname
+    if (path === '/api/agent/turns') {
+      posts += 1
+      if (posts === 2) {
+        if (transport !== 'delivered') throw new TypeError('lost retry response headers')
+        return new Response(eventStream([
+          ['turn_started', { run_id: 'run-unsaved', conversation_id: 'conversation-unsaved', attempt_id: 'attempt-retry', replayed: false, output_attempts: [oldSaved, retrySaved] }],
+          ['assistant_delta', { delta: retrySaved.answer }],
+          ['turn_failed', { code: 'agent_unavailable', message: '第二次也未完成。' }],
+        ]), { headers: { 'Content-Type': 'text/event-stream' } })
+      }
+      return new Response(eventStream([
+        ['turn_started', { run_id: 'run-unsaved', conversation_id: 'conversation-unsaved', attempt_id: 'attempt-unsaved', replayed: false }],
+        ['assistant_delta', { delta: oldSaved.answer }],
+        ['turn_snapshot', { run_id: 'run-unsaved', conversation_id: 'conversation-unsaved', attempt_id: 'attempt-unsaved', status: 'failed', partial_answer: original, last_event_sequence: 2, output_persistence_failed: true, output_attempts: [oldSaved] }],
+        ['output_persistence_failed', { message: '正文尚未保存' }],
+        ['turn_failed', { code: 'agent_output_storage_error', message: '正文保存失败，页面文字仍保留。' }],
+      ]), { headers: { 'Content-Type': 'text/event-stream' } })
+    }
+    if (path === '/api/agent/runs/by-idempotency-key') return json(snapshot)
+    if (path === '/api/agent/runs/run-unsaved/events') {
+      const frames: Array<[string, unknown]> = transport === 'repeated' ? [['turn_snapshot', snapshot], ['turn_snapshot', snapshot]] : []
+      if (transport === 'redacted') frames.push(['turn_snapshot', { ...snapshot, partial_answer: retrySaved.answer, output_attempts: [oldSaved, retrySaved] }])
+      frames.push(transport === 'completed'
+        ? ['turn_completed', { conversation: completed, knowledge_release_id: 'release-a' }]
+        : ['turn_failed', { code: 'agent_unavailable', message: '第二次也未完成。' }])
+      return new Response(eventStream(frames), { headers: { 'Content-Type': 'text/event-stream' } })
+    }
+    return json({ items: [] })
+  }))
+  renderPage()
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  fireEvent.change(input, { target: { value: '问题' } })
+  fireEvent.submit(input.closest('form')!)
+  expect(await screen.findByText(original)).toBeVisible()
+  const retry = await screen.findByRole('button', { name: '重试本轮' })
+  await waitFor(() => expect(retry).toBeEnabled())
+  fireEvent.click(retry)
+  if (transport === 'completed') await screen.findByText(retrySaved.answer)
+  else await screen.findAllByText('第二次也未完成。')
+  expect(posts).toBe(2)
+  if (transport === 'redacted') {
+    expect(screen.getAllByText(tombstone).length).toBeGreaterThan(0)
+    expect(screen.queryByText(original)).not.toBeInTheDocument()
+    expect(screen.queryByText(oldSaved.answer)).not.toBeInTheDocument()
+    expect(screen.queryByText(retrySaved.answer)).not.toBeInTheDocument()
+    return
+  }
+  expect(screen.getByText(retrySaved.answer)).toBeInTheDocument()
+  // The full unsaved first answer is only in the live client and must not be
+  // replaced by the server's truncated durable archive during reconciliation.
+  expect(screen.getAllByText(original)).toHaveLength(1)
 })
