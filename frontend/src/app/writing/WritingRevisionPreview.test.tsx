@@ -8,9 +8,20 @@ import { pairRevisionBlocks, revisionDocuments } from './revisionPreviewModel'
 
 const editors: Editor[] = []
 function create(markdown: string) { const editor = new Editor({ extensions: [StarterKit, Markdown], content: markdown, contentType: 'markdown' }); editors.push(editor); return editor }
-afterEach(() => { cleanup(); editors.splice(0).forEach(editor => editor.destroy()); vi.unstubAllGlobals() })
+afterEach(() => { cleanup(); editors.splice(0).forEach(editor => editor.destroy()); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('reversible rich revision view', () => {
+  it('keeps the exact proposal and comparison visible as inert source when rich parsing fails', () => {
+    const before = '# 借伞\n\n原文\n', after = '# 借伞\n\n**未闭合\n<script>alert(1)</script>\n![图片](https://example.test/image.png)\n', editor = create(before)
+    const state = editor.state
+    vi.spyOn(editor.markdown!, 'parse').mockImplementation(() => { throw new Error('parser unavailable') })
+    const view = render(<><WritingRevisionPreview editor={editor} before={before} after={after} /><WritingRevisionComparison editor={editor} before={before} after={after} onClose={vi.fn()} /></>)
+    expect(screen.getByLabelText('正文修改预览（Markdown 源码）').textContent).toBe(after)
+    expect(screen.getByLabelText('原文 Markdown 源码').textContent).toBe(before)
+    expect(screen.getByLabelText('修改后 Markdown 源码').textContent).toBe(after)
+    expect(view.container.querySelector('script, img, a')).not.toBeInTheDocument()
+    expect(editor.state).toBe(state)
+  })
   it('shows the rich proposal in place without touching source, selection, transactions, or history', () => {
     const before = '**前半😀后半**\n\n保留重复\n\n保留重复', after = '**前半😀新句**\n\n保留重复\n\n保留重复', editor = create(before)
     editor.commands.setTextSelection({ from: 2, to: 5 })
@@ -51,11 +62,11 @@ describe('reversible rich revision view', () => {
 describe('paired paragraph comparison', () => {
   it('aligns an inserted paragraph without shifting later unchanged paragraphs', () => {
     const editor = create('第一段\n\n重复😀\n\n尾段'), docs = revisionDocuments(editor, '第一段\n\n重复😀\n\n尾段', '第一段\n\n新增段\n\n重复😀\n\n尾段')
-    expect(pairRevisionBlocks(docs.before, docs.after).map(row => [row.before?.textContent ?? null, row.after?.textContent ?? null])).toEqual([['第一段', '第一段'], [null, '新增段'], ['重复😀', '重复😀'], ['尾段', '尾段']])
+    expect(pairRevisionBlocks(docs!.before, docs!.after).map(row => [row.before?.textContent ?? null, row.after?.textContent ?? null])).toEqual([['第一段', '第一段'], [null, '新增段'], ['重复😀', '重复😀'], ['尾段', '尾段']])
   })
   it('aligns deletion and repeated occurrences in source order', () => {
     const editor = create('重复\n\n删除\n\n重复'), docs = revisionDocuments(editor, '重复\n\n删除\n\n重复', '重复\n\n重复')
-    expect(pairRevisionBlocks(docs.before, docs.after).map(row => [row.before?.textContent ?? null, row.after?.textContent ?? null])).toEqual([['重复', '重复'], ['删除', null], ['重复', '重复']])
+    expect(pairRevisionBlocks(docs!.before, docs!.after).map(row => [row.before?.textContent ?? null, row.after?.textContent ?? null])).toEqual([['重复', '重复'], ['删除', null], ['重复', '重复']])
   })
   it('shows frontmatter, rich paired content and Escape close without changing the live editor', () => {
     const before = '---\ntitle: 原题\n---\n\n**原文**', after = '---\ntitle: 新题\n---\n\n**新文**', editor = create('**原文**'), onClose = vi.fn()

@@ -242,9 +242,11 @@ export function SharedEditor({
     setPropertySourceOnly(!canEditProperties(next.frontmatter))
     userEditing.current = false
     suppressChange.current = true
-    editor.commands.setContent(next.body, { contentType: 'markdown', emitUpdate: false })
-    suppressChange.current = false
-    setSource(current => current === null ? null : markdown)
+    try {
+      editor.commands.setContent(next.body, { contentType: 'markdown', emitUpdate: false })
+      setSource(current => current === null ? null : markdown)
+    } catch { setSource(markdown) }
+    finally { suppressChange.current = false }
   }, [editor, markdown])
 
   /* 斜杠菜单与 [[ 联想：看光标前的文字决定是否弹出 */
@@ -365,9 +367,11 @@ export function SharedEditor({
     setPropertySourceOnly(!canEditProperties(next.frontmatter))
     userEditing.current = false
     suppressChange.current = true
-    editor.commands.setContent(next.body, { contentType: 'markdown', emitUpdate: false })
-    suppressChange.current = false
-    setSource(null)
+    try {
+      editor.commands.setContent(next.body, { contentType: 'markdown', emitUpdate: false })
+      setSource(null)
+    } catch { /* Keep the exact source editable when rich parsing is unavailable. */ }
+    finally { suppressChange.current = false }
   }
   const updateProperties = (next: Property[]) => {
     setProps(next)
