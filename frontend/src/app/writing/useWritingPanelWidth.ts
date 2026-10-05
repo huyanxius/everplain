@@ -3,11 +3,14 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } fr
 export const WRITING_PANEL_DEFAULT = 320
 export const WRITING_PANEL_MIN = 280
 export const WRITING_PANEL_MAX = 520
+export function writingPanelMinimum(containerWidth: number) {
+  return containerWidth > 0 ? Math.min(WRITING_PANEL_MIN, Math.max(0, containerWidth - 8)) : WRITING_PANEL_MIN
+}
 export function writingPanelMaximum(containerWidth: number) {
-  return containerWidth > 0 ? Math.max(WRITING_PANEL_MIN, Math.min(WRITING_PANEL_MAX, containerWidth - 408)) : WRITING_PANEL_MAX
+  return containerWidth > 0 ? Math.max(writingPanelMinimum(containerWidth), Math.min(WRITING_PANEL_MAX, containerWidth - 408)) : WRITING_PANEL_MAX
 }
 export function clampWritingPanel(width: number, containerWidth = 0) {
-  return Math.round(Math.max(WRITING_PANEL_MIN, Math.min(writingPanelMaximum(containerWidth), Number.isFinite(width) ? width : WRITING_PANEL_DEFAULT)))
+  return Math.round(Math.max(writingPanelMinimum(containerWidth), Math.min(writingPanelMaximum(containerWidth), Number.isFinite(width) ? width : WRITING_PANEL_DEFAULT)))
 }
 export function useWritingPanelWidth(userId: string | null, ready = true) {
   const key = `everplain.writing.agent-width.v1:${userId ?? 'anonymous'}`
@@ -40,7 +43,7 @@ export function useWritingPanelWidth(userId: string | null, ready = true) {
   return {
     layoutRef, width, resizing,
     separatorProps: {
-      'aria-valuemin': WRITING_PANEL_MIN,
+      'aria-valuemin': writingPanelMinimum(containerWidth),
       'aria-valuemax': writingPanelMaximum(containerWidth),
       'aria-valuenow': width,
       'aria-valuetext': `${width} 像素`,
