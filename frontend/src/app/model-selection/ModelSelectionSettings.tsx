@@ -73,7 +73,7 @@ export function ModelSelectionSettings({ state, disabled, activeRequest }: {
       menu.style.top = `${upwards ? Math.max(top, rect.top - Math.min(menu.scrollHeight, above, 400) - 8) : rect.bottom + 8}px`
     }
     place()
-    const firstControl = menu.querySelector<HTMLElement>('[data-model-summary]:not(:disabled)') ?? menu.querySelector<HTMLElement>('button:not(:disabled)') ?? menu
+    const firstControl = menu.querySelector<HTMLElement>('[data-model-summary]:not(:disabled)') ?? Array.from(menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')).find(button => !button.closest('[inert]')) ?? menu
     firstControl.focus()
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place)
     observer?.observe(menu)
