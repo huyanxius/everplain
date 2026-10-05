@@ -342,13 +342,18 @@ def create_app(
             course_task = asyncio.create_task(
                 organize_courses(), name="everplain-course-processing"
             )
-        if resolved_settings.memory_learning_enabled and app.state.model_endpoints:
+        if app.state.model_endpoints and (
+            resolved_settings.memory_learning_enabled
+            or resolved_settings.conversation_summary_enabled
+        ):
 
             async def learn_memories():
                 while True:
                     try:
-                        await asyncio.to_thread(app.state.context_summary_worker.run_once)
-                        await asyncio.to_thread(app.state.memory_worker.run_once)
+                        if resolved_settings.conversation_summary_enabled:
+                            await asyncio.to_thread(app.state.context_summary_worker.run_once)
+                        if resolved_settings.memory_learning_enabled:
+                            await asyncio.to_thread(app.state.memory_worker.run_once)
                     except asyncio.CancelledError:
                         raise
                     except Exception:
@@ -1315,7 +1320,12 @@ def create_app(
             SqliteConversationContextRepository,
         )
         with resolved_database.session() as session:
-            yield SqliteConversationContextRepository(session), SqliteMemoryRepository(session)
+            yield (
+                SqliteConversationContextRepository(
+                    session, summary_enabled=resolved_settings.conversation_summary_enabled
+                ),
+                SqliteMemoryRepository(session),
+            )
 
     app.state.conversation_context_scope = conversation_context_scope
 
@@ -1421,14 +1431,17 @@ def create_app(
     @contextmanager
     def context_summary_scope():
         with resolved_database.session() as summary_session:
-            yield SqliteConversationSummaryRepository(summary_session)
+            yield SqliteConversationSummaryRepository(
+                summary_session, enabled=resolved_settings.conversation_summary_enabled
+            )
 
     app.state.context_summary_scope = context_summary_scope
     context_summarizer = None
-    if memory_extractor:
+    if app.state.model_endpoints and resolved_settings.conversation_summary_enabled:
+        summary_endpoint = app.state.model_endpoints[0]
         context_summarizer = PydanticConversationSummarizer(
-            base_url=memory_endpoint.base_url, api_key=memory_endpoint.api_key,
-            model=memory_endpoint.model, extra_headers=memory_endpoint.extra_headers,
+            base_url=summary_endpoint.base_url, api_key=summary_endpoint.api_key,
+            model=summary_endpoint.model, extra_headers=summary_endpoint.extra_headers,
             timeout_seconds=min(resolved_settings.model_timeout_seconds, 45),
         )
     app.state.context_summary_worker = ConversationSummaryWorker(

@@ -36,11 +36,14 @@ _GENERIC_TITLES = {
 
 
 class SqliteConversationSummaryRepository:
-    def __init__(self, session):
+    def __init__(self, session, *, enabled=True):
         self.session = session
+        self.enabled = enabled
         self.memory = SqliteMemoryRepository(session)
 
     def snapshot(self, user_id):
+        if not self.enabled:
+            return None
         scope = self.memory.scope(user_id, None)
         if not scope.use_memory or not scope.learn_memory:
             return None
@@ -241,6 +244,8 @@ class SqliteConversationSummaryRepository:
         return {"summary": summary, "summary_sources": citations if summary else [], "cards": cards}
 
     def claim(self, *, idle_seconds, daily_calls, daily_tokens):
+        if not self.enabled:
+            return None
         now, day = datetime.now(UTC), datetime.now(UTC).date().isoformat()
         newer_conversation = aliased(AgentConversationRow)
         owners = self.session.scalars(

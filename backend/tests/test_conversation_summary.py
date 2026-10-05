@@ -431,3 +431,152 @@ def test_late_assistant_source_preserves_exact_read_sequence(plain_client):
     page = recall.read(str(conversation.conversation_id), sequence=source["sequence"])
     assert page["messages"][0]["content"] == source["quote"]
     assert recall.calls == 1
+
+
+def test_summary_runtime_flag_is_independent_and_preserves_shared_budget(monkeypatch):
+    from qunxue_api.settings import Settings
+
+    monkeypatch.setenv("EVERPLAIN_MEMORY_LEARNING_ENABLED", "false")
+    monkeypatch.delenv("EVERPLAIN_CONVERSATION_SUMMARY_ENABLED", raising=False)
+    settings = Settings(_env_file=None)
+    assert not settings.memory_learning_enabled
+    assert settings.conversation_summary_enabled
+    assert settings.memory_learning_idle_seconds == 600
+    assert settings.memory_learning_daily_calls == 8
+    assert settings.memory_learning_daily_tokens == 64000
+    monkeypatch.setenv("EVERPLAIN_CONVERSATION_SUMMARY_ENABLED", "false")
+    assert not Settings(_env_file=None).conversation_summary_enabled
+
+
+def test_lifespan_generates_summary_with_learning_off_and_respects_both_user_switches(
+    plain_client, monkeypatch
+):
+    import time
+    from threading import Event
+
+    from fastapi.testclient import TestClient
+
+    from qunxue_api import bootstrap
+    from qunxue_api.adapters.sqlite.agent_conversation_model import AgentMessageRow
+    from qunxue_api.adapters.sqlite.conversation_context_repository import (
+        SqliteConversationContextRepository,
+    )
+    from qunxue_api.application.memory_learning import MemoryLearningWorker
+    from qunxue_api.settings import Settings
+
+    disabled = []
+    for use_memory, learn_memory in ((False, True), (True, False)):
+        owner = UUID(register(plain_client))
+        seed(plain_client, owner, (f"Disabled user's private source {use_memory}",))
+        with plain_client.app.state.memory_service_scope() as memory:
+            memory.repository.configure(
+                owner, None, expected_version=0,
+                use_memory=use_memory, learn_memory=learn_memory,
+            )
+        disabled.append(str(owner))
+    eligible = UUID(register(plain_client))
+    seed(plain_client, eligible, ("我周末要去杭州，交通预算不超过五百元。",))
+    older = datetime.now(UTC) - timedelta(minutes=2)
+    with plain_client.app.state.database.session() as session:
+        session.execute(update(AgentConversationRow).values(updated_at=older))
+        session.execute(update(AgentMessageRow).values(created_at=older))
+    calls, source_owners, generated = [], set(), Event()
+    source_text = SqliteConversationContextRepository.source_text
+
+    def guarded_source(self, user_id, conversation, message):
+        assert str(user_id) not in disabled
+        source_owners.add(str(user_id))
+        return source_text(self, user_id, conversation, message)
+
+    def generate(batch):
+        calls.append(str(batch.user_id))
+        assert batch.user_id == eligible
+        assert "Disabled user's private source" not in str(batch.sources)
+        generated.set()
+        return output(batch)
+
+    def forbidden_learning(*args, **kwargs):
+        raise AssertionError("Long-term learning must remain disabled")
+
+    monkeypatch.setattr(SqliteConversationContextRepository, "source_text", guarded_source)
+    monkeypatch.setattr(bootstrap, "PydanticConversationSummarizer", lambda **kwargs: generate)
+    monkeypatch.setattr(bootstrap, "PydanticMemoryExtractor", forbidden_learning)
+    monkeypatch.setattr(MemoryLearningWorker, "run_once", forbidden_learning)
+    settings = Settings(
+        _env_file=None, database_url=plain_client.app.state.database.engine.url.render_as_string(),
+        runtime_mode="base", model_base_url="https://synthetic.test/v1",
+        model_api_key="synthetic-test-key", model_name="gpt-6-luna",
+        memory_learning_enabled=False, conversation_summary_enabled=True,
+        memory_learning_idle_seconds=60,
+    )
+    app = bootstrap.create_app(
+        settings=settings, database=plain_client.app.state.database,
+        model_provider=plain_client.app.state.model_provider,
+        require_email_verification=False,
+    )
+    # Only the generator boundary is injected; the actual lifecycle loop, claim,
+    # source/privacy checks, persistence and shared quota run on the real database.
+    app.state.context_summary_worker.billing = None
+    assert app.state.context_summary_worker.generate is not None
+    assert app.state.memory_worker._extractor is None
+    with TestClient(app) as client:
+        client.cookies.update(plain_client.cookies)
+        assert generated.wait(5), "Summary scheduler did not start with learning disabled"
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            body = client.get("/api/agent/context-summary").json()
+            if body["status"] == "ready":
+                break
+            time.sleep(0.02)
+        assert body["status"] == "ready", body
+        assert calls == [str(eligible)]
+        assert source_owners == {str(eligible)}
+        with app.state.context_summary_scope() as repository:
+            for owner in disabled:
+                assert repository.read(UUID(owner))["status"] == "disabled"
+    with plain_client.app.state.database.session() as session:
+        for owner in disabled:
+            assert session.get(ConversationSummaryRow, owner) is None
+        usage = session.get(MemoryUsageRow, (str(eligible), older.date().isoformat()))
+        assert usage.calls == 1 and usage.budget_tokens == 1500
+
+
+def test_global_summary_off_hides_existing_cache_and_never_promises_pending(
+    plain_client, monkeypatch
+):
+    from fastapi.testclient import TestClient
+
+    from qunxue_api import bootstrap
+    from qunxue_api.adapters.sqlite.conversation_context_repository import (
+        SqliteConversationContextRepository,
+    )
+    from qunxue_api.settings import Settings
+
+    owner = UUID(register(plain_client))
+    seed(plain_client, owner)
+    assert worker(plain_client).run_once(generate=output)
+    assert plain_client.get("/api/agent/context-summary").json()["status"] == "ready"
+
+    def forbidden_source(*args, **kwargs):
+        raise AssertionError("A disabled summary must not inspect original message content")
+
+    monkeypatch.setattr(SqliteConversationContextRepository, "source_text", forbidden_source)
+    settings = Settings(
+        _env_file=None, database_url=plain_client.app.state.database.engine.url.render_as_string(),
+        runtime_mode="mock", model_base_url=None, model_api_key=None, model_name=None,
+        memory_learning_enabled=False, conversation_summary_enabled=False,
+    )
+    app = bootstrap.create_app(
+        settings=settings, database=plain_client.app.state.database,
+        require_email_verification=False,
+    )
+    assert app.state.context_summary_worker.generate is None
+    with TestClient(app) as client:
+        client.cookies.update(plain_client.cookies)
+        body = client.get("/api/agent/context-summary").json()
+        assert body["status"] == "disabled"
+        assert body["summary"] == "" and body["summary_sources"] == [] and body["cards"] == []
+        with app.state.context_summary_scope() as repository:
+            assert repository.snapshot(owner) is None
+            assert repository.claim(idle_seconds=0, daily_calls=8, daily_tokens=64000) is None
+        assert "Model-generated recent conversation activity" not in tools(client, owner).context
