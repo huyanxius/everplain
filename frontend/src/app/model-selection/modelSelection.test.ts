@@ -69,3 +69,28 @@ it('switches between reasoning and no-effort models without inventing an effort'
   expect(selectModel('gpt-6-luna', selected, catalog)).toEqual(DEFAULT_MODEL_SELECTION)
   expect(selectModel(gemini.id, selected, [{ ...gemini, defaultReasoningEffort: 'medium' }])).toBeNull()
 })
+
+it('uses native server stop sets and drops an incompatible previous model effort', () => {
+  const catalog: readonly ModelDefinition[] = [
+    { id: 'gpt-fixture', label: 'GPT fixture', reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], defaultReasoningEffort: 'none' },
+    { id: 'gemini-fixture', label: 'Gemini fixture', reasoningEfforts: ['minimal', 'low', 'medium', 'high'], defaultReasoningEffort: 'medium' },
+    { id: 'deepseek-fixture', label: 'DeepSeek fixture', reasoningEfforts: ['none', 'low', 'high', 'max'], defaultReasoningEffort: 'high' },
+    { id: 'claude-fixture', label: 'Claude fixture', reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultReasoningEffort: 'high' },
+  ]
+  let selection: ModelSelection = { modelId: 'gpt-fixture', reasoningEffort: 'xhigh' }
+  selection = selectModel('gemini-fixture', selection, catalog)!
+  expect(selection.reasoningEffort).toBe('medium')
+  selection = selectEffortStep(0, selection, catalog)!
+  expect(selection.reasoningEffort).toBe('minimal')
+  expect(toModelSelectionRequest(selection, catalog)).toEqual({ model_id: 'gemini-fixture', reasoning_effort: 'minimal' })
+  selection = selectModel('deepseek-fixture', selection, catalog)!
+  expect(selection.reasoningEffort).toBe('high')
+  selection = selectModel('claude-fixture', selection, catalog)!
+  expect(selection.reasoningEffort).toBe('high')
+  expect(isModelSelectionValid({ modelId: 'claude-fixture', reasoningEffort: 'none' }, catalog)).toBe(false)
+  for (const model of catalog) {
+    for (const [step, reasoningEffort] of model.reasoningEfforts.entries()) {
+      expect(selectEffortStep(step, { modelId: model.id, reasoningEffort: model.defaultReasoningEffort }, catalog)).toEqual({ modelId: model.id, reasoningEffort })
+    }
+  }
+})

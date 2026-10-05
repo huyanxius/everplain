@@ -248,7 +248,8 @@ class OperationScope:
             _last_attempt.reset(self.last_token)
 
     def before_attempt_payload(
-        self, payload, route=None, provider_host=None, *, api_type="chat_completions"
+        self, payload, route=None, provider_host=None, *, api_type="chat_completions",
+        model=None, request_target=None,
     ):
         if self.before_network:
             self.before_network()
@@ -259,15 +260,21 @@ class OperationScope:
                 "max_completion_tokens", payload.get("max_output_tokens", payload.get("max_tokens"))
             )
         )
+        native = api_type in {"gemini_generate_content", "anthropic_messages"}
+        native_effort = None
+        if native:
+            from qunxue_api.adapters.model.native_protocol import native_payload_facts
+
+            output_limit, native_effort = native_payload_facts(payload, api_type)
         if type(output_limit) is not int or output_limit <= 0:
             if not self.independent_delivery:
                 raise BillingContextMissing("a finite provider output token cap is required")
             output_limit = -1  # Unspecified provider capacity, not a fabricated token cap.
-        if payload.get("web_search_options") or any(
+        if not native and (payload.get("web_search_options") or any(
             tool.get("type") != "function" for tool in payload.get("tools", ())
-        ):
+        )):
             raise BillingContextMissing("provider-paid builtin tools need a separate tariff")
-        for message in payload.get("messages", ()):
+        for message in (() if native else payload.get("messages", ())):
             content = message.get("content")
             if isinstance(content, list) and any(p.get("type") != "text" for p in content):
                 raise BillingContextMissing("multimodal token budgets are not supported")
@@ -281,15 +288,18 @@ class OperationScope:
             run_id=self.run_id,
             endpoint_id=route.endpoint.endpoint_id if route else "direct",
             route_id=route.context.route_id if route else None,
-            model=payload["model"],
+            model=model or payload["model"],
             input_limit=input_limit,
             output_limit=output_limit,
-            request_hash=hashlib.sha256(encoded).hexdigest(),
+            request_hash=hashlib.sha256(
+                (request_target.encode() + b"\n" if request_target else b"") + encoded
+            ).hexdigest(),
             provider_host=provider_host,
             api_type=api_type,
-            requested_effort=(payload.get("reasoning") or {}).get("effort")
-            if api_type == "responses"
-            else payload.get("reasoning_effort"),
+            requested_effort=native_effort if native else (
+                (payload.get("reasoning") or {}).get("effort")
+                if api_type == "responses" else payload.get("reasoning_effort")
+            ),
             requested_service_tier=payload.get("service_tier"),
         )
         _last_attempt.set((self.run_id, attempt))
