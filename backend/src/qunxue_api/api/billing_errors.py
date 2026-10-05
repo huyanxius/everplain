@@ -34,6 +34,12 @@ def billing_error(error):
     if isinstance(error, (BillingContextMissing, UnknownPrice)):
         return 503, ErrorCode.BILLING_NOT_CONFIGURED, "计费配置暂未启用，本轮未扣费，请稍后重试。"
     if isinstance(error, BillingBudgetExceeded):
+        if error.reason == "service_budget_exceeded":
+            return (
+                429,
+                ErrorCode.BILLING_BUDGET_EXCEEDED,
+                "模型服务的安全额度暂时不足，本轮未扣费，请稍后重试或联系管理员。",
+            )
         return (
             429,
             ErrorCode.BILLING_BUDGET_EXCEEDED,

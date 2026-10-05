@@ -295,9 +295,12 @@ class DurableBilling:
                 reserved > self.max_attempt_pico
                 or len(attempts) >= self.max_attempts
                 or operation_risk > self.max_operation_pico
-                or self._risk(conn) + reserved > self.daily_budget_pico
             ):
                 raise BillingBudgetExceeded("model request exceeds reserved budget")
+            if self._risk(conn) + reserved > self.daily_budget_pico:
+                raise BillingBudgetExceeded(
+                    "model service risk exceeds reserved budget", reason="service_budget_exceeded"
+                )
             if not run["exempt"] and max_credit > run["hold_points"]:
                 raise BillingBudgetExceeded(
                     "request needs more available credits", reason="credits_depleted"

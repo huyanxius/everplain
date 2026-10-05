@@ -18,9 +18,9 @@ from test_durable_billing import wallet  # noqa: F401
 from qunxue_api.adapters.model import ModelEndpoint, ModelRouteExecutor
 from qunxue_api.adapters.model.metering import OperationScope
 from qunxue_api.adapters.research_agent.pydantic_runner import (
-    AgentModelRouteError,
     _RetryingOpenAIChatModel,
 )
+from qunxue_api.modules.billing import UnknownPrice
 
 MODEL = "gemini-3.5-flash"
 USAGE = {"prompt_tokens": 30, "completion_tokens": 5, "total_tokens": 35,
@@ -102,7 +102,7 @@ def test_selected_gemini_transport_is_strict_metered_and_has_no_reasoning(wallet
                 scope.finish("success")
 
     if mode == "unknown_price":
-        with pytest.raises(AgentModelRouteError):
+        with pytest.raises(UnknownPrice):
             asyncio.run(run())
         assert calls == []
         return
