@@ -103,6 +103,29 @@ class AgentProviderSettings(BaseModel):
         return _normalize_model_base_url(value)
 
 
+class AgentModelCapacitySettings(BaseModel):
+    """Verified upstream capacities, not product output or spending quotas."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    context_window_tokens: int = Field(gt=0, strict=True)
+    max_output_tokens: int = Field(gt=0, strict=True)
+    output_token_parameter: Literal["max_tokens", "max_completion_tokens", "max_output_tokens"]
+    source: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("upstream model capacity needs an evidence source")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_capacity(self):
+        if self.max_output_tokens > self.context_window_tokens:
+            raise ValueError("upstream output capacity must fit within its context window")
+        return self
+
+
 class AgentSelectableModelSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     model_id: str = Field(min_length=1, max_length=120)
@@ -345,6 +368,32 @@ class Settings(BaseSettings):
     # Additional opt-in routes never replace the legacy/default model endpoint.
     agent_providers: dict[str, AgentProviderSettings] = Field(default_factory=dict)
     agent_selectable_models: list[AgentSelectableModelSettings] = Field(default_factory=list)
+    # Keys are exact base URL | protocol | model. Unknown routes never inherit
+    # another provider's similarly named model capacities.
+    agent_model_capacities: dict[str, AgentModelCapacitySettings] = Field(default_factory=dict)
+
+    @field_validator("agent_model_capacities")
+    @classmethod
+    def validate_agent_model_capacity_routes(cls, value):
+        normalized = {}
+        for key, capacity in value.items():
+            parts = key.split("|")
+            if len(parts) != 3 or parts[1] not in {"chat_completions", "responses"}:
+                raise ValueError("capacity keys must be base URL | protocol | model")
+            base_url, protocol, model = parts
+            if (
+                (protocol == "responses")
+                != (capacity.output_token_parameter == "max_output_tokens")
+            ):
+                raise ValueError("native output token parameter must match the route protocol")
+            route = "|".join((
+                _normalize_model_base_url(base_url), protocol, _normalize_model_name(model),
+            ))
+            if route in normalized:
+                raise ValueError("model capacity routes must be unique")
+            normalized[route] = capacity
+        return normalized
+
     unigate_api_key: SecretStr | None = None
     model_timeout_seconds: float = Field(default=30, gt=0)
     model_max_input_tokens: int = Field(default=32000, gt=0)

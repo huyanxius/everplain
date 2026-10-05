@@ -143,10 +143,13 @@ class FilesystemSafetyTests(unittest.TestCase):
         storage["schema/sqlite_index.py"] = hashlib.sha256(
             (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
         ).hexdigest()
-        quota_hash = hashlib.sha256(json.dumps(storage, sort_keys=True).encode()).hexdigest()
+        journal_hash = hashlib.sha256(json.dumps(storage, sort_keys=True).encode()).hexdigest()
+        quota_storage = {k: v for k, v in storage.items()
+                         if k != "migrations/versions/20261005_0610_agent_output_journal.py"}
+        quota_hash = hashlib.sha256(json.dumps(quota_storage, sort_keys=True).encode()).hexdigest()
         # Historical review edges predate quota epochs. Do not contaminate every
         # predecessor with 0600 when reconstructing the reviewed storage trees.
-        scope_storage = {k: v for k, v in storage.items()
+        scope_storage = {k: v for k, v in quota_storage.items()
                          if k != "migrations/versions/20261005_0600_weekly_quota.py"}
         new_hash = hashlib.sha256(json.dumps(scope_storage, sort_keys=True).encode()).hexdigest()
         avatar_storage = {k: v for k, v in scope_storage.items()
@@ -189,7 +192,11 @@ class FilesystemSafetyTests(unittest.TestCase):
                                     {"migration_tree": quota_hash}, policy)
         self.assertEqual(policy["reviewed_forward_only_migration_transitions"], [
             {"from": new_hash, "to": quota_hash},
+            {"from": quota_hash, "to": journal_hash},
         ])
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            deploy.check_compatible({"migration_tree": quota_hash},
+                                    {"migration_tree": journal_hash}, policy)
         changed = dict(scope_storage)
         changed["migrations/versions/20261005_0590_user_avatar.py"] = "0" * 64
         changed_hash = hashlib.sha256(json.dumps(changed, sort_keys=True).encode()).hexdigest()

@@ -5,6 +5,7 @@ from typing import Literal, Protocol
 from uuid import UUID
 
 from qunxue_api.modules.agent_conversation.domain import (
+    AgentOutputEvent,
     AgentRun,
     AgentTurn,
     Conversation,
@@ -224,6 +225,15 @@ class ConversationRepository(Protocol):
         request_snapshot: dict[str, object] | None = None,
         require_not_cancelled: bool = False,
     ) -> bool: ...
+
+    def append_output_event(
+        self, *, user_id: UUID, run_id: UUID, attempt_id: str,
+        name: str, payload: dict[str, object],
+    ) -> AgentOutputEvent | None: ...
+
+    def read_output_events(
+        self, *, user_id: UUID, run_id: UUID, after: int = 0, limit: int = 200,
+    ) -> tuple[AgentOutputEvent, ...]: ...
 
     def request_cancel(self, *, user_id: UUID, run_id: UUID) -> AgentRun: ...
 

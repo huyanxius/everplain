@@ -1458,7 +1458,7 @@ describe('ResearchAgentConversationPage', () => {
     expect(await screen.findByRole('textbox', { name: '问 Everplain' })).toHaveValue('')
   })
 
-  it('automatically resumes a disconnected turn with the original idempotency key', async () => {
+  it('reconnects a disconnected turn with a read-only cursor subscription', async () => {
     const question = '为什么青年在熟人社区里也会感到孤独？'
     const conversation = conversationFixture({ prompt: question, answer: '可以从关系稳定性与情感劳动继续分析。' })
     const turnRequests: RequestInit[] = []
@@ -1475,6 +1475,7 @@ describe('ResearchAgentConversationPage', () => {
             ]), { headers: { 'Content-Type': 'text/event-stream' } })
           : streamResponse(conversation)
       }
+      if (url.pathname.endsWith('/events')) return streamResponse(conversation)
       if (url.pathname === '/api/agent/conversations') return json({ items: [] })
       return json({}, 404)
     }))
@@ -1490,10 +1491,8 @@ describe('ResearchAgentConversationPage', () => {
     expect(within(region).queryByRole('button', { name: '重试本轮' })).not.toBeInTheDocument()
     expect(turnRequests.map((request) => new Headers(request.headers).get('Idempotency-Key'))).toEqual([
       'stable-agent-turn-key',
-      'stable-agent-turn-key',
     ])
     expect(turnRequests.map((request) => JSON.parse(String(request.body)))).toEqual([
-      expect.objectContaining({ message: question, workspace: 'agent' }),
       expect.objectContaining({ message: question, workspace: 'agent' }),
     ])
     expect(randomUUID).toHaveBeenCalledTimes(1)
@@ -1737,7 +1736,7 @@ describe('ResearchAgentConversationPage', () => {
     expect(within(restored).getByRole('button', { name: '继续研究' })).toBeVisible()
   })
 
-  it('stops the server run when the user leaves the Agent page', async () => {
+  it('detaches the connection without stopping the server run when leaving the Agent page', async () => {
     const liveStream = deferredStream([
       ['turn_started', { conversation_id: 'conversation-leave', run_id: 'run-leave', replayed: false, runtime_mode: 'base' }],
       ['assistant_delta', { delta: '尚未完成的研究内容。' }],
@@ -1758,7 +1757,7 @@ describe('ResearchAgentConversationPage', () => {
 
     page.unmount()
 
-    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => urlFor(input).pathname === '/api/agent/runs/run-leave/stop')).toBe(true))
+    expect(fetchMock.mock.calls.some(([input]) => urlFor(input).pathname === '/api/agent/runs/run-leave/stop')).toBe(false)
   })
 
   it('dismisses deep research progress when the user stops the run', async () => {
@@ -2044,7 +2043,7 @@ describe('conversation lifecycle recovery', () => {
     expect(JSON.parse(String(requests[1].body))).toMatchObject({ message: '原始研究问题', mode: 'standard', conversation_id: 'recover-a' })
   })
 
-  it('pauses on pagehide but continues when only visibility changes', async () => {
+  it('does not cancel execution on pagehide or visibility changes', async () => {
     const pauses: RequestInit[] = []
     const running = deferredStream([
       ['turn_started', { conversation_id: 'leave-a', run_id: 'leave-run', replayed: false }],
@@ -2064,8 +2063,7 @@ describe('conversation lifecycle recovery', () => {
     fireEvent(document, new Event('visibilitychange'))
     expect(pauses).toHaveLength(0)
     fireEvent(window, new Event('pagehide'))
-    await waitFor(() => expect(pauses).toHaveLength(1))
-    expect(pauses[0]).toMatchObject({ keepalive: true })
+    expect(pauses).toHaveLength(0)
   })
 })
 
@@ -2123,7 +2121,7 @@ it('waits for stop confirmation and retries a rejected pause before allowing con
   expect(screen.getByText('暂停确认中的输出')).toBeVisible()
 })
 
-it('cancels a bound conversation when props switch and ignores its late stream', async () => {
+it('detaches a bound conversation when props switch and ignores its late stream', async () => {
   const old = deferredStream([
     ['turn_started', { conversation_id: 'bound-a', run_id: 'bound-run-a', replayed: false }],
     ['assistant_delta', { delta: 'A 的未完成内容' }],
@@ -2145,7 +2143,7 @@ it('cancels a bound conversation when props switch and ignores its late stream',
   expect(await screen.findByText('A 的未完成内容')).toBeVisible()
   page.rerender(<MemoryRouter><ResearchAgentConversationPage embedded userId="owner" conversationId="bound-b" /></MemoryRouter>)
   expect(await screen.findByText('B 的已保存回答')).toBeVisible()
-  expect(pauses).toEqual(['/api/agent/runs/bound-run-a/stop'])
+  expect(pauses).toEqual([])
   old.finish([['assistant_delta', { delta: '不能污染 B 的迟到内容' }]])
   expect(screen.queryByText('A 的未完成内容')).not.toBeInTheDocument()
   expect(screen.queryByText('不能污染 B 的迟到内容')).not.toBeInTheDocument()
@@ -2578,4 +2576,47 @@ it('keeps an identical natural writing message visible after restoring automatic
   await waitFor(() => expect(container.querySelectorAll('[data-role="user-message"]')).toHaveLength(1))
   expect(container.querySelector('[data-role="user-message"]')).toHaveTextContent('优化当前选区')
   expect(container.querySelector('[data-turn-id="automatic"] [data-role="user-message"]')).not.toBeInTheDocument()
+})
+
+it('keeps a body visible and explicitly unsaved when a journal write fails', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const path = urlFor(input).pathname
+    if (path === '/api/agent/turns') return new Response(eventStream([
+      ['turn_started', { run_id: 'run-unsaved', conversation_id: 'conversation-unsaved', attempt_id: 'attempt-unsaved', replayed: false }],
+      ['assistant_delta', { delta: '数据库失败时' }],
+      ['turn_snapshot', { run_id: 'run-unsaved', conversation_id: 'conversation-unsaved', attempt_id: 'attempt-unsaved', status: 'failed', partial_answer: '数据库失败时仍显示的合法正文。', last_event_sequence: 2, output_persistence_failed: true, output_attempts: [{ attempt_id: 'attempt-unsaved', ordinal: 1, status: 'failed', answer: '数据库失败时', created_at: '2026-10-05T00:00:00Z' }] }],
+      ['output_persistence_failed', { message: '正文尚未保存' }],
+      ['turn_failed', { code: 'agent_output_storage_error', message: '正文保存失败，页面文字仍保留。' }],
+    ]), { headers: { 'Content-Type': 'text/event-stream' } })
+    return json({ items: [] })
+  }))
+  renderPage()
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  fireEvent.change(input, { target: { value: '问题' } })
+  fireEvent.submit(input.closest('form')!)
+  expect(await screen.findByText('数据库失败时仍显示的合法正文。')).toBeVisible()
+  expect(screen.getByText('以下已收到的正文尚未保存，请先复制保留；未保存部分无法保证恢复。')).toBeVisible()
+  expect(screen.getByRole('button', { name: '重试本轮' })).toBeEnabled()
+})
+
+
+it('keeps a complete canonical answer visible while its receipt is unsaved', async () => {
+  const conversation = conversationFixture({ answer: '已经完整收到的回答。' })
+  const state = { output_finish_reason: 'complete', usage_status: 'known', settlement_status: 'pending', receipt_persistence: 'unsaved' }
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const path = urlFor(input).pathname
+    if (path === '/api/agent/turns') return new Response(eventStream([
+      ['turn_started', { run_id: 'run-receipt-unsaved', conversation_id: conversation.conversation_id, replayed: false }],
+      ['assistant_delta', { delta: '已经完整收到的回答。' }],
+      ['agent_delivery_state', state],
+      ['turn_completed', { conversation, knowledge_release_id: 'release-a', delivery_state: state }],
+    ]), { headers: { 'Content-Type': 'text/event-stream' } })
+    return json({ items: [] })
+  }))
+  renderPage()
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  fireEvent.change(input, { target: { value: '问题' } })
+  fireEvent.submit(input.closest('form')!)
+  expect(await screen.findByText('已经完整收到的回答。')).toBeVisible()
+  expect(screen.getByText('用量记录未保存。正文仍保留，请等待 receipt。')).toBeVisible()
 })

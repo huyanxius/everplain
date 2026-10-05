@@ -12,47 +12,70 @@ from fastapi.testclient import TestClient
 from qunxue_api.api.contracts.agent import AgentTurnRequest
 from qunxue_api.api.dependencies import get_current_session
 from qunxue_api.api.routes.agent import router, stream_agent_turn
-from qunxue_api.modules.agent_conversation import AgentInterrupted, ConversationNotFound
+from qunxue_api.modules.agent_conversation import (
+    AgentInterrupted,
+    ConversationNotFound,
+    ConversationService,
+)
 from qunxue_api.settings import Settings
 
 
-def test_asgi_disconnect_cancels_worker_without_waiting_for_another_model_event():
-    """A silent model must stop when the response connection disappears."""
+def test_asgi_disconnect_detaches_subscription_and_explicit_stop_cancels_worker():
+    """Closing a connection cannot claim the user pressed stop."""
     stopped = threading.Event()
     cleanup = threading.Event()
-    run_id = UUID(int=921)
-    conversation_id = UUID(int=922)
+    user_id = UUID(int=923)
+    service = ConversationService.in_memory()
+    conversation = service.create_conversation(user_id=user_id, title="silent model")
+    run = service.start_run(user_id=user_id, conversation_id=conversation.conversation_id,
+                            idempotency_key="disconnect-test", knowledge_release_id="test")
 
     class SlowApplication:
+        def find_run(self, **kwargs):
+            return None  # The first command has not been admitted by this fake runner yet.
+
+        def find_run_by_id(self, **kwargs):
+            return service.find_run_by_id(**kwargs)
+
+        def append_output_event(self, **kwargs):
+            return service.append_output_event(**kwargs)
+
+        def read_output_events(self, **kwargs):
+            return service.read_output_events(**kwargs)
+
         def run_turn(self, **kwargs):
-            kwargs["on_run_started"](run_id, conversation_id, False)
+            kwargs["on_run_started"](run.run_id, conversation.conversation_id, False,
+                                      lease_token=run.lease_token)
             while not cleanup.wait(0.01):
                 if kwargs["is_cancelled"]():
                     stopped.set()
-                    raise AgentInterrupted("disconnected")
+                    service.finish_run(run_id=run.run_id, status="interrupted",
+                                       lease_token=run.lease_token)
+                    raise AgentInterrupted("explicitly stopped")
 
         def heartbeat(self, **kwargs):
             return False
 
         def request_cancel(self, **kwargs):
-            return SimpleNamespace(status="interrupted")
+            return service.request_cancel(**kwargs)
 
     @contextmanager
     def application_scope():
         yield SlowApplication()
 
     async def exercise():
+        from fastapi import Response
+
+        from qunxue_api.api.routes.agent import stop_agent_run
+
         disconnect = asyncio.Event()
         request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
-            settings=Settings(_env_file=None),
-            disciplinary_agent_scope=application_scope,
+            settings=Settings(_env_file=None), disciplinary_agent_scope=application_scope,
         )))
-        response = stream_agent_turn(
-            payload=AgentTurnRequest(message="test a silent model"),
-            request=request,
-            current=SimpleNamespace(user=SimpleNamespace(user_id=UUID(int=923))),
-            idempotency_key="disconnect-test",
-        )
+        current = SimpleNamespace(user=SimpleNamespace(user_id=user_id))
+        response = stream_agent_turn(payload=AgentTurnRequest(message="silent model"),
+                                     request=request, current=current,
+                                     idempotency_key="disconnect-test")
 
         async def receive():
             await disconnect.wait()
@@ -65,12 +88,12 @@ def test_asgi_disconnect_cancels_worker_without_waiting_for_another_model_event(
         try:
             await asyncio.wait_for(response(
                 {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.0"}},
-                receive,
-                send,
+                receive, send,
             ), timeout=1)
-            assert await asyncio.to_thread(stopped.wait, 0.5), (
-                "closing the response left the model worker running"
-            )
+            assert not await asyncio.to_thread(stopped.wait, 0.1)
+            assert not service.find_run_by_id(user_id=user_id, run_id=run.run_id).cancel_requested
+            stop_agent_run(run.run_id, request, Response(), current, "explicit-stop")
+            assert await asyncio.to_thread(stopped.wait, 1)
         finally:
             cleanup.set()
             await asyncio.sleep(0.02)
@@ -109,6 +132,9 @@ def test_input_limit_stream_error_is_not_a_provider_outage():
     from qunxue_api.adapters.research_agent.pydantic_runner import AgentModelRouteError
 
     class LimitedApplication:
+        def find_run(self, **kwargs):
+            return None
+
         def run_turn(self, **kwargs):
             raise AgentModelRouteError.from_attempt(
                 ModelAttemptFailure(code="model_input_limit", retryable=False)

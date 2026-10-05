@@ -30,3 +30,9 @@ class AgentModelRouteFailure(AgentConversationError):
     """Content-free route failure exposed to API consumers by a stable code."""
 
     code = "agent_model_unavailable"
+
+
+class AgentOutputStorageFailure(AgentConversationError):
+    """Received body was presented, but its journal commit could not be verified."""
+
+    code = "agent_output_storage_error"

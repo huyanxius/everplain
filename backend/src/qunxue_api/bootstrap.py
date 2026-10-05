@@ -510,8 +510,6 @@ def create_app(
             endpoints=(selected_endpoint,),
             recorder=model_attempt_recorder,
             max_retries=resolved_settings.model_max_retries,
-            max_input_tokens=resolved_settings.model_max_input_tokens,
-            max_output_tokens=resolved_settings.model_max_output_tokens,
         )
         if selected_endpoint is not None else None
     )
@@ -1185,6 +1183,7 @@ def create_app(
                     extra_headers=primary_endpoint.extra_headers,
                     reasoning_effort=resolved_settings.model_reasoning_effort,
                     route_executor=app.state.model_router,
+                    model_capacities=resolved_settings.agent_model_capacities,
                     require_billing=True,
                 )
             def runner_for_selection(selection):
@@ -1197,8 +1196,6 @@ def create_app(
                     ModelRouteExecutor(
                         endpoints=(route_endpoint,), recorder=model_attempt_recorder,
                         max_retries=resolved_settings.model_max_retries,
-                        max_input_tokens=resolved_settings.model_max_input_tokens,
-                        max_output_tokens=resolved_settings.model_max_output_tokens,
                     ) if selection.model_id in additional_routes else selected_agent_router
                 )
                 if route_endpoint is None or route_executor is None:
@@ -1215,6 +1212,7 @@ def create_app(
                     reasoning_effort=selection.reasoning_effort,
                     protocol=route_protocol,
                     route_executor=route_executor,
+                    model_capacities=resolved_settings.agent_model_capacities,
                     require_billing=True,
                 )
 
@@ -1899,8 +1897,6 @@ def _model_provider_from_settings(
         endpoints=endpoints,
         recorder=attempt_recorder,
         max_retries=settings.model_max_retries,
-        max_input_tokens=settings.model_max_input_tokens,
-        max_output_tokens=settings.model_max_output_tokens,
     )
     return (
         RoutedModelProvider(providers=providers, router=router),

@@ -62,6 +62,9 @@ import {
   type AgentCitation,
   type AgentConversation,
   type AgentConversationSummary,
+  type AgentOutputAttempt,
+  type AgentDeliveryState,
+  type AgentStreamResume,
   type AgentEvent,
   type AgentRuntimeMode,
   type AgentToolStep,
@@ -311,7 +314,7 @@ function localizedTurnFailure(code: string, message: string, locale: AppLocale) 
   if (locale !== 'en-US') return message
   if (code === 'not_found') return 'This conversation does not exist or you do not have access.'
   if (code === 'run_in_progress') return 'A response is already being generated. Please wait.'
-  if (code === 'credits_depleted') return 'You do not have enough credits. Review your usage in Account settings.'
+  if (code === 'credits_depleted') return 'Quota is exhausted. Please wait for the receipt.'
   return 'The Agent cannot complete this answer right now. Please try again later.'
 }
 
@@ -320,6 +323,10 @@ type AgentToolEvent = Extract<AgentEvent, { type: 'tool_started' | 'tool_finishe
 type ResearchToolStep = AgentToolStep & { interrupted?: boolean }
 type StreamingTurn = {
   runId?: string | null
+  attemptId?: string | null
+  outputAttempts?: AgentOutputAttempt[]
+  outputPersistenceFailed?: boolean
+  deliveryState?: AgentDeliveryState
   progressEnd?: number
   question: string
   answer: string
@@ -498,6 +505,13 @@ function readInterruptedTurn(userId: string | null): StreamingTurn | null {
       runId: typeof value.runId === 'string' ? value.runId : null,
       question: value.question,
       answer: value.answer,
+      attemptId: typeof value.attemptId === 'string' ? value.attemptId : null,
+      outputPersistenceFailed: value.outputPersistenceFailed === true,
+      outputAttempts: Array.isArray(value.outputAttempts)
+        ? value.outputAttempts.filter((item): item is AgentOutputAttempt => Boolean(
+          item && typeof item === 'object' && typeof item.attempt_id === 'string'
+          && typeof item.answer === 'string' && typeof item.ordinal === 'number',
+        )) : [],
       citations: value.citations as AgentCitation[],
       toolSteps,
       canvasPatches: value.canvasPatches as ResearchCanvasStreamingTurn['canvasPatches'],
@@ -679,6 +693,7 @@ function tombstoneConversationMaterial(conversation: AgentConversation, material
     return {
       ...turn,
       assistant: { ...turn.assistant, content: DELETED_MATERIAL_ANSWER, citations },
+      output_attempts: turn.output_attempts?.map(output => ({ ...output, answer: DELETED_MATERIAL_ANSWER })),
     }
   })
   return changed ? { ...conversation, turns } : conversation
@@ -918,6 +933,10 @@ function AssistantTurn({
   streaming,
   streamingStatus,
   progressEnd = 0,
+  outputAttempts = [],
+  outputPersistenceFailed = false,
+  deliveryState,
+  attemptId,
   embedded,
   showResearchHandoff,
   knowledgeReleaseId,
@@ -940,6 +959,10 @@ function AssistantTurn({
   streaming?: boolean
   streamingStatus?: AgentPageStatus
   progressEnd?: number
+  outputAttempts?: AgentOutputAttempt[]
+  outputPersistenceFailed?: boolean
+  deliveryState?: AgentDeliveryState
+  attemptId?: string | null
   embedded?: boolean
   showResearchHandoff?: boolean
   knowledgeReleaseId: string | null
@@ -997,12 +1020,22 @@ function AssistantTurn({
   return <ConversationTurn
     agent={{ name: profile.data?.name.trim() || 'Everplain', avatar, color: profile.data?.color }}
     turn={{ id: turnId, question, answer, citations, knowledgeReleaseId,
+      previousOutputs: outputAttempts.filter(output => output.answer && output.attempt_id !== attemptId && output.answer !== answer)
+        .map(output => ({ id: output.attempt_id, ordinal: output.ordinal, answer: output.answer, unsaved: output.status === 'unsaved' })),
       toolSteps: toolSteps.map(step => ({ ...step, label: localizedToolLabel(step.tool, locale, step.label), detail: step.detail ? localizedToolDetail(step.detail, locale) : undefined, purpose: localizedToolPurpose(step.tool, locale), resultItems: resultItemsFromOutput(step.output) })),
       streaming, statusText, liveText,
       progressEnd, interrupted, failure, provenance, handoffs,
-      notice: interrupted ? answer.trim() || embedded
-        ? text(`本轮已停止，已保留生成内容和 ${completedStepCount} 个已完成步骤。`, `This turn was stopped. Generated content and ${completedStepCount} steps were retained.`)
-        : text('本轮已停止，未保存未完成的回答。', 'This turn stopped before an unfinished answer was saved.') : undefined,
+      notice: [
+        outputPersistenceFailed ? text('以下已收到的正文尚未保存，请先复制保留；未保存部分无法保证恢复。', 'The received text below was not saved. Copy it now; recovery is not guaranteed.') : null,
+        deliveryState?.receipt_persistence === 'unsaved' ? text('用量记录未保存。正文仍保留，请等待 receipt。', 'Usage records were not saved. The text remains available; wait for the receipt.') : null,
+        deliveryState?.quota_exhausted ? text('额度已用尽，请等待 receipt', 'Quota is exhausted. Please wait for the receipt.') : null,
+        deliveryState?.receipt_persistence !== 'unsaved' && !deliveryState?.quota_exhausted && (deliveryState?.usage_status === 'pending' || deliveryState?.settlement_status === 'pending') ? text('用量待 receipt，正文仍保留。', 'Usage is pending a receipt. The received text remains available.') : null,
+        deliveryState?.output_finish_reason === 'truncated' ? text('模型本次输出达到上游长度限制，可以继续本轮。', 'The upstream output limit was reached. You can continue this turn.') : null,
+        interrupted && !outputPersistenceFailed && deliveryState?.output_finish_reason !== 'truncated'
+          ? answer.trim() || embedded
+            ? text(`本轮已停止，已保留生成内容和 ${completedStepCount} 个已完成步骤。`, `This turn was stopped. Generated content and ${completedStepCount} steps were retained.`)
+            : text('本轮已停止，未保存未完成的回答。', 'This turn stopped before an unfinished answer was saved.') : null,
+      ].filter(Boolean).join(' ') || undefined,
       onRegenerate, onResume: interrupted && !failure ? onRegenerate : undefined,
       onCopy: onRegenerate && answer ? async content => { if (!navigator.clipboard?.writeText) throw new Error('clipboard_unavailable'); await navigator.clipboard.writeText(content) } : undefined,
     }}
@@ -1506,6 +1539,7 @@ export function ResearchAgentConversationPage({
       status: turn.failure ? 'failed' : 'interrupted',
       request: attempt.request,
       partial_answer: turn.answer,
+      output_attempts: turn.outputAttempts,
       tool_summary: turn.toolSteps.map((step) => ({
         tool: step.tool,
         phase: step.status === 'completed' ? 'finished' : step.status === 'failed' ? 'failed' : 'started',
@@ -1544,7 +1578,10 @@ export function ResearchAgentConversationPage({
     return {
       runId: run.run_id,
       question: run.idempotency_key.startsWith('writing-ui:') && run.request.writing_context ? '' : run.request.message,
-      answer: run.partial_answer,
+      answer: run.output_attempts?.at(-1)?.answer ?? run.partial_answer,
+      attemptId: run.output_attempts?.at(-1)?.attempt_id,
+      outputAttempts: run.output_attempts ?? [],
+      deliveryState: run.delivery_state,
       citations: [],
       toolSteps: run.status === 'running' ? persistedToolSteps(traces) : interruptedSteps(persistedToolSteps(traces), locale),
       canvasPatches: [],
@@ -1685,10 +1722,10 @@ export function ResearchAgentConversationPage({
       persistPendingTurnAttempt(storageScope.current, attempt)
       persistInterruptedTurn(storageScope.current, saved)
     }
-    const runId = activeRunId.current
+    // Leaving/backgrounding disconnects the subscription. Only the explicit
+    // pause command cancels execution; pagehide can be a transient mobile state.
     activeRunId.current = null
     pausePending.current = false
-    if (runId) void stopAgentRun(runId, { keepalive: true }).catch(() => undefined)
     streamGeneration.current += 1
     streamAbortController.current?.abort()
     streamAbortController.current = null
@@ -1925,14 +1962,14 @@ export function ResearchAgentConversationPage({
     }
   }
 
-  async function submitQuestion(rawQuestion: string, retryIdempotencyKey?: string, deepAction?: { action: 'clarify' | 'confirm' | 'skip'; selection?: string }, researchEntry = false, entrySelection?: ModelSelection, writingShortcut = false, resumeRequest?: AgentTurnRequest): Promise<AgentConversation | null> {
+  async function submitQuestion(rawQuestion: string, retryIdempotencyKey?: string, deepAction?: { action: 'clarify' | 'confirm' | 'skip'; selection?: string }, researchEntry = false, entrySelection?: ModelSelection, writingShortcut = false, resumeRequest?: AgentTurnRequest, subscription?: AgentStreamResume): Promise<AgentConversation | null> {
     const question = resumeRequest || retryIdempotencyKey || deepAction || researchEntry ? rawQuestion.trim() : composeResearchDiscussion(rawQuestion.trim(), discussion)
     if (!rawQuestion.trim()) return null
     if (question.length > MAX_AGENT_MESSAGE_LENGTH) {
       setError('讨论内容过长，请缩短问题或重新选择较短的段落。')
       return null
     }
-    if (!question || writingPreparation.current || isBusy || streamAbortController.current || (!researchEntry && researchEntryAbortController.current)) return null
+    if (!question || writingPreparation.current || (isBusy && !subscription) || streamAbortController.current || (!researchEntry && researchEntryAbortController.current)) return null
     const turnMode = resumeRequest ? (resumeRequest.mode === 'deep_research' ? 'deep-research' : 'standard') : (researchEntry || writingShortcut) ? 'standard' : (failedTurnAttempt.current?.idempotencyKey === retryIdempotencyKey && failedTurnAttempt.current?.request ? failedTurnAttempt.current.request.mode === 'deep_research' ? 'deep-research' : 'standard' : composerMode)
     let resultConversation: AgentConversation | null = null
     const idempotencyKey = retryIdempotencyKey
@@ -2002,7 +2039,14 @@ export function ResearchAgentConversationPage({
     setStatus('thinking')
     pendingToolSteps.current = []
     redactedStreamingMaterialIds.current.clear()
-    const firstStreamingTurn: StreamingTurn = { runId: attempt.runId, question: writingShortcut ? '' : question, answer: '', citations: [], toolSteps: [], canvasPatches: [], startedAt: Date.now() }
+    const previousOutputs = previousAttempt?.idempotencyKey === idempotencyKey && previousTurn
+      ? [...(previousTurn.outputAttempts ?? []).filter(output => output.attempt_id !== previousTurn.attemptId), ...(previousTurn.answer ? [{
+        attempt_id: previousTurn.outputPersistenceFailed ? `unsaved:${previousTurn.attemptId ?? previousTurn.startedAt}` : previousTurn.attemptId ?? `local:${previousTurn.runId}:${previousTurn.startedAt}`,
+        ordinal: previousTurn.outputAttempts?.at(-1)?.ordinal ?? 1,
+        status: previousTurn.outputPersistenceFailed ? 'unsaved' : previousTurn.failure ? 'failed' : 'interrupted', answer: previousTurn.answer,
+        created_at: new Date(previousTurn.startedAt).toISOString(),
+      }] : [])] : []
+    const firstStreamingTurn: StreamingTurn = subscription && previousTurn ? { ...previousTurn, failure: undefined, interrupted: false } : { runId: attempt.runId, question: writingShortcut ? '' : question, answer: '', outputAttempts: previousOutputs, citations: [], toolSteps: [], canvasPatches: [], startedAt: Date.now() }
     const controller = new AbortController()
     const runGeneration = streamGeneration.current + 1
     streamGeneration.current = runGeneration
@@ -2043,7 +2087,13 @@ export function ResearchAgentConversationPage({
               storageScope.current = nextScope
               if (writingShortcut) persistDraft(nextScope, draft)
             }
-            setStreamingTurn((current) => current ? { ...current, runId: event.run_id } : current)
+            setStreamingTurn((current) => current ? { ...current, runId: event.run_id,
+              attemptId: event.attempt_id,
+              answer: current.attemptId && event.attempt_id && current.attemptId !== event.attempt_id ? '' : current.answer,
+              outputAttempts: [...(event.output_attempts ?? current.outputAttempts ?? []),
+                ...(current.outputAttempts ?? []).filter(output => output.status === 'unsaved'
+                  && !(event.output_attempts ?? []).some(saved => saved.attempt_id === output.attempt_id))],
+            } : current)
             persistPendingTurnAttempt(storageScope.current, startedAttempt)
             setConversations((current) => current.some((item) => item.conversation_id === event.conversation_id) ? current : [{
               conversation_id: event.conversation_id, task_id: taskId,
@@ -2070,6 +2120,20 @@ export function ResearchAgentConversationPage({
               } : current)
             }
             if (!pausePending.current) setStatus('thinking')
+          } else if (event.type === 'turn_snapshot') {
+            const run = event.run
+            activeRunId.current = run.status === 'running' ? run.run_id : null
+            pendingConversationId.current = run.conversation_id
+            activeTurnAttempt.current = { ...attempt, runId: run.run_id, conversationId: run.conversation_id }
+            setStreamingTurn(current => current ? { ...current, runId: run.run_id,
+              attemptId: run.output_attempts?.at(-1)?.attempt_id,
+              answer: run.output_persistence_failed ? run.partial_answer : run.output_attempts?.at(-1)?.answer ?? run.partial_answer,
+              outputPersistenceFailed: run.output_persistence_failed ?? current.outputPersistenceFailed,
+              outputAttempts: run.output_attempts?.length ? run.output_attempts : current.outputAttempts,
+              deliveryState: run.delivery_state,
+            } : current)
+          } else if (event.type === 'agent_delivery_state') {
+            setStreamingTurn(current => current ? { ...current, deliveryState: event.delivery_state } : current)
           } else if (event.type === 'agent_status') {
             if (!pausePending.current) setStatus(event.status === 'answering' ? 'answering' : 'thinking')
           } else if (event.type === 'research_ask') {
@@ -2114,6 +2178,13 @@ export function ResearchAgentConversationPage({
             if (!redactedStreamingMaterialIds.current.size) {
               setStreamingTurn((current) => current ? { ...current, answer: current.answer + event.delta } : current)
             }
+          } else if (event.type === 'output_persistence_failed') {
+            setStreamingTurn(current => {
+              if (!current) return current
+              const unsaved = { ...current, outputPersistenceFailed: true }
+              persistInterruptedTurn(storageScope.current, { ...unsaved, interrupted: true })
+              return unsaved
+            })
           } else if (event.type === 'citation_added') {
             const materialId = materialCitationFields(event.citation).materialId
             const citation = materialId && locallyDeletedMaterialIds.current.has(materialId)
@@ -2154,9 +2225,18 @@ export function ResearchAgentConversationPage({
             persistInterruptedTurn(storageScope.current, null)
             persistDraft(storageScope.current, writingShortcut ? draft : '')
             const localToolSteps = pendingToolSteps.current
+            const unsavedOutputs = (streamingTurnRef.current?.outputAttempts ?? []).filter(output => output.status === 'unsaved')
+            const deliveryConversation = event.delivery_state ? { ...event.conversation,
+              turns: event.conversation.turns.map((turn, index) => index === event.conversation.turns.length - 1
+                ? { ...turn, delivery_state: event.delivery_state } : turn),
+            } : event.conversation
+            const preservedConversation = unsavedOutputs.length ? { ...deliveryConversation,
+              turns: event.conversation.turns.map((turn, index) => index === event.conversation.turns.length - 1
+                ? { ...turn, output_attempts: [...(turn.output_attempts ?? []), ...unsavedOutputs] } : turn),
+            } : deliveryConversation
             const completedConversation = [...locallyDeletedMaterialIds.current].reduce(
               (conversation, materialId) => tombstoneConversationMaterial(conversation, materialId),
-              attachLocalToolSteps(event.conversation, localToolSteps),
+              attachLocalToolSteps(preservedConversation, localToolSteps),
             )
             resultConversation = completedConversation
             const completedTurn = completedConversation.turns.at(-1)
@@ -2238,6 +2318,7 @@ export function ResearchAgentConversationPage({
           }
         },
         controller.signal,
+        subscription,
       )
     } catch (cause: unknown) {
       if (!controller.signal.aborted && streamGeneration.current === runGeneration) {
@@ -2273,6 +2354,14 @@ export function ResearchAgentConversationPage({
     }
     return controller.signal.aborted || streamGeneration.current !== runGeneration ? null : resultConversation
   }
+
+  useEffect(() => {
+    const run = activeConversation?.unfinished_runs?.find(item => item.status === 'running')
+    if (!run || streamAbortController.current || status === 'pausing' || status === 'pause-failed') return
+    failedTurnAttempt.current = recoveryAttempt(run)
+    void submitQuestion(run.request.message, run.idempotency_key, undefined, false, undefined, false,
+      run.request, { runId: run.run_id, after: run.last_event_sequence ?? 0 })
+  }, [activeConversation?.conversation_id, activeConversation?.unfinished_runs])
 
   useEffect(() => {
     if (deepResearchMockStage !== 'researching' || deepResearchStartedAt.current === null) return undefined
@@ -2603,7 +2692,9 @@ export function ResearchAgentConversationPage({
       if (!current) return current
       const citations = current.citations.map((citation) => tombstoneMaterialCitation(citation, materialId))
       if (!citations.some((citation, index) => citation !== current.citations[index])) return current
-      const next = { ...current, answer: DELETED_MATERIAL_ANSWER, citations }
+      const next = { ...current, answer: DELETED_MATERIAL_ANSWER, citations,
+        outputAttempts: current.outputAttempts?.map(output => ({ ...output, answer: DELETED_MATERIAL_ANSWER })),
+      }
       if (next.interrupted) persistInterruptedTurn(storageScope.current, next)
       return next
     })
@@ -2719,6 +2810,8 @@ export function ResearchAgentConversationPage({
                     turnId={visualTurnKeys.current.get(turn.turn_id) ?? turn.turn_id}
                     question={turn.tool_traces?.some(trace => trace.tool === 'writing_ui_action') ? '' : turn.user.content}
                     answer={turn.assistant.content}
+                    outputAttempts={turn.output_attempts}
+                    deliveryState={turn.delivery_state}
                     citations={turn.assistant.citations}
                   toolSteps={toolStepsByTurnId[turn.turn_id] ?? persistedToolSteps(turn.tool_traces)}
                   conversationId={activeConversation?.conversation_id ?? null}
@@ -2741,6 +2834,9 @@ export function ResearchAgentConversationPage({
                     turnId={run.run_id}
                     question={saved.question}
                     answer={saved.answer}
+                    outputAttempts={saved.outputAttempts}
+                    deliveryState={saved.deliveryState}
+                    attemptId={saved.attemptId}
                     citations={saved.citations}
                     toolSteps={saved.toolSteps}
                     conversationId={activeConversation?.conversation_id ?? null}
@@ -2780,6 +2876,10 @@ export function ResearchAgentConversationPage({
                     userId={userId}
                     question={streamingTurn.question}
                     answer={streamingTurn.answer}
+                    outputAttempts={streamingTurn.outputAttempts}
+                    attemptId={streamingTurn.attemptId}
+                    outputPersistenceFailed={streamingTurn.outputPersistenceFailed}
+                    deliveryState={streamingTurn.deliveryState}
                     citations={streamingTurn.citations}
                     toolSteps={streamingTurn.toolSteps}
                     conversationId={activeConversation?.conversation_id ?? pendingConversationId.current}

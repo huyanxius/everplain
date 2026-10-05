@@ -42,7 +42,7 @@ export function ConversationTurn({ turn, agent, renderAvatar, onSelectCitation, 
   const bubble = useRef<HTMLDivElement>(null)
   const launchedWhileStreaming = useRef(turn.streaming)
   const cancelFlight = useRef<(() => void) | undefined>(undefined)
-  const paced = useStreamPacer(turn.liveText ? '' : turn.answer, Boolean(turn.streaming))
+  const paced = useStreamPacer(turn.liveText ? '' : turn.answer, Boolean(turn.streaming), Boolean(turn.interrupted || turn.failure))
   const pacer = turn.liveText ? { visible: turn.answer, revealedAt: [], now: performance.now() } : paced
   useLayoutEffect(() => {
     const node = bubble.current
@@ -72,6 +72,12 @@ export function ConversationTurn({ turn, agent, renderAvatar, onSelectCitation, 
       <div className="cv-turn__body">
         <ConversationThinking turn={turn} />
         <ConversationActivity steps={steps} onOpen={onOpenActivity ? step => onOpenActivity(turn.id, step) : undefined} />
+        {turn.previousOutputs?.map(output => <details key={output.id} open className="cv-turn__previous-output">
+          <summary>{output.unsaved
+            ? text(`第 ${output.ordinal} 次生成的未保存原文`, `Unsaved output from attempt ${output.ordinal}`)
+            : text(`第 ${output.ordinal} 次生成的原文`, `Original output from attempt ${output.ordinal}`)}</summary>
+          <div className="qx-prose cv-turn__prose"><AgentAnswerMarkdown citations={[]} onSelectCitation={chooseCitation}>{output.answer}</AgentAnswerMarkdown></div>
+        </details>)}
         {pacer.visible ? <div className="qx-prose cv-turn__prose">
           {progressEnd ? <AgentAnswerMarkdown citations={turn.citations} onSelectCitation={chooseCitation} progress reveal={pacer}>{pacer.visible.slice(0, progressEnd)}</AgentAnswerMarkdown> : null}
           <AgentAnswerMarkdown citations={turn.citations} onSelectCitation={chooseCitation} reveal={{ now: pacer.now, revealedAt: pacer.revealedAt.slice(progressEnd) }}>{pacer.visible.slice(progressEnd)}</AgentAnswerMarkdown>

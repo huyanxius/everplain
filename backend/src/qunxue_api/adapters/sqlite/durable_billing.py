@@ -106,7 +106,7 @@ class DurableBilling:
         self.daily_budget_pico = daily_budget_pico
         self.max_attempts = max_attempts
         self.clock = clock or (lambda: datetime.now(UTC))
-        if billing_policy not in {"actual_usage_v1", "delivery_v1"}:
+        if billing_policy not in {"actual_usage_v1", "actual_usage_v2", "delivery_v1"}:
             raise ValueError("unknown billing policy")
         self.billing_policy = billing_policy
         self.plan_limits = plan_limits
@@ -179,11 +179,64 @@ class DurableBilling:
     @staticmethod
     def _actual_usage(run):
         # Missing policy marks historical operations, not permission to reprice them.
-        return json.loads(run["price_json"]).get("billing_policy") == "actual_usage_v1"
+        return json.loads(run["price_json"]).get("billing_policy") in {
+            "actual_usage_v1", "actual_usage_v2"
+        }
 
-    def _operation_snapshot(self):
+    @staticmethod
+    def _independent_delivery(run):
+        return json.loads(run["price_json"]).get("billing_policy") == "actual_usage_v2"
+
+    def _confirmed_quota_exhausted(self, conn, run):
+        if run["exempt"]:
+            return False
+        epoch = run.get("quota_period_epoch")
+        period = get_quota_period(conn, run["user_id"], epoch) if epoch is not None else None
+        account = period or self._one(conn,
+            "SELECT balance FROM credit_accounts WHERE user_id=:u", u=run["user_id"])
+        if account is None:
+            return False
+        precision = period or self._one(conn,
+            "SELECT total_credit_pico FROM billing_precision WHERE user_id=:u", u=run["user_id"])
+        exact = Fraction(precision["total_credit_pico"]) if precision else Fraction(0)
+        remaining = max(Fraction(0), account["balance"] * PICO_USD - exact % PICO_USD)
+        outstanding = Fraction(run["original_credit_pico"]) - Fraction(run["credit_pico"])
+        return account["balance"] == 0 or (outstanding > 0 and outstanding >= remaining)
+
+    def delivery_state(self, run_id):
+        """Actual receipt certainty, settlement and delivery are separate facts."""
+        with self.engine.connect() as conn:
+            run = self._one(conn, "SELECT * FROM billing_operations WHERE run_id=:run",
+                            run=str(run_id))
+            if run is None:
+                return {"usage_status": "pending", "settlement_status": "pending",
+                        "quota_exhausted": False}
+            attempts = conn.execute(text(
+                "SELECT usage_state,outcome FROM billing_attempts WHERE run_id=:run"
+            ), {"run": str(run_id)}).mappings().all()
+            pending = any(a["usage_state"] not in {"known", "unpriced", "not_sent"}
+                          for a in attempts)
+            settlement_pending = any(a["usage_state"] not in {"known", "not_sent"}
+                                     or a["outcome"] == "model_mismatch" for a in attempts)
+            outstanding = (
+                max(Fraction(0), Fraction(run["original_credit_pico"])
+                    - Fraction(run["credit_pico"])) if self._independent_delivery(run) else 0
+            )
+            return {"usage_status": "pending" if pending else "known",
+                    "settlement_status": ("pending" if settlement_pending or outstanding
+                                          else "settled"),
+                    "pending_credit_numerator": str(outstanding),
+                    "quota_exhausted": self._confirmed_quota_exhausted(conn, run)}
+
+    def uses_independent_delivery(self, run_id):
+        with self.engine.connect() as conn:
+            run = self._one(conn, "SELECT * FROM billing_operations WHERE run_id=:run",
+                            run=str(run_id))
+            return bool(run and self._independent_delivery(run))
+
+    def _operation_snapshot(self, billing_policy=None):
         snapshot = json.loads(self._snapshot(self.book))
-        snapshot["billing_policy"] = self.billing_policy
+        snapshot["billing_policy"] = billing_policy or self.billing_policy
         return json.dumps(snapshot, sort_keys=True)
 
     def _available(self, conn, user_id):
@@ -207,7 +260,10 @@ class DurableBilling:
         with self.engine.connect() as conn:
             return self._available(conn, str(user_id))
 
-    def start(self, *, user_id, run_id, fingerprint, exempt=False, resume=False, quota_start=True):
+    def start(self, *, user_id, run_id, fingerprint, exempt=False, resume=False, quota_start=True,
+              billing_policy=None):
+        if billing_policy not in {None, "actual_usage_v1", "actual_usage_v2", "delivery_v1"}:
+            raise ValueError("unknown billing policy")
         run_id, user_id = str(run_id), str(user_id)
         with self._transaction() as conn:
             previous = self._one(
@@ -222,7 +278,7 @@ class DurableBilling:
                 raise BillingReplayBlocked("paused billing operation is missing")
             book = self._book(previous["price_json"]) if previous else self.book
             actual_usage = self._actual_usage(previous) if previous else (
-                self.billing_policy == "actual_usage_v1"
+                (billing_policy or self.billing_policy) in {"actual_usage_v1", "actual_usage_v2"}
             )
             period = ensure_quota_period(
                 conn, user_id, self.clock(), plan_limits=self.plan_limits, start=quota_start
@@ -245,7 +301,14 @@ class DurableBilling:
                     )
             if previous and period and previous.get("quota_period_epoch") != period["epoch"]:
                 raise BillingReplayBlocked("paused operation belongs to an expired quota period")
+            independent = self._independent_delivery(previous) if previous else (
+                (billing_policy or self.billing_policy) == "actual_usage_v2"
+            )
             available = 0 if exempt else self._available(conn, user_id)
+            if independent and not exempt:
+                available = conn.scalar(text(
+                    "SELECT balance FROM credit_accounts WHERE user_id=:user"), {"user": user_id})
+                available = available or 0
             cap = ceil(Fraction(book.maximum_credit_numerator(self.max_operation_pico), PICO_USD))
             if previous:
                 cap = max(0, cap - Fraction(previous["credit_pico"]) // PICO_USD)
@@ -284,7 +347,7 @@ class DurableBilling:
                     "fingerprint": fingerprint,
                     "hold": hold,
                     "exempt": int(exempt),
-                    "price": self._operation_snapshot(),
+                    "price": self._operation_snapshot(billing_policy),
                     "now": now,
                     "epoch": period["epoch"] if period else None,
                 },
@@ -334,14 +397,28 @@ class DurableBilling:
                 )
                 if period is None or period["epoch"] != run["quota_period_epoch"]:
                     raise BillingReplayBlocked("operation belongs to an expired quota period")
-            if requested_service_tier not in {None, "default", "standard"}:
+            independent = self._independent_delivery(run)
+            if not independent and requested_service_tier not in {None, "default", "standard"}:
                 raise UnknownPrice("requested service tier has no configured tariff")
-            book = self._book(run["price_json"]).lock_dispatch(model, self.clock())
+            if independent and self._confirmed_quota_exhausted(conn, run):
+                raise BillingBudgetExceeded("confirmed quota is exhausted",
+                                            reason="credits_depleted")
+            book = self._book(run["price_json"])
+            try:
+                book = book.lock_dispatch(model, self.clock())
+            except UnknownPrice:
+                if not independent:
+                    raise
             if api_type == "tavily_search":
                 if model != "tavily:basic" or input_limit != 1 or output_limit != 0:
                     raise UnknownPrice("only explicitly bounded Tavily basic search is supported")
                 reserved = book.search_cost(1)
                 new_credit = book.search_credit_numerator(reserved)
+            elif independent:
+                # This is an operator risk placeholder, never a token cap, a
+                # wallet reservation, or confirmed provider/user consumption.
+                reserved = self.max_attempt_pico
+                new_credit = 0
             else:
                 reserved = book.maximum_cost(model, input_limit, output_limit)
                 new_credit = book.credit_numerator(reserved)
@@ -352,24 +429,24 @@ class DurableBilling:
                 a["reference_cost_pico"] if a["reference_cost_pico"] is not None
                 else a["reserved_cost_pico"] for a in attempts
             ) + reserved
-            user_credit = sum(
+            user_credit = 0 if independent else sum(
                 self._attempt_credit(a, reserved=a["outcome"] == "in_flight")
                 for a in attempts if a["billable"] or a["outcome"] == "in_flight"
             ) + new_credit
             unsettled = max(0, user_credit - Fraction(run["credit_pico"]))
             max_credit = ceil(Fraction(unsettled, PICO_USD))
             actual_usage = self._actual_usage(run)
-            if (
+            if not independent and (
                 reserved > self.max_attempt_pico
                 or len(attempts) >= self.max_attempts
                 or operation_risk > self.max_operation_pico
             ):
                 raise BillingBudgetExceeded("model request exceeds reserved budget")
-            if self._risk(conn) + reserved > self.daily_budget_pico:
+            if not independent and self._risk(conn) + reserved > self.daily_budget_pico:
                 raise BillingBudgetExceeded(
                     "model service risk exceeds reserved budget", reason="service_budget_exceeded"
                 )
-            if not run["exempt"] and max_credit > (
+            if not independent and not run["exempt"] and max_credit > (
                 self._available(conn, run["user_id"]) + run["hold_points"]
                 if actual_usage else run["hold_points"]
             ):
@@ -417,7 +494,8 @@ class DurableBilling:
                 text("UPDATE billing_operations SET updated_at=:now,hold_points=:hold "
                      "WHERE run_id=:run"),
                 {"now": now, "run": str(run_id),
-                 "hold": max_credit if actual_usage and not run["exempt"] else run["hold_points"]},
+                 "hold": 0 if independent else max_credit
+                    if actual_usage and not run["exempt"] else run["hold_points"]},
             )
         return attempt
 
@@ -530,6 +608,8 @@ class DurableBilling:
         numerator = sum(self._attempt_credit(a) for a in attempts if a["billable"])
         remaining = sum(self._attempt_credit(a, reserved=True) for a in attempts
                         if a["outcome"] == "in_flight")
+        if self._independent_delivery(run):
+            return self._settle_independent(conn, run, numerator, receipt_attempt_id)
         points = 0
         if not run["exempt"]:
             epoch = run.get("quota_period_epoch")
@@ -575,6 +655,59 @@ class DurableBilling:
             "hold": 0 if run["exempt"] else ceil(Fraction(remaining, PICO_USD)),
             "now": self._now()})
 
+    def _settle_independent(self, conn, run, numerator, receipt_attempt_id):
+        """Apply only newly confirmed usage; any unfunded remainder stays pending.
+
+        original_credit_pico is the full actual numerator for v2, credit_pico is
+        the applied numerator. The difference is neither waived nor an automatic
+        debt collection. Finish/repeated receipts never apply that remainder.
+        """
+        prior_gross = Fraction(run["original_credit_pico"])
+        applied = Fraction(run["credit_pico"])
+        new_usage = max(Fraction(0), numerator - prior_gross)
+        points = 0
+        if not run["exempt"] and new_usage:
+            epoch = run.get("quota_period_epoch")
+            period = get_quota_period(conn, run["user_id"], epoch) if epoch is not None else None
+            if epoch is not None and period is None:
+                raise BillingReplayBlocked("operation quota period is missing")
+            previous = period or self._one(conn,
+                "SELECT total_credit_pico FROM billing_precision WHERE user_id=:u",
+                u=run["user_id"])
+            old_total = Fraction(previous["total_credit_pico"]) if previous else Fraction(0)
+            account = period or self._one(conn,
+                "SELECT balance FROM credit_accounts WHERE user_id=:u", u=run["user_id"])
+            # Integer cash/credits cannot go negative. Preserve the complete cost
+            # above this capacity as pending, without silently zeroing its facts.
+            capacity = max(Fraction(0), account["balance"] * PICO_USD - old_total % PICO_USD)
+            accepted = min(new_usage, capacity)
+            new_total = old_total + accepted
+            points = new_total // PICO_USD - old_total // PICO_USD
+            applied += accepted
+            if accepted:
+                if period:
+                    settle_quota_period(conn, run["user_id"], epoch,
+                                        account["balance"] - points, str(new_total), self.clock())
+                else:
+                    conn.execute(text(
+                        "INSERT INTO billing_precision(user_id,total_credit_pico) "
+                        "VALUES (:u,:total) ON CONFLICT(user_id) DO UPDATE SET "
+                        "total_credit_pico=excluded.total_credit_pico"
+                    ), {"u": run["user_id"], "total": str(new_total)})
+                    conn.execute(text(
+                        "UPDATE credit_accounts SET balance=balance-:points,updated_at=:now "
+                        "WHERE user_id=:u"
+                    ), {"u": run["user_id"], "points": points, "now": self._now()})
+                self._ledger(conn, run, -points, credit_numerator=applied,
+                             receipt_attempt_id=receipt_attempt_id)
+        elif run["exempt"]:
+            applied = numerator
+        conn.execute(text(
+            "UPDATE billing_operations SET credit_pico=:applied,original_credit_pico=:gross,"
+            "charged_points=charged_points+:points,hold_points=0,updated_at=:now WHERE run_id=:run"
+        ), {"run": run["run_id"], "applied": str(applied), "gross": str(numerator),
+            "points": points, "now": self._now()})
+
     def complete_search_attempt(self, *, attempt_id, credits=None, receipt=None,
                                 outcome="error", failure_code=None):
         """Record one actual provider request, without pretending credits are tokens."""
@@ -612,6 +745,8 @@ class DurableBilling:
             operation = self._one(
                 conn, "SELECT * FROM billing_operations WHERE run_id=:run", run=row["run_id"]
             )
+            if self._independent_delivery(operation):
+                exceeded = False
             billable = valid and operation["status"] == "active" and (
                 outcome == "success" or (self._actual_usage(operation)
                                          and not duplicate and not exceeded)
@@ -687,6 +822,7 @@ class DurableBilling:
         finish_reason=None,
         returned_service_tier=None,
         reconciliation_receipt=None,
+        defer_settlement=False,
     ):
         exceeded = False
         mismatch = False
@@ -752,7 +888,7 @@ class DurableBilling:
                     price_error = error
                     outcome = "error"
                     failure_code = "unknown_returned_price"
-                exceeded = (
+                exceeded = not self._independent_delivery(operation) and (
                     (cost is not None and cost > row["reserved_cost_pico"])
                     or input_tokens > row["input_limit"]
                     or output_tokens > row["output_limit"]
@@ -765,10 +901,14 @@ class DurableBilling:
             if self._actual_usage(operation):
                 billable = int(cost is not None and not mismatch and not exceeded
                                and operation["status"] == "active")
+            if self._independent_delivery(operation):
+                billable = int(cost is not None and not mismatch)
             if reconciliation_receipt is not None:
                 # Authoritative provider cost repairs operator risk only. A later
                 # receipt cannot turn failed delivery into success or a charge.
-                outcome, billable = row["outcome"], 0
+                outcome = row["outcome"]
+                if not self._independent_delivery(operation):
+                    billable = 0
                 failure_code = row["failure_code"]
                 provider_response_id = row["provider_response_id"]
                 reasoning_tokens = row["reasoning_tokens"]
@@ -812,13 +952,23 @@ class DurableBilling:
                     "id": attempt_id,
                 },
             )
-            if reconciliation_receipt is None:
+            if self._independent_delivery(operation) and (
+                operation["status"] != "active" or defer_settlement
+            ):
+                confirmed = conn.execute(text(
+                    "SELECT * FROM billing_attempts WHERE run_id=:run AND billable=1"
+                ), {"run": row["run_id"]}).mappings().all()
+                gross = sum(self._attempt_credit(a) for a in confirmed)
+                conn.execute(text(
+                    "UPDATE billing_operations SET original_credit_pico=:gross WHERE run_id=:run"
+                ), {"gross": str(gross), "run": row["run_id"]})
+            elif reconciliation_receipt is None:
                 self._settle_actual(conn, row["run_id"], receipt_attempt_id=attempt_id)
-        if price_error:
+        if price_error and not self._independent_delivery(operation):
             raise price_error
         if reconciliation_receipt is not None:
             return "reconciled"
-        if mismatch:
+        if mismatch and not self._independent_delivery(operation):
             raise BillingRouteMismatch("returned model differs from the locked route")
         if exceeded:
             raise BillingBudgetExceeded("provider usage exceeded its request reservation")
@@ -829,7 +979,8 @@ class DurableBilling:
                 text(
                     "UPDATE billing_attempts SET outcome='error',billable=CASE WHEN "
                     "json_extract((SELECT price_json FROM billing_operations o "
-                    "WHERE o.run_id=billing_attempts.run_id),'$.billing_policy')='actual_usage_v1' "
+                    "WHERE o.run_id=billing_attempts.run_id),'$.billing_policy') "
+                    "IN ('actual_usage_v1','actual_usage_v2') "
                     "THEN billable ELSE 0 END,failure_code=:code "
                     "WHERE attempt_id=:id AND outcome='success'"
                 ),
@@ -907,7 +1058,7 @@ class DurableBilling:
                 attempts = conn.execute(text(
                     "SELECT outcome,usage_state FROM billing_attempts WHERE run_id=:run"
                 ), {"run": str(run_id)}).mappings().all()
-                if outcome in {"success", "paused"} and any(
+                if not self._independent_delivery(run) and outcome in {"success", "paused"} and any(
                     a["outcome"] in {
                         "in_flight", "overrun", "model_mismatch", "limited", "rejected"
                     }
@@ -915,9 +1066,10 @@ class DurableBilling:
                     for a in attempts
                 ):
                     outcome = "error"
-                if outcome in {"success", "paused"} and attempts and not any(
+                if (not self._independent_delivery(run)
+                    and outcome in {"success", "paused"} and attempts and not any(
                     a["outcome"] == "success" and a["usage_state"] == "known" for a in attempts
-                ):
+                )):
                     outcome = "error"
                 conn.execute(text(
                     "UPDATE billing_operations SET status=:status,hold_points=0,updated_at=:now "
@@ -1012,7 +1164,8 @@ class DurableBilling:
                 text(
                     "SELECT run_id FROM billing_operations WHERE status='active' "
                     "AND (updated_at < :before OR (:recover_actual AND "
-                    "json_extract(price_json,'$.billing_policy')='actual_usage_v1'))"
+                    "json_extract(price_json,'$.billing_policy') "
+                    "IN ('actual_usage_v1','actual_usage_v2')))"
                 ),
                 {"before": before.isoformat(), "recover_actual": recover_actual_usage},
             ).all()

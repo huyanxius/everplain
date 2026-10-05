@@ -626,6 +626,32 @@ export type AgentModelChoiceResponse = {
 };
 
 /**
+ * AgentOutputAttemptResponse
+ */
+export type AgentOutputAttemptResponse = {
+    /**
+     * Answer
+     */
+    answer: string;
+    /**
+     * Attempt Id
+     */
+    attempt_id: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Ordinal
+     */
+    ordinal: number;
+    /**
+     * Status
+     */
+    status: string;
+};
+
+/**
  * AgentProfileResponse
  */
 export type AgentProfileResponse = {
@@ -848,9 +874,23 @@ export type AgentRunLookupResponse = {
      */
     conversation_id: string;
     /**
+     * Delivery State
+     */
+    delivery_state?: {
+        [key: string]: unknown;
+    };
+    /**
      * Idempotency Key
      */
     idempotency_key: string;
+    /**
+     * Last Event Sequence
+     */
+    last_event_sequence?: number;
+    /**
+     * Output Attempts
+     */
+    output_attempts?: Array<AgentOutputAttemptResponse>;
     /**
      * Partial Answer
      */
@@ -883,9 +923,23 @@ export type AgentRunRecoveryResponse = {
      */
     cancel_requested: boolean;
     /**
+     * Delivery State
+     */
+    delivery_state?: {
+        [key: string]: unknown;
+    };
+    /**
      * Idempotency Key
      */
     idempotency_key: string;
+    /**
+     * Last Event Sequence
+     */
+    last_event_sequence?: number;
+    /**
+     * Output Attempts
+     */
+    output_attempts?: Array<AgentOutputAttemptResponse>;
     /**
      * Partial Answer
      */
@@ -1054,9 +1108,19 @@ export type AgentTurnResponse = {
      */
     canvas_patches?: Array<AgentResearchMapPatchResponse>;
     /**
+     * Delivery State
+     */
+    delivery_state?: {
+        [key: string]: unknown;
+    };
+    /**
      * Knowledge Release Id
      */
     knowledge_release_id?: string | null;
+    /**
+     * Output Attempts
+     */
+    output_attempts?: Array<AgentOutputAttemptResponse>;
     /**
      * Tool Traces
      */
@@ -11512,6 +11576,49 @@ export type LookupAgentRunResponses = {
 };
 
 export type LookupAgentRunResponse = LookupAgentRunResponses[keyof LookupAgentRunResponses];
+
+export type SubscribeAgentRunEventsData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: {
+        /**
+         * After
+         */
+        after?: number;
+    };
+    url: '/api/agent/runs/{run_id}/events';
+};
+
+export type SubscribeAgentRunEventsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type SubscribeAgentRunEventsError = SubscribeAgentRunEventsErrors[keyof SubscribeAgentRunEventsErrors];
+
+export type SubscribeAgentRunEventsResponses = {
+    /**
+     * Successful Response
+     */
+    200: string;
+};
+
+export type SubscribeAgentRunEventsResponse = SubscribeAgentRunEventsResponses[keyof SubscribeAgentRunEventsResponses];
 
 export type StopAgentRunData = {
     body?: never;

@@ -14,6 +14,10 @@ from test_durable_billing import wallet  # noqa: F401
 
 from qunxue_api.adapters.model import ModelEndpoint, ModelRouteExecutor
 from qunxue_api.adapters.research_agent import pydantic_runner
+from qunxue_api.adapters.research_agent.model_capacity import (
+    AgentModelCapacity,
+    model_capacity_key,
+)
 from qunxue_api.application.disciplinary_agent import DisciplinaryAgentApplication
 from qunxue_api.modules.agent_conversation import AgentModelRouteFailure, ConversationService
 
@@ -45,6 +49,19 @@ def test_actual_planner_upstream_failure_does_not_dispatch_an_answer(wallet, pro
             timeout_seconds=30,
             protocol=protocol,
             require_billing=True,
+            # This fixture deliberately exercises the legacy v1 finite-budget
+            # wire contract, not an unknown provider's native output capacity.
+            model_capacities={
+                model_capacity_key(base_url="https://synthetic.test/v1", model="gpt-6-luna",
+                                   protocol=protocol): AgentModelCapacity(
+                    context_window_tokens=100000,
+                    max_output_tokens=100,
+                    output_token_parameter=(
+                        "max_output_tokens" if protocol == "responses" else "max_completion_tokens"
+                    ),
+                    source="synthetic test budget",
+                ),
+            },
             route_executor=ModelRouteExecutor(
                 endpoints=(
                     ModelEndpoint("primary", "https://synthetic.test/v1", "gpt-6-luna", None, 30),
@@ -66,6 +83,8 @@ def test_actual_planner_upstream_failure_does_not_dispatch_an_answer(wallet, pro
             )
         assert raised.value.code == "agent_model_unavailable"
     assert len(calls) == 1
+    output_parameter = "max_output_tokens" if protocol == "responses" else "max_completion_tokens"
+    assert calls[0][output_parameter] == 100
     assert runtime.available_balance("user") == 10000
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM billing_attempts")) == 1

@@ -11,6 +11,8 @@ from qunxue_api.adapters.sqlite.account_management_model import (
 from qunxue_api.adapters.sqlite.agent_conversation_model import (
     AgentConversationRow,
     AgentMessageRow,
+    AgentOutputAttemptRow,
+    AgentOutputEventRow,
     AgentRunRow,
 )
 from qunxue_api.adapters.sqlite.agent_memory_model import (
@@ -183,6 +185,8 @@ __all__ = [
     "AgentConversationRow",
     "AgentMessageRow",
     "AgentRunRow",
+    "AgentOutputAttemptRow",
+    "AgentOutputEventRow",
     "KnowledgeEntryReviewRow",
     "KnowledgeEntryRevisionRow",
     "KnowledgeRelationRow",

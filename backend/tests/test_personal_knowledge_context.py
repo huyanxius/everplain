@@ -18,7 +18,6 @@ from qunxue_api.adapters.model import ModelEndpoint, ModelRouteExecutor
 from qunxue_api.adapters.model.metering import MeteredOpenAIChatModel
 from qunxue_api.adapters.research_agent.catalog_tools import KnowledgeToolRegistry
 from qunxue_api.adapters.research_agent.pydantic_runner import (
-    AgentModelRouteError,
     _RetryingOpenAIChatModel,
     _RetryingOpenAIResponsesModel,
 )
@@ -138,12 +137,12 @@ def test_real_responses_sdk_search_read_answer_with_one_thousand_documents():
     assert tools.selected_evidence_ids
 
 
-@pytest.mark.parametrize("repetitions, rejected", [(2000, False), (10000, True)])
-def test_chat_budget_counts_tokens_and_still_rejects_oversize(monkeypatch, repetitions, rejected):
+@pytest.mark.parametrize("repetitions", [2000, 10000])
+def test_chat_preserves_large_input_without_borrowing_global_route_limits(monkeypatch, repetitions):
     captured = []
 
     async def request_once(model, messages, stream, settings, parameters):
-        captured.append(settings)
+        captured.append((messages, settings))
         return SimpleNamespace(usage=None)
 
     monkeypatch.setattr(MeteredOpenAIChatModel, "_completions_create", request_once)
@@ -165,17 +164,14 @@ def test_chat_budget_counts_tokens_and_still_rejects_oversize(monkeypatch, repet
                 content="中文研究证据。" * repetitions
             )])]
             assert len(ModelMessagesTypeAdapter.dump_json(messages)) > 32000
-            operation = model._completions_create(
+            await model._completions_create(
                 messages, False, {}, ModelRequestParameters(),
             )
-            if rejected:
-                with pytest.raises(AgentModelRouteError) as caught:
-                    await operation
-                assert caught.value.code == "agent_input_limit"
-            else:
-                await operation
 
     asyncio.run(run())
-    assert len(captured) == (0 if rejected else 1)
-    if captured:
-        assert captured[0]["max_tokens"] == 700
+    assert len(captured) == 1
+    messages, settings = captured[0]
+    assert messages[0].parts[0].content == "中文研究证据。" * repetitions
+    # This synthetic route has no verified native capacity. A router's old
+    # global defaults cannot reject its input or impose a 700-token output cap.
+    assert "max_tokens" not in settings

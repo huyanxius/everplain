@@ -10,6 +10,9 @@ export {
 } from './researchAgentGateway'
 export type {
   AgentCitation,
+  AgentOutputAttempt,
+  AgentDeliveryState,
+  AgentStreamResume,
   AgentConversation,
   AgentConversationSummary,
   AgentTurnRequest,

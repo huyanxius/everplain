@@ -19,25 +19,45 @@ function setup({ holdOpen = false, reducedMotion = false } = {}) {
   let releaseCatalog = () => {}
   const gate = new Promise<void>(resolve => { releaseCatalog = resolve })
   const requests: { body: Record<string, unknown>; key: string | null }[] = []
+  const subscriptions: { runId: string; after: number; method: string; body: BodyInit | null | undefined }[] = []
+  const runs = new Map<string, { id: string; sequence: number; attempt: number }>()
+  const liveResponse = (run: { id: string; sequence: number; attempt: number }, command: boolean) => {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({ start(controller) {
+      let open = true
+      const emit = (name: string, data: unknown) => {
+        if (open) controller.enqueue(encoder.encode(`id: ${run.id}:${++run.sequence}\nevent: ${name}\ndata: ${JSON.stringify(data)}\n\n`))
+      }
+      if (command) {
+        emit('turn_started', { conversation_id: 'qa-live-conversation', run_id: run.id, attempt_id: `qa-attempt-${run.attempt}`, replayed: false, runtime_mode: 'base' })
+        emit('agent_status', { status: 'thinking' })
+      }
+      failTurn = () => { if (open) { emit('turn_failed', { code: 'qa_failure', message: 'QA 失败，可重试' }); open = false; controller.close() } }
+      disconnectTurn = () => { if (open) { open = false; controller.close() } }
+    } })
+    return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } })
+  }
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const path = new URL(input instanceof Request ? input.url : String(input), 'http://localhost').pathname
+    const url = new URL(input instanceof Request ? input.url : String(input), 'http://localhost'), path = url.pathname
     if (path === '/api/agent/models') { if (blockCatalog) await gate; return json(catalog) }
     if (path === '/api/agent-profile') return json({ name: 'QA', avatar_id: 'cheng', color: '#5d8fe6', greeting: '', speaking_style: 'clear', setup_step: 4, setup_completed: true, questionnaire: {}, version: 1 })
     if (path === '/api/personal-graph') return json({ name: 'QA', avatar_id: 'cheng', color: '#5d8fe6', releaseId: 'qa', nodes: [], edges: [], sources: {}, document_count: 0, topic_count: 0, pending_count: 0, mode: 'mock' })
     if (path === '/api/agent/turns') {
       requests.push({ body: JSON.parse(String(init?.body)), key: new Headers(init?.headers).get('Idempotency-Key') })
       if (holdOpen) {
-        const encoder = new TextEncoder()
-        const stream = new ReadableStream<Uint8Array>({ start(controller) {
-          const emit = (name: string, data: unknown) => controller.enqueue(encoder.encode(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`))
-          emit('turn_started', { conversation_id: 'qa-live-conversation', run_id: 'qa-live-run', replayed: false, runtime_mode: 'base' })
-          emit('agent_status', { status: 'thinking' })
-          failTurn = () => { emit('turn_failed', { code: 'qa_failure', message: 'QA 失败，可重试' }); controller.close() }
-          disconnectTurn = () => controller.close()
-        } })
-        return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } })
+        const key = requests.at(-1)!.key!
+        const run = runs.get(key) ?? { id: `qa-live-run-${runs.size + 1}`, sequence: 0, attempt: 0 }
+        run.attempt += 1; runs.set(key, run)
+        return liveResponse(run, true)
       }
       return new Response('event: turn_failed\ndata: {"code":"qa_failure","message":"QA 失败，可重试"}\n\n', { headers: { 'Content-Type': 'text/event-stream' } })
+    }
+    const eventRun = /^\/api\/agent\/runs\/([^/]+)\/events$/.exec(path)
+    if (eventRun) {
+      const run = [...runs.values()].find(value => value.id === eventRun[1])
+      if (!run) throw new Error('cursor subscription must target an existing execution')
+      subscriptions.push({ runId: run.id, after: Number(url.searchParams.get('after')), method: init?.method ?? 'GET', body: init?.body })
+      return liveResponse(run, false)
     }
     return json({ items: [], next_cursor: null })
   }))
@@ -50,7 +70,7 @@ function setup({ holdOpen = false, reducedMotion = false } = {}) {
     if (this.matches('.conversation-composer') && frames[0]?.transform) dock.push(frames)
     return { cancel() {}, finished: new Promise<void>(() => {}) }
   } })
-  return { requests, dock, failTurn: () => failTurn(), disconnectTurn: () => disconnectTurn(), delayDestination: () => { blockCatalog = true }, releaseCatalog }
+  return { requests, subscriptions, dock, failTurn: () => failTurn(), disconnectTurn: () => disconnectTurn(), delayDestination: () => { blockCatalog = true }, releaseCatalog }
 }
 function HistoryControls() {
   const navigate = useNavigate(), location = useLocation(), action = useNavigationType()
@@ -139,8 +159,9 @@ it.each([false, true])('preserves the real busy input focus and rejects duplicat
   expect(input).toHaveValue('')
   expect(qa.requests).toHaveLength(1)
   await act(async () => qa.disconnectTurn())
-  await waitFor(() => expect(qa.requests).toHaveLength(2), { timeout: 1500 })
-  expect(qa.requests[1]).toEqual(qa.requests[0])
+  await waitFor(() => expect(qa.subscriptions).toHaveLength(1), { timeout: 1500 })
+  expect(qa.requests).toHaveLength(1)
+  expect(qa.subscriptions[0]).toEqual({ runId: 'qa-live-run-1', after: 2, method: 'GET', body: undefined })
   expect(input).toHaveFocus()
   expect(input).toHaveAttribute('readonly')
   await act(async () => qa.failTurn())
@@ -148,7 +169,19 @@ it.each([false, true])('preserves the real busy input focus and rejects duplicat
   expect(input).not.toHaveAttribute('readonly')
   expect(input).toHaveFocus()
   fireEvent.keyDown(input, { key: 'Enter' })
-  await waitFor(() => expect(qa.requests).toHaveLength(3))
-  expect(qa.requests[2].key).toBe(qa.requests[0].key)
+  await waitFor(() => expect(qa.requests).toHaveLength(2))
+  expect(qa.requests[1].key).toBe(qa.requests[0].key)
+  expect(qa.requests[1].body).toEqual({ ...qa.requests[0].body, conversation_id: 'qa-live-conversation' })
+  expect(qa.subscriptions).toHaveLength(1)
   await act(async () => qa.failTurn())
+  await waitFor(() => expect(input).toHaveValue(question))
+  const nextQuestion = '第二条真实新消息'
+  fireEvent.change(input, { target: { value: nextQuestion } })
+  fireEvent.keyDown(input, { key: 'Enter' })
+  await waitFor(() => expect(qa.requests).toHaveLength(3))
+  expect(qa.requests[2].body).toMatchObject({ message: nextQuestion, conversation_id: 'qa-live-conversation', model_id: 'gpt-6-luna', reasoning_effort: 'medium' })
+  expect(qa.requests[2].key).not.toBe(qa.requests[0].key)
+  expect(input).toHaveFocus(); expect(input).toHaveAttribute('readonly')
+  await act(async () => qa.failTurn())
+  await waitFor(() => expect(input).toHaveValue(nextQuestion))
 })
