@@ -245,3 +245,21 @@ def test_fifty_bookmarks_keep_failed_items_and_continue_importing(plain_client):
     library = c.get("/api/shared-knowledge-bases/" + batch["library_id"]).json()
     assert len(library["documents"]) == 5
     assert all(doc["filename"].startswith("Bookmark ") for doc in library["documents"])
+
+
+def test_generic_bookmark_gets_body_title_without_changing_named_bookmarks(plain_client):
+    c = plain_client
+    c.app.state.import_worker_enabled = False
+    _authenticate(c)
+    c.app.state.import_fetch_text = lambda url: "# Townscaper\n\nA free-form town building game."
+    html = (
+        b'<DL><DT><A HREF="https://example.org/one">bookmark-59</A>'
+        b'<DT><A HREF="https://example.org/two">My custom title</A></DL>'
+    )
+    batch = start(c, [("bookmarks.html", html)], "chrome")
+    drain(c)
+    library = c.get("/api/shared-knowledge-bases/" + batch["library_id"]).json()
+    assert {doc["filename"] for doc in library["documents"]} == {
+        "Townscaper.md",
+        "My custom title.md",
+    }

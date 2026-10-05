@@ -13,7 +13,7 @@ import { KnowledgePage, KnowledgePageHead, KnowledgeViewSwitch } from './Knowled
 import { LibraryScopeSwitcher } from './LibraryScopeSwitcher'
 import { LibraryDialog } from './LibraryDialog'
 import { LibraryMaterialCard, LibrarySkeleton, type LibraryMaterialSource } from './LibraryMaterialCard'
-import { documentKind, isProcessing } from './libraryMaterials'
+import { documentKind, documentTitle, isProcessing } from './libraryMaterials'
 import { LibraryAddDialog } from '../imports/LibraryAddDialog'
 import chromeLogo from '../../assets/brand/chrome.svg'
 import obsidianLogo from '../../assets/brand/obsidian.svg'
@@ -110,7 +110,7 @@ function LibraryContent({ userId }: { userId: string | null }) {
       if (!active || !Array.isArray(batches)) return
       setImportBatches(batches)
       const metadata: Record<string, LibraryMaterialSource> = {}
-      for (const batch of batches) for (const item of batch.items ?? []) if (item.document_id) metadata[`${batch.library_id}:${item.document_id}`] = { source: sourceNames[batch.source_type], url: item.source_url }
+      for (const batch of batches) for (const item of batch.items ?? []) if (item.document_id) metadata[`${batch.library_id}:${item.document_id}`] = { source: sourceNames[batch.source_type], title: item.title, url: item.source_url }
       setMaterialSources(metadata)
     }).catch(() => {})
     return () => { active = false; controller.abort() }
@@ -169,7 +169,7 @@ function LibraryContent({ userId }: { userId: string | null }) {
         if (Array.isArray(batches)) {
           setImportBatches(batches)
           const metadata: Record<string, LibraryMaterialSource> = {}
-          for (const batch of batches) for (const item of batch.items ?? []) if (item.document_id) metadata[`${batch.library_id}:${item.document_id}`] = { source: sourceNames[batch.source_type], url: item.source_url }
+          for (const batch of batches) for (const item of batch.items ?? []) if (item.document_id) metadata[`${batch.library_id}:${item.document_id}`] = { source: sourceNames[batch.source_type], title: item.title, url: item.source_url }
           setMaterialSources(metadata)
         }
         if (detail) {
@@ -234,8 +234,8 @@ function LibraryContent({ userId }: { userId: string | null }) {
   </PageContent></PageShell>
 
   const search = query.trim().toLocaleLowerCase()
-  const kinds = [...new Set(materials.map(({ document }) => documentKind(document)))]
-  const documents = materials.filter(({ course, document }) => (!kindFilter || documentKind(document) === kindFilter) && (!search || `${document.filename} ${document.knowledge?.summary ?? ''} ${document.knowledge?.topics.map(topic => `${topic.title} ${topic.summary}`).join(' ') ?? ''} ${course.name ?? ''}`.toLocaleLowerCase().includes(search)))
+  const kinds = [...new Set(materials.map(({ course, document }) => documentKind(document, materialSources[`${course.id}:${document.id}`])))]
+  const documents = materials.filter(({ course, document }) => (!kindFilter || documentKind(document, materialSources[`${course.id}:${document.id}`]) === kindFilter) && (!search || `${documentTitle(document, materialSources[`${course.id}:${document.id}`])} ${document.filename} ${document.knowledge?.summary ?? ''} ${document.knowledge?.topics.map(topic => `${topic.title} ${topic.summary}`).join(' ') ?? ''} ${course.name ?? ''}`.toLocaleLowerCase().includes(search)))
   const visible = courses.filter(course => !search || `${course.name} ${course.description}`.toLocaleLowerCase().includes(search))
   const pendingCount = materials.filter(({ document }) => isProcessing(document)).length
   const relevantImports = importBatches.filter(batch => (!id || batch.library_id === id) && (batch.status === 'processing' || batch.failed > 0))
