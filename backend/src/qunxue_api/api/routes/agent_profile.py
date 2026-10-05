@@ -42,6 +42,9 @@ def update_profile(
 ):
     user_id = current.user.user_id
     changes = payload.model_dump(exclude_none=True, exclude={"expected_version"})
+    if "user_avatar" in payload.model_fields_set:
+        # Omission preserves the selection; an explicit null turns it off.
+        changes["user_avatar"] = payload.user_avatar
     try:
         profile = app.update(
             user_id, expected_version=payload.expected_version, changes=changes, request_key=key
