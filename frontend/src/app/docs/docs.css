@@ -81,3 +81,8 @@
   .ep-docs-steps li { padding: var(--qx-space-5); gap: var(--qx-space-4); }
   .ep-docs-plans { grid-template-columns: 1fr; }
 }
+
+.ep-docs-screenshot { margin: var(--qx-space-8) 0; padding: var(--qx-space-3); border: 1px solid var(--qx-color-rule); border-radius: var(--qx-radius-card); background: var(--qx-color-surface); }
+.ep-docs-screenshot > a { display: block; }
+.ep-docs-screenshot img { display: block; width: 100%; height: auto; }
+.ep-docs-screenshot figcaption { padding: var(--qx-space-4) var(--qx-space-2) var(--qx-space-1); }

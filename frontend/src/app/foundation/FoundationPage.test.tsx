@@ -18,7 +18,7 @@ describe('Everplain product website', () => {
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => { requests.push(String(input)); return new Response('{}', { status: 503 }) })
     render(<MemoryRouter><FoundationPage /></MemoryRouter>)
     expect(screen.getByRole('heading', { level: 1, name: /^Everplain，帮你/ })).toBeVisible()
-    for (const name of ['你的知识，你的 AI。', '散落各处的，收到一处。', '一键，建成你的知识库。', '只属于你的 AI。', '用 1/10 的价格，和全球最顶尖的模型对话。']) {
+    for (const name of ['你的知识，你的 AI。', '散落各处的，收到一处。', '一键，建成你的知识库。', '只属于你的 AI。', '按需选择模型，清楚了解每次用量。']) {
       expect(screen.getByRole('heading', { name })).toBeVisible()
     }
     const models = screen.getByRole('list', { name: '模型示意' })
@@ -27,7 +27,9 @@ describe('Everplain product website', () => {
     expect(screen.getByRole('link', { name: '登录' })).toHaveAttribute('href', '/login')
     expect(screen.queryByRole('link', { name: '免登录查看静态演示' })).not.toBeInTheDocument()
     expect(screen.queryByText(/下方演示使用预设示例/)).not.toBeInTheDocument()
-    expect(screen.getByText('1/10')).toBeVisible()
+    expect(screen.getByText('按模型官方参考倍率折算积分。')).toBeVisible()
+    expect(screen.queryByText(/1\/10|调用费用是官方 API 价格的/)).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '查看额度与订阅方案' })).toHaveAttribute('href', '/docs#plans')
     expect(screen.getByRole('link', { name: 'Docs' })).toHaveAttribute('href', '/docs')
     expect(screen.getByRole('link', { name: '查看模型与积分说明' })).toHaveAttribute('href', '/docs#models')
     expect(requests).toEqual([])

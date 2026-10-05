@@ -135,9 +135,9 @@ export function FoundationPage({ authenticated = false, checkingSession = false 
       <section className="ep-models" id="models" aria-labelledby="ep-models-title">
         <ModelOrbit />
         <div className="ep-models-copy">
-          <h2 id="ep-models-title">用 1/10 的价格，<br />和全球最顶尖的模型对话。</h2>
-          <p className="ep-price"><span>调用费用是官方 API 价格的</span><strong>1/10</strong></p>
-          <small>以官方 API 标价为对比基准，可选模型与能力以服务端目录为准。<Link to="/docs#models">查看模型与积分说明</Link></small>
+          <h2 id="ep-models-title">按需选择模型，<br />清楚了解每次用量。</h2>
+          <p className="ep-price">按模型官方参考倍率折算积分。</p>
+          <small>可选模型与能力以服务端目录为准。<Link to="/docs#models">查看模型与积分说明</Link> · <Link to="/docs#plans">查看额度与订阅方案</Link></small>
         </div>
       </section>
 

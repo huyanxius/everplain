@@ -63,9 +63,35 @@ describe('public product documentation', () => {
     expect(within(priceTable).getAllByRole('link')).toHaveLength(5)
     expect(within(priceTable).getByRole('link', { name: /GPT 6 Luna/ })).toHaveAttribute('href', 'https://developers.openai.com/api/docs/models/gpt-6-luna')
     expect(screen.getByText('2026-10-05')).toHaveAttribute('datetime', '2026-10-05')
+    fireEvent.click(screen.getByText('缓存、长上下文与时段说明'))
     expect(screen.getByText(/输入超过 272K/)).toBeVisible()
     expect(screen.getByText(/周一至周五北京时间/)).toBeVisible()
-    expect(screen.getByText(/这不是保证可发送的消息条数/)).toBeVisible()
+    expect(screen.getByText(/示例请求次数仅供估算/)).toBeVisible()
+  })
+  it('shows two authentic full-size product images with links to the unchanged originals', () => {
+    const { container } = renderDocs(exampleCatalog)
+    const images = [...container.querySelectorAll<HTMLImageElement>('.ep-docs-screenshot img')]
+    expect(images).toHaveLength(2)
+    for (const image of images) {
+      expect(image).toHaveAttribute('width', '1440')
+      expect(image).toHaveAttribute('height', '1000')
+      expect(image).toHaveAttribute('loading', 'lazy')
+      expect(image.closest('a')).toHaveAttribute('href', image.getAttribute('src'))
+      expect(image.closest('a')).toHaveAttribute('target', '_blank')
+      expect(image.closest('a')).toHaveAttribute('rel', 'noopener noreferrer')
+    }
+    expect(screen.getByRole('img', { name: /三份演示笔记已保存.*等待知识整理与语义索引/ })).toBeVisible()
+    expect(screen.getByRole('img', { name: /写作工作区真实界面.*导出 Markdown/ })).toBeVisible()
+    expect(screen.getByRole('link', { name: '放大知识库原图，在新窗口打开' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '放大写作文稿原图，在新窗口打开' })).toBeVisible()
+  })
+  it('keeps product guidance concise while retaining one AI caution and pricing assumptions', () => {
+    renderDocs(exampleCatalog)
+    expect(screen.getAllByText(/AI 可能出错/)).toHaveLength(1)
+    expect(screen.queryByText(/列出型号不代表每一次调用/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/界面共用纸面|设计变量|没有读取到额度时/)).not.toBeInTheDocument()
+    expect(screen.getByText(/总输出包含|思考／推理 tokens 会计入总输出/)).toBeVisible()
+    expect(screen.getByText(/示例无缓存、无工具、无搜索/)).toBeVisible()
   })
   it('does not invent selectable models when the server has no choices', () => {
     renderDocs({ ...exampleCatalog, agent_models: [], runtime_mode: 'mock' })
