@@ -45,7 +45,9 @@ class Stack:
         self.directory = directory
         self.backend_port, self.gateway_port = port(), port()
         self.env = {
-            **{key: value for key, value in os.environ.items() if not key.startswith("EVERPLAIN_")},
+            **{key: value for key, value in os.environ.items()
+               if not key.startswith("EVERPLAIN_")
+               and key.upper() not in {"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"}},
             "EVERPLAIN_GATEWAY_CONTRACT_TEST": "1",
             "EVERPLAIN_DATABASE_URL": f"sqlite:///{directory / 'backend.db'}",
             "FIXTURE_BACKEND_PORT": str(self.backend_port),
@@ -153,7 +155,7 @@ class Stack:
                     "chat_type": "p2p",
                     "message_type": "text",
                     "create_time": str(
-                        self.event_times.setdefault(f"feishu:{event_id}", int(time.time()) * 1000)
+                        self.event_times.setdefault(f"feishu:{event_id}", int(time.time() * 1000))
                     ),
                     "content": json.dumps({"text": text}),
                 },
@@ -432,3 +434,29 @@ def test_long_http_runtime_retains_lease_and_rechecks_revocation(stack, revoke):
             for item in value["deliveries"]
         ))
         assert state["charges"] == 1
+
+
+def test_active_get_cursor_survives_restart_and_private_cancel_does_not_rerun(stack):
+    stack.bind()
+    until(stack.queue, lambda q: q["outbox"].get("sent", 0) >= 1)
+    assert stack.telegram(2, "gated cancellable reply").status_code == 200
+    until(stack.state, lambda value: value["calls"] == ["gated cancellable reply"])
+    try:
+        # Restart while the accepted backend command is active, not only after
+        # its final reply. The replacement gateway must GET the durable cursor.
+        before = stack.state()["dispatch_requests"]
+        stack.restart_gateway()
+        assert stack.telegram(3, "/cancel").status_code == 200
+        until(stack.state, lambda value: any(
+            "请求停止" in item["body"].get("text", "") for item in value["deliveries"]
+        ))
+        assert stack.state()["dispatch_requests"] == before + 1
+    finally:
+        stack.client.post("/__fixture/model/release").raise_for_status()
+    state = until(stack.state, lambda value: "running" not in value["run_states"])
+    assert state["calls"] == ["gated cancellable reply"]
+    assert state["runs"] == 1 and state["run_states"] == ["interrupted"]
+    until(stack.state, lambda value: any(
+        "private persisted fixture prefix" in item["body"].get("text", "")
+        and "已停止" in item["body"].get("text", "") for item in value["deliveries"]
+    ))

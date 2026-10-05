@@ -24,17 +24,40 @@ class Worker:
         await self.client.aclose()
         await self.transports.close()
 
-    async def process_inbox(self):
-        row = self.store.claim_inbox()
+    async def process_inbox(self, *, control=False):
+        row = self.store.claim_inbox(control=control)
         if row is None:
             return False
         try:
             self.store.progress(row)
-            response = await self.client.post(
-                "/api/channel-gateway/dispatch",
-                json=row["event"],
-                headers=self.settings.backend_headers(row["event"]["platform"]),
-            )
+            headers = {**self.settings.backend_headers(row["event"]["platform"]),
+                       "Prefer": "respond-async"}
+            while True:
+                if row["accepted"]:
+                    response = await self.client.get(
+                        f"/api/channel-gateway/events/{row['key']}",
+                        params={"after": row["cursor"]}, headers=headers,
+                    )
+                else:
+                    response = await self.client.post(
+                        "/api/channel-gateway/dispatch", json=row["event"], headers=headers,
+                    )
+                if response.status_code not in {200, 202}:
+                    break
+                result = response.json()
+                if result.get("event_key") != row["key"]:
+                    raise ValueError("Invalid backend identity")
+                state = result.get("state", "complete")
+                if state == "retryable":
+                    self.store.checkpoint_inbox(row, accepted=False)
+                    self._retry_inbox(row)
+                    return True
+                if state == "complete":
+                    break
+                if state != "processing" or not isinstance(result.get("cursor", 0), int):
+                    raise ValueError("Invalid backend output state")
+                self.store.checkpoint_inbox(row, cursor=result.get("cursor", 0), accepted=True)
+                await asyncio.sleep(1)
             if response.status_code == 200:
                 result = response.json()
                 if result.get("event_key") != row["key"] or not isinstance(result.get("text"), str):
@@ -47,6 +70,11 @@ class Worker:
                 self.store.complete_inbox(row, SAFE_FAILURE, require_auth=False)
             else:
                 self.store.retry_inbox(row["key"], attempt=row["attempts"], delay=0, dead=True)
+        except asyncio.CancelledError:
+            # A normal restart hands only this fenced lease back to the durable
+            # queue. Its admitted command/cursor remain intact for a GET resume.
+            self.store.retry_inbox(row["key"], attempt=row["attempts"], delay=0)
+            raise
         except Exception as exc:
             logger.warning("Inbox attempt failed: %s", type(exc).__name__)
             self._retry_inbox(row)
@@ -104,10 +132,10 @@ class Worker:
             self.store.finish_outbox(row["id"], "ambiguous", attempt=row["attempts"])
         return True
 
-    async def run_inbox(self):
+    async def run_inbox(self, *, control=False):
         while True:
             try:
-                if not await self.process_inbox():
+                if not await self.process_inbox(control=control):
                     await asyncio.sleep(0.5)
             except Exception as exc:
                 logger.error("Inbox worker unavailable: %s", type(exc).__name__)

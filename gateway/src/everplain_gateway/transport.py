@@ -1,6 +1,7 @@
 """Maintained SDK clients own platform API details; the outbox owns delivery policy."""
 
 import json
+import logging
 from uuid import UUID
 
 import lark_oapi as lark
@@ -17,6 +18,7 @@ from lark_oapi.core.log import logger as lark_logger
 # The upstream event logger includes raw bodies/headers even at exception level.
 # The gateway logs only its own sanitized state/error class counters.
 lark_logger.disabled = True
+logger = logging.getLogger(__name__)
 
 
 class RetryLater(Exception):
@@ -83,7 +85,8 @@ class Transports:
         )
         try:
             response = await self.feishu.im.v1.message.acreate(request)
-        except Exception:
+        except Exception as error:
+            logger.warning("Feishu send failed: %s", type(error).__name__)
             # The same stable UUID will be used on the bounded retry.
             raise RetryLater() from None
         if response.success():

@@ -30,7 +30,9 @@ def create_app(settings=None, *, store=None, worker=None, start_workers=True):
     async def lifespan(app):
         active = worker or Worker(settings, store, Transports(settings))
         tasks = (
-            [asyncio.create_task(active.run_inbox()), asyncio.create_task(active.run_outbox())]
+            [asyncio.create_task(active.run_inbox()),
+             asyncio.create_task(active.run_inbox(control=True)),
+             asyncio.create_task(active.run_outbox())]
             if start_workers
             else []
         )
@@ -80,7 +82,8 @@ def create_app(settings=None, *, store=None, worker=None, start_workers=True):
     def health():
         # Connectivity is not asserted. Counts make dead/ambiguous work observable
         # without exposing prompt text, platform IDs, secrets or account identity.
-        return {"status": "local-ready", "queues": store.counts()}
+        return {"status": "local-ready", "release_revision": settings.release_revision,
+                "queues": store.counts()}
 
     return app
 

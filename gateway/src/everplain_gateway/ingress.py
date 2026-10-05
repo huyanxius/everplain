@@ -54,6 +54,7 @@ def telegram_event(body, secret, settings, *, now=None):
         or message.sender_chat is not None
         or message.text is None
         or message.chat.id != message.from_user.id
+        or not settings.permits_subject("telegram", str(message.from_user.id))
     ):
         return None
     return _check_event(
@@ -138,6 +139,7 @@ def feishu_callback(body, headers, settings, enqueue, *, now=None):
             or message.chat_type != "p2p"
             or message.message_type != "text"
             or bool(message.thread_id)
+            or not settings.permits_subject("feishu", sender.sender_id.open_id)
         ):
             return
         event = _check_event(

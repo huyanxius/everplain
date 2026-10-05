@@ -639,3 +639,82 @@ def test_revoke_invalidates_unclaimed_codes_for_same_owner_and_bot(channels):
     )
     assert dispatch(channels, event(text="/bind " + outstanding)).status_code == 403
     assert channels.client.get("/api/channels/bindings").json() == []
+
+
+def test_async_post_cursor_is_read_only_and_cancel_uses_private_scope(channels):
+    import threading
+
+    bind(channels)
+    emitted, release = threading.Event(), threading.Event()
+    calls = []
+
+    class GatedRunner:
+        def run_stream(self, *, on_delta, on_checkpoint, is_cancelled, **kwargs):
+            calls.append(True)
+            on_checkpoint()
+            on_delta("durable private prefix")
+            emitted.set()
+            assert release.wait(10)
+            on_checkpoint()
+            from qunxue_api.modules.agent_conversation import AgentInterrupted
+            if is_cancelled():
+                raise AgentInterrupted()
+            return AgentRunResult(answer="complete", citations=(), release_id="",
+                                  provider="test", model="test")
+
+    @contextmanager
+    def runtime():
+        with channels.runtime() as app:
+            app._runner = GatedRunner()
+            yield app
+
+    channels.client.app.state.disciplinary_agent_scope = runtime
+    payload = event(text="async private question")
+    response = dispatch(channels, payload, {**HEADERS, "Prefer": "respond-async"})
+    assert response.status_code == 202, response.json()
+    key = response.json()["event_key"]
+    try:
+        assert emitted.wait(5)
+        path = f"/api/channel-gateway/events/{key}"
+        output = channels.client.get(path, headers=HEADERS).json()
+        assert output["state"] == "processing" and output["cursor"] > 0
+        assert output["text"] is None
+        cursor = output["cursor"]
+        wrong = {**HEADERS, "X-Everplain-Gateway": "telegram:456"}
+        assert channels.client.get(path, headers=wrong).status_code == 404
+        assert channels.client.get(path).status_code == 401
+        for _ in range(3):
+            replayed_output = channels.client.get(path, headers=HEADERS, params={"after": cursor})
+            assert replayed_output.json()["cursor"] == cursor
+        assert len(calls) == 1
+        cancellation = dispatch(channels, event(text="/cancel"))
+        assert cancellation.status_code == 200 and "请求停止" in cancellation.json()["text"]
+        assert len(calls) == 1
+    finally:
+        release.set()
+    for _ in range(100):
+        output = channels.client.get(path, headers=HEADERS).json()
+        if output["state"] == "complete":
+            break
+        time.sleep(0.02)
+    assert output["state"] == "complete"
+    assert "durable private prefix" in output["text"] and "已停止" in output["text"]
+    replay = dispatch(channels, payload, {**HEADERS, "Prefer": "respond-async"})
+    assert replay.status_code == 200 and replay.json()["text"] == output["text"]
+    assert len(calls) == 1
+
+
+def test_cancel_after_admission_before_model_start_is_durable(channels):
+    bind(channels)
+    payload = event(text="must not reach model")
+    typed = ChannelEvent(**payload)
+    with channels.client.app.state.channel_gateway_scope() as gateway:
+        prepared = gateway.prepare(typed, runtime_scope=channels.runtime)
+        cancellation = dispatch(channels, event(text="/cancel"))
+        assert cancellation.status_code == 200
+        assert "请求停止" in cancellation.json()["text"]
+        answer = gateway.dispatch(
+            typed, gateway_scope=channels.client.app.state.channel_gateway_scope,
+            runtime_scope=channels.runtime, prepared=prepared)
+    assert "已停止" in answer
+    assert channels.calls == []

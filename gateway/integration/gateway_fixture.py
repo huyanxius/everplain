@@ -61,6 +61,7 @@ async def lifespan(_app):
     tasks = []
     if mode in {"all", "inbox_only"}:
         tasks.append(asyncio.create_task(worker.run_inbox()))
+        tasks.append(asyncio.create_task(worker.run_inbox(control=True)))
     if mode == "all":
         tasks.append(asyncio.create_task(worker.run_outbox()))
     try:

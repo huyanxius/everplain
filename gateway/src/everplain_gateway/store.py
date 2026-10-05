@@ -75,6 +75,10 @@ class Store:
                     remote_id TEXT, first_attempt REAL, UNIQUE(event_key, part)
                 );
             """)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(inbox)")}
+            for name in ("accepted", "cursor", "control"):
+                if name not in columns:
+                    db.execute(f"ALTER TABLE inbox ADD COLUMN {name} INTEGER NOT NULL DEFAULT 0")
 
     @contextmanager
     def connect(self):
@@ -134,7 +138,8 @@ class Store:
                 ]
             )
             db.execute(
-                "INSERT INTO inbox(key,digest,scope,principal,event,created) VALUES(?,?,?,?,?,?)",
+                "INSERT INTO inbox(key,digest,scope,principal,event,created,control) "
+                "VALUES(?,?,?,?,?,?,?)",
                 (
                     key,
                     body_hash,
@@ -142,11 +147,12 @@ class Store:
                     principal,
                     json.dumps(event, ensure_ascii=False),
                     self.clock(),
+                    event["text"].strip() == "/cancel",
                 ),
             )
         return key
 
-    def claim_inbox(self):
+    def claim_inbox(self, *, control=False):
         now = self.clock()
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -154,17 +160,19 @@ class Store:
                 """
                 SELECT * FROM inbox AS candidate
                 WHERE ((state='pending' AND available<=?) OR (state='running' AND lease<=?))
-                AND NOT EXISTS (
+                AND candidate.control=? AND (? OR NOT EXISTS (
                     SELECT 1 FROM inbox AS active WHERE active.scope=candidate.scope
-                    AND active.key!=candidate.key AND active.state='running' AND active.lease>?
-                ) AND NOT EXISTS (
+                    AND active.key!=candidate.key AND active.control=0
+                    AND active.state='running' AND active.lease>?
+                )) AND (? OR NOT EXISTS (
                     SELECT 1 FROM inbox AS earlier WHERE earlier.scope=candidate.scope
+                    AND earlier.control=0
                     AND earlier.state IN ('pending','running')
                     AND (earlier.created<candidate.created OR
                         (earlier.created=candidate.created AND earlier.key<candidate.key))
-                ) ORDER BY created,key LIMIT 1
+                )) ORDER BY created,key LIMIT 1
             """,
-                (now, now, now),
+                (now, now, control, control, now, control),
             ).fetchone()
             if row is None:
                 return None
@@ -173,6 +181,20 @@ class Store:
                 (now + 360, row["key"]),
             )
             return {**dict(row), "attempts": row["attempts"] + 1, "event": json.loads(row["event"])}
+
+    def checkpoint_inbox(self, row, *, cursor=None, accepted=None):
+        with self.connect() as db:
+            changed = db.execute(
+                "UPDATE inbox SET lease=?,cursor=MAX(cursor,COALESCE(?,cursor)),"
+                "accepted=COALESCE(?,accepted) WHERE key=? AND state='running' AND attempts=?",
+                (self.clock() + 15, cursor, accepted, row["key"], row["attempts"]),
+            ).rowcount
+            if changed != 1:
+                raise LeaseLost()
+        if cursor is not None:
+            row["cursor"] = max(row["cursor"], cursor)
+        if accepted is not None:
+            row["accepted"] = accepted
 
     def complete_inbox(self, row, text, *, require_auth=True):
         with self.connect() as db:

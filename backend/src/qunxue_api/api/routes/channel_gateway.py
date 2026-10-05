@@ -2,6 +2,7 @@
 
 import hmac
 import logging
+import threading
 from typing import Annotated
 from uuid import UUID
 
@@ -190,6 +191,26 @@ def dispatch(
     if event.gateway_id != gateway_id:
         raise HTTPException(403, "Gateway identity mismatch")
     try:
+        if request.headers.get("prefer") == "respond-async":
+            prepared = app.prepare(event, runtime_scope=request.app.state.disciplinary_agent_scope)
+            if prepared[3] is not None:
+                return ChannelDispatchResponse(event_key=event.event_key, text=prepared[3])
+            # Reservation commits before headers. The gateway's durable inbox owns
+            # replay after process loss; a GET never starts a provider operation.
+            gateway_scope = request.app.state.channel_gateway_scope
+            runtime_scope = request.app.state.disciplinary_agent_scope
+
+            def execute():
+                try:
+                    with gateway_scope() as gateway:
+                        gateway.dispatch(event, gateway_scope=gateway_scope,
+                                         runtime_scope=runtime_scope, prepared=prepared)
+                except Exception as error:
+                    logger.error("Channel execution failed: %s", type(error).__name__)
+
+            threading.Thread(target=execute, daemon=True, name="channel-agent-execution").start()
+            response.status_code = 202
+            return ChannelDispatchResponse(event_key=event.event_key, state="processing")
         answer = app.dispatch(
             event,
             gateway_scope=request.app.state.channel_gateway_scope,
@@ -214,6 +235,21 @@ def dispatch(
         logger.error("Channel dispatch failed: %s", type(exc).__name__)
         raise HTTPException(503, "Agent temporarily unavailable") from exc
     return ChannelDispatchResponse(event_key=event.event_key, text=answer)
+
+
+@router.get(
+    "/api/channel-gateway/events/{event_key}",
+    response_model=ChannelDispatchResponse,
+    operation_id="read_channel_message_output",
+)
+def read_output(event_key: str, gateway_id: GatewayIdentity, request: Request,
+                response: Response, app: Application, after: int = Query(0, ge=0)):
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return app.output(gateway_id, event_key, after=after,
+                          runtime_scope=request.app.state.disciplinary_agent_scope)
+    except GatewayDenied as error:
+        raise HTTPException(404, "Message unavailable") from error
 
 
 @router.get(

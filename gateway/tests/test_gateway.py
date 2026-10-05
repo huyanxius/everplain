@@ -473,3 +473,51 @@ def test_feishu_business_rate_limit_keeps_retryable_state():
             )
 
     asyncio.run(scenario())
+
+
+def test_pilot_allowlists_fail_closed_and_cancel_bypasses_busy_scope(settings):
+    from everplain_gateway.ingress import telegram_event
+
+    settings.pilot_only = True
+    settings.telegram_allowed_subject_ids = ["88"]
+    assert telegram_event(telegram(), settings.telegram_webhook_secret.get_secret_value(),
+                          settings, now=NOW) is None
+    settings.telegram_allowed_subject_ids = ["77"]
+    assert telegram_event(telegram(), settings.telegram_webhook_secret.get_secret_value(),
+                          settings, now=NOW) is not None
+    store = Store(settings.database_path)
+    store.enqueue(event())
+    running = store.claim_inbox()
+    store.enqueue(event(event_id="cancel", text="/cancel"))
+    assert store.claim_inbox() is None
+    command = store.claim_inbox(control=True)
+    assert command["event"]["text"] == "/cancel"
+    assert running["event"]["text"] == "private input"
+
+
+def test_async_cursor_survives_gateway_restart_without_second_post(settings):
+    async def scenario():
+        clock = [1000.0]
+        store = Store(settings.database_path, clock=lambda: clock[0])
+        store.enqueue(event())
+        row = store.claim_inbox()
+        store.checkpoint_inbox(row, accepted=True, cursor=3)
+        clock[0] += 361
+        restored = Store(settings.database_path, clock=lambda: clock[0])
+        calls = []
+
+        def backend(request):
+            calls.append(request)
+            assert request.method == "GET"
+            assert request.url.params["after"] == "3"
+            return httpx.Response(200, json={"event_key": row["key"], "state": "complete",
+                                           "text": "saved answer", "cursor": 4})
+
+        worker = Worker(settings, restored, FakeTransport(), client=httpx.AsyncClient(
+            base_url="http://test", transport=httpx.MockTransport(backend)))
+        await worker.process_inbox()
+        assert len(calls) == 1
+        assert restored.counts()["inbox"] == {"complete": 1}
+        await worker.close()
+
+    asyncio.run(scenario())

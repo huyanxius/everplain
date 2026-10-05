@@ -59,7 +59,7 @@ class ChannelGatewayApplication:
                 return False
         return True
 
-    def dispatch(self, event, *, gateway_scope, runtime_scope):
+    def prepare(self, event, *, runtime_scope):
         now_ms = int(self.clock() * 1000)
         now = now_ms // 1000
         # No group fallback: the normal runtime has private memory/tools. A fresh
@@ -76,11 +76,12 @@ class ChannelGatewayApplication:
         binding = self.repository.active_binding(event.identity_key)
         if binding is not None:
             self.require_binding(binding.binding_id)
-        row, conversation_id = self.repository.reserve(event, binding, now)
+        control = event.text.strip() == "/cancel"
+        row, conversation_id = self.repository.reserve(event, binding, now, control=control)
         if row.state == "complete":
             if not self.can_deliver(event.gateway_id, event.event_key):
                 raise GatewayDenied("绑定已撤销。")
-            return row.answer
+            return row, conversation_id, binding, row.answer
         token = row.lease_token
         if event.text.startswith("/bind "):
             try:
@@ -94,27 +95,56 @@ class ChannelGatewayApplication:
             answer = (
                 "绑定成功。此私聊将使用你的 Everplain 账号和用量。可在 Everplain 随时解除绑定。"
             )
-            return self.repository.finish(event.event_key, token, answer, binding.binding_id).answer
+            self.repository.finish(event.event_key, token, answer, binding.binding_id)
+            return row, conversation_id, binding, answer
         if binding is None:
-            return self.repository.finish(
+            receipt = self.repository.finish(
                 event.event_key,
                 token,
                 "请先登录 Everplain 生成此机器人的一次性绑定码，然后在私聊发送 /bind 绑定码。",
-            ).answer
+            )
+            return row, conversation_id, binding, receipt.answer
         if event.occurred_at < binding.created_at or event.received_at_ms < binding.activated_at_ms:
             self.repository.finish(event.event_key, token, None)
             raise GatewayDenied("这条消息早于当前绑定，请重新发送。")
+
+        if control:
+            active = self.repository.active_event(event.scope_key(binding.binding_id))
+            requested = self.repository.request_stop(active) if active else False
+            with runtime_scope() as runtime:
+                run = runtime.find_run(
+                    user_id=UUID(binding.user_id), idempotency_key=f"channel:{active}"
+                ) if active else None
+                if run is not None and run.status == "running":
+                    runtime.request_cancel(user_id=UUID(binding.user_id), run_id=run.run_id)
+                if requested:
+                    answer = "已请求停止本轮。已产生的模型用量仍按实际记录，请在 Everplain 查看。"
+                else:
+                    answer = "此私聊当前没有正在运行的回答。"
+            self.repository.finish(event.event_key, token, answer)
+            return row, conversation_id, binding, answer
+        return row, conversation_id, binding, None
+
+    def dispatch(self, event, *, gateway_scope, runtime_scope, prepared=None):
+        row, conversation_id, binding, answer = prepared or self.prepare(
+            event, runtime_scope=runtime_scope
+        )
+        if answer is not None:
+            return answer
+        token = row.lease_token
 
         user_id = UUID(binding.user_id)
         binding_id = binding.binding_id
         stopped = threading.Event()
         cancelled = threading.Event()
         run_state = {}
-        deadline = time.monotonic() + 300
+        deadline = time.monotonic() + 1800
 
         def checkpoint(conversation=None):
             with gateway_scope() as gateway:
                 gateway.require_binding(binding_id)
+                if gateway.repository.event(event.event_key).state == "cancel_requested":
+                    cancelled.set()
                 gateway.repository.renew(event.event_key, token, int(gateway.clock()), conversation)
 
         def started(run_id, conversation_id, replayed, *, lease_token=None):
@@ -153,14 +183,51 @@ class ChannelGatewayApplication:
             self.require_binding(binding_id)
             if cancelled.is_set():
                 raise AgentInterrupted()
+            answer = result.result.answer
+            if getattr(result, "incomplete_reason", None) == "length":
+                answer += "\n\n本轮达到模型输出长度限制，已生成内容已保留，请在 Everplain 继续。"
             # The reply and its replay receipt commit before the gateway sees success.
-            return self.repository.finish(event.event_key, token, result.result.answer).answer
+            return self.repository.finish(event.event_key, token, answer).answer
+        except AgentInterrupted:
+            self.require_binding(binding_id)
+            with runtime_scope() as runtime:
+                run = runtime.find_run(
+                    user_id=user_id, idempotency_key=f"channel:{event.event_key}"
+                )
+            answer = (run.partial_answer if run else "") + (
+                "\n\n本轮已停止。已产生的模型用量按实际记录，请在 Everplain 查看或继续。"
+            )
+            return self.repository.finish(event.event_key, token, answer).answer
         except Exception:
             self.repository.finish(event.event_key, token, None)
             raise
         finally:
             stopped.set()
             watcher.join(timeout=6)
+
+    def output(self, gateway_id, event_key, *, runtime_scope, after=0):
+        row = self.repository.event(event_key)
+        if row is None or row.gateway_id != gateway_id:
+            raise GatewayDenied("消息不存在。")
+        binding = self.require_binding(row.binding_id) if row.binding_id else None
+        if row.state == "complete" and binding is None:
+            return {"event_key": event_key, "state": "complete", "cursor": 0,
+                    "text": row.answer}
+        if binding is None:
+            raise GatewayDenied("绑定不存在。")
+        with runtime_scope() as runtime:
+            run = runtime.find_run(user_id=UUID(binding.user_id),
+                                   idempotency_key=f"channel:{event_key}")
+            events = runtime.read_output_events(user_id=UUID(binding.user_id), run_id=run.run_id,
+                                                after=after) if run else ()
+        cursor = max((item.sequence for item in events), default=after)
+        if row.state == "complete":
+            return {"event_key": event_key, "state": "complete",
+                    "cursor": run.last_event_sequence if run else 0, "text": row.answer}
+        state = "processing" if row.state in {"processing", "cancel_requested"} \
+            and row.lease_until > int(self.clock()) \
+            else "retryable"
+        return {"event_key": event_key, "state": state, "cursor": cursor, "text": None}
 
 
 def _code_hash(code):

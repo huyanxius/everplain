@@ -59,7 +59,7 @@ async def dispatch_response_fault(request, call_next):
         dispatch_requests += 1
     response = await call_next(request)
     # Lose only the HTTP result, after the real dispatch transaction committed.
-    if is_dispatch and response.status_code == 200 and behavior["dispatch"] in {
+    if is_dispatch and response.status_code in {200, 202} and behavior["dispatch"] in {
         "drop_once", "truncate_once"
     }:
         mode = behavior["dispatch"]
@@ -80,9 +80,11 @@ class SyntheticModel:
                 text("INSERT INTO fixture_model_calls VALUES (:prompt)"), {"prompt": prompt}
             )
         answer = "private fixture answer: " + prompt
+        if prompt == "gated cancellable reply":
+            kwargs["on_delta"]("private persisted fixture prefix")
         if prompt == "long unicode reply":
             answer = "知识🙂" * 3000
-        if prompt == "gated long reply" and not model_release.wait(90):
+        if prompt in {"gated long reply", "gated cancellable reply"} and not model_release.wait(90):
             raise RuntimeError("Synthetic model gate was not released")
         return AgentRunResult(
             answer=answer,

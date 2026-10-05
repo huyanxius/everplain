@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     backend_url: str = "http://127.0.0.1:8297"
     max_pending: int = Field(default=10000, ge=1, le=100000)
     max_attempts: int = Field(default=8, ge=1, le=20)
+    release_revision: str = ""
+    pilot_only: bool = False
+    telegram_allowed_subject_ids: list[str] = Field(default_factory=list)
+    feishu_allowed_subject_ids: list[str] = Field(default_factory=list)
     telegram_token: SecretStr | None = None
     telegram_webhook_secret: SecretStr | None = None
     telegram_backend_secret: SecretStr | None = None
@@ -53,6 +57,11 @@ class Settings(BaseSettings):
                 raise ValueError(f"{name} configuration is incomplete")
         if not any(telegram) and not any(feishu):
             raise ValueError("configure at least one platform before starting the gateway")
+        if self.pilot_only and (
+            (self.telegram_token and not self.telegram_allowed_subject_ids)
+            or (self.feishu_app_id and not self.feishu_allowed_subject_ids)
+        ):
+            raise ValueError("pilot mode requires an explicit subject allowlist for each platform")
         for secret in (
             self.telegram_webhook_secret,
             self.telegram_backend_secret,
@@ -83,3 +92,8 @@ class Settings(BaseSettings):
             "X-Everplain-Gateway": identity,
             "Authorization": f"Bearer {secret.get_secret_value()}",
         }
+
+    def permits_subject(self, platform, subject_id):
+        allowed = (self.telegram_allowed_subject_ids if platform == "telegram"
+                   else self.feishu_allowed_subject_ids)
+        return subject_id in allowed if self.pilot_only or allowed else True
