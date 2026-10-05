@@ -4259,6 +4259,11 @@
             "title": "Cards",
             "type": "array"
           },
+          "is_stale": {
+            "default": false,
+            "title": "Is Stale",
+            "type": "boolean"
+          },
           "omitted_messages": {
             "title": "Omitted Messages",
             "type": "integer"
@@ -4335,6 +4340,21 @@
               }
             ],
             "title": "Updated At"
+          },
+          "usage_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "known",
+                  "pending"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Status"
           }
         },
         "required": [
