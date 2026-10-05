@@ -3,7 +3,7 @@
 import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from billing_test_support import synthetic_billing_runtime
@@ -231,3 +231,109 @@ def test_late_receipt_cannot_consume_renewed_epoch_or_reopen_delivery(current_ap
             == "0"
         )
         assert conn.scalar(text("SELECT count(*) FROM credit_ledger WHERE kind='usage'")) == 0
+
+
+@pytest.mark.parametrize("first_usage_missing", [False, True])
+def test_default_factory_real_sdk_tool_then_length_keeps_body_and_receipts(
+    current_app,
+    first_usage_missing,
+):
+    import asyncio
+
+    import httpx
+    from openai import AsyncOpenAI
+    from pydantic_ai import Agent
+    from pydantic_ai.messages import PartDeltaEvent, PartStartEvent, TextPart, TextPartDelta
+    from pydantic_ai.providers.openai import OpenAIProvider
+    from test_buffered_streaming import chat_stream
+
+    from qunxue_api.adapters.model.metering import MeteredOpenAIChatModel
+
+    user, database, _runtime, _repository, build, _now = current_app
+
+    class SDKToolRunner:
+        def __init__(self):
+            self.requests, self.executed_tools, self.state = [], [], None
+
+        def run_stream(self, *, on_delta, **_kwargs):
+            def reply(request):
+                self.requests.append(json.loads(request.content))
+                first = len(self.requests) == 1
+                body = chat_stream(
+                    tool=first,
+                    missing_usage=first and first_usage_missing,
+                    receipt=f"sdk-tool-{len(self.requests)}",
+                )
+                if not first:
+                    body = body.replace('"finish_reason": "stop"', '"finish_reason": "length"')
+                return httpx.Response(
+                    200, headers={"content-type": "text/event-stream"}, content=body
+                )
+
+            async def events(_ctx, stream):
+                async for event in stream:
+                    if isinstance(event, PartStartEvent) and isinstance(event.part, TextPart):
+                        on_delta(event.part.content)
+                    elif isinstance(event, PartDeltaEvent) and isinstance(
+                        event.delta, TextPartDelta
+                    ):
+                        on_delta(event.delta.content_delta)
+
+            async def run():
+                async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as http:
+                    model = MeteredOpenAIChatModel(
+                        "gpt-6.1-sol",
+                        require_billing=True,
+                        provider=OpenAIProvider(
+                            openai_client=AsyncOpenAI(
+                                api_key="synthetic",
+                                base_url="https://synthetic.test/v1",
+                                http_client=http,
+                                max_retries=0,
+                            )
+                        ),
+                    )
+                    agent = Agent(model)
+
+                    @agent.tool_plain
+                    def add(a: int, b: int) -> int:
+                        self.executed_tools.append((a, b))
+                        return a + b
+
+                    response = await agent.run("Add 17 and 25", event_stream_handler=events)
+                    self.state = current_operation(required=True).delivery_state
+                    return AgentRunResult(
+                        answer=response.output,
+                        citations=(),
+                        release_id="release-a",
+                        provider="fake-sdk",
+                        model="gpt-6.1-sol",
+                    )
+
+            return asyncio.run(run())
+
+    runner = SDKToolRunner()
+    displayed = []
+    result = build(runner).run_turn(
+        user_id=user,
+        conversation_id=None,
+        prompt="Add 17 and 25",
+        idempotency_key=str(uuid4()),
+        on_delta=displayed.append,
+    )
+    assert result.result.answer == "OK"
+    assert "".join(displayed) == "OK"
+    assert runner.executed_tools == [(17, 25)]
+    assert len(runner.requests) == 2
+    assert runner.requests[-1]["messages"][-1]["content"] == "42"
+    assert runner.state["output_finish_reason"] == "truncated"
+    assert runner.state["usage_status"] == ("pending" if first_usage_missing else "known")
+    assert runner.state["quota_exhausted"] is False
+    with database.engine.connect() as conn:
+        assert (
+            conn.scalar(text("SELECT limit_points FROM credit_quota_periods WHERE epoch=1")) == 30
+        )
+        assert conn.scalar(text("SELECT count(*) FROM billing_attempts")) == 2
+        assert conn.scalar(text("SELECT count(*) FROM credit_ledger WHERE kind='usage'")) == (
+            1 if first_usage_missing else 2
+        )
