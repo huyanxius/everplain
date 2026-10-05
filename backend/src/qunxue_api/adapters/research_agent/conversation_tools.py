@@ -21,9 +21,11 @@ class AgentConversationTools:
             if not self._enabled(memory):
                 return ""
             summary = repository.summary(self.user_id)
-            if summary["status"] == "ready" and summary["summary"]:
+            if summary["summary"]:
                 payload = {
                     "summary": summary["summary"],
+                    "updated_at": summary.get("updated_at"),
+                    "is_stale": summary.get("is_stale", False),
                     "sources": [
                         {
                             "conversation_id": item["conversation_id"],

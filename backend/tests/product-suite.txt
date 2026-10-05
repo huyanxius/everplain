@@ -134,6 +134,8 @@ tests/test_conversation_summary_failure_worker.py
 tests/test_conversation_summary_reservations.py
 tests/test_conversation_summary_recovery.py
 tests/test_summary_adaptive_budget.py
+tests/test_summary_last_good.py
+tests/test_summary_usage_independent_delivery.py
 
 tests/test_writing_action_origin.py
 

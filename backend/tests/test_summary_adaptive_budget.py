@@ -369,7 +369,10 @@ def test_failed_publication_still_accounts_proven_usage(plain_client, monkeypatc
     assert current.run_once()
     assert len(requests) == 1 and usage(plain_client, owner) == (1, 100, 80, 20)
     body = plain_client.get("/api/agent/context-summary").json()
-    assert body["status"] != "ready" and not body["cards"] and not body["summary"]
+    if change in {"source", "expired"}:
+        assert body["summary"] and body["is_stale"]
+    else:
+        assert body["status"] != "ready" and not body["cards"] and not body["summary"]
 
 
 def test_usage_and_receipt_roll_back_together_if_second_write_is_refused(plain_client):
@@ -453,6 +456,8 @@ def test_publication_cannot_resurrect_old_receipt_and_steal_historical_budget(
         try:
             with plain_client.app.state.context_summary_scope() as repo:
                 assert repo.complete(b, output(b)[0], 1200, 300)
+            with plain_client.app.state.context_summary_scope() as repo:
+                assert repo.reconcile_failed_usage(b)
         except Exception as error:
             failures.append(error)
 

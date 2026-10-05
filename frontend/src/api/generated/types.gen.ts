@@ -2346,6 +2346,10 @@ export type ConversationSummaryResponse = {
      */
     cards: Array<ConversationSuggestionResponse>;
     /**
+     * Is Stale
+     */
+    is_stale?: boolean;
+    /**
      * Omitted Messages
      */
     omitted_messages: number;
@@ -2377,6 +2381,10 @@ export type ConversationSummaryResponse = {
      * Updated At
      */
     updated_at: string | null;
+    /**
+     * Usage Status
+     */
+    usage_status?: 'known' | 'pending' | null;
 };
 
 /**
