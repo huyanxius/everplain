@@ -9,6 +9,7 @@ import {
   getResearchStartJourney as getStartJourney,
   listAgentConversations as listConversations,
   listRecentConversationContext as listRecentContext,
+  getConversationContextSummary as getContextSummary,
   renameAgentConversation as renameConversation,
   stopAgentRun as stopRun,
   streamAgentTurn as streamTurn,
@@ -78,6 +79,10 @@ export function getAgentModelCatalog(signal?: AbortSignal) {
 
 export function listRecentConversationContext(signal?: AbortSignal): Promise<RecentConversationContext[]> {
   return listRecentContext(signal)
+}
+
+export function getConversationContextSummary(signal?: AbortSignal) {
+  return getContextSummary(signal)
 }
 
 export function readKnowledgeIndexStatus(...args: Parameters<typeof readIndexStatus>) { return readIndexStatus(...args) }

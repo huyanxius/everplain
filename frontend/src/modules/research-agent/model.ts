@@ -210,6 +210,30 @@ export type RecentConversationContext = {
   recent_excerpts: { message_id: string; sequence: number; excerpt: string }[]
 }
 
+export type ConversationContextSource = {
+  sequence: number
+  role: 'user' | 'assistant'
+  conversation_id: string
+  message_id: string
+  quote: string
+  title: string
+}
+export type ConversationContextSuggestion = {
+  title: string
+  description: string
+  prompt: string
+  sources: ConversationContextSource[]
+}
+export type ConversationContextSummary = {
+  status: 'ready' | 'pending' | 'empty' | 'disabled' | 'failed'
+  summary: string
+  summary_sources: ConversationContextSource[]
+  cards: ConversationContextSuggestion[]
+  updated_at: string | null
+  scope: 'conversation_messages'
+  omitted_messages: number
+}
+
 export type KnowledgeIndexDocument = {
   stage?: 'ready' | 'index' | 'knowledge'
   knowledge_status?: string | null

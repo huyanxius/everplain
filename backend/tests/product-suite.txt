@@ -115,3 +115,6 @@ tests/billing/test_reconciliation_safety.py
 tests/test_conversation_context.py
 
 tests/test_conversation_context_migration.py
+
+tests/test_conversation_summary.py
+tests/test_conversation_summary_migration.py

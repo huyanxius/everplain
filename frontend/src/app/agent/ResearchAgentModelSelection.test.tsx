@@ -34,6 +34,7 @@ function setup(options: { catalog?: unknown; catalogStatus?: number; conversatio
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = pathFor(input)
     if (options.conversation && path === `/api/agent/conversations/${options.conversation.conversation_id}`) return json(options.conversation)
+    if (path === '/api/agent/context-summary') return json({ status: 'ready', summary: '最近你聊到迁移方案与展示材料。', updated_at: '2026-10-05T00:00:00Z', scope: 'conversation_messages', omitted_messages: 0, summary_sources: [], cards: [{ title: '核对分批迁移的停机窗口', description: '你提到周五迁移，并希望保留旧入口。', prompt: '继续核对周五分批迁移的停机窗口和旧入口回退方案。', sources: [{ role: 'user', conversation_id: 'migration', message_id: 'migration-user-1', quote: '我想周五分批迁移，并保留旧入口。', title: '系统迁移' }] }] })
     if (path === '/api/agent/models') return json(options.catalog ?? catalog, options.catalogStatus ?? 200)
     if (path === '/api/agent/turns') { requests.push(init!); return options.reply?.(requests.length) ?? failed() }
     return json({ items: [] })
@@ -47,9 +48,10 @@ describe('conversation model selection integration', () => {
     const { requests } = setup()
     mount()
     await screen.findByRole('button', { name: /GPT 6 Luna · 中/ })
-    expect(document.querySelectorAll('.cv-suggestions__card')).toHaveLength(3)
-    fireEvent.click(screen.getByRole('button', { name: /理清下一步/ }))
-    expect((screen.getByRole('textbox', { name: '问 Everplain' }) as HTMLTextAreaElement).value).toContain('3个可执行的下一步')
+    const suggestion = await screen.findByRole('button', { name: /核对分批迁移的停机窗口/ })
+    expect(document.querySelectorAll('.cv-suggestions__card')).toHaveLength(1)
+    fireEvent.click(suggestion)
+    expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('继续核对周五分批迁移的停机窗口和旧入口回退方案。')
     expect(requests).toHaveLength(0)
     fireEvent.click(screen.getByRole('tab', { name: 'Research' }))
     expect(document.querySelectorAll('.cv-suggestions__card')).toHaveLength(3)
@@ -189,6 +191,7 @@ describe('conversation model selection integration', () => {
     let catalogs = 0
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = pathFor(input)
+      if (path === '/api/agent/context-summary') return json({ status: 'ready', summary: '最近你聊到迁移方案与展示材料。', updated_at: '2026-10-05T00:00:00Z', scope: 'conversation_messages', omitted_messages: 0, summary_sources: [], cards: [{ title: '核对分批迁移的停机窗口', description: '你提到周五迁移，并希望保留旧入口。', prompt: '继续核对周五分批迁移的停机窗口和旧入口回退方案。', sources: [{ role: 'user', conversation_id: 'migration', message_id: 'migration-user-1', quote: '我想周五分批迁移，并保留旧入口。', title: '系统迁移' }] }] })
       if (path === '/api/agent/models') return json(++catalogs === 1 ? catalog : { ...catalog, items: [] })
       if (path === '/api/agent/turns') { requests.push(init!); return failed() }
       return json({ items: [] })

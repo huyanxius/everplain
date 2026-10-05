@@ -103,3 +103,29 @@ class MemoryUsageRow(Base):
     input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     budget_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class ConversationSummaryRow(Base):
+    """One owned derived cache/lease; no copies of the full conversation history."""
+
+    __tablename__ = "agent_conversation_summaries"
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.user_id", ondelete="CASCADE"), primary_key=True
+    )
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    attempted_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    summary: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_token: Mapped[str | None] = mapped_column(String(36))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retry_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(64))
+
+
+def invalidate_conversation_summary(session, user_id):
+    """New source/settings changes invalidate only this owner's derived cache."""
+    from sqlalchemy import update
+    session.execute(update(ConversationSummaryRow).where(
+        ConversationSummaryRow.user_id == str(user_id),
+    ).values(fingerprint="", retry_after=None, attempts=0, last_error=None))
