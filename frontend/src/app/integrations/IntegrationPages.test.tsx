@@ -1,16 +1,31 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Link, MemoryRouter, Route, Routes } from 'react-router'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConnectionsPage, PublicDirectoryPage, SharedReaderPage, SharingPage, SubscriptionPage } from './IntegrationPages'
 import * as api from '../../modules/product-integrations'
+import { readAccountUsage, redeemAccountCode } from '../../modules/account'
 
 const identity = vi.hoisted(() => ({ userId: 'owner' }))
-vi.mock('../../modules/account', () => ({ readAccountUsage: vi.fn(async () => ({ isUnlimited: false, remainingPercent: null, buckets: [] })), useAccount: () => ({ sessionState: { status: 'authenticated', session: { user: { userId: identity.userId } } } }) }))
+vi.mock('../../modules/account', async importOriginal => ({
+  ...await importOriginal<typeof import('../../modules/account')>(),
+  readAccountUsage: vi.fn(),
+  redeemAccountCode: vi.fn(),
+  useAccount: () => ({ sessionState: { status: 'authenticated', session: { user: { userId: identity.userId } } } }),
+}))
 vi.mock('../ui/PageShell', () => ({ PageShell: ({children}: {children: ReactNode}) => <>{children}</>, PageContent: ({children}: {children: ReactNode}) => <>{children}</> }))
-vi.mock('../../modules/product-integrations', () => Object.fromEntries(['directory','libraries','sharing','join','leave','publish','unpublish','connections','createConnection','revokeConnection','models','subscription','checkout','portal','publicLibrary','publicSource','library','privateSource'].map(name => [name, vi.fn()])))
+vi.mock('../../modules/product-integrations', () => Object.fromEntries(['directory','libraries','sharing','join','leave','publish','unpublish','connections','createConnection','revokeConnection','models','productCatalog','subscription','checkout','portal','publicLibrary','publicSource','library','privateSource'].map(name => [name, vi.fn()])))
 
+const productCatalog: Awaited<ReturnType<typeof api.productCatalog>> = {
+  plans: [
+    { id: 'plus', name: 'Plus', description: '轻量使用', price_cny_fen: 5900, weekly_points: 200, period_days: 28, period_points: 800 },
+    { id: 'pro', name: 'PRO', description: '日常使用', price_cny_fen: 11900, weekly_points: 400, period_days: 28, period_points: 1600 },
+    { id: 'max', name: 'Max', description: '高频使用', price_cny_fen: 29900, weekly_points: 1000, period_days: 28, period_points: 4000 },
+  ],
+  free_weekly_points: 30, reset_days: 7, top_up_points: 200, top_up_price_cny_fen: 1900,
+  payments_enabled: false, agent_models: [], runtime_mode: 'base',
+}
 const library = { id: 'kb', name: '自己的资料', description: '', viewer_access: 'owner', ready_document_count: 2, sharing_enabled: false, publication: null }
 function setup(element: ReactNode, initial = '/sharing') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
@@ -18,14 +33,17 @@ function setup(element: ReactNode, initial = '/sharing') {
   const result = render(wrap(element))
   return { ...result, rerenderPage: (node: ReactNode) => result.rerender(wrap(node)) }
 }
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.restoreAllMocks() })
 beforeEach(() => {
   vi.resetAllMocks(); identity.userId = 'owner'
   vi.mocked(api.libraries).mockResolvedValue([library] as Awaited<ReturnType<typeof api.libraries>>)
   vi.mocked(api.connections).mockResolvedValue({ connections: [], mcp_endpoint: '/api/mcp' } as Awaited<ReturnType<typeof api.connections>>)
   vi.mocked(api.models).mockResolvedValue([])
+  vi.mocked(api.productCatalog).mockResolvedValue(productCatalog)
+  vi.mocked(readAccountUsage).mockResolvedValue({ isUnlimited: false, remainingPercent: null, buckets: [] })
+  vi.mocked(redeemAccountCode).mockResolvedValue({ action: 'bank_reset', redeemedPoints: 30, balance: 30, quotaPeriodExpiresAt: '2099-01-08T12:00:00Z' })
   vi.mocked(api.directory).mockResolvedValue([])
-  vi.mocked(api.subscription).mockResolvedValue({ available: false, unavailable_reason: '支付服务尚未配置', plans: [], subscription: null } as Awaited<ReturnType<typeof api.subscription>>)
+  vi.mocked(api.subscription).mockResolvedValue({ available: false, unavailable_reason: '支付服务尚未配置', plans: productCatalog.plans, subscription: null })
 })
 
 describe('integration surfaces', () => {
@@ -131,20 +149,53 @@ describe('integration surfaces', () => {
     fireEvent.click(screen.getByRole('button', { name: '我已保存，关闭密钥' }))
     expect(screen.queryByLabelText('一次性连接密钥')).not.toBeInTheDocument()
   })
-  it('rejects unsafe checkout destinations and recovers the action button', async () => {
-    vi.mocked(api.subscription).mockResolvedValue({ available: true, unavailable_reason: null, plans: [{ id: 'plan', name: '研究方案', description: '真实方案' }], subscription: null } as Awaited<ReturnType<typeof api.subscription>>)
+  it.each([false, true])('keeps redemption usable without payment requests or unsafe navigation when payments are configured (active membership: %s)', async activeMembership => {
+    vi.mocked(api.productCatalog).mockResolvedValue({ ...productCatalog, payments_enabled: true })
+    vi.mocked(api.subscription).mockResolvedValue({
+      available: true, unavailable_reason: null, plans: productCatalog.plans,
+      subscription: activeMembership ? { plan_id: 'plus', status: 'active', current_period_start: '2026-10-01T12:00:00Z', current_period_end: '2099-01-29T12:00:00Z', cancel_at_period_end: false } : null,
+    })
+    vi.mocked(redeemAccountCode).mockResolvedValue({ action: 'bank_reset', redeemedPoints: activeMembership ? 200 : 30, balance: activeMembership ? 200 : 30, quotaPeriodExpiresAt: '2099-01-08T12:00:00Z' })
+    // Neither an unsafe checkout nor a management destination may be requested by this surface.
     vi.mocked(api.checkout).mockResolvedValue({ checkout_url: 'http://unsafe.example/checkout', session_id: 'session' })
+    vi.mocked(api.portal).mockResolvedValue({ portal_url: 'javascript:alert(1)' })
+    const originalLocation = window.location.href
+    const openWindow = vi.spyOn(window, 'open').mockImplementation(() => null)
     setup(<SubscriptionPage />, '/subscription')
-    const checkout = await screen.findByRole('button', { name: '查看正式结算' })
-    fireEvent.click(checkout)
-    expect(await screen.findByRole('alert')).toHaveTextContent('支付服务返回了无效地址')
-    expect(checkout).toBeEnabled()
-    expect(api.checkout).toHaveBeenCalledWith('plan')
-  })
-  it('does not offer a live checkout when payments are unconfigured', async () => {
-    setup(<SubscriptionPage />, '/subscription')
-    expect(await screen.findByText('支付服务尚未配置')).toBeInTheDocument()
-    expect(screen.queryByRole('button', {name: '查看正式结算'})).not.toBeInTheDocument()
+    await screen.findByRole('heading', { name: '会员套餐' })
+    const plan = await screen.findByRole('article', { name: 'Plus 套餐' })
+    expect(plan).toHaveTextContent('¥59 / 28 天')
+    expect(screen.queryByRole('button', { name: /结算|支付|购买|管理订阅|更换套餐/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /结算|支付|购买|管理订阅|更换套餐/ })).not.toBeInTheDocument()
+    fireEvent.click(within(plan).getByRole('button', { name: '使用兑换码' }))
+    expect(screen.getByLabelText('兑换码')).toHaveFocus()
+    fireEvent.change(screen.getByLabelText('兑换码'), { target: { value: 'QX-INTEGRATION-RESET' } })
+    fireEvent.click(screen.getByRole('button', { name: '兑换' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('兑换成功')
+    expect(redeemAccountCode).toHaveBeenCalledWith({ code: 'QX-INTEGRATION-RESET', idempotencyKey: expect.any(String) })
+    expect(screen.getByLabelText('兑换码')).toHaveValue('')
     expect(api.checkout).not.toHaveBeenCalled()
+    expect(api.portal).not.toHaveBeenCalled()
+    expect(openWindow).not.toHaveBeenCalled()
+    expect(window.location.href).toBe(originalLocation)
+  })
+  it('renders server catalog prices and keeps redemption available when payments are unconfigured', async () => {
+    setup(<SubscriptionPage />, '/subscription')
+    for (const [name, price, weekly, total] of [['Plus', 59, 200, 800], ['PRO', 119, 400, 1600], ['Max', 299, 1000, 4000]]) {
+      const plan = await screen.findByRole('article', { name: `${name} 套餐` })
+      expect(plan).toHaveTextContent(`¥${price} / 28 天`)
+      expect(plan).toHaveTextContent(`每 7 天 ${weekly} 点额度`)
+      expect(plan).toHaveTextContent(`28 天共 ${total} 点，分 4 周发放`)
+      expect(within(plan).getByRole('button', { name: '使用兑换码' })).toBeEnabled()
+    }
+    expect(screen.getByText(/支付尚未开放，目前仅支持兑换码/)).toBeVisible()
+    expect(screen.getByText('200 点 / ¥19')).toBeVisible()
+    expect(screen.getByLabelText('兑换码')).toBeEnabled()
+    expect(screen.queryByRole('button', { name: /结算|支付|购买|管理订阅|更换套餐/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /结算|支付|购买|管理订阅|更换套餐/ })).not.toBeInTheDocument()
+    expect(api.productCatalog).toHaveBeenCalledTimes(1)
+    expect(readAccountUsage).toHaveBeenCalledTimes(1)
+    expect(api.checkout).not.toHaveBeenCalled()
+    expect(api.portal).not.toHaveBeenCalled()
   })
 })
