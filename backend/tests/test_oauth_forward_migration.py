@@ -3,7 +3,6 @@
 import base64
 import json
 import sqlite3
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -12,13 +11,17 @@ from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from argon2 import PasswordHasher
-from oauth_legacy_migration_support import PASSWORD, seed_account, seed_imports
+from oauth_legacy_migration_support import (
+    PASSWORD,
+    seed_account,
+    seed_imports,
+    seed_quota_history,
+)
 from sqlalchemy import event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from qunxue_api.adapters.sqlite.database import Database
-from qunxue_api.adapters.sqlite.quota_periods import ensure_quota_period, settle_quota_period
 
 SOURCE = Path(__file__).resolve().parents[2]
 PREVIOUS = "20261005_0615"
@@ -99,18 +102,10 @@ def seeded_baseline(tmp_path_factory):
         }
     owner = seed["owner"]
     database = Database(f"sqlite:///{path}")
-    now = datetime.now(UTC)
-    with database.engine.connect() as conn:
-        conn.execute(text("BEGIN IMMEDIATE"))
-        epoch1 = ensure_quota_period(conn, owner, now - timedelta(hours=2))
-        settle_quota_period(
-            conn, owner, epoch1["epoch"], 24, "6000000000000", now - timedelta(hours=1)
-        )
-        epoch2 = ensure_quota_period(
-            conn, owner, now, reset=True, receipt_id="synthetic-reset-receipt"
-        )
+    with sqlite3.connect(path) as conn:
+        conn.execute("PRAGMA foreign_keys=ON")
+        epoch2 = seed_quota_history(conn, owner)
         assert epoch2["epoch"] == 2 and epoch2["balance"] == 30
-        conn.commit()
     with database.engine.connect() as conn:
         assert (
             conn.scalar(text("SELECT sum(points) FROM credit_ledger WHERE kind='signup_grant'"))
