@@ -302,7 +302,11 @@ def create_app(
     async def lifespan(app: FastAPI):
         if app.state.billing_operations.runtime:
             app.state.billing_operations.runtime.recover_stale(
-                before=datetime.now(UTC) - timedelta(minutes=30)
+                before=datetime.now(UTC) - timedelta(minutes=30),
+                # Production is single-instance/single-worker. On startup no
+                # prior process owns these live requests; release their wallet
+                # capacity while retaining unknown provider-cost evidence.
+                recover_actual_usage=True,
             )
         probe_task = None
         memory_task = None

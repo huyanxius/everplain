@@ -137,6 +137,7 @@ def test_redemption_and_new_hold_are_atomic(tmp_path):
         max_attempt_pico=5 * 10**12,
         max_operation_pico=5 * 10**12,
         daily_budget_pico=50 * 10**12,
+        billing_policy="delivery_v1",
     )
     with Session(engine) as session:
         repository = SqliteCreditRepository(session)
@@ -196,6 +197,7 @@ def test_redemption_writer_lock_allows_waiting_reservation_to_progress(tmp_path)
         max_attempt_pico=5 * 10**12,
         max_operation_pico=5 * 10**12,
         daily_budget_pico=50 * 10**12,
+        billing_policy="delivery_v1",
     )
     attempted = Event()
 

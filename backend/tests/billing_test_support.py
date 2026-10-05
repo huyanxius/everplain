@@ -22,6 +22,7 @@ def synthetic_billing_runtime(engine, *, aliases=None, create_tables=False):
         max_operation_pico=10**11,
         daily_budget_pico=10**12,
         max_attempts=10,
+        billing_policy="delivery_v1",
     )
 
 
