@@ -411,3 +411,5 @@ class ConversationSummaryResponse(BaseModel):
         "daily_budget", "attempt_limit", "generation_failed", "generator_unavailable",
     ] | None = None
     retry_at: datetime | None = None
+    is_stale: bool = False
+    usage_status: Literal["known", "pending"] | None = None

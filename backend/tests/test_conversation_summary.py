@@ -85,7 +85,9 @@ def test_multiple_conversation_source_snapshot_cached_once_and_injected(plain_cl
         assert (usage.calls, usage.budget_tokens) == (1, 1500)
 
 
-def test_new_turn_deletion_and_account_switch_hide_stale_content(plain_client):
+def test_new_turn_keeps_last_good_but_deletion_and_account_switch_hide_inaccessible_content(
+    plain_client,
+):
     owner = UUID(register(plain_client))
     conversation = seed(plain_client, owner)
     assert worker(plain_client).run_once(generate=output)
@@ -93,7 +95,7 @@ def test_new_turn_deletion_and_account_switch_hide_stale_content(plain_client):
         row = session.get(AgentConversationRow, str(conversation.conversation_id))
         row.title = "旅行已取消"
     changed = plain_client.get("/api/agent/context-summary").json()
-    assert changed["status"] == "pending" and changed["cards"] == []
+    assert changed["status"] == "pending" and changed["cards"] and changed["is_stale"]
     assert worker(plain_client).run_once(generate=output)
     other = UUID(register(plain_client))
     assert other != owner
@@ -108,7 +110,7 @@ def test_new_turn_deletion_and_account_switch_hide_stale_content(plain_client):
         assert repo.read(owner)["cards"] == []
 
 
-def test_correction_arriving_during_generation_cannot_publish_old_summary(plain_client):
+def test_correction_arriving_during_generation_keeps_result_as_dated_last_good(plain_client):
     owner = UUID(register(plain_client))
     conversation = seed(plain_client, owner)
 
@@ -120,7 +122,7 @@ def test_correction_arriving_during_generation_cannot_publish_old_summary(plain_
 
     assert worker(plain_client).run_once(generate=correct)
     result = plain_client.get("/api/agent/context-summary").json()
-    assert result["status"] == "pending" and not result["cards"]
+    assert result["status"] == "pending" and result["cards"] and result["is_stale"]
     # New fingerprint bypasses stale-attempt backoff, with fresh generation.
     assert worker(plain_client).run_once(generate=output)
 
@@ -210,7 +212,8 @@ def test_lease_prevents_duplicate_workers_and_idle_gate(plain_client):
             )
         )
     with plain_client.app.state.context_summary_scope() as repo:
-        assert repo.complete(batch, output(batch)[0], 1, 1) is False
+        assert repo.complete(batch, output(batch)[0], 1, 1) is True
+        assert repo.read(owner)["is_stale"]
 
 
 def test_unauthenticated_summary_is_rejected(plain_client):

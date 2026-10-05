@@ -27,6 +27,7 @@ from .conversation_context_repository import SqliteConversationContextRepository
 # Same daily budget as durable learning. Dispatched/unknown failures retain reservations.
 SUMMARY_RESERVATION = 24000
 _RESERVATION_AUDIT = "_reservation_release_audit"
+_LAST_GOOD = "_last_good"
 _PREFLIGHT_FAILURES = {
     "billing_open:phase_policy_missing", "billing_open:billing_runtime_missing",
 }
@@ -57,6 +58,69 @@ class SqliteConversationSummaryRepository:
                 audit.pop("active_reservation", None)
             return {**output, _RESERVATION_AUDIT: audit}
         return output
+
+    @staticmethod
+    def _last_good(row):
+        if row is None or not isinstance(row.summary, dict):
+            return None
+        cached = row.summary.get(_LAST_GOOD)
+        if isinstance(cached, dict) and isinstance(cached.get("output"), dict):
+            return deepcopy(cached)
+        if row.summary.get("summary") or row.summary.get("cards"):
+            return {
+                "output": {key: deepcopy(row.summary.get(key, [] if key != "summary" else ""))
+                           for key in ("summary", "summary_sources", "cards")},
+                "fingerprint": row.fingerprint,
+                "updated_at": utc(row.updated_at).isoformat() if row.updated_at else None,
+                "usage_status": "known",
+            }
+        return None
+
+    def _cached_sources(self, user_id, output):
+        """Recheck actual cited messages, including ones outside the latest window."""
+        scope = self.memory.scope(user_id, None)
+        if not scope.use_memory or not scope.learn_memory:
+            return ()
+        references = list(output.get("summary_sources", []))[:8]
+        for card in output.get("cards", [])[:3]:
+            if isinstance(card, dict):
+                references.extend(card.get("sources", [])[:8])
+        pairs = {
+            (str(ref.get("conversation_id")), str(ref.get("message_id")))
+            for ref in references if isinstance(ref, dict)
+        }
+        sources = []
+        for conversation_id, message_id in pairs:
+            conversation = self.session.scalar(select(AgentConversationRow).where(
+                AgentConversationRow.conversation_id == conversation_id,
+                AgentConversationRow.user_id == str(user_id),
+            ))
+            message = self.session.get(AgentMessageRow, message_id)
+            if (
+                conversation is None or message is None
+                or message.conversation_id != conversation_id
+                or message.role not in {"user", "assistant"}
+            ):
+                continue
+            task_id = UUID(conversation.current_research_task_id) if (
+                conversation.current_research_task_id
+            ) else None
+            project = self.memory.scope(user_id, task_id) if task_id else scope
+            if not project.use_memory or not project.learn_memory or any(
+                fence.learn_after and utc(message.created_at) <= fence.learn_after
+                for fence in (scope, project)
+            ):
+                continue
+            content = SqliteConversationContextRepository(self.session).source_text(
+                user_id, conversation, message,
+            )
+            sources.append({
+                "conversation_id": conversation_id, "message_id": message_id,
+                "title": redact_sensitive(conversation.title), "sequence": message.sequence,
+                "role": message.role, "created_at": utc(message.created_at).isoformat(),
+                "content": content,
+            })
+        return tuple(sources)
 
     def snapshot(self, user_id):
         if not self.enabled:
@@ -186,14 +250,27 @@ class SqliteConversationSummaryRepository:
             "omitted_messages": 0,
             "status_reason": None,
             "retry_at": None,
+            "is_stale": False,
+            "usage_status": None,
         }
         snapshot = self.snapshot(user_id)
         if snapshot is None:
             return {**empty, "status": "disabled"}
         fingerprint, sources, latest, omitted = snapshot
-        if not sources:
-            return {**empty, "status": "empty", "omitted_messages": omitted}
         row = self.session.get(ConversationSummaryRow, str(user_id))
+        cached = self._last_good(row)
+        display = self.validate(
+            cached["output"], self._cached_sources(user_id, cached["output"]),
+        ) if cached else {"summary": "", "summary_sources": [], "cards": []}
+        has_cached = bool(display["summary"] or display["cards"])
+        old = {
+            **display,
+            "updated_at": cached.get("updated_at") if cached and has_cached else None,
+            "is_stale": has_cached,
+            "usage_status": cached.get("usage_status", "known") if cached and has_cached else None,
+        }
+        if not sources:
+            return {**empty, **old, "status": "empty", "omitted_messages": omitted}
         if row is None or row.fingerprint != fingerprint:
             if row and row.attempted_fingerprint != fingerprint:
                 invalidate_conversation_summary(self.session, user_id)
@@ -204,18 +281,28 @@ class SqliteConversationSummaryRepository:
             )
             return {
                 **empty,
+                **old,
                 **state,
                 "omitted_messages": omitted,
             }
         # Exact source text and permissions are rechecked on EVERY read. A deleted
         # conversation or changed setting invalidates the cache before disclosure.
         output = self.validate(row.summary, sources)
+        # Keep real last-good cards even when a newer pass has no useful cards.
+        if not output["cards"] and display["cards"]:
+            return {**empty, **old, "status": "ready", "omitted_messages": omitted}
+        usage_status = cached.get("usage_status", "known") if cached else "known"
+        lease_token = cached.get("lease_token") if cached else None
+        receipt = row.summary.get(_RESERVATION_AUDIT, {}).get("reservations", {}).get(lease_token)
+        if isinstance(receipt, dict) and receipt.get("state") == "known":
+            usage_status = "known"
         return {
             **empty,
             **output,
             "status": "ready" if output["summary"] or output["cards"] else "empty",
             "updated_at": utc(row.updated_at).isoformat() if row.updated_at else None,
             "omitted_messages": omitted,
+            "usage_status": usage_status,
         }
 
     def _waiting_state(
@@ -418,6 +505,9 @@ class SqliteConversationSummaryRepository:
                 self._begin_write_transaction()
                 previous = self.session.get(ConversationSummaryRow, owner, populate_existing=True)
                 empty = self._preserve_reservation_audit({}, previous.summary if previous else {})
+                cached = self._last_good(previous)
+                if cached:
+                    empty[_LAST_GOOD] = cached
                 self.session.execute(
                     insert(ConversationSummaryRow)
                     .values(
@@ -569,20 +659,51 @@ class SqliteConversationSummaryRepository:
         return None
 
     def complete(self, batch, output, input_tokens, output_tokens):
-        if any(type(value) is not int or value < 0 for value in (input_tokens, output_tokens)):
-            raise ValueError("invalid_summary_token_usage")
+        known = all(type(value) is int and value >= 0 for value in (input_tokens, output_tokens))
+        if not known:
+            input_tokens = output_tokens = None
         self._begin_write_transaction()
         now = datetime.now(UTC)
         snapshot = self.snapshot(batch.user_id)
-        if snapshot is None or snapshot[0] != batch.fingerprint:
+        if snapshot is None:
             return False
         previous = self.session.get(
             ConversationSummaryRow, str(batch.user_id), populate_existing=True
         )
+        supplied = {(source["conversation_id"], source["message_id"]) for source in batch.sources}
+        readable = tuple(source for source in self._cached_sources(batch.user_id, output)
+                         if (source["conversation_id"], source["message_id"]) in supplied)
+        validated = self.validate(output, readable)
         summary = self._preserve_reservation_audit(
-            self.validate(output, snapshot[1]), previous.summary if previous else {},
+            validated, previous.summary if previous else {},
             clear_active=True,
         )
+        cached = self._last_good(previous)
+        if validated["cards"] or not cached and validated["summary"]:
+            cached = {
+                "output": deepcopy(validated), "fingerprint": batch.fingerprint,
+                "updated_at": now.isoformat(), "lease_token": batch.lease_token,
+                "usage_status": "known" if known else "pending",
+            }
+        if cached:
+            summary[_LAST_GOOD] = cached
+        owns_live_lease = (
+            previous and previous.lease_token == batch.lease_token
+            and previous.lease_until and utc(previous.lease_until) > now
+        )
+        if not owns_live_lease:
+            # A genuinely parsed, still-readable result may be useful even when
+            # its worker was superseded. Never overwrite a newer current cache
+            # or its lease; otherwise retain it only as dated last-good content.
+            newer_current = previous and previous.fingerprint == snapshot[0] and (
+                self.validate(previous.summary, snapshot[1])["cards"]
+            )
+            if cached and not newer_current and previous:
+                self.session.execute(update(ConversationSummaryRow).where(
+                    ConversationSummaryRow.user_id == str(batch.user_id),
+                ).values(summary={**previous.summary, _LAST_GOOD: cached})
+                  .execution_options(synchronize_session=False))
+            return bool(cached or newer_current)
         result = self.session.execute(
             update(ConversationSummaryRow)
             .where(
@@ -607,16 +728,15 @@ class SqliteConversationSummaryRepository:
         from qunxue_api.adapters.model.metering import current_operation
 
         operation = current_operation()
-        if operation is not None:
-            self.session.flush()
-            operation.finish("success", connection=self.session.connection())
         if batch.reservation_kind == "context_estimate":
-            evidence = self._billing_usage(batch)
-            if evidence is None and operation is None and not self._billing_operation(batch):
+            # Publication is committed independently. The worker settles after
+            # closing its billing scope; pending usage never rolls valid cards back.
+            evidence = None
+            if known and operation is None and not self._billing_operation(batch):
                 evidence = ("known", input_tokens, output_tokens)
-            if evidence is None or not self._settle_receipt(batch, evidence):
-                raise ValueError("summary_usage_evidence_missing")
-        else:
+            if evidence is not None:
+                self._settle_receipt(batch, evidence)
+        elif known:
             # Compatibility for old/injected generators without a request estimator.
             total = max(0, input_tokens) + max(0, output_tokens)
             self.session.execute(update(MemoryUsageRow).where(

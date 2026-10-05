@@ -24,7 +24,6 @@ from qunxue_api.modules.agent_conversation import (
     ContextSummaryBatch,
     ContextSummaryGenerationFailure,
 )
-from qunxue_api.modules.billing import UnknownTokenUsage
 
 _PRIVATE = "SYNTHETIC_PRIVATE_PROVIDER_BODY_PROMPT_KEY_TEXT"
 _REASONS = (
@@ -364,7 +363,7 @@ def test_real_sdk_malformed_structured_summary_fails_once_without_exposing_outpu
     _assert_wire_contract(requests, settings, summary_wire_batch)
 
 
-def test_real_sdk_absent_terminal_usage_keeps_billing_failure_in_cause_chain(
+def test_real_sdk_absent_terminal_usage_keeps_valid_output_and_marks_usage_pending(
     plain_client, summary_wire_batch, monkeypatch
 ):
     def reply(request, body):
@@ -372,13 +371,14 @@ def test_real_sdk_absent_terminal_usage_keeps_billing_failure_in_cause_chain(
         return chat_http_response(completion, request=request)
 
     summarizer, requests, settings = _wire_summarizer(monkeypatch, reply)
-    with pytest.raises(ContextSummaryGenerationFailure) as caught:
-        _run_billed_summary(plain_client, summary_wire_batch, summarizer)
-    _assert_safe_failure(caught.value, "model_error")
-    assert any(isinstance(error, UnknownTokenUsage) for error in _causes(caught.value))
+    result, input_tokens, output_tokens = _run_billed_summary(
+        plain_client, summary_wire_batch, summarizer,
+    )
+    assert result["summary"] and result["summary_sources"]
+    assert input_tokens is None and output_tokens is None
     _assert_wire_contract(requests, settings, summary_wire_batch)
     with plain_client.app.state.database.engine.connect() as connection:
         row = connection.execute(
             text("SELECT outcome, billable, failure_code FROM billing_attempts")
         ).one()
-    assert tuple(row) == ("error", 0, "missing_token_usage")
+    assert tuple(row) == ("success", 0, "missing_token_usage")

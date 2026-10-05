@@ -85,7 +85,9 @@ class SqliteBillingOperations:
             resume=resume,
             settlement_connection=self._settlement_connection if self.session is not None else None,
             quota_start=phase in {"agent_turn", "user_research", "writing"},
-            billing_policy="actual_usage_v2" if phase in {"agent_turn", "user_research"} else None,
+            billing_policy="actual_usage_v2" if phase in {
+                "agent_turn", "user_research", "conversation_summary",
+            } else None,
         )
 
     def close(self, *, run_id, outcome):
