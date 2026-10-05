@@ -51,7 +51,8 @@ class ContextSummaryRepository(Protocol):
     ) -> ContextSummaryBatch | None: ...
 
     def complete(
-        self, batch: ContextSummaryBatch, output: dict, input_tokens: int, output_tokens: int
+        self, batch: ContextSummaryBatch, output: dict,
+        input_tokens: int | None, output_tokens: int | None,
     ) -> bool: ...
 
     def failed(

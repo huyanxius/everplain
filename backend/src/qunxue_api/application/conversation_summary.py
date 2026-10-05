@@ -139,6 +139,12 @@ class ConversationSummaryWorker:
                 stage = "settle"
                 if billing:
                     billing.finish("success")
+            # This separate transaction may reduce a proved reservation, but it
+            # cannot erase an already committed model result if accounting fails.
+            with self.scope() as repository:
+                reconcile = getattr(repository, "reconcile_failed_usage", None)
+                if reconcile:
+                    reconcile(batch)
         except Exception as error:
             code, budget_blocked = _failure_diagnostic(error, stage)
             logger.warning(

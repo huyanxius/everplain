@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getConversationContextSummary, type ConversationContextSummary } from '../../modules/research-agent'
 import { ConversationContextSuggestions } from './ConversationContextSuggestions'
 import { conversationContextSummaryKey } from './useConversationContextSummary'
+import { AppLocaleProvider } from '../i18n/AppLocaleProvider'
 
 vi.mock('../../modules/research-agent', () => ({ getConversationContextSummary: vi.fn() }))
 const clients: QueryClient[] = []
@@ -32,7 +33,7 @@ function surface(queryClient: QueryClient, userId: string | null, onSelect = vi.
   return <QueryClientProvider client={queryClient}><MemoryRouter><ConversationContextSuggestions userId={userId} onSelect={onSelect} /></MemoryRouter></QueryClientProvider>
 }
 beforeEach(() => { vi.resetAllMocks(); vi.mocked(getConversationContextSummary).mockResolvedValue(ready) })
-afterEach(() => { cleanup(); clients.splice(0).forEach(value => value.clear()); vi.useRealTimers() })
+afterEach(() => { cleanup(); clients.splice(0).forEach(value => value.clear()); vi.useRealTimers(); localStorage.clear() })
 
 describe('shared cached conversation suggestions', () => {
   it('shows content-specific cross-session evidence and only fills the selected draft', async () => {
@@ -81,6 +82,83 @@ describe('shared cached conversation suggestions', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('暂时无法读取对话建议')
     fireEvent.click(screen.getByRole('button', { name: '重新读取建议' }))
     expect(await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })).toBeVisible()
+  })
+
+  it.each([
+    ['pending', 'generating'],
+    ['pending', 'active_run'],
+    ['failed', 'retry_wait'],
+    ['failed', 'daily_budget'],
+    ['failed', 'attempt_limit'],
+    ['failed', 'generator_unavailable'],
+  ] as const)('shows the same real cached cards, summary and data time during %s/%s', async (status, status_reason) => {
+    const queryClient = client()
+    const onSelect = vi.fn()
+    const onSubmit = vi.fn()
+    const view = render(<form onSubmit={onSubmit}>{surface(queryClient, 'reader-1', onSelect)}</form>)
+    await screen.findByText(ready.summary)
+    const cardContent = [...view.container.querySelectorAll('.cv-suggestions__card')].map(card => card.textContent)
+    const timestamp = view.container.querySelector('time')!.textContent
+    await act(async () => { queryClient.setQueryData(conversationContextSummaryKey('reader-1'), { ...ready, status, status_reason, is_stale: true }) })
+    expect(await screen.findByText(/保留上次整理的建议/)).toBeVisible()
+    expect(screen.getByText(ready.summary)).toBeVisible()
+    expect([...view.container.querySelectorAll('.cv-suggestions__card')].map(card => card.textContent)).toEqual(cardContent)
+    expect(view.container.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
+    expect(view.container.querySelector('time')).toHaveTextContent(timestamp!)
+    expect(screen.getByRole('status')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: /核对周五迁移的回退入口/ }))
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(ready.cards[0].prompt)
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it.each(['pending', 'failed', 'ready'] as const)('renders a directly returned last-good %s result with pending usage', async status => {
+    vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, status, is_stale: true, usage_status: 'pending' })
+    render(surface(client(), 'reader-1'))
+    expect(await screen.findByText(ready.summary)).toBeVisible()
+    expect(screen.getByRole('button', { name: /核对周五迁移的回退入口/ })).toBeVisible()
+    expect(document.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
+    expect(screen.getByText(/保留上次整理的建议/)).toBeVisible()
+    expect(screen.getByText('用量尚待确认。')).toBeVisible()
+  })
+
+  it('retains the same real cards and timestamp after a transport failure, then refreshes in place', async () => {
+    const queryClient = client()
+    vi.mocked(getConversationContextSummary).mockResolvedValueOnce(ready).mockRejectedValueOnce(new Error('HTTP 503')).mockResolvedValueOnce({ ...ready, summary: '已经整理了新的近期对话。', updated_at: '2026-10-05T12:00:00Z' })
+    const view = render(surface(queryClient, 'reader-1'))
+    await screen.findByText(ready.summary)
+    const cardContent = [...view.container.querySelectorAll('.cv-suggestions__card')].map(card => card.textContent)
+    const timestamp = view.container.querySelector('time')!.textContent
+    await act(async () => { await queryClient.refetchQueries({ queryKey: conversationContextSummaryKey('reader-1'), exact: true }) })
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('暂时无法读取对话建议'))
+    expect(screen.getByText(ready.summary)).toBeVisible()
+    expect([...view.container.querySelectorAll('.cv-suggestions__card')].map(card => card.textContent)).toEqual(cardContent)
+    expect(view.container.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
+    expect(view.container.querySelector('time')).toHaveTextContent(timestamp!)
+    expect(screen.getByText(/保留上次整理的建议/)).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '重新读取建议' }))
+    expect(await screen.findByText('已经整理了新的近期对话。')).toBeVisible()
+    expect(document.querySelector('time')).toHaveAttribute('datetime', '2026-10-05T12:00:00Z')
+    expect(screen.queryByText(/保留上次整理的建议/)).not.toBeInTheDocument()
+  })
+
+  it('keeps a cached summary visible even when there are no suggestion cards', async () => {
+    vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, status: 'pending', is_stale: true, cards: [] })
+    render(surface(client(), 'reader-1'))
+    expect(await screen.findByText(ready.summary)).toBeVisible()
+    expect(document.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
+    expect(document.querySelectorAll('.cv-suggestions__card')).toHaveLength(0)
+  })
+
+  it('keeps fresh ready cards visible while usage confirmation is pending, including English hints', async () => {
+    localStorage.setItem('qunxue.interface-locale', 'en-US')
+    vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, is_stale: false, usage_status: 'pending' })
+    render(<AppLocaleProvider>{surface(client(), 'reader-1')}</AppLocaleProvider>)
+    expect(await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })).toBeVisible()
+    expect(screen.getByText(ready.summary)).toBeVisible()
+    expect(screen.getByText('Usage is still being confirmed.')).toBeVisible()
+    expect(screen.getByText(/Data updated:/)).toBeVisible()
+    expect(document.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
+    expect(screen.queryByText(/Showing the last prepared suggestions/)).not.toBeInTheDocument()
   })
 
   it('labels assistant statements as unverified and discloses partial source coverage', async () => {
@@ -221,14 +299,55 @@ describe('shared cached conversation suggestions', () => {
     expect(getConversationContextSummary).toHaveBeenCalledTimes(1)
   })
 
-  it('stops a pending polling loop when the next read fails', async () => {
+  it('aborts an in-flight cache read on leave and ignores its late result', async () => {
+    const queryClient = client()
+    const pending = { ...ready, status: 'pending' as const, is_stale: true }
+    let readSignal: AbortSignal | undefined
+    let resolveRead!: (data: ConversationContextSummary) => void
+    vi.mocked(getConversationContextSummary).mockResolvedValueOnce(pending).mockImplementationOnce(signal => {
+      readSignal = signal
+      return new Promise(resolve => { resolveRead = resolve })
+    })
+    const view = render(surface(queryClient, 'reader-1'))
+    await screen.findByText(ready.summary)
+    let read!: Promise<void>
+    await act(async () => { read = queryClient.refetchQueries({ queryKey: conversationContextSummaryKey('reader-1'), exact: true }) })
+    expect(readSignal?.aborted).toBe(false)
+    view.unmount()
+    expect(readSignal?.aborted).toBe(true)
+    await act(async () => { resolveRead({ ...ready, summary: 'A late result' }); await read })
+    expect(queryClient.getQueryData(conversationContextSummaryKey('reader-1'))).toEqual(pending)
+    expect(getConversationContextSummary).toHaveBeenCalledTimes(2)
+  })
+
+  it('continues awaiting a pending server result after a transient read failure', async () => {
     vi.useFakeTimers()
-    vi.mocked(getConversationContextSummary).mockResolvedValueOnce({ ...empty, status: 'pending' }).mockRejectedValueOnce(new Error('HTTP 503'))
+    vi.mocked(getConversationContextSummary).mockResolvedValueOnce({ ...ready, status: 'pending', is_stale: true }).mockRejectedValueOnce(new Error('HTTP 503')).mockResolvedValueOnce(ready)
     render(surface(client(), 'reader-1'))
-    await act(async () => { await vi.advanceTimersByTimeAsync(60_002) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_002) })
     expect(getConversationContextSummary).toHaveBeenCalledTimes(2)
-    expect(screen.getByRole('alert')).toHaveTextContent('暂时无法读取对话建议')
+    expect(screen.getByRole('status')).toHaveTextContent('暂时无法读取对话建议')
+    expect(screen.getByText(ready.summary)).toBeVisible()
+    expect(screen.getByRole('button', { name: /核对周五迁移的回退入口/ })).toBeVisible()
+    expect(document.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_001) })
+    expect(getConversationContextSummary).toHaveBeenCalledTimes(3)
+    expect(screen.queryByText(/保留上次整理的建议/)).not.toBeInTheDocument()
     await act(async () => { await vi.advanceTimersByTimeAsync(120_000) })
+    expect(getConversationContextSummary).toHaveBeenCalledTimes(3)
+  })
+
+  it('continues a scheduled retry after a failed read and stops once fresh content arrives', async () => {
+    vi.useFakeTimers()
+    const retry_at = new Date(Date.now() + 45_000).toISOString()
+    vi.mocked(getConversationContextSummary).mockResolvedValueOnce({ ...ready, status: 'failed', status_reason: 'retry_wait', retry_at, is_stale: true }).mockRejectedValueOnce(new Error('HTTP 503')).mockResolvedValueOnce(ready)
+    render(surface(client(), 'reader-1'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(45_002) })
     expect(getConversationContextSummary).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('button', { name: /核对周五迁移的回退入口/ })).toBeVisible()
+    expect(document.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_001) })
+    expect(getConversationContextSummary).toHaveBeenCalledTimes(3)
+    expect(screen.queryByText(/保留上次整理的建议/)).not.toBeInTheDocument()
   })
 })

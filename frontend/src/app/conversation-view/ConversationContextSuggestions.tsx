@@ -5,11 +5,16 @@ import { useConversationContextSummary } from './useConversationContextSummary'
 
 export function ConversationContextSuggestions({ userId, onSelect }: { userId: string | null; onSelect: (prompt: string) => void }) {
   const query = useConversationContextSummary(userId)
-  const { text } = useAppLocale()
+  const { text, locale } = useAppLocale()
   if (!userId) return null
   const data = query.data
   const failed = query.isError || data?.status === 'failed'
   const pending = query.isPending || data?.status === 'pending'
+  const hasContent = Boolean(data?.summary.trim() || data?.cards.length)
+  const stale = hasContent && (data?.is_stale || failed || pending)
+  const updatedAt = data?.updated_at ? new Date(data.updated_at) : null
+  const updatedTime = updatedAt && Number.isFinite(updatedAt.getTime())
+    ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(updatedAt) : null
   const label = text('根据你最近的对话', 'From your recent conversations')
   const waitingMessage = data?.status_reason === 'active_run' ? text('当前对话还在进行，结束后会整理建议。', 'Suggestions will be prepared after the current conversation finishes.')
     : data?.status_reason === 'idle_wait' ? text('最近对话刚刚更新，稍后会自动整理建议。', 'Your recent conversations just changed. Suggestions will update shortly.')
@@ -24,26 +29,32 @@ export function ConversationContextSuggestions({ userId, onSelect }: { userId: s
     : text('暂时无法读取对话建议，请稍后重试。', 'Conversation suggestions are unavailable. Please try again later.')
   const message = failed ? failureMessage
     : pending ? waitingMessage
-    : data?.status === 'disabled' ? text('对话建议暂未启用。你可以直接输入问题。', 'Conversation suggestions are not enabled. You can still enter a question.')
-    : data?.status === 'empty' ? text('最近的对话还没有足够内容形成建议。', 'There is not enough recent conversation content for suggestions yet.')
+    : !hasContent && data?.status === 'disabled' ? text('对话建议暂未启用。你可以直接输入问题。', 'Conversation suggestions are not enabled. You can still enter a question.')
+    : !hasContent && data?.status === 'empty' ? text('最近的对话还没有足够内容形成建议。', 'There is not enough recent conversation content for suggestions yet.')
     : !data?.cards.length ? text('暂时没有可继续讨论的建议。', 'There are no suggested continuations right now.') : null
   return <section className="cv-suggestions cv-context-suggestions" aria-label={label}>
     <p className="cv-suggestions__label qx-meta">{label}</p>
-    {!failed && !pending && data?.status === 'ready' && data.summary && <div className="cv-context-suggestions__summary">
+    {hasContent && (updatedTime || stale) && <p className="cv-context-suggestions__hint qx-meta">
+      {updatedTime && <>{text('数据更新时间：', 'Data updated: ')}<time dateTime={data!.updated_at!} title={data!.updated_at!}>{updatedTime}</time></>}
+      {stale && <span>{updatedTime && ' · '}{text('保留上次整理的建议', 'Showing the last prepared suggestions')}</span>}
+    </p>}
+    {data?.summary && <div className="cv-context-suggestions__summary">
       <p className="qx-meta">{data.summary}</p>
       {data.summary_sources.length > 0 && <ContextSources sources={data.summary_sources} label={text('近况依据', 'Summary sources')} />}
     </div>}
     {Boolean(data?.omitted_messages) && <p className="cv-context-suggestions__hint qx-meta">{text(`这里只依据部分近期消息整理，另有 ${data!.omitted_messages} 条消息未纳入。`, `This uses part of your recent conversations; ${data!.omitted_messages} messages were omitted.`)}</p>}
-    {message ? <div className="cv-context-suggestions__state" role={failed ? 'alert' : 'status'}>
-      <p className="qx-meta">{message}</p>
-      {failed && <button className="qx-btn qx-btn--ghost" type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>{text('重新读取建议', 'Reload suggestions')}</button>}
-    </div> : <>
+    {Boolean(data?.cards.length) && <>
       <p className="cv-context-suggestions__hint qx-meta">{text('可继续讨论的建议 · 点击填入草稿', 'Suggested continuations · Click to fill your draft')}</p>
       <div className="cv-suggestions__cards">{data?.cards.map((card, index) => <article className="cv-context-suggestions__item" key={`${index}:${card.title}`}>
         <button className="qx-btn qx-btn--ghost cv-suggestions__card" type="button" onClick={() => onSelect(card.prompt)}><strong>{card.title}</strong><span>{card.description}</span></button>
         <ContextSources sources={card.sources} label={text('建议依据', 'Suggestion sources')} />
       </article>)}</div>
     </>}
+    {data?.usage_status === 'pending' && <p className="cv-context-suggestions__hint qx-meta">{text('用量尚待确认。', 'Usage is still being confirmed.')}</p>}
+    {message && <div className="cv-context-suggestions__state" role={failed && !hasContent ? 'alert' : 'status'}>
+      <p className="qx-meta">{message}</p>
+      {failed && <button className="qx-btn qx-btn--ghost" type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>{text('重新读取建议', 'Reload suggestions')}</button>}
+    </div>}
   </section>
 }
 

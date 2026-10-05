@@ -268,6 +268,8 @@ export type ConversationContextSummary = {
   summary_sources: ConversationContextSource[]
   cards: ConversationContextSuggestion[]
   updated_at: string | null
+  is_stale?: boolean
+  usage_status?: 'known' | 'pending' | null
   scope: 'conversation_messages'
   omitted_messages: number
   status_reason?: 'queued' | 'active_run' | 'idle_wait' | 'generating' | 'retry_wait' | 'daily_budget' | 'attempt_limit' | 'generation_failed' | 'generator_unavailable' | null
