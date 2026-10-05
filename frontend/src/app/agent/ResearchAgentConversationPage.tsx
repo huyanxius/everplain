@@ -1202,6 +1202,7 @@ export function ResearchAgentConversationPage({
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null)
   const [, setLandingBackdropPhase] = useState<'visible' | 'leaving' | 'hidden'>('visible')
   const streamAbortController = useRef<AbortController | null>(null)
+  const [streamInFlight, setStreamInFlight] = useState(false)
   const activeRunId = useRef<string | null>(null)
   const pausePending = useRef(false)
   const streamGeneration = useRef(0)
@@ -1380,7 +1381,7 @@ export function ResearchAgentConversationPage({
   }, [citationRequest, activeConversation])
 
   const canStopGeneration = status === 'thinking' || status === 'retrieving' || status === 'answering'
-  const isBusy = preparingWriting || status === 'loading' || status === 'pausing' || status === 'pause-failed' || canStopGeneration
+  const isBusy = preparingWriting || streamInFlight || status === 'loading' || status === 'pausing' || status === 'pause-failed' || canStopGeneration
   const knowledgeIndex = useKnowledgeIndexChoice(requestedScope, (request, idempotencyKey) => {
     if (isBusy || writingPreparation.current || streamAbortController.current || researchEntryAbortController.current) return false
     void submitQuestion(request.message, idempotencyKey, undefined, false, undefined, false, request)
@@ -1688,6 +1689,7 @@ export function ResearchAgentConversationPage({
     streamGeneration.current += 1
     streamAbortController.current?.abort()
     streamAbortController.current = null
+    setStreamInFlight(false)
     conversationLoadGeneration.current += 1
     conversationLoadAbortController.current?.abort()
   }
@@ -2003,10 +2005,17 @@ export function ResearchAgentConversationPage({
     const runGeneration = streamGeneration.current + 1
     streamGeneration.current = runGeneration
     streamAbortController.current = controller
+    setStreamInFlight(true)
     pausePending.current = false
     if (isEmpty) await revealFirstStreamingTurn(firstStreamingTurn, () => !controller.signal.aborted && streamGeneration.current === runGeneration)
     else setStreamingTurn(firstStreamingTurn)
-    if (controller.signal.aborted || streamGeneration.current !== runGeneration) return null
+    if (controller.signal.aborted || streamGeneration.current !== runGeneration) {
+      if (streamAbortController.current === controller) {
+        streamAbortController.current = null
+        setStreamInFlight(false)
+      }
+      return null
+    }
 
     try {
       await streamAgentTurn(
@@ -2254,7 +2263,10 @@ export function ResearchAgentConversationPage({
         setStatus('error')
       }
     } finally {
-      if (streamAbortController.current === controller) streamAbortController.current = null
+      if (streamAbortController.current === controller) {
+        streamAbortController.current = null
+        setStreamInFlight(false)
+      }
     }
     return controller.signal.aborted || streamGeneration.current !== runGeneration ? null : resultConversation
   }
@@ -2421,6 +2433,7 @@ export function ResearchAgentConversationPage({
           if (pendingConversationId.current) {
             streamAbortController.current?.abort()
             streamAbortController.current = null
+            setStreamInFlight(false)
             activeTurnAttempt.current = null
             loadedConversationId.current = null
             await loadConversation(pendingConversationId.current)
@@ -2440,6 +2453,7 @@ export function ResearchAgentConversationPage({
     streamAbortController.current?.abort()
     streamAbortController.current = null
     pausePending.current = false
+    setStreamInFlight(false)
     resetDeepResearchMock()
     settleInterruptedTurn()
   }
