@@ -5,6 +5,7 @@ tests/test_everplain_account_data.py
 tests/test_everplain_agent.py
 tests/test_agent_global_knowledge.py
 tests/test_personal_knowledge_context.py
+tests/test_knowledge_tool_serialization.py
 tests/test_knowledge_index_readiness.py
 tests/test_shared_knowledge_agent.py
 tests/test_everplain_documents.py
