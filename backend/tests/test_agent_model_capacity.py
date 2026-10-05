@@ -14,6 +14,7 @@ from qunxue_api.adapters.model import ModelEndpoint, ModelRouteExecutor
 from qunxue_api.adapters.research_agent import pydantic_runner
 from qunxue_api.adapters.research_agent.catalog_tools import KnowledgeToolRegistry
 from qunxue_api.adapters.research_agent.model_capacity import (
+    AgentModelCapacity,
     model_capacity_key,
     resolve_agent_model_capacity,
 )
@@ -78,6 +79,8 @@ def test_explicit_provider_capacity_is_parsed_from_environment(monkeypatch):
     )
     assert runner._agent.model.settings["max_tokens"] == 64000
     assert runner.model_capacity.context_window_tokens == 160000
+    assert isinstance(runner.model_capacity, AgentModelCapacity)
+    assert runner.model_capacity is not settings.agent_model_capacities[route]
 
 
 @pytest.mark.parametrize("values", [

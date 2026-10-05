@@ -54,7 +54,10 @@ from qunxue_api.adapters.model.metering import MeteredOpenAIChatModel, MeteredOp
 from qunxue_api.adapters.research_agent.catalog_tools import (
     KnowledgeToolRegistry,
 )
-from qunxue_api.adapters.research_agent.model_capacity import resolve_agent_model_capacity
+from qunxue_api.adapters.research_agent.model_capacity import (
+    AgentModelCapacityMetadata,
+    resolve_agent_model_capacity,
+)
 from qunxue_api.adapters.research_agent.research_map_contracts import (
     ResearchMapNodeInput,
     ResearchMapRelationInput,
@@ -78,7 +81,6 @@ from qunxue_api.modules.agent_conversation import (
 )
 from qunxue_api.modules.billing import BillingFailure
 from qunxue_api.modules.shared_knowledge import KnowledgeIndexChoiceRequired
-from qunxue_api.settings import AgentModelCapacitySettings
 
 WRITING_WORKSPACE_POLICY = (
     "当前是写作工作区，仍使用同一个 Agent。先调用 read_writing_document 读取正文、"
@@ -838,7 +840,7 @@ class PydanticAIKnowledgeRunner:
         model_api_mock: bool = False,
         require_billing: bool = False,
         protocol: Literal["chat_completions", "responses"] = "chat_completions",
-        model_capacities: Mapping[str, AgentModelCapacitySettings] | None = None,
+        model_capacities: Mapping[str, AgentModelCapacityMetadata] | None = None,
     ) -> None:
         if protocol == "responses" and fallback_endpoints:
             raise ValueError("explicit model selections require strict-model routing")
