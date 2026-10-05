@@ -56,3 +56,21 @@ it('immediately hides or replaces avatars for reduced motion', () => {
   view.rerender(<UserAvatarPresence active avatar={null} />)
   expect(screen.queryByText('cat')).not.toBeInTheDocument()
 })
+
+it('keeps the original 400ms entry delay for a profile arriving asynchronously and route re-entry', () => {
+  vi.useFakeTimers()
+  const view = render(<UserAvatarPresence active avatar={null} />)
+  view.rerender(<UserAvatarPresence active avatar={{ id: 'xiaoping' }} />)
+  expect(screen.getByText('xiaoping').parentElement).toHaveAttribute('data-swapped', 'false')
+  view.rerender(<UserAvatarPresence active={false} avatar={{ id: 'xiaoping' }} />)
+  act(() => { vi.advanceTimersByTime(450) })
+  view.rerender(<UserAvatarPresence active avatar={{ id: 'xiaoping' }} />)
+  expect(screen.getByText('xiaoping').parentElement).toHaveAttribute('data-swapped', 'false')
+})
+it('uses delay-free peek only after the old person finishes leaving for a different person', () => {
+  vi.useFakeTimers()
+  const view = render(<UserAvatarPresence active avatar={{ id: 'xiaoping' }} />)
+  view.rerender(<UserAvatarPresence active avatar={{ id: 'mo' }} />)
+  act(() => { vi.advanceTimersByTime(450) })
+  expect(screen.getByText('mo').parentElement).toHaveAttribute('data-swapped', 'true')
+})

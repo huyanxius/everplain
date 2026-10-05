@@ -17,6 +17,7 @@ export function UserAvatarPresence({ active, avatar }: { active: boolean; avatar
   const [shown, setShown] = useState<Avatar | null>(active ? avatar : null)
   const [away, setAway] = useState(false)
   const [cycle, setCycle] = useState(0)
+  const [skipEntryDelay, setSkipEntryDelay] = useState(false)
   const shownRef = useRef(shown)
   const target = useRef<Avatar | null>(null)
   const timer = useRef<number | null>(null)
@@ -24,11 +25,12 @@ export function UserAvatarPresence({ active, avatar }: { active: boolean; avatar
   useEffect(() => {
     target.current = active ? avatar : null
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    const display = (value: Avatar | null, replay = false) => {
+    const display = (value: Avatar | null, replay = false, instant = false) => {
       shownRef.current = value
       setShown(value)
       setAway(false)
-      if (replay) setCycle(value => value + 1)
+      if (replay) { setCycle(value => value + 1); setSkipEntryDelay(instant) }
+      else if (!value) setSkipEntryDelay(false)
     }
     const cancel = () => { if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null } }
     const next = target.current
@@ -40,13 +42,15 @@ export function UserAvatarPresence({ active, avatar }: { active: boolean; avatar
     setAway(true)
     if (timer.current === null) timer.current = window.setTimeout(() => {
       timer.current = null
-      display(target.current, Boolean(target.current))
+      const next = target.current
+      const changedPerson = Boolean(next && shownRef.current && next.id !== shownRef.current.id)
+      display(next, Boolean(next), changedPerson)
     }, 450)
     previousActive.current = active
   }, [active, avatar])
   useEffect(() => () => { if (timer.current !== null) window.clearTimeout(timer.current) }, [])
   if (!shown) return null
-  return <div key={cycle} className="hm-companion" data-away={away} data-swapped={cycle > 0} aria-hidden={!active} inert={!active}>
+  return <div key={cycle} className="hm-companion" data-away={away} data-swapped={skipEntryDelay} aria-hidden={!active} inert={!active}>
     <UserAvatar id={shown.id} custom={shown} variant="resting" size={150} />
   </div>
 }
