@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from qunxue_api.modules.identity.domain import (
     AccountStatus,
     AuthenticatedSession,
+    FederatedIdentity,
     RegistrationVerification,
     SessionGrant,
     User,
@@ -16,6 +17,7 @@ from qunxue_api.modules.identity.domain import (
 )
 from qunxue_api.modules.identity.errors import (
     EmailAlreadyRegistered,
+    FederatedIdentityConflict,
     InvalidCredentials,
     InvalidEmail,
     InvalidVerificationCode,
@@ -158,6 +160,65 @@ class IdentityService:
             user_agent=user_agent,
             ip_address=ip_address,
         )
+
+    def login_federated(
+        self,
+        *,
+        provider: str,
+        subject: str,
+        verified_email: str,
+        user_agent: str | None = None,
+        ip_address: str | None = None,
+    ) -> SessionGrant:
+        """Called only after the provider adapter has validated the identity."""
+        identity = self._repository.get_federated_identity(provider, subject)
+        now = self._clock()
+        if identity is not None:
+            user = self._repository.get_user(identity.user_id)
+            if user is None or user.status is not AccountStatus.ACTIVE:
+                raise InvalidCredentials
+            user = self._repository.record_login(user.user_id, now)
+        else:
+            email = self._normalize_email(verified_email)
+            # Email is contact data, never evidence that two identities are the same.
+            if self._repository.get_user_by_email(email) is not None:
+                raise FederatedIdentityConflict
+            user = self._repository.add_user(
+                User(
+                    user_id=self._id_factory(),
+                    email=email,
+                    password_hash="!oauth-only",
+                    display_name=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            self._repository.add_federated_identity(
+                FederatedIdentity(
+                    provider=provider,
+                    subject=subject,
+                    user_id=user.user_id,
+                    created_at=now,
+                )
+            )
+        return self._grant(user, now, user_agent=user_agent, ip_address=ip_address)
+
+    def link_federated(self, current: AuthenticatedSession, *, provider: str, subject: str) -> None:
+        identity = self._repository.get_federated_identity(provider, subject)
+        existing = self._repository.get_user_provider_identity(current.user.user_id, provider)
+        if identity is not None and identity.user_id != current.user.user_id:
+            raise FederatedIdentityConflict
+        if existing is not None and existing.subject != subject:
+            raise FederatedIdentityConflict
+        if identity is None:
+            self._repository.add_federated_identity(
+                FederatedIdentity(
+                    provider=provider,
+                    subject=subject,
+                    user_id=current.user.user_id,
+                    created_at=self._clock(),
+                )
+            )
 
     def authenticate(self, credential: str | None) -> AuthenticatedSession:
         if not credential:

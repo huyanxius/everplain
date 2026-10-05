@@ -64,3 +64,11 @@ class RegistrationVerification:
     expires_at: datetime
     resend_available_at: datetime
     attempts_remaining: int
+
+
+@dataclass(frozen=True, slots=True)
+class FederatedIdentity:
+    provider: str
+    subject: str
+    user_id: UUID
+    created_at: datetime

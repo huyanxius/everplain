@@ -2,7 +2,12 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from qunxue_api.modules.identity.domain import RegistrationVerification, User, UserSession
+from qunxue_api.modules.identity.domain import (
+    FederatedIdentity,
+    RegistrationVerification,
+    User,
+    UserSession,
+)
 
 
 class PasswordHasher(Protocol):
@@ -16,6 +21,16 @@ class EmailProvider(Protocol):
 
 
 class IdentityRepository(Protocol):
+    def get_federated_identity(self, provider: str, subject: str) -> FederatedIdentity | None: ...
+
+    def get_user_provider_identity(
+        self, user_id: UUID, provider: str
+    ) -> FederatedIdentity | None: ...
+
+    def add_federated_identity(self, identity: FederatedIdentity) -> None: ...
+
+    def list_federated_providers(self, user_id: UUID) -> list[str]: ...
+
     def get_user_by_email(self, email: str) -> User | None: ...
 
     def add_user(self, user: User) -> User: ...

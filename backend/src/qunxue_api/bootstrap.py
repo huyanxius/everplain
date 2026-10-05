@@ -42,6 +42,7 @@ from qunxue_api.adapters.model import (
     SqliteModelInvocationRecorder,
     create_deterministic_mock_provider,
 )
+from qunxue_api.adapters.oauth import OAuthClients
 from qunxue_api.adapters.research_agent import (
     DeterministicKnowledgeRunner,
     OpenAICompatibleEmbeddingProvider,
@@ -148,6 +149,7 @@ from qunxue_api.api.routes.health import router as health_router
 from qunxue_api.api.routes.knowledge_import import router as knowledge_import_router
 from qunxue_api.api.routes.memories import MemoryValidationError
 from qunxue_api.api.routes.memories import router as memories_router
+from qunxue_api.api.routes.oauth_session import router as oauth_session_router
 from qunxue_api.api.routes.personal_graph import router as personal_graph_router
 from qunxue_api.api.routes.phenomena import material_router as material_intakes_router
 from qunxue_api.api.routes.phenomena import router as phenomena_router
@@ -534,24 +536,28 @@ def create_app(
     password_hasher = Argon2PasswordHasher()
     invalid_password_hash = password_hasher.hash("invalid-account-password")
 
+    def build_identity_service(session) -> IdentityService:
+        return IdentityService(
+            SqliteIdentityRepository(
+                session,
+                on_user_created=lambda user: SqliteCreditRepository(session).ensure_welcome_grant(
+                    user_id=user.user_id, points=SIGNUP_GRANT, now=user.created_at,
+                ),
+            ),
+            password_hasher,
+            invalid_password_hash=invalid_password_hash,
+            session_ttl=timedelta(seconds=resolved_settings.session_ttl_seconds),
+            email_provider=app.state.email_provider,
+            require_email_verification=app.state.require_email_verification,
+        )
+
     @contextmanager
     def identity_service_scope() -> Iterator[IdentityService]:
         with resolved_database.session() as session:
-            yield IdentityService(
-                SqliteIdentityRepository(
-                    session,
-                    on_user_created=lambda user: (
-                        SqliteCreditRepository(session).ensure_welcome_grant(
-                        user_id=user.user_id, points=SIGNUP_GRANT, now=user.created_at,
-                        )
-                    ),
-                ),
-                password_hasher,
-                invalid_password_hash=invalid_password_hash,
-                session_ttl=timedelta(seconds=resolved_settings.session_ttl_seconds),
-                email_provider=app.state.email_provider,
-                require_email_verification=app.state.require_email_verification,
-            )
+            yield build_identity_service(session)
+
+    app.state.build_identity_service = build_identity_service
+    app.state.oauth_clients = OAuthClients(resolved_settings)
 
     @contextmanager
     def research_task_service_scope() -> Iterator[ResearchTaskService]:
@@ -1498,6 +1504,7 @@ def create_app(
     app.state.identity_service_scope = identity_service_scope
     app.include_router(health_router)
     app.include_router(session_router)
+    app.include_router(oauth_session_router)
     app.include_router(research_tasks_router)
     app.include_router(research_documents_router)
     app.include_router(research_materials_router)
