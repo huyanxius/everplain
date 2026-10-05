@@ -1,6 +1,8 @@
 import { CaretRightIcon, CheckCircleIcon, CircleNotchIcon, FileTextIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import { useId, useState } from 'react'
 import { useAppLocale } from '../../i18n/AppLocaleProvider'
+import { toolResultSiteUrl } from './toolResultSiteUrl'
+import { SiteIcon } from '../ui/SiteIcon'
 import type { ConversationToolStep } from './types'
 
 function printable(value: unknown) {
@@ -14,7 +16,7 @@ export function ConversationToolDetail({ step }: { step: ConversationToolStep })
     {step.purpose ? <p>{step.purpose}</p> : null}
     {step.input != null ? <details><summary role="button">{text('工具输入', 'Tool input')}</summary><pre>{printable(step.input)}</pre></details> : null}
     {step.detail ? <details><summary role="button">{text('查看完整工具返回', 'View full tool output')}</summary><pre>{step.detail}</pre></details> : null}
-    {step.resultItems?.length ? <ul className="cv-tool-results">{step.resultItems.map(item => <li key={item.id}><FileTextIcon aria-hidden="true" /><div><strong>{item.title}</strong>{item.excerpt ? <p>{item.excerpt}</p> : null}</div></li>)}</ul> : null}
+    {step.resultItems?.length ? <ul className="cv-tool-results">{step.resultItems.map((item, index) => <li key={item.id}><SiteIcon url={toolResultSiteUrl(step.output, index)} fallback={<FileTextIcon aria-hidden="true" />} /><div><strong>{item.title}</strong>{item.excerpt ? <p>{item.excerpt}</p> : null}</div></li>)}</ul> : null}
     {step.output != null ? <details><summary role="button">{text('工具结果数据', 'Tool result data')}</summary><pre>{printable(step.output)}</pre></details> : null}
   </div>
 }

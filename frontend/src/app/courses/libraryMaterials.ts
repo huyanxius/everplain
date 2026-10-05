@@ -1,3 +1,4 @@
+export { siteIconUrl } from '../ui/siteIconUrl'
 import type { SharedDocument } from '../../modules/shared-knowledge'
 
 export type WebMaterialSource = { url?: string | null; title?: string | null }
@@ -42,12 +43,4 @@ export function documentTitle(document: SharedDocument, source?: WebMaterialSour
   if (topic) return topic
   const summary = document.knowledge?.summary?.trim().split(/[。！？\n]/)[0]?.replace(/^[#*\s]+/, '').trim()
   return meaningfulWebTitle(summary)?.slice(0, 80) || webSourceUrl(source)!.hostname.replace(/^www\./, '')
-}
-
-export function siteIconUrl(source?: WebMaterialSource) {
-  const url = webSourceUrl(source)
-  if (!url || url.port || !url.hostname.includes('.') || /(?:^localhost$|\.localhost$|\.local$|\.internal$|\.test$|\.invalid$|\.example$)/i.test(url.hostname) || /^[\d.]+$/.test(url.hostname) || url.hostname.includes(':')) return null
-  // Only the site's origin reaches the image request; no private path, query,
-  // third-party favicon service, or server-side URL fetch is involved.
-  return new URL('/favicon.ico', url.origin).href
 }
