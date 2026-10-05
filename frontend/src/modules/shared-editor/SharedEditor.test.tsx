@@ -1,10 +1,39 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SharedEditor } from './SharedEditor'
 import { splitMarkdown, joinMarkdown, canEditProperties } from './markdownSource'
-afterEach(cleanup)
+
+function cleanupEditorFixtures() {
+  // Tiptap defers editor.destroy() on unmount. Run that real destruction while
+  // jsdom still exists, without changing the behavioral tests' real timers.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  try {
+    cleanup()
+    act(() => { vi.runOnlyPendingTimers() })
+    expect(vi.getTimerCount()).toBe(0)
+  } finally {
+    vi.useRealTimers()
+  }
+}
+
+afterEach(cleanupEditorFixtures)
 const source = '---\ntitle: "保留格式"\ntags:\n  - 一个\n  - 两个\n---\n\n# 标题\n\n[[笔记|别名]] ==高亮==\n\n> [!note] 提示\n> 内容\n\n- [x] 任务\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n```js\nconst a = 1\n```\n\n![图片](https://example.com/image.png)\n'
 describe('shared reference editor production persistence', () => {
+  it('destroys the real editor and drains deferred timers during fixture cleanup', () => {
+    const onReady = vi.fn()
+    render(<SharedEditor markdown="原文" onReady={onReady} />)
+    expect(onReady).toHaveBeenCalled()
+    const editor = onReady.mock.calls[0][0]
+    const onDestroy = vi.fn()
+    editor.on('destroy', onDestroy)
+    expect(editor.isDestroyed).toBe(false)
+
+    cleanupEditorFixtures()
+
+    expect(editor.isDestroyed).toBe(true)
+    expect(onDestroy).toHaveBeenCalledOnce()
+    expect(vi.isFakeTimers()).toBe(false)
+  })
   it('never flattens nested YAML through scalar property controls', () => { expect(canEditProperties(splitMarkdown(source).frontmatter)).toBe(false); expect(canEditProperties('---\ntitle: plain\n---\n')).toBe(true) })
   it('separates and rejoins frontmatter without rewriting YAML', () => { const parts = splitMarkdown(source); expect(joinMarkdown(parts.frontmatter, parts.body)).toBe(source); expect(parts.frontmatter).toContain('  - 两个') })
   it('preserves source bytes through rich/source mode switches and reports no fake save', async () => {
