@@ -6,7 +6,7 @@ export type StreamReveal = { revealedAt: readonly number[]; now: number }
 type Paced = StreamReveal & { visible: string }
 
 /** Display-only pacing. The caller retains the complete, authoritative network answer. */
-export function useStreamPacer(answer: string, streaming: boolean): Paced {
+export function useStreamPacer(answer: string, streaming: boolean, immediate = false): Paced {
   const reduced = useReducedMotion()
   const [view, setView] = useState<Paced>(() => ({ visible: streaming && !reduced ? '' : answer, revealedAt: [], now: performance.now() }))
   const current = useRef({ answer, streaming, reduced, visible: view.visible, revealedAt: [] as number[], lastReveal: 0, animated: streaming && !reduced })
@@ -15,13 +15,13 @@ export function useStreamPacer(answer: string, streaming: boolean): Paced {
     const s = current.current
     const replaces = !answer.startsWith(s.answer)
     s.answer = answer; s.streaming = streaming; s.reduced = reduced
-    if (reduced || replaces || (!s.animated && !streaming)) {
+    if (immediate || reduced || replaces || (!s.animated && !streaming)) {
       const changed = s.visible !== answer || s.revealedAt.length > 0
       s.visible = answer; s.revealedAt = []; s.animated = streaming && !reduced
       if (changed) setView({ visible: answer, revealedAt: [], now: performance.now() })
     } else if (streaming) s.animated = true
     wake.current()
-  }, [answer, streaming, reduced])
+  }, [answer, streaming, reduced, immediate])
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
     let disposed = false

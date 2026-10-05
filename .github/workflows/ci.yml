@@ -18,6 +18,7 @@ jobs:
     outputs:
       backend: ${{ steps.paths.outputs.backend }}
       frontend: ${{ steps.paths.outputs.frontend }}
+      release: ${{ steps.paths.outputs.release }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -26,20 +27,12 @@ jobs:
       - id: paths
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          python3 - <<'PY'
-          import os, subprocess
-          result = subprocess.run(['git', 'diff', '--name-only', os.environ['BASE_SHA'], 'HEAD'], capture_output=True, text=True)
-          paths = result.stdout.splitlines()
-          unknown = result.returncode != 0 or not paths or any(not p.startswith(('backend/', 'frontend/', 'extensions/', 'ops/', '.github/workflows/', 'docs/')) for p in paths)
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              for role, prefixes in [('backend', ('backend/',)), ('frontend', ('frontend/', 'extensions/', 'backend/'))]:
-                  output.write(f'{role}={str(unknown or any(p.startswith(prefixes) for p in paths)).lower()}\n')
-          PY
+        run: python3 ops/cd/changed_paths.py
   release-build:
     # Validate the actual runtime images before merge. Main builds its publishable
     # artifact in deploy.yml after the reusable checks pass, without doing it twice.
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.release == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
@@ -124,3 +117,4 @@ jobs:
           npm --prefix frontend run lint
           npm --prefix frontend run test -- --maxWorkers=1
           npm --prefix frontend run build
+

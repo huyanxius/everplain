@@ -1,12 +1,13 @@
 """Recoverable course processing; model calls never hold a SQLite write transaction."""
 
+import json
 import logging
 import math
 from contextlib import ExitStack, nullcontext
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 
 from qunxue_api.adapters.sqlite.shared_knowledge import (
     SharedDocumentRow,
@@ -21,6 +22,7 @@ from .course_knowledge import (
     CourseWorkCancelled,
     validate_knowledge,
 )
+from .embedding import EmbeddingProviderError, index_error_message
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +112,13 @@ class CourseOrganizationWorker:
                                         SharedDocumentRow.job_token == token,
                                     )
                                     .values(
-                                        knowledge_checkpoints=value,
+                                        knowledge_checkpoints=func.json_set(
+                                            json.dumps(value), "$._index_repair_requests",
+                                            func.json_extract(
+                                                SharedDocumentRow.knowledge_checkpoints,
+                                                "$._index_repair_requests",
+                                            ),
+                                        ),
                                         job_started_at=datetime.now(UTC),
                                     )
                                 )
@@ -125,7 +133,9 @@ class CourseOrganizationWorker:
                         result = validate_knowledge(self.generate(document), document)
                 else:
                     if self.embedder is None or not self.embedding_model:
-                        raise RuntimeError("embedding not configured")
+                        raise EmbeddingProviderError(
+                            "embedding not configured", code="not_configured"
+                        )
                     cached = dict(vectors.get(self.embedding_model, {}))
                     dimension = len(next(iter(cached.values()))) if cached else None
                     missing = [
@@ -137,18 +147,23 @@ class CourseOrganizationWorker:
                         batch = missing[start : start + 16]
                         values = self.embedder.embed_documents([s["text"] for s in batch])
                         if len(values) != len(batch):
-                            raise ValueError("invalid vector count")
+                            raise EmbeddingProviderError("invalid vector count")
                         for segment, vector in zip(batch, values, strict=True):
                             if (
                                 not vector
-                                or not all(math.isfinite(v) for v in vector)
+                                or not all(
+                                    isinstance(v, (int, float))
+                                    and not isinstance(v, bool)
+                                    and math.isfinite(v)
+                                    for v in vector
+                                )
                                 or not any(vector)
                             ):
-                                raise ValueError("invalid vector")
+                                raise EmbeddingProviderError("invalid vector")
                             if dimension is None:
                                 dimension = len(vector)
                             if len(vector) != dimension:
-                                raise ValueError("inconsistent vector dimensions")
+                                raise EmbeddingProviderError("inconsistent vector dimensions")
                             cached[f"material:{document.id}:{segment['segment_id']}"] = list(vector)
                         # Retry keeps completed batches instead of starting the file again.
                         with self.database.session() as session:
@@ -166,11 +181,12 @@ class CourseOrganizationWorker:
                 return True
             except Exception as failure:
                 logger.warning(
-                    "Course processing failed document=%s stage=%s type=%s code=%s",
+                    "Course processing failed document=%s stage=%s type=%s code=%s status=%s",
                     document.id,
                     stage,
                     type(failure).__name__,
                     getattr(failure, "code", "internal_error"),
+                    getattr(failure, "status_code", None),
                 )
                 # Raw provider messages can contain credentials; expose only classified errors.
                 error = (
@@ -178,7 +194,7 @@ class CourseOrganizationWorker:
                     if isinstance(failure, CourseOrganizationError)
                     else str(CourseOrganizationError("internal_error"))
                     if stage == "knowledge"
-                    else "语义索引失败，请检查 embedding 配置或服务后重试。"
+                    else index_error_message(failure)
                 )
             with self.database.session() as session:
                 values = {

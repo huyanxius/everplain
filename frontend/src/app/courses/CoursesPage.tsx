@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router'
 import { ArrowClockwiseIcon, ArrowLeftIcon, ArrowUpRightIcon, BooksIcon, DotsThreeIcon, MagnifyingGlassIcon, PencilSimpleIcon, PlusIcon, ShareNetworkIcon, TrashIcon, TreeStructureIcon, UploadSimpleIcon } from '@phosphor-icons/react'
 import { Select } from '../ui/Select'
 import { useAccount } from '../../modules/account'
-import { readImportBatches } from '../../modules/knowledge-import'
+import { readImportBatches, type ImportBatch } from '../../modules/knowledge-import'
 import { readPersonalGraph } from '../../modules/personal-graph'
 import { ResearchAgentConversationPage } from '../agent/ResearchAgentConversationPage'
 import { PageContent, PageShell } from '../ui/PageShell'
@@ -13,7 +13,7 @@ import { KnowledgePage, KnowledgePageHead, KnowledgeViewSwitch } from './Knowled
 import { LibraryScopeSwitcher } from './LibraryScopeSwitcher'
 import { LibraryDialog } from './LibraryDialog'
 import { LibraryMaterialCard, LibrarySkeleton, type LibraryMaterialSource } from './LibraryMaterialCard'
-import { documentKind, isProcessing } from './libraryMaterials'
+import { documentKind, documentTitle, isProcessing } from './libraryMaterials'
 import { LibraryAddDialog } from '../imports/LibraryAddDialog'
 import chromeLogo from '../../assets/brand/chrome.svg'
 import obsidianLogo from '../../assets/brand/obsidian.svg'
@@ -38,7 +38,9 @@ function LibraryContent({ userId }: { userId: string | null }) {
   const [libraryChoices, setLibraryChoices] = useState<SharedCourse[]>([])
   const [detail, setDetail] = useState<SharedCourse | null>(null)
   const [source, setSource] = useState<SharedSource | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [catalogLoading, setCatalogLoading] = useState(true)
+  const [selectionLoading, setSelectionLoading] = useState(true)
+  const loading = id ? selectionLoading : catalogLoading
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -54,6 +56,7 @@ function LibraryContent({ userId }: { userId: string | null }) {
   const [libraryMenu, setLibraryMenu] = useState(false)
   const [storage, setStorage] = useState<Awaited<ReturnType<typeof readKnowledgeStorage>> | null>(null)
   const [materialSources, setMaterialSources] = useState<Record<string, LibraryMaterialSource>>({})
+  const [importBatches, setImportBatches] = useState<ImportBatch[]>([])
   const busyRef = useRef(false)
   const currentScope = useRef(params.toString())
   currentScope.current = params.toString()
@@ -78,43 +81,56 @@ function LibraryContent({ userId }: { userId: string | null }) {
   useEffect(() => { setQuery(''); setKindFilter(''); setLibraryMenu(false); setDeleting(false); setDeletingDocument(null) }, [id, documentId])
   useEffect(() => {
     let active = true
-    setLoading(true); setError(null); setCatalogError(null); setDetail(null); setSource(null)
-    void (async () => {
-      const list = await listCourses()
+    setCatalogLoading(true); setError(null); setCatalogError(null)
+    const controller = new AbortController()
+    // The owner-scoped overview lives for this page, independently of document navigation.
+    const catalog = listCourses(controller.signal).then(async list => {
       if (!active) return
       const owned = list.filter(item => item.access === 'owner')
       setLibraryChoices(list.filter(item => item.access === 'owner' || item.access === 'reader'))
       setCourses(owned)
-      if (id) {
-        const value = await getCourse(id)
-        if (!active) return
-        if (value.access !== 'owner') throw new Error('此知识库不可访问。')
-        setDetail(value)
-        setCourses(owned.map(item => item.id === value.id ? value : item))
-        if (documentId) {
-          const result = await readCourseDocument(id, documentId)
-          if (active) setSource(result)
+      await Promise.allSettled(owned.map(async item => {
+        try {
+          const value = await getCourse(item.id, controller.signal)
+          if (!active) return
+          if (value.access !== 'owner') throw new Error('此知识库不可访问。')
+          setCourses(current => current.map(course => course.id === value.id ? value : course))
+          setLibraryChoices(current => current.map(course => course.id === value.id ? value : course))
+          // Show available cards immediately; another slow library cannot hide them.
+          setCatalogLoading(false)
+        } catch {
+          if (active) setCatalogError('部分资料暂时无法读取。已保留可访问的资料，你可以重试或打开对应知识库。')
         }
-      } else {
-        const results = await Promise.allSettled(owned.map(item => getCourse(item.id)))
-        if (!active) return
-        const values = owned.map((item, index) => {
-          const result = results[index]
-          return result.status === 'fulfilled' && result.value.access === 'owner' ? result.value : { ...item, documents: [] }
-        })
-        setCourses(values)
-        setLibraryChoices([...values, ...list.filter(item => item.access === 'reader')])
-        if (results.some(result => result.status === 'rejected' || result.value.access !== 'owner')) setCatalogError('部分资料暂时无法读取。已保留可访问的资料，你可以重试或打开对应知识库。')
-      }
-    })().catch((failure: Error) => { if (active) setError(failure.message) }).finally(() => { if (active) setLoading(false) })
+      }))
+    })
+    void catalog.catch((failure: Error) => { if (active) setCatalogError(failure.message) })
+      .finally(() => { if (active) setCatalogLoading(false) })
     void readKnowledgeStorage().then(value => { if (active) setStorage(value) }).catch(() => {})
     void readImportBatches().then(batches => {
       if (!active || !Array.isArray(batches)) return
+      setImportBatches(batches)
       const metadata: Record<string, LibraryMaterialSource> = {}
-      for (const batch of batches) for (const item of batch.items ?? []) if (item.document_id) metadata[`${batch.library_id}:${item.document_id}`] = { source: sourceNames[batch.source_type], url: item.source_url }
+      for (const batch of batches) for (const item of batch.items ?? []) if (item.document_id) metadata[`${batch.library_id}:${item.document_id}`] = { source: sourceNames[batch.source_type], title: item.title, url: item.source_url }
       setMaterialSources(metadata)
     }).catch(() => {})
-    return () => { active = false }
+    return () => { active = false; controller.abort() }
+  }, [reload])
+  useEffect(() => {
+    let active = true
+    const controller = new AbortController()
+    setDetail(null); setSource(null); setError(null)
+    if (!id) { setSelectionLoading(false); return () => { active = false; controller.abort() } }
+    setSelectionLoading(true)
+    void Promise.all([
+      getCourse(id, controller.signal),
+      documentId ? readCourseDocument(id, documentId, undefined, controller.signal) : Promise.resolve(null),
+    ]).then(([value, result]) => {
+      if (!active) return
+      if (value.access !== 'owner') throw new Error('此知识库不可访问。')
+      setDetail(value); setSource(result)
+    }).catch((failure: Error) => { if (active) setError(failure.message) })
+      .finally(() => { if (active) setSelectionLoading(false) })
+    return () => { active = false; controller.abort() }
   }, [id, documentId, reload])
   const materials = (detail ? [detail] : courses).flatMap(course => course.documents.map(document => ({ course, document })))
   const hasImages = materials.some(({ document }) => documentKind(document) === '图片')
@@ -137,12 +153,25 @@ function LibraryContent({ userId }: { userId: string | null }) {
     return () => { active = false }
   }, [hasImages, reload, id])
   useEffect(() => {
-    const pending = (detail ? [detail] : courses).filter(course => course.documents.some(isProcessing))
+    const importing = new Set(importBatches.filter(batch => batch.status === 'processing').map(batch => batch.library_id))
+    const pending = (detail ? [detail] : courses).filter(course => course.documents.some(isProcessing) || importing.has(course.id))
     if (!pending.length) return
     let active = true
+    let refreshing = false
     const timer = window.setInterval(() => {
-      void Promise.all(pending.map(course => getCourse(course.id))).then(values => {
+      if (refreshing) return
+      refreshing = true
+      void (async () => {
+        // Read the batch before its documents so the final newly-created file is not missed.
+        const batches = importing.size ? await readImportBatches() : null
+        const values = await Promise.all(pending.map(course => getCourse(course.id)))
         if (!active) return
+        if (Array.isArray(batches)) {
+          setImportBatches(batches)
+          const metadata: Record<string, LibraryMaterialSource> = {}
+          for (const batch of batches) for (const item of batch.items ?? []) if (item.document_id) metadata[`${batch.library_id}:${item.document_id}`] = { source: sourceNames[batch.source_type], title: item.title, url: item.source_url }
+          setMaterialSources(metadata)
+        }
         if (detail) {
           const refreshed = values.find(value => value.id === detail.id)
           if (refreshed?.access === 'owner') setDetail(refreshed)
@@ -151,10 +180,10 @@ function LibraryContent({ userId }: { userId: string | null }) {
           const refreshed = values.find(value => value.id === course.id)
           return refreshed ? refreshed.access === 'owner' ? [refreshed] : [] : [course]
         }))
-      }).catch((failure: Error) => { if (active) { setError(failure.message); window.clearInterval(timer) } })
+      })().catch((failure: Error) => { if (active) { setError(failure.message); window.clearInterval(timer) } }).finally(() => { refreshing = false })
     }, 3000)
     return () => { active = false; window.clearInterval(timer) }
-  }, [detail, courses])
+  }, [detail, courses, importBatches])
   function navigate(libraryId?: string, docId?: string) {
     setEditing(null); setNotice(null); setError(null)
     const next = new URLSearchParams()
@@ -195,7 +224,7 @@ function LibraryContent({ userId }: { userId: string | null }) {
   }
   if (source) return <PageShell wide><PageContent>
     <ReadOnlyMaterialReader key={source.document.id} source={{ ...source, document: detail?.documents.find(doc => doc.id === source.document.id) ?? source.document }} selectedSegmentId={segmentId}
-      onKnowledgeSaved={document => { setSource({ ...source, document }); setDetail(value => value ? { ...value, documents: value.documents.map(item => item.id === document.id ? document : item) } : value) }}
+      onKnowledgeSaved={document => { setSource({ ...source, document }); setCourses(current => current.map(course => course.id === source.knowledgeBaseId ? { ...course, documents: course.documents.map(item => item.id === document.id ? document : item) } : course)); setDetail(value => value ? { ...value, documents: value.documents.map(item => item.id === document.id ? document : item) } : value) }}
       agentPanel={<ResearchAgentConversationPage embedded userId={userId} referenceKnowledgeBaseId={source.knowledgeBaseId} conversationId={params.get('conversation_id')} composerAriaLabel="结合本库资料提问" onOpenCourseCitation={citation => {
         if (!citation.knowledge_base_id || !citation.material_id || !citation.segment_id) return
         setParams(current => { const next = new URLSearchParams(current); next.set('kb_id', citation.knowledge_base_id!); next.set('document_id', citation.material_id!); next.set('segment_id', citation.segment_id!); return next })
@@ -205,10 +234,12 @@ function LibraryContent({ userId }: { userId: string | null }) {
   </PageContent></PageShell>
 
   const search = query.trim().toLocaleLowerCase()
-  const kinds = [...new Set(materials.map(({ document }) => documentKind(document)))]
-  const documents = materials.filter(({ course, document }) => (!kindFilter || documentKind(document) === kindFilter) && (!search || `${document.filename} ${document.knowledge?.summary ?? ''} ${document.knowledge?.topics.map(topic => `${topic.title} ${topic.summary}`).join(' ') ?? ''} ${course.name ?? ''}`.toLocaleLowerCase().includes(search)))
+  const kinds = [...new Set(materials.map(({ course, document }) => documentKind(document, materialSources[`${course.id}:${document.id}`])))]
+  const documents = materials.filter(({ course, document }) => (!kindFilter || documentKind(document, materialSources[`${course.id}:${document.id}`]) === kindFilter) && (!search || `${documentTitle(document, materialSources[`${course.id}:${document.id}`])} ${document.filename} ${document.knowledge?.summary ?? ''} ${document.knowledge?.topics.map(topic => `${topic.title} ${topic.summary}`).join(' ') ?? ''} ${course.name ?? ''}`.toLocaleLowerCase().includes(search)))
   const visible = courses.filter(course => !search || `${course.name} ${course.description}`.toLocaleLowerCase().includes(search))
   const pendingCount = materials.filter(({ document }) => isProcessing(document)).length
+  const relevantImports = importBatches.filter(batch => (!id || batch.library_id === id) && (batch.status === 'processing' || batch.failed > 0))
+  const importProgress = relevantImports.reduce((sum, batch) => ({ total: sum.total + batch.total, imported: sum.imported + batch.imported, duplicates: sum.duplicates + batch.duplicates, failed: sum.failed + batch.failed, pending: sum.pending + batch.total - batch.finished }), { total: 0, imported: 0, duplicates: 0, failed: 0, pending: 0 })
   const maxDocuments = storage?.max_documents_per_library ?? 100
   const full = !!detail && detail.documents.length >= maxDocuments
   const scopeLibraries = detail ? libraryChoices.map(library => library.id === detail.id ? detail : library) : libraryChoices
@@ -223,6 +254,7 @@ function LibraryContent({ userId }: { userId: string | null }) {
       {!showLibraries && !loading && materials.length > 0 && <div className="ep-knowledge-filters" aria-label="资料筛选"><button type="button" className="qx-tag" aria-pressed={!kindFilter} onClick={() => setKindFilter('')}>全部 {materials.length}</button>{kinds.map(kind => <button type="button" key={kind} className="qx-tag qx-tag--outline" aria-pressed={kindFilter === kind} onClick={() => setKindFilter(kindFilter === kind ? '' : kind)}>{kind}</button>)}</div>}
     </KnowledgePageHead>
     {error && <p role="alert" className="qx-notice qx-notice--danger">{error}<button type="button" className="qx-btn qx-btn--ghost" onClick={() => setReload(value => value + 1)}>重新加载</button></p>}
+    {catalogError && <p className="qx-notice qx-notice--danger" role="alert">{catalogError}<button type="button" className="qx-btn qx-btn--ghost" onClick={() => setReload(value => value + 1)}>重试读取资料</button></p>}
     {notice && <p role="status" className="qx-notice">{notice}</p>}
     {loading && <LibrarySkeleton />}
     {!loading && !error && <>
@@ -230,10 +262,10 @@ function LibraryContent({ userId }: { userId: string | null }) {
         <div className="ep-library__grid">{visible.map(course => <article className="qx-card ep-library-folder" key={course.id}><span className="qx-meta">私有 · {course.documents.length || course.readyDocumentCount} 份资料</span><h2 className="qx-card__title">{course.name}</h2><p className="qx-card__body">{course.description || '你的资料与研究依据'}</p><button type="button" className="qx-btn qx-btn--ghost" aria-label={`打开知识库 ${course.name}`} onClick={() => navigate(course.id)}>打开知识库<ArrowUpRightIcon size={16} /></button></article>)}</div>
         {!visible.length && <div className="ep-knowledge-empty"><BooksIcon size={32} /><h2 className="qx-card__title">{search ? '没有找到相关知识库' : '创建你的第一个知识库'}</h2><button type="button" className="qx-btn qx-btn--secondary" onClick={startCreate}>新建知识库</button></div>}
       </> : <>
-        {catalogError && <p className="qx-notice qx-notice--danger" role="alert">{catalogError}<button type="button" className="qx-btn qx-btn--ghost" onClick={() => setReload(value => value + 1)}>重试读取资料</button></p>}
+        {relevantImports.length > 0 && <div className="qx-notice ep-library__status" role="status"><span>导入记录：{importProgress.total} 条已提交 · {importProgress.imported} 条已入库 · {importProgress.duplicates} 条重复 · {importProgress.pending} 条处理中 · {importProgress.failed} 条读取失败。下方仅显示已生成的资料。</span><button className="qx-btn qx-btn--ghost" type="button" onClick={() => openAdd('records')}>查看导入详情</button></div>}
         {pendingCount > 0 && <div className="qx-notice ep-library__status" role="status"><ArrowClockwiseIcon size={18} /><span>{pendingCount} 份资料正在解析、整理知识或建立语义索引。</span><button className="qx-btn qx-btn--ghost" type="button" onClick={() => openAdd('records')}>导入记录</button></div>}
         <div className="ep-library__grid" aria-label="资料卡片">{documents.map(({ course, document }) => <LibraryMaterialCard key={`${course.id}:${document.id}`} course={course} document={document} showLibrary={!detail} source={materialSources[`${course.id}:${document.id}`]} busy={busy} onRetry={() => void action(async () => { await retryCourseDocument(course.id, document.id); await refreshLibrary(course.id) })} onDelete={() => setDeletingDocument({ course, document })} onReupload={() => openAdd('file', course.id)} />)}</div>
-        {!documents.length && <div className="ep-knowledge-empty ep-library__empty"><BooksIcon size={32} /><h2 className="qx-card__title">{search || kindFilter ? '没有找到相关资料' : !courses.length ? '创建你的第一个知识库' : '把第一份资料，放进来。'}</h2><p className="qx-meta">{search || kindFilter ? '换个关键词，或调整筛选条件。' : detail ? '在这里上传的文件只属于这个库。从其他应用导入的资料会统一放进「我的资料」。' : '收藏、笔记和文档会汇集在这里，保留原文与知识点。'}</p>
+        {!documents.length && !catalogError && <div className="ep-knowledge-empty ep-library__empty"><BooksIcon size={32} /><h2 className="qx-card__title">{search || kindFilter ? '没有找到相关资料' : !courses.length ? '创建你的第一个知识库' : '把第一份资料，放进来。'}</h2><p className="qx-meta">{search || kindFilter ? '换个关键词，或调整筛选条件。' : detail ? '在这里上传的文件只属于这个库。从其他应用导入的资料会统一放进「我的资料」。' : '收藏、笔记和文档会汇集在这里，保留原文与知识点。'}</p>
           {search || kindFilter ? <button className="qx-btn qx-btn--secondary" type="button" onClick={() => { setQuery(''); setKindFilter('') }}>清除搜索和筛选</button> : detail ? <button className="qx-btn qx-btn--primary" type="button" onClick={() => openAdd('file')}><UploadSimpleIcon />上传文件</button> : <><div className="ep-knowledge-actions"><button className="qx-btn qx-btn--secondary" type="button" onClick={() => openAdd('file')}><UploadSimpleIcon />上传文件</button><button className="qx-btn qx-btn--secondary" type="button" onClick={() => openAdd('chrome')}><img className="ep-library__source-logo" src={chromeLogo} alt="" />导入浏览器收藏</button><button className="qx-btn qx-btn--secondary" type="button" onClick={() => openAdd('obsidian')}><img className="ep-library__source-logo" src={obsidianLogo} alt="" />导入 Obsidian</button></div><button className="qx-btn qx-btn--ghost" type="button" onClick={() => openAdd()}>还支持印象笔记、Notion、flomo、B 站收藏等 →</button><button className="qx-btn qx-btn--ghost" type="button" disabled={!!storage && courses.length >= storage.max_libraries} onClick={startCreate}>新建知识库</button></>}
         </div>}
       </>}

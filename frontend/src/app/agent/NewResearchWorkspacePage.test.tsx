@@ -642,6 +642,7 @@ describe('NewResearchWorkspacePage', () => {
             )
           : streamResponse(conversation, 'base')
       }
+      if (url.pathname.endsWith('/events')) return streamResponse(conversation, 'base')
       if (url.pathname.endsWith('/journey')) return json(researchStartJourneyFixture({ proposal: null }))
       if (url.pathname === '/api/agent/conversations') return json({ items: [] })
       return json({}, 404)
@@ -654,12 +655,11 @@ describe('NewResearchWorkspacePage', () => {
     fireEvent.submit(textbox.closest('form') as HTMLFormElement)
 
     expect(await within(workspace).findByText(conversation.turns[0].assistant.content)).toBeVisible()
-    expect(turnRequests).toHaveLength(2)
+    expect(turnRequests).toHaveLength(1)
     expect(turnRequests.map((request) => new Headers(request.headers).get('Idempotency-Key'))).toEqual([
       'turn-stable-key',
-      'turn-stable-key',
     ])
-    expect(turnRequests.map((request) => JSON.parse(String(request.body)).message)).toEqual([question, question])
+    expect(turnRequests.map((request) => JSON.parse(String(request.body)).message)).toEqual([question])
     expect(randomUUID).toHaveBeenCalledTimes(1)
   })
 
@@ -681,6 +681,7 @@ describe('NewResearchWorkspacePage', () => {
             )
           : streamResponse(conversation, 'base')
       }
+      if (url.pathname.endsWith('/events')) return streamResponse(conversation, 'base')
       if (url.pathname.endsWith('/journey')) return json(researchStartJourneyFixture({ status: 'collecting', proposal: null }))
       if (url.pathname === '/api/agent/conversations') return json({ items: [] })
       return json({}, 404)
@@ -693,7 +694,6 @@ describe('NewResearchWorkspacePage', () => {
     fireEvent.submit(firstTextbox.closest('form') as HTMLFormElement)
     expect(await within(firstWorkspace).findByText(conversation.turns[0].assistant.content)).toBeVisible()
     expect(turnRequests.map((request) => new Headers(request.headers).get('Idempotency-Key'))).toEqual([
-      'turn-survives-refresh',
       'turn-survives-refresh',
     ])
     expect(randomUUID).toHaveBeenCalledTimes(1)
@@ -1028,6 +1028,10 @@ describe('NewResearchWorkspacePage', () => {
           { headers: { 'Content-Type': 'text/event-stream' } },
         )
       }
+      if (url.pathname.endsWith('/events')) return new Response(
+        'event: turn_failed\ndata: {"code":"agent_unavailable","message":"Agent 暂时无法完成回答。"}\n\n',
+        { headers: { 'Content-Type': 'text/event-stream' } },
+      )
       if (url.pathname === '/api/agent/conversations') return json({ items: [] })
       return json({}, 404)
     }))
@@ -1039,6 +1043,8 @@ describe('NewResearchWorkspacePage', () => {
 
     expect(await within(region).findByRole('alert')).toHaveTextContent('Agent 暂时无法完成回答')
     expect(within(region).getByRole('textbox', { name: '和 Agent 讨论你的研究' })).toBeEnabled()
+    expect(attempts).toBe(1)
+    expect(await within(region).findByText('半段回答')).toBeVisible()
   })
 
   it('opens citation context in Basis before offering the knowledge entry link', async () => {

@@ -562,7 +562,11 @@ class SqliteResearchMaterialRepository:
             or (status is MaterialIngestionStatus.PROCESSING and stale)
         ):
             return None
-        next_parse_id = str(uuid4()) if row.attempt_count else row.parse_id
+        saved_parse = self._session.get(ResearchMaterialParseVersionRow, row.parse_id)
+        # A successful parse is an immutable checkpoint. Only failed/interrupted
+        # parsing gets a fresh ID; an index retry must reuse completed vectors.
+        retain_parse = saved_parse is not None and saved_parse.status == MaterialStatus.READY.value
+        next_parse_id = str(uuid4()) if row.attempt_count and not retain_parse else row.parse_id
         result = self._session.execute(
             update(ResearchMaterialIngestionJobRow)
             .where(
@@ -584,6 +588,37 @@ class SqliteResearchMaterialRepository:
             return None
         return self.get_ingestion(job_id)
 
+    def checkpoint_ingestion(
+        self,
+        job_id: UUID,
+        *,
+        expected_attempt_count: int,
+        expected_parse_id: UUID,
+        now: datetime,
+    ) -> MaterialIngestionJob | None:
+        from datetime import timedelta
+
+        live_materials = select(ResearchMaterialRow.material_id).where(
+            ResearchMaterialRow.material_id == ResearchMaterialIngestionJobRow.material_id,
+            ResearchMaterialRow.user_id == ResearchMaterialIngestionJobRow.user_id,
+            ResearchMaterialRow.task_id == ResearchMaterialIngestionJobRow.task_id,
+            ResearchMaterialRow.status == MaterialStatus.READY.value,
+            ResearchMaterialRow.current_parse_id == str(expected_parse_id),
+        )
+        result = self._session.execute(
+            update(ResearchMaterialIngestionJobRow)
+            .where(
+                ResearchMaterialIngestionJobRow.job_id == str(job_id),
+                ResearchMaterialIngestionJobRow.ingestion_status
+                == MaterialIngestionStatus.PROCESSING.value,
+                ResearchMaterialIngestionJobRow.attempt_count == expected_attempt_count,
+                ResearchMaterialIngestionJobRow.parse_id == str(expected_parse_id),
+                live_materials.exists(),
+            )
+            .values(updated_at=now, lease_expires_at=now + timedelta(minutes=10))
+        )
+        return self.get_ingestion(job_id) if result.rowcount == 1 else None
+
     def complete_ingestion(
         self,
         job_id: UUID,
@@ -600,6 +635,13 @@ class SqliteResearchMaterialRepository:
                 == MaterialIngestionStatus.PROCESSING.value,
                 ResearchMaterialIngestionJobRow.attempt_count == expected_attempt_count,
                 ResearchMaterialIngestionJobRow.parse_id == str(expected_parse_id),
+                select(ResearchMaterialRow.material_id).where(
+                    ResearchMaterialRow.material_id == ResearchMaterialIngestionJobRow.material_id,
+                    ResearchMaterialRow.user_id == ResearchMaterialIngestionJobRow.user_id,
+                    ResearchMaterialRow.task_id == ResearchMaterialIngestionJobRow.task_id,
+                    ResearchMaterialRow.status == MaterialStatus.READY.value,
+                    ResearchMaterialRow.current_parse_id == str(expected_parse_id),
+                ).exists(),
             )
             .values(
                 ingestion_status=MaterialIngestionStatus.READY.value,

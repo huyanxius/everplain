@@ -26,6 +26,55 @@ spec.loader.exec_module(release)
 
 
 class RegistryReleaseTests(unittest.TestCase):
+    def test_forward_only_review_is_exact_and_does_not_authorize_the_rollback_controller(self):
+        previous, candidate = {"migration_tree": "e" * 64}, {"migration_tree": "1" * 64}
+        policy = {"reviewed_forward_only_migration_transitions": [
+            {"from": previous["migration_tree"], "to": candidate["migration_tree"]},
+        ]}
+        self.assertTrue(release.check_existing_migration_transition(previous, candidate, policy))
+        self.assertFalse(release.check_existing_migration_transition(previous, previous, policy))
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            release.check_compatible(previous, candidate, policy)
+        for old, new in ((candidate, previous), (previous, {"migration_tree": "2" * 64}),
+                         ({"migration_tree": "2" * 64}, candidate)):
+            with self.subTest(old=old, new=new), \
+                 self.assertRaisesRegex(ValueError, "rollback compatibility"):
+                release.check_existing_migration_transition(old, new, policy)
+        for records in (None, "*", [{"from": "e" * 64, "to": "*"}],
+                        [{"from": "*", "to": "1" * 64}]):
+            with self.subTest(records=records), \
+                 self.assertRaisesRegex(ValueError, "rollback compatibility"):
+                release.check_existing_migration_transition(previous, candidate, {
+                    "reviewed_forward_only_migration_transitions": records,
+                })
+
+    def test_shipped_forward_only_review_matches_current_manifest_storage(self):
+        policy = json.loads((ROOT / "ops/cd/policy.json").read_text())
+        # Packaging includes migrations plus the retrieval schema adapter.
+        storage = {
+            "migrations/" + p.relative_to(ROOT / "backend/migrations").as_posix():
+            hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted((ROOT / "backend/migrations").rglob("*.py"))
+        }
+        storage["schema/sqlite_index.py"] = hashlib.sha256(
+            (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
+        ).hexdigest()
+        journal = {"migration_tree": hashlib.sha256(
+            json.dumps(storage, sort_keys=True).encode()).hexdigest()}
+        del storage["migrations/versions/20261005_0610_agent_output_journal.py"]
+        quota = {"migration_tree": hashlib.sha256(
+            json.dumps(storage, sort_keys=True).encode()).hexdigest()}
+        del storage["migrations/versions/20261005_0600_weekly_quota.py"]
+        previous = {"migration_tree": hashlib.sha256(
+            json.dumps(storage, sort_keys=True).encode()).hexdigest()}
+        for old, new in ((previous, quota), (quota, journal)):
+            self.assertTrue(release.check_existing_migration_transition(old, new, policy))
+            with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+                release.check_compatible(old, new, policy)
+        # A reviewed 0600->0610 edge cannot skip the separately reviewed 0600 boundary.
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            release.check_existing_migration_transition(previous, journal, policy)
+
     def test_live_compatibility_overlays_require_reviewed_bytes_and_read_only_mounts(self):
         with tempfile.TemporaryDirectory() as d:
             source = Path(d) / "settings.py"
@@ -93,8 +142,10 @@ class RegistryReleaseTests(unittest.TestCase):
                      patch.object(release, "read_state", return_value=None), \
                      patch.object(release, "run", return_value="") as commands, \
                      patch.object(release, "metadata", return_value=api), \
-                     patch.object(release, "environment", return_value={"EVERPLAIN_RUNTIME_MODE": "base"}), \
-                     patch.object(release, "public_health", side_effect=RuntimeError("health") if failed else None), \
+                     patch.object(release, "environment",
+                                  return_value={"EVERPLAIN_RUNTIME_MODE": "base"}), \
+                     patch.object(release, "public_health",
+                                  side_effect=RuntimeError("health") if failed else None), \
                      patch.object(update, "complete"), patch.object(update, "record"):
                     if failed:
                         with self.assertRaises(RuntimeError):
@@ -123,8 +174,11 @@ class RegistryReleaseTests(unittest.TestCase):
                 with patch.object(release, "REVISION", "c" * 40), \
                      patch.object(release.sys, "stdin", io.StringIO("synthetic-job-token\n")), \
                      patch.object(release.subprocess, "run", return_value=login) as auth, \
-                     patch.object(release, "run", side_effect=RuntimeError("pull failed") if failed
-                                  else None, return_value="aaa: Already exists\nbbb: Pull complete\n") as run, \
+                     patch.object(release, "pull_registry_image",
+                                  side_effect=RuntimeError("pull failed") if failed else None,
+                                  return_value="aaa: Already exists\n"
+                                               "bbb: Pull complete\n") as pull, \
+                     patch.object(release, "run", return_value=""), \
                      patch.object(release, "registry_image", return_value=info):
                     if failed:
                         with self.assertRaises(RuntimeError):
@@ -134,10 +188,119 @@ class RegistryReleaseTests(unittest.TestCase):
                         self.assertEqual(set(images), {"api", "web"})
                         self.assertEqual(report["api_reused_layer_count"], 1)
                         self.assertTrue(report["registry_credentials_removed"])
-                        self.assertEqual(run.call_args_list[0].args[0][-1],
+                        self.assertEqual(pull.call_args_list[0].args[0],
                                          manifest["registry_images"]["api"])
                     self.assertNotIn("synthetic-job-token", str(auth.call_args.args))
+                    self.assertTrue(report["registry_credentials_removed"])
                     self.assertEqual(list(Path(d).iterdir()), [])
+
+
+class RegistryPullTests(unittest.TestCase):
+    reference = "ghcr.io/huyanxius/everplain-web@sha256:" + "a" * 64
+
+    def test_failure_classification_is_fixed_and_permanent_errors_take_precedence(self):
+        cases = (
+            ("unauthorized: authentication required; connection reset by peer", "authentication"),
+            ("denied: requested access to the resource is denied", "authentication"),
+            ("manifest unknown; unexpected EOF", "not_found"),
+            ("no space left on device; i/o timeout", "storage"),
+            ("permission denied", "storage"),
+            ("x509: certificate signed by unknown authority; i/o timeout", "certificate"),
+            ("checksum mismatch; unexpected EOF", "integrity"),
+            ("toomanyrequests: registry rate limit", "rate_limit"),
+            ("Get https://synthetic.invalid/path?token=synthetic-private: i/o timeout",
+             "transient_network"),
+            ("TLS handshake timeout", "transient_network"),
+            ("unexpected EOF", "transient_network"),
+            ("connection reset by peer", "transient_network"),
+            ("context deadline exceeded", "unknown"),
+            ("unclassified synthetic-private response", "unknown"),
+        )
+        for error, expected in cases:
+            with self.subTest(expected=expected, error=error):
+                self.assertEqual(release.classify_pull_failure(error), expected)
+
+    def test_transient_retry_keeps_exact_digest_and_remaining_command_budget(self):
+        failed = subprocess.CompletedProcess([], 1, "", "i/o timeout: synthetic-private")
+        succeeded = subprocess.CompletedProcess([], 0, "aaa: Already exists\n", "")
+        report = {}
+        with patch.object(release.subprocess, "run", side_effect=[failed, succeeded]) as command, \
+             patch.object(release.time, "monotonic", side_effect=[10, 10, 30, 35]), \
+             patch.object(release.time, "sleep") as sleep:
+            self.assertEqual(
+                release.pull_registry_image(self.reference, "/synthetic", "web", report),
+                succeeded.stdout)
+        self.assertEqual(command.call_args_list[0].args, command.call_args_list[1].args)
+        self.assertEqual(command.call_args.args[0][-1], self.reference)
+        self.assertEqual([call.kwargs["timeout"] for call in command.call_args_list], [600, 575])
+        sleep.assert_called_once_with(5)
+        self.assertEqual(report["web_pull_attempts"], 2)
+        self.assertEqual(report["web_pull_retry_count"], 1)
+        self.assertTrue(report["web_pull_command_succeeded"])
+        self.assertEqual(report["web_pull_last_failure_class"], "transient_network")
+        self.assertNotIn("synthetic-private", json.dumps(report))
+
+    def test_repeated_network_failure_stops_at_three_attempts_without_output_leaks(self):
+        error = "Get https://synthetic.invalid/path?token=synthetic-private: unexpected EOF"
+        report = {}
+        with (
+            patch.object(release.subprocess, "run",
+                         return_value=subprocess.CompletedProcess([], 1, "", error)) as command,
+            patch.object(release.time, "sleep") as sleep,
+            self.assertRaisesRegex(RuntimeError, "transient_network") as caught,
+        ):
+            release.pull_registry_image(self.reference, "/synthetic", "web", report)
+        self.assertEqual(command.call_count, 3)
+        self.assertEqual([call.args[0] for call in command.call_args_list],
+                         [command.call_args.args[0]] * 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [5, 10])
+        self.assertEqual(report["web_pull_retry_count"], 2)
+        self.assertNotIn("synthetic-private", str(caught.exception) + json.dumps(report))
+        self.assertNotIn("https://", json.dumps(report))
+
+    def test_non_transient_failures_stop_without_retry(self):
+        for error in ("unauthorized", "manifest unknown", "no space left", "x509: invalid",
+                      "checksum mismatch", "toomanyrequests", "unknown synthetic-private"):
+            with self.subTest(error=error), \
+                 patch.object(release.subprocess, "run", return_value=
+                              subprocess.CompletedProcess([], 1, "", error)) as command, \
+                 patch.object(release.time, "sleep") as sleep:
+                report = {}
+                with self.assertRaises(RuntimeError):
+                    release.pull_registry_image(self.reference, "/synthetic", "web", report)
+                command.assert_called_once()
+                sleep.assert_not_called()
+                self.assertEqual(report["web_pull_retry_count"], 0)
+                self.assertNotIn("synthetic-private", json.dumps(report))
+
+    def test_command_timeout_and_local_start_failure_are_not_assumed_network_failures(self):
+        cases = ((subprocess.TimeoutExpired(["synthetic-private"], 600), "process_timeout"),
+                 (OSError("synthetic-private"), "local_command"))
+        for error, category in cases:
+            with self.subTest(category=category), \
+                 patch.object(release.subprocess, "run", side_effect=error) as command, \
+                 patch.object(release.time, "sleep") as sleep:
+                report = {}
+                with self.assertRaisesRegex(RuntimeError, category) as caught:
+                    release.pull_registry_image(self.reference, "/synthetic", "web", report)
+                command.assert_called_once()
+                sleep.assert_not_called()
+                self.assertNotIn("synthetic-private", str(caught.exception) + json.dumps(report))
+
+    def test_insufficient_retry_budget_stops_and_mutable_references_never_run(self):
+        failed = subprocess.CompletedProcess([], 1, "", "i/o timeout")
+        with patch.object(release.subprocess, "run", return_value=failed) as command, \
+             patch.object(release.time, "monotonic", side_effect=[0, 0, 598]), \
+             patch.object(release.time, "sleep") as sleep:
+            with self.assertRaises(RuntimeError):
+                release.pull_registry_image(self.reference, "/synthetic", "web", {})
+            command.assert_called_once()
+            sleep.assert_not_called()
+        with patch.object(release.subprocess, "run") as command:
+            with self.assertRaises(RuntimeError):
+                release.pull_registry_image("ghcr.io/huyanxius/everplain-web:latest",
+                                            "/synthetic", "web", {})
+            command.assert_not_called()
 
 
 def container(role, source):
@@ -228,14 +391,20 @@ class ExistingReleaseTests(unittest.TestCase):
             (destination / "images" / (role + ".tar")).write_bytes(b"fixture")
         (destination / "ops/cd").mkdir(parents=True)
         (destination / "ops/cd/policy.json").write_text(
-            '{"rollback_compatible_migration_trees":[]}'
+            json.dumps(getattr(self, "migration_policy", {
+                "rollback_compatible_migration_trees": [],
+            }))
         )
         observed = self.runtime_snapshot()
+        candidate_tree = getattr(
+            self, "candidate_migration_tree", observed["api"]["migration_tree"]
+        )
+        candidate_api = {**observed["api"], "migration_tree": candidate_tree}
         return {
             "revision": release.REVISION,
             "images": {"api": release.API_IMAGE, "web": release.WEB_IMAGE}, "web_checks": {},
-            "migration_tree": observed["api"]["migration_tree"],
-            "runtime_identity": {"api": observed["api"], "web_tree": observed["web_tree"]},
+            "migration_tree": candidate_tree,
+            "runtime_identity": {"api": candidate_api, "web_tree": observed["web_tree"]},
             "initial_live_fingerprint": {"format": 1, "runtime": observed},
             "provenance": {"run_id": "200", "run_attempt": "1",
                 "workflow_ref": "huyanxius/everplain/.github/workflows/deploy.yml@refs/heads/main"},
@@ -243,13 +412,16 @@ class ExistingReleaseTests(unittest.TestCase):
 
     def runtime_snapshot(self, *_args):
         resolved = getattr(self, "resolved_images", {})
-        return {
+        result = {
             "api_image": resolved.get(release.API_IMAGE, release.API_IMAGE),
             "web_image": resolved.get(release.WEB_IMAGE, release.WEB_IMAGE),
             "api": {k: "e" * 64 for k in
                 ("source_tree", "dependency_tree", "migration_tree", "ops_tree", "tokenizer_tree")},
             "web_tree": "f" * 64,
         }
+        if self.api_started and hasattr(self, "candidate_migration_tree"):
+            result["api"]["migration_tree"] = self.candidate_migration_tree
+        return result
 
     def command(self, args, **_kwargs):
         self.calls.append(args)
@@ -416,6 +588,65 @@ class ExistingReleaseTests(unittest.TestCase):
         self.assertEqual(self.snapshot(self.source / "everplain.db", "schema_marker"), [("old",)])
         self.assertIn(["docker", "start", "everplain-api"], self.calls)
 
+    def enable_forward_only_fixture(self):
+        self.candidate_migration_tree = "1" * 64
+        self.migration_policy = {"reviewed_forward_only_migration_transitions": [
+            {"from": "e" * 64, "to": self.candidate_migration_tree},
+        ]}
+
+    def test_forward_only_success_keeps_candidate_data_and_records_exact_review(self):
+        self.enable_forward_only_fixture()
+        report = self.execute()
+        self.assertTrue(report["deployment_succeeded"])
+        self.assertTrue(report["forward_only_migration_review_verified"])
+        self.assertFalse(report["old_service_restored"])
+        self.assertEqual(self.snapshot(self.source / "everplain.db", "schema_marker"), [("old",)])
+        self.assertEqual(self.snapshot(self.updater.stage / "data/everplain.db", "schema_marker"),
+                         [("new",)])
+        state = json.loads(self.updater.state_path.read_text())
+        self.assertEqual(state["runtime"]["api"]["migration_tree"], self.candidate_migration_tree)
+
+    def test_forward_only_failure_before_candidate_start_restores_only_untouched_old_data(self):
+        self.enable_forward_only_fixture()
+        self.failure = "migration"
+        with self.assertRaises(RuntimeError):
+            self.execute()
+        self.assertTrue(self.updater.report["forward_only_migration_review_verified"])
+        self.assertFalse(self.updater.started)
+        self.assertTrue(self.updater.report["old_service_restored"])
+        self.assertEqual(self.snapshot(self.source / "everplain.db", "schema_marker"), [("old",)])
+        self.assertEqual(self.snapshot(self.source / "everplain.db", "writes"), [])
+        self.assertEqual(self.snapshot(self.updater.stage / "data/everplain.db", "schema_marker"),
+                         [("new",)])
+
+    def test_forward_only_failure_after_start_retains_candidate_and_never_runs_old_app(self):
+        self.enable_forward_only_fixture()
+        self.failure = "api-health"
+        with self.assertRaises(RuntimeError):
+            self.execute()
+        self.assertTrue(self.updater.report["forward_only_migration_review_verified"])
+        self.assertTrue(self.updater.report["forward_stop_required"])
+        self.assertTrue(self.updater.started)
+        self.assertFalse(self.updater.report["old_service_restored"])
+        self.assertFalse(any(call[:2] == ["docker", "start"] for call in self.calls))
+        self.assertEqual(self.snapshot(self.updater.stage / "data/everplain.db", "schema_marker"),
+                         [("new",)])
+        self.assertEqual(self.snapshot(self.updater.stage / "data/everplain.db", "writes"),
+                         [("accepted-background-write",)])
+        journal = json.loads((self.updater.stage / "transaction.json").read_text())
+        self.assertTrue(journal["candidate_started"])
+        self.assertTrue(journal["report"]["forward_stop_required"])
+
+    def test_unknown_forward_only_edge_fails_before_service_stop_or_migration(self):
+        self.enable_forward_only_fixture()
+        self.migration_policy["reviewed_forward_only_migration_transitions"][0]["to"] = "2" * 64
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            self.execute()
+        self.assertFalse(self.updater.stopped)
+        self.assertFalse(self.updater.started)
+        self.assertFalse(any(call[:2] == ["docker", "stop"] or "alembic" in call
+                             for call in self.calls))
+
     def test_failure_after_api_start_never_restarts_old_app_or_discards_new_writes(self):
         for failure in ("api-health", "public-health"):
             with self.subTest(failure=failure):
@@ -492,9 +723,9 @@ class ExistingReleaseTests(unittest.TestCase):
     def test_ancillary_copy_failure_restores_original_data_and_containers(self):
         original = self.source / "private.bin"
         original.write_bytes(b"retained")
-        with patch.object(release, "copy_ancillary_data", side_effect=OSError("copy failed")):
-            with self.assertRaises(OSError):
-                self.execute()
+        with patch.object(release, "copy_ancillary_data", side_effect=OSError("copy failed")), \
+             self.assertRaises(OSError):
+            self.execute()
         self.assertEqual(original.read_bytes(), b"retained")
         self.assertTrue(self.updater.report["old_service_restored"])
         self.assertFalse(self.updater.report["candidate_started"])

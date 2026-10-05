@@ -7,7 +7,6 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 from qunxue_api.modules.billing.domain import (
     SIGNUP_GRANT,
-    WELCOME_GRANT,
     CreditCodeSpec,
     CreditEntry,
     CreditRedemption,
@@ -66,13 +65,19 @@ class CreditService:
                 total_granted_points=summary.total_granted_points,
                 active_usage_buckets=summary.active_usage_buckets,
                 quota_status=summary.quota_status,
+                quota_period_started_at=summary.quota_period_started_at,
+                quota_period_expires_at=summary.quota_period_expires_at,
+                quota_plan_id=summary.quota_plan_id,
             )
         return summary
 
     def ensure_can_start(self, *, user_id: UUID) -> None:
         if user_id in self._exempt_user_ids:
             return
-        if self.summary(user_id=user_id, limit=1).balance <= 0:
+        summary = self.summary(user_id=user_id, limit=1)
+        # An accepted first message opens a new full plan epoch in the operation
+        # writer transaction. Preflight reads must not start it or reject legacy 0.
+        if summary.quota_period_started_at is not None and summary.balance <= 0:
             raise CreditsDepleted
 
     def generate_redemption_codes(
@@ -86,7 +91,7 @@ class CreditService:
         if self._code_signing_secret is None:
             raise RuntimeError("credit code signing secret is not configured")
         now = self._clock()
-        points = WELCOME_GRANT
+        points = SIGNUP_GRANT
         expires_on = (now + timedelta(days=expires_in_days)).date()
         expires_at = datetime.combine(expires_on, time(23, 59, 59), tzinfo=UTC)
         plain_codes: list[str] = []

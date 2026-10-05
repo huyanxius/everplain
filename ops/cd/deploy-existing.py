@@ -59,6 +59,30 @@ def require(condition, message="checked release precondition failed"):
         raise RuntimeError(message)
 
 
+def check_existing_migration_transition(old, new, policy):
+    """Allow reviewed forward-only edges only in this updater's retention model.
+
+    Before candidate start this route restores the untouched old data. After
+    candidate start recover() never runs the previous app on the candidate DB.
+    The separate rollback-capable Controller must keep using check_compatible.
+    Return whether the exact forward-only review was needed, for the report.
+    """
+    try:
+        check_compatible(old, new, policy)
+    except ValueError:
+        transition = {"from": old["migration_tree"], "to": new["migration_tree"]}
+        reviewed = policy.get("reviewed_forward_only_migration_transitions", [])
+        if (
+            isinstance(reviewed, list)
+            and all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+                    for value in transition.values())
+            and transition in reviewed
+        ):
+            return True
+        raise
+    return False
+
+
 def run(args, timeout=180, report=None, prefix=""):
     result = subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)
     if report is not None:
@@ -344,35 +368,130 @@ def registry_image(expected, reference, role, report):
     return value
 
 
+PULL_FAILURE_SUMMARIES = {
+    "authentication": "Registry authentication or authorization failed.",
+    "not_found": "Registry image or manifest was not found.",
+    "storage": "Local image storage is unavailable.",
+    "certificate": "Registry certificate verification failed.",
+    "integrity": "Image reference or content verification failed.",
+    "rate_limit": "Registry rate limit was reached.",
+    "transient_network": "Registry network connection was interrupted.",
+    "process_timeout": "Registry pull exceeded its command time budget.",
+    "local_command": "Local registry pull command could not start.",
+    "unknown": "Registry pull failed for an unclassified reason.",
+}
+
+
+def classify_pull_failure(error):
+    """Only fixed labels leave this boundary; never return any provider output."""
+    error = error.lower()
+    categories = (
+        ("storage", ("no space left", "disk quota exceeded", "read-only file system",
+                     "permission denied")),
+        ("authentication", ("unauthorized", "authentication required", "authentication failed",
+                            "failed to authorize", "insufficient_scope", "denied:",
+                            "requested access to the resource is denied", "403 forbidden")),
+        ("not_found", ("manifest unknown", "not found", "name unknown",
+                       "repository does not exist")),
+        ("certificate", ("x509:", "certificate signed", "certificate has expired",
+                         "certificate is not valid", "tls: failed to verify")),
+        ("integrity", ("digest mismatch", "checksum mismatch", "verification failed",
+                       "invalid reference format", "unsupported media type")),
+        ("rate_limit", ("toomanyrequests", "too many requests")),
+        ("transient_network", ("unexpected eof", "connection reset by peer", "connection refused",
+                               "tls handshake timeout", "i/o timeout", "connection timed out",
+                               "timeout awaiting response headers", "client.timeout exceeded",
+                               "network is unreachable", "no route to host",
+                               "temporary failure in name resolution")),
+    )
+    for category, patterns in categories:
+        if any(pattern in error for pattern in patterns):
+            return category
+    return "unknown"
+
+
+def pull_registry_image(reference, private, role, report):
+    """Retry only explicit transport failures, within the existing 600-second pull budget."""
+    require(role in {"api", "web"})
+    require(bool(re.fullmatch(r"ghcr\.io/huyanxius/everplain-" + role + r"@sha256:[0-9a-f]{64}",
+                              reference)))
+    command = ["docker", "--config", private, "pull", "--platform", "linux/amd64", reference]
+    prefix = role + "_pull_"
+    deadline = time.monotonic() + 600
+    report[prefix + "retry_count"] = 0
+    for attempt in range(1, 4):
+        report[prefix + "attempts"] = attempt
+        report.update({prefix + key: False for key in
+                       ("command_succeeded", "exit_1", "no_space", "missing_file",
+                        "permission_denied", "unsupported_format", "timed_out")})
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(command, 600)
+            result = subprocess.run(command, capture_output=True, text=True,
+                                    timeout=remaining, check=False)
+            error = result.stderr.lower()
+            report.update({
+                prefix + "command_succeeded": result.returncode == 0,
+                prefix + "exit_1": result.returncode == 1,
+                prefix + "no_space": "no space left" in error,
+                prefix + "missing_file": "no such file" in error,
+                prefix + "permission_denied": "permission denied" in error,
+                prefix + "unsupported_format": any(word in error for word in
+                                                     ("unsupported", "invalid tar",
+                                                      "invalid argument", "unrecognized")),
+            })
+            if result.returncode == 0:
+                return result.stdout
+            category = classify_pull_failure(error)
+        except subprocess.TimeoutExpired:
+            category = "process_timeout"
+            report[prefix + "timed_out"] = True
+        except OSError:
+            category = "local_command"
+        report[prefix + "last_failure_class"] = category
+        report[prefix + "failure_summary"] = PULL_FAILURE_SUMMARIES[category]
+        delay = 5 * attempt
+        if (category != "transient_network" or attempt == 3
+                or deadline - time.monotonic() <= delay):
+            raise RuntimeError("registry pull failed (" + category + ")") from None
+        report[prefix + "retry_count"] += 1
+        time.sleep(delay)
+
+
 def pull_registry_images(manifest, stage, report, roles=("api", "web")):
     """Use the job's temporary read token; Docker reuses local content-addressed layers."""
     token = sys.stdin.readline(8193).strip()
     require(0 < len(token) <= 8192 and not any(c.isspace() for c in token))
     images = {}
-    with tempfile.TemporaryDirectory(prefix="registry-auth-", dir=stage) as private:
-        login = subprocess.run(
-            ["docker", "--config", private, "login", "ghcr.io", "--username", "huyanxius",
-             "--password-stdin"],
-            input=token + "\n", capture_output=True, text=True, timeout=30, check=False,
-        )
-        report["registry_authentication_succeeded"] = login.returncode == 0
-        require(login.returncode == 0, "registry authentication failed")
-        for role, reference in manifest["registry_images"].items():
-            if role not in roles:
-                continue
-            output = run(["docker", "--config", private, "pull", "--platform", "linux/amd64",
-                          reference], timeout=600, report=report, prefix=role + "_pull_")
-            report[role + "_reused_layer_count"] = len(set(re.findall(
-                r"^([a-f0-9]+): Already exists", output, re.MULTILINE)))
-            report[role + "_downloaded_layer_count"] = len(set(re.findall(
-                r"^([a-f0-9]+): Pull complete", output, re.MULTILINE)))
-            run(["docker", "tag", reference, "everplain-" + role + ":" + REVISION])
-            info = registry_image(manifest["images"][role], reference, role, report)
-            require(info["Architecture"] == "amd64" and info["Os"] == "linux")
-            require(info["Config"]["Labels"].get("org.opencontainers.image.revision") == REVISION)
-            images[role] = info["Id"]
-            report[role + "_image_verified"] = True
-    report["registry_credentials_removed"] = True
+    private = None
+    try:
+        with tempfile.TemporaryDirectory(prefix="registry-auth-", dir=stage) as private:
+            login = subprocess.run(
+                ["docker", "--config", private, "login", "ghcr.io", "--username", "huyanxius",
+                 "--password-stdin"],
+                input=token + "\n", capture_output=True, text=True, timeout=30, check=False,
+            )
+            report["registry_authentication_succeeded"] = login.returncode == 0
+            require(login.returncode == 0, "registry authentication failed")
+            for role, reference in manifest["registry_images"].items():
+                if role not in roles:
+                    continue
+                output = pull_registry_image(reference, private, role, report)
+                report[role + "_reused_layer_count"] = len(set(re.findall(
+                    r"^([a-f0-9]+): Already exists", output, re.MULTILINE)))
+                report[role + "_downloaded_layer_count"] = len(set(re.findall(
+                    r"^([a-f0-9]+): Pull complete", output, re.MULTILINE)))
+                run(["docker", "tag", reference, "everplain-" + role + ":" + REVISION])
+                info = registry_image(manifest["images"][role], reference, role, report)
+                require(info["Architecture"] == "amd64" and info["Os"] == "linux")
+                require(info["Config"]["Labels"].get("org.opencontainers.image.revision")
+                        == REVISION)
+                images[role] = info["Id"]
+                report[role + "_image_verified"] = True
+    finally:
+        if private is not None:
+            report["registry_credentials_removed"] = not Path(private).exists()
     return images
 
 
@@ -436,13 +555,23 @@ def copy_ancillary_data(source, target):
 
 
 def configure_billing_policy(current, policy, report):
-    """Apply only an explicit, checksum-bound additive writing billing policy."""
-    requested = policy.get("add_user_billing_phases", [])
-    require(requested == [] or requested == ["writing"], "unsupported billing policy update")
-    report["billing_policy_update_requested"] = bool(requested)
+    """Apply only explicit, checksum-bound additive writing/summary billing policies."""
+    user_requested = policy.get("add_user_billing_phases", [])
+    operator_requested = policy.get("add_operator_billing_phases", [])
+    require(
+        user_requested == [] or user_requested == ["writing"],
+        "unsupported billing policy update",
+    )
+    require(
+        operator_requested == [] or operator_requested == ["conversation_summary"],
+        "unsupported billing policy update",
+    )
+    report["writing_user_policy_update_requested"] = bool(user_requested)
+    report["conversation_summary_operator_policy_update_requested"] = bool(operator_requested)
+    report["billing_policy_update_requested"] = bool(user_requested or operator_requested)
     report["billing_policy_changed"] = False
     result = dict(current)
-    if not requested:
+    if not report["billing_policy_update_requested"]:
         return result
 
     def unique_mapping(pairs):
@@ -464,9 +593,20 @@ def configure_billing_policy(current, policy, report):
         all(isinstance(k, str) and v in ("user", "operator") for k, v in phases.items()),
         "existing billing policy requires review",
     )
-    require(phases.get("writing") in (None, "user"), "existing writing policy requires review")
-    if "writing" not in phases:
-        phases["writing"] = "user"
+    additions = {}
+    if user_requested:
+        require(phases.get("writing") in (None, "user"), "existing writing policy requires review")
+        if "writing" not in phases:
+            additions["writing"] = "user"
+    if operator_requested:
+        require(
+            phases.get("conversation_summary") in (None, "operator"),
+            "existing conversation summary policy requires review",
+        )
+        if "conversation_summary" not in phases:
+            additions["conversation_summary"] = "operator"
+    if additions:
+        phases.update(additions)
         result["EVERPLAIN_BILLING_PHASE_POLICIES"] = json.dumps(
             phases, sort_keys=True, separators=(",", ":")
         )
@@ -599,6 +739,7 @@ class ExistingRelease:
                 "deployment_succeeded",
                 "old_service_restored",
                 "forward_stop_required",
+                "forward_only_migration_review_verified",
             )
         }
         self.report["data_preserved"] = True
@@ -625,7 +766,10 @@ class ExistingRelease:
                 active_env.get("EVERPLAIN_BILLING_PHASE_POLICIES") == self.expected_billing_policy,
                 "activated billing policy differs from reviewed update",
             )
-            self.report["writing_user_policy_verified"] = True
+            if self.report.get("writing_user_policy_update_requested"):
+                self.report["writing_user_policy_verified"] = True
+            if self.report.get("conversation_summary_operator_policy_update_requested"):
+                self.report["conversation_summary_operator_policy_verified"] = True
         require(actual["api"] == manifest["runtime_identity"]["api"])
         require(actual["web_tree"] == manifest["runtime_identity"]["web_tree"])
         require(actual["api_image"] in {API_IMAGE, self.images["api"]})
@@ -780,7 +924,7 @@ class ExistingRelease:
         verify_live_overlays(api, policy)
         env = configure_billing_policy(old_env, policy, self.report)
         self.expected_billing_policy = env.get("EVERPLAIN_BILLING_PHASE_POLICIES")
-        check_compatible(
+        self.report["forward_only_migration_review_verified"] = check_existing_migration_transition(
             {"migration_tree": self.baseline["api"]["migration_tree"]}, manifest, policy,
         )
         self.report["live_overlay_guard_verified"] = True

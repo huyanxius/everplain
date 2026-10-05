@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode, PropsWithChildren } from 'react'
-import { cleanup, fireEvent, render as testingRender, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render as testingRender, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useNavigate } from 'react-router'
 import { afterAll, beforeAll, afterEach, expect, it, vi } from 'vitest'
 import { CoursesPage } from './CoursesPage'
 
 function render(children: ReactNode) { return testingRender(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{children}</QueryClientProvider>) }
+vi.mock('../agent/ResearchAgentConversationPage', () => ({ ResearchAgentConversationPage: () => <div>Embedded agent</div> }))
 vi.mock('../ui/PageShell', () => ({ PageShell: ({ children }: PropsWithChildren) => children, PageContent: ({ children }: PropsWithChildren) => children }))
 const dialogMethods = Object.getOwnPropertyDescriptors(HTMLDialogElement.prototype)
 beforeAll(() => {
@@ -165,4 +166,114 @@ it('dismisses a scoped delete confirmation when browser history leaves that scop
   fireEvent.click(screen.getByRole('button', { name: '浏览器后退' }))
   await waitFor(() => expect(screen.queryByRole('dialog', { name: '删除知识库？' })).not.toBeInTheDocument())
   expect(await screen.findByRole('button', { name: '切换知识库：全部资料' })).toBeInTheDocument()
+})
+
+it('shows all submitted bookmarks and failed items alongside the generated documents', async () => {
+  const batch = { id: 'batch-1', library_id: 'kb-1', source_type: 'chrome', total: 50, finished: 50, imported: 5, duplicates: 0, failed: 45, status: 'partial', items: [] }
+  vi.stubGlobal('fetch', async (input: Request) => {
+    if (input.url.endsWith('/imports')) return json({ items: [batch, { ...batch, id: 'other', library_id: 'another-library', total: 100 }] })
+    if (input.url.endsWith('/knowledge-storage')) return json({ used_bytes: 0, max_bytes: 1000000, library_count: 1, max_libraries: 10 })
+    return json(input.url.endsWith('/kb-1') ? course : { items: [course] })
+  })
+  render(<MemoryRouter initialEntries={['/library?kb_id=kb-1']}><CoursesPage /></MemoryRouter>)
+  expect(await screen.findByText(/50 条已提交 · 5 条已入库 · 0 条重复 · 0 条处理中 · 45 条读取失败/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '查看导入详情' }))
+  expect(await screen.findByRole('dialog', { name: '添加资料' })).toBeInTheDocument()
+})
+
+it('polls a queued import even before any document is created', async () => {
+  let importReads = 0
+  const doc = { id: 'd1', filename: 'Imported title.md', media_type: 'text/markdown', size_bytes: 100, parse_id: 'p1', status: 'ready', created_at: '2026-09-08', knowledge_status: 'ready', index_status: 'ready' }
+  vi.stubGlobal('fetch', async (input: Request) => {
+    if (input.url.endsWith('/imports')) {
+      importReads++
+      return json({ items: [{ id: 'batch-1', library_id: 'kb-1', source_type: 'chrome', total: 1, finished: importReads > 1 ? 1 : 0, imported: importReads > 1 ? 1 : 0, duplicates: 0, failed: 0, status: importReads > 1 ? 'completed' : 'processing', items: [] }] })
+    }
+    if (input.url.endsWith('/knowledge-storage')) return json({ used_bytes: 0, max_bytes: 1000000, library_count: 1, max_libraries: 10 })
+    if (input.url.endsWith('/kb-1')) return json({ ...course, documents: importReads > 1 ? [doc] : [] })
+    return json({ items: [course] })
+  })
+  render(<MemoryRouter initialEntries={['/library?kb_id=kb-1']}><CoursesPage /></MemoryRouter>)
+  expect(await screen.findByText(/1 条处理中/)).toBeInTheDocument()
+  expect(await screen.findByRole('link', { name: 'Imported title.md' }, { timeout: 6000 })).toBeInTheDocument()
+  expect(screen.queryByText(/1 条处理中/)).not.toBeInTheDocument()
+}, 8000)
+
+it('opens a document deep link without waiting for the library selector', async () => {
+  const document = { id: 'd1', filename: 'Direct source.txt', media_type: 'text/plain', size_bytes: 10, parse_id: 'p1', status: 'ready', knowledge_status: 'ready', index_status: 'ready', warnings: [], created_at: '2026-09-08' }
+  vi.stubGlobal('fetch', async (input: Request) => {
+    if (input.url.endsWith('/shared-knowledge-bases')) return new Promise<Response>(() => {})
+    if (input.url.endsWith('/kb-1')) return json({ ...course, documents: [document] })
+    if (input.url.includes('/d1/source')) return json({ document, knowledge_base_id: 'kb-1', knowledge_base_name: course.name, segments: [] })
+    return json({ items: [] })
+  })
+  render(<MemoryRouter initialEntries={['/library?kb_id=kb-1&document_id=d1']}><CoursesPage /></MemoryRouter>)
+  expect(await screen.findByRole('heading', { name: 'Direct source.txt' })).toBeInTheDocument()
+})
+
+it('cancels catalog requests when leaving the library page', async () => {
+  let signal: AbortSignal | undefined
+  vi.stubGlobal('fetch', async (input: Request) => {
+    if (input.url.endsWith('/shared-knowledge-bases')) { signal = input.signal; return new Promise<Response>(() => {}) }
+    return json({ items: [] })
+  })
+  const view = render(<MemoryRouter><CoursesPage /></MemoryRouter>)
+  await waitFor(() => expect(signal).toBeDefined())
+  view.unmount()
+  expect(signal?.aborted).toBe(true)
+})
+
+it('keeps the loaded overview when returning from a document without a second catalog dependency', async () => {
+  const document = { id: 'd1', filename: 'Return source.txt', media_type: 'text/plain', size_bytes: 10, parse_id: 'p1', status: 'ready', knowledge_status: 'ready', index_status: 'ready', warnings: [], created_at: '2026-09-08' }
+  let catalogReads = 0
+  vi.stubGlobal('fetch', async (input: Request) => {
+    if (input.url.endsWith('/shared-knowledge-bases')) {
+      catalogReads++
+      if (catalogReads > 1) return new Promise<Response>(() => {})
+      return json({ items: [course] })
+    }
+    if (input.url.endsWith('/kb-1')) return json({ ...course, documents: [document] })
+    if (input.url.includes('/d1/source')) return json({ document, knowledge_base_id: 'kb-1', knowledge_base_name: course.name, segments: [] })
+    return json({ items: [] })
+  })
+  function OverviewNavigation() {
+    const navigate = useNavigate()
+    return <button onClick={() => navigate('/library')}>主导航知识库</button>
+  }
+  render(<MemoryRouter initialEntries={['/library']}><OverviewNavigation /><CoursesPage /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('link', { name: 'Return source.txt' }))
+  expect(await screen.findByRole('heading', { name: 'Return source.txt' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '主导航知识库' }))
+  expect(await screen.findByRole('link', { name: 'Return source.txt' })).toBeInTheDocument()
+  expect(catalogReads).toBe(1)
+})
+
+it('browser Back retains the overview and ignores a late cancelled document read', async () => {
+  const document = { id: 'd1', filename: 'Late source.txt', media_type: 'text/plain', size_bytes: 10, parse_id: 'p1', status: 'ready', knowledge_status: 'ready', index_status: 'ready', warnings: [], created_at: '2026-09-08' }
+  let resolveSource: ((value: Response) => void) | undefined
+  let sourceSignal: AbortSignal | undefined
+  let catalogReads = 0
+  vi.stubGlobal('fetch', async (input: Request) => {
+    if (input.url.endsWith('/shared-knowledge-bases')) { catalogReads++; return json({ items: [course] }) }
+    if (input.url.endsWith('/kb-1')) return json({ ...course, documents: [document] })
+    if (input.url.includes('/d1/source')) {
+      sourceSignal = input.signal
+      return new Promise<Response>(resolve => { resolveSource = resolve })
+    }
+    return json({ items: [] })
+  })
+  function BackNavigation() {
+    const navigate = useNavigate()
+    return <button onClick={() => navigate(-1)}>浏览器后退</button>
+  }
+  render(<MemoryRouter initialEntries={['/library']}><BackNavigation /><CoursesPage /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('link', { name: 'Late source.txt' }))
+  await waitFor(() => expect(resolveSource).toBeDefined())
+  fireEvent.click(screen.getByRole('button', { name: '浏览器后退' }))
+  expect(await screen.findByRole('link', { name: 'Late source.txt' })).toBeInTheDocument()
+  expect(sourceSignal?.aborted).toBe(true)
+  await act(async () => { resolveSource!(json({ document, knowledge_base_id: 'kb-1', knowledge_base_name: course.name, segments: [] })) })
+  expect(screen.getByRole('link', { name: 'Late source.txt' })).toBeInTheDocument()
+  expect(screen.queryByLabelText('资料阅读工作区')).not.toBeInTheDocument()
+  expect(catalogReads).toBe(1)
 })

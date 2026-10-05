@@ -137,6 +137,7 @@ def test_redemption_and_new_hold_are_atomic(tmp_path):
         max_attempt_pico=5 * 10**12,
         max_operation_pico=5 * 10**12,
         daily_budget_pico=50 * 10**12,
+        billing_policy="delivery_v1",
     )
     with Session(engine) as session:
         repository = SqliteCreditRepository(session)
@@ -166,18 +167,21 @@ def test_redemption_and_new_hold_are_atomic(tmp_path):
     engine.dispose()
 
 
-def test_redemption_writer_lock_allows_waiting_reservation_to_progress(tmp_path):
-    from concurrent.futures import ThreadPoolExecutor
+def test_redemption_writer_lock_allows_waiting_reservation_to_progress(plain_client, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
     from threading import Event
+    from uuid import UUID
 
-    engine = create_engine(f"sqlite:///{tmp_path}/redeem-progress.db")
-    for model in (CreditAccountRow, CreditLedgerRow, CreditRedemptionCodeRow):
-        model.__table__.create(engine)
-    create_billing_tables(engine)
-    user, code = uuid4(), uuid4()
+    from sqlalchemy import event
+    from test_agent_memory import register
+
+    from qunxue_api.adapters.sqlite import billing_repository
+    from qunxue_api.modules.billing import Tariff
+
+    user, code = UUID(register(plain_client)), uuid4()
+    engine = plain_client.app.state.database.engine  # Actual 0600/0610 migrated schema.
     now = datetime.now(UTC)
     with Session(engine) as s:
-        s.add(CreditAccountRow(user_id=str(user), balance=50000, created_at=now, updated_at=now))
         s.add(
             CreditRedemptionCodeRow(
                 code_id=str(code),
@@ -192,46 +196,88 @@ def test_redemption_writer_lock_allows_waiting_reservation_to_progress(tmp_path)
         s.commit()
     runtime = DurableBilling(
         engine,
-        price_book=PriceBook(credits_per_usd=10000, version="synthetic"),
-        max_attempt_pico=5 * 10**12,
-        max_operation_pico=5 * 10**12,
-        daily_budget_pico=50 * 10**12,
+        price_book=PriceBook(credits_per_usd=10000, version="synthetic-reset-lock", tariffs={
+            "synthetic-meter": Tariff(1000000, 1000000, 1000000, 1000000, long_threshold=None),
+        }),
+        max_attempt_pico=2 * 10**9,
+        max_operation_pico=2 * 10**9,
+        daily_budget_pico=10**12,
+        billing_policy="actual_usage_v1",
+        clock=lambda: now,
     )
-    attempted = Event()
+    initial_run = runtime.start(user_id=user, run_id=uuid4(), fingerprint="first-valid-message")
+
+    def attempt(run):
+        return runtime.before_attempt(run_id=run, endpoint_id="synthetic",
+                                      model="synthetic-meter", input_limit=1000, output_limit=100,
+                                      request_hash=str(uuid4()))
+
+    runtime.complete_attempt(attempt_id=attempt(initial_run), input_tokens=600, output_tokens=0,
+                             returned_model="synthetic-meter", outcome="success")
+    runtime.finish(run_id=initial_run, outcome="success")
+    with engine.connect() as c:
+        assert c.execute(text("SELECT balance,quota_period_epoch FROM credit_accounts")).one() \
+            == (24, 1)
+        assert c.scalar(text("SELECT limit_points FROM credit_quota_periods WHERE epoch=1")) == 30
+
+    attempted, reset_seen = Event(), Event()
+
+    def before_execute(_conn, _cursor, statement, _params, _context, _many):
+        if statement == "BEGIN IMMEDIATE":
+            attempted.set()
+
+    event.listen(engine, "before_cursor_execute", before_execute)
 
     def reserve():
-        attempted.set()
-        return runtime.start(user_id=user, run_id=str(uuid4()), fingerprint="waiting-reservation")
+        run = runtime.start(user_id=user, run_id=uuid4(), fingerprint="waiting-reservation")
+        return run, attempt(run)
 
     future = None
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        with Session(engine) as s:
-            repo = SqliteCreditRepository(s)
-            original = repo._billing_details
-
-            def at_freeze_read(user_id, limit, offset):
+    original = billing_repository.ensure_quota_period
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            def at_period_reset(conn, user_id, reset_now, plan_limits=None, **kwargs):
                 nonlocal future
-                observed = original(user_id, limit, offset)
-                assert observed[0] == 0
+                assert kwargs["reset"] is True
+                reset_seen.set()
                 future = pool.submit(reserve)
                 assert attempted.wait(2)
-                return observed
+                with pytest.raises(TimeoutError):
+                    future.result(timeout=0.05)  # BEGIN IMMEDIATE waits on RESET's writer lock.
+                return original(conn, user_id, reset_now, plan_limits, **kwargs)
 
-            repo._billing_details = at_freeze_read
-            redemption = repo.redeem_code(user_id=user, code_hash="progress-hash", now=now)
-            s.commit()
-            assert redemption.balance == 10000
-        assert future.result(timeout=5)
+            monkeypatch.setattr(billing_repository, "ensure_quota_period", at_period_reset)
+            with Session(engine) as s:
+                redemption = SqliteCreditRepository(s).redeem_code(
+                    user_id=user, code_hash="progress-hash", now=now
+                )
+                assert reset_seen.is_set()
+                s.commit()
+                assert redemption.balance == redemption.redeemed_points == 30
+                assert redemption.delta_points == 6
+            run, waiting_attempt = future.result(timeout=5)
+    finally:
+        event.remove(engine, "before_cursor_execute", before_execute)
     with engine.connect() as c:
         balance = c.scalar(text("SELECT balance FROM credit_accounts"))
         held = c.scalar(
             text("SELECT sum(hold_points) FROM billing_operations WHERE status='active'")
         )
-        assert balance == held == 10000
+        assert balance == 30 and held == 11
+        assert c.scalar(text("SELECT quota_period_epoch FROM billing_operations WHERE run_id=:run"),
+                        {"run": run}) == 2
+        assert c.scalar(text("SELECT balance FROM credit_quota_periods WHERE epoch=1")) == 24
         assert c.scalar(text("SELECT redeemed_by_user_id FROM credit_redemption_codes")) == str(
             user
         )
-    engine.dispose()
+    runtime.complete_attempt(attempt_id=waiting_attempt, input_tokens=600, output_tokens=0,
+                             returned_model="synthetic-meter", outcome="success")
+    runtime.finish(run_id=run, outcome="success")
+    with engine.connect() as c:
+        assert c.execute(text("SELECT balance,quota_period_epoch FROM credit_accounts")).one() \
+            == (24, 2)
+        assert c.scalar(text("SELECT hold_points FROM billing_operations WHERE run_id=:run"),
+                        {"run": run}) == 0
 
 
 def test_bill_details_expose_actual_usage_locked_prices_and_pending_cash(wallet):

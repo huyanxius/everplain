@@ -192,7 +192,7 @@ def _notes(source, path, data):
             if urlsplit(url).scheme not in {"http", "https"} or not urlsplit(url).netloc:
                 yield _error(source, entry_path, ValueError("bookmark requires HTTP(S) URL"))
                 continue
-            yield _item(
+            item = _item(
                 source,
                 entry_path,
                 title=node.text().strip(),
@@ -204,6 +204,10 @@ def _notes(source, path, data):
                     "tags": node.attrs.get("tags", "").split(","),
                 },
             )
+            # Keep source identity/path stable while displaying the bookmark title.
+            filename = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", item["title"]).strip(" .")[:120]
+            item["filename"] = (filename or f"bookmark-{i}") + ".md"
+            yield item
     elif source == "enex":
         # ElementTree does not fetch external DTDs; reject internal entity declarations.
         if re.search(r"<!ENTITY\b|<!DOCTYPE[^>]*\[", value, re.I):

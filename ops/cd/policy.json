@@ -4,8 +4,43 @@
   "add_user_billing_phases": [
     "writing"
   ],
+  "add_operator_billing_phases": [
+    "conversation_summary"
+  ],
   "reviewed_live_file_overlays": {
     "/app/backend/.venv/lib/python3.12/site-packages/qunxue_api/settings.py": "a5d984c7d9b4d2159298e55af199154d20a6b632ae4c35b57660fccbe70da18a",
     "/app/ops/preflight.py": "a39fc2a2335df4cfc82d2c8eefe2f73baf3491732269c3a696fbe49971891bdf"
-  }
+  },
+  "reviewed_forward_only_migration_transitions": [
+    {
+      "from": "1727232ab89e84ccbd00aaad2c7aa600e818bdc4d9f3b19d74c9326601f02a54",
+      "to": "3203ce3aa7e4e38c2ec9d55ddccc48d830b0707261a2abb1b564df6d9f79f40e"
+    },
+    {
+      "from": "3203ce3aa7e4e38c2ec9d55ddccc48d830b0707261a2abb1b564df6d9f79f40e",
+      "to": "5804df17b2d190d615497be9dd027f4747c4320836942c6eeefd9ce0110bbe40"
+    }
+  ],
+  "reviewed_migration_transitions": [
+    {
+      "from": "77b8a58a6c74b1981f9c04a19b6881d58a775548a3a06c217c2afa793a0eeda5",
+      "to": "aa1c0493ac54be37884ba2ac2162595f32c0f704d9a78acc70976b45788922c1"
+    },
+    {
+      "from": "aa1c0493ac54be37884ba2ac2162595f32c0f704d9a78acc70976b45788922c1",
+      "to": "e91f52d0b5ef472f6ff310d6f893a09e103b97849cc0e39cf39181e8224f7542"
+    },
+    {
+      "from": "e91f52d0b5ef472f6ff310d6f893a09e103b97849cc0e39cf39181e8224f7542",
+      "to": "b442b16d6a04b603fc22acfdee3f842242b215f1bedc35d1d02a34c8c733e93f"
+    },
+    {
+      "from": "b442b16d6a04b603fc22acfdee3f842242b215f1bedc35d1d02a34c8c733e93f",
+      "to": "dc2e57e19b9e1350b8f9e47aa42ef7d40ce2352518620ea307befb672cebf910"
+    },
+    {
+      "from": "dc2e57e19b9e1350b8f9e47aa42ef7d40ce2352518620ea307befb672cebf910",
+      "to": "1727232ab89e84ccbd00aaad2c7aa600e818bdc4d9f3b19d74c9326601f02a54"
+    }
+  ]
 }

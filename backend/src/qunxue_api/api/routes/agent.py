@@ -1,10 +1,10 @@
 import asyncio
 import json
 import logging
-import queue
 import threading
 import time
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -25,6 +25,7 @@ from qunxue_api.api.contracts.agent import (
     AgentMessageResponse,
     AgentModelCatalogResponse,
     AgentModelChoiceResponse,
+    AgentOutputAttemptResponse,
     AgentResearchJourneyResponse,
     AgentRunLookupResponse,
     AgentRunRecoveryResponse,
@@ -33,6 +34,10 @@ from qunxue_api.api.contracts.agent import (
     AgentTurnResponse,
     ConfirmResearchStartRequest,
     ConfirmResearchStartResponse,
+    ConversationSummaryResponse,
+    KnowledgeIndexRepairRequest,
+    KnowledgeIndexStatusResponse,
+    RecentConversationContextsResponse,
     ResearchStartProposalResponse,
 )
 from qunxue_api.api.contracts.common import ErrorCode, ErrorDetail, ErrorResponse
@@ -48,7 +53,7 @@ from qunxue_api.modules.agent_conversation import (
     AgentInterrupted,
     AgentModelRouteFailure,
     AgentModelSelectionUnavailable,
-    AgentResearchEvent,
+    AgentOutputStorageFailure,
     AgentToolEvent,
     CanvasEditConflict,
     ConversationNotFound,
@@ -60,6 +65,9 @@ from qunxue_api.modules.agent_conversation import (
 from qunxue_api.modules.billing import BillingFailure, CreditRunInProgress, CreditsDepleted
 from qunxue_api.modules.knowledge_catalog import RetrievalPipelineUnavailable
 from qunxue_api.modules.research_intake import ResearchStartProposalStatus
+from qunxue_api.modules.shared_knowledge import (
+    find_knowledge_index_choice,
+)
 
 router = APIRouter(
     prefix="/api/agent",
@@ -73,7 +81,6 @@ router = APIRouter(
 logger = logging.getLogger(__name__)
 AgentRuntimeMode = Literal["mock", "base", "sft"]
 _SSE_HEARTBEAT_SECONDS = 5.0
-_AGENT_TURN_TIMEOUT_SECONDS = 300.0
 _ACTIVE_RUNS_LOCK = threading.Lock()
 _ACTIVE_RUN_CANCEL_EVENTS: dict[tuple[UUID, UUID], threading.Event] = {}
 
@@ -120,6 +127,35 @@ def _effective_agent_runtime_mode(request: Request) -> AgentRuntimeMode:
     if settings.runtime_mode != "mock":
         return settings.runtime_mode
     return "base" if settings.has_model_api_key else "mock"
+
+
+@router.get("/recent-context", response_model=RecentConversationContextsResponse,
+            operation_id="list_recent_conversation_context")
+def list_recent_conversation_context(request: Request, current: CurrentSessionDependency,
+                                     response: Response) -> RecentConversationContextsResponse:
+    response.headers["Cache-Control"] = "private, no-store"
+    with request.app.state.conversation_context_scope() as (repository, _):
+        return RecentConversationContextsResponse(items=repository.recent(current.user.user_id))
+
+
+@router.get("/context-summary", response_model=ConversationSummaryResponse,
+            operation_id="read_conversation_summary")
+def read_conversation_summary(request: Request, current: CurrentSessionDependency,
+                              response: Response) -> ConversationSummaryResponse:
+    response.headers["Cache-Control"] = "private, no-store"
+    worker = request.app.state.context_summary_worker
+    with request.app.state.context_summary_scope() as repository:
+        result = repository.read(
+            current.user.user_id, idle_seconds=worker.idle_seconds,
+            daily_calls=worker.daily_calls, daily_tokens=worker.daily_tokens,
+            reservation_estimator=worker.reservation_estimator(),
+        )
+    if result["status"] in {"pending", "failed"} and worker.generate is None:
+        # No configured background generator means no awaited result can arrive.
+        result["status"] = "failed"
+        result["status_reason"] = "generator_unavailable"
+        result["retry_at"] = None
+    return ConversationSummaryResponse(**result)
 
 
 @router.post(
@@ -389,6 +425,41 @@ def list_agent_models(
     )
 
 
+@router.get(
+    "/knowledge-index-status", response_model=KnowledgeIndexStatusResponse,
+    operation_id="get_agent_knowledge_index_status",
+)
+def get_agent_knowledge_index_status(
+    request: Request, current: CurrentSessionDependency,
+    reference_knowledge_base_id: UUID | None = None,
+    purpose: Literal["search", "graph"] = "search",
+):
+    with request.app.state.disciplinary_agent_scope() as app:
+        return app.knowledge_index_status(
+            user_id=current.user.user_id, kb_id=reference_knowledge_base_id, purpose=purpose
+        )
+
+
+@router.post(
+    "/knowledge-index-repairs", response_model=KnowledgeIndexStatusResponse,
+    operation_id="repair_agent_knowledge_index", status_code=202,
+)
+def repair_agent_knowledge_index(
+    payload: KnowledgeIndexRepairRequest, request: Request,
+    current: CurrentSessionDependency, _idempotency_key: IdempotencyKey,
+):
+    with request.app.state.disciplinary_agent_scope() as app:
+        try:
+            return app.repair_knowledge_indexes(
+                user_id=current.user.user_id,
+                documents=[item.model_dump() for item in payload.documents],
+                idempotency_key=_idempotency_key,
+                kb_id=payload.reference_knowledge_base_id, purpose=payload.purpose,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+
 @router.post(
     "/turns",
     status_code=status.HTTP_200_OK,
@@ -415,302 +486,447 @@ def stream_agent_turn(
     except AgentModelSelectionUnavailable as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
-    async def events() -> AsyncIterator[str]:
-        event_queue: queue.Queue[tuple[str, object]] = queue.Queue()
-        cancel_event = threading.Event()
-        user_id = current.user.user_id
-        deadline = time.monotonic() + _AGENT_TURN_TIMEOUT_SECONDS
-        runtime_mode = _effective_agent_runtime_mode(request)
-        registered_run_id: UUID | None = None
-        registered_lease_token: str | None = None
-        next_heartbeat = time.monotonic() + _SSE_HEARTBEAT_SECONDS
+    user_id = current.user.user_id
+    runtime_mode = _effective_agent_runtime_mode(request)
+    with request.app.state.disciplinary_agent_scope() as app:
+        existing = app.find_run(user_id=user_id, idempotency_key=idempotency_key)
+    if existing is not None and payload.conversation_id not in {None, existing.conversation_id}:
+        raise HTTPException(status_code=409, detail="请求标识已属于另一段对话。")
+    # POST is an explicit execution command. Already-active/completed requests
+    # observe that generation; they never wait for its failure and then execute it.
+    if existing is not None and (
+        existing.status == "completed" or (
+            existing.status == "running" and existing.lease_expires_at is not None
+            and existing.lease_expires_at > datetime.now(UTC)
+        )
+    ):
+        return _run_event_response(
+            request, user_id, existing.run_id,
+            after=existing.last_event_sequence if existing.status == "running" else 0,
+            replay_completed=existing.status == "completed", snapshot_first=True,
+        )
 
-        def heartbeat() -> bool:
-            if registered_run_id is None:
-                return cancel_event.is_set()
-            with request.app.state.disciplinary_agent_scope() as app:
-                return app.heartbeat(
-                    user_id=user_id,
-                    run_id=registered_run_id,
-                    lease_token=registered_lease_token,
-                )
+    after = existing.last_event_sequence if existing is not None else 0
+    ready = threading.Event()
+    finished = threading.Event()
+    cancel_event = threading.Event()
+    identity: dict[str, object] = {}
+    startup_failure: list[tuple[str, dict[str, object]]] = []
+    unsaved_body: list[str] = []
+    unsaved_delivery_state: list[dict[str, object]] = []
+    terminal_failure: list[tuple[str, dict[str, object]]] = []
 
-        def on_run_started(
-            run_id: UUID,
-            conversation_id: UUID,
-            replayed: bool,
-            *,
-            lease_token: str | None = None,
-        ) -> None:
-            nonlocal registered_run_id, registered_lease_token
-            registered_run_id = run_id
-            registered_lease_token = lease_token
-            if not replayed:
-                _register_active_run(user_id, run_id, cancel_event)
-            event_queue.put(
-                (
-                    "started",
-                    {
-                        "conversation_id": str(conversation_id),
-                        "run_id": str(run_id),
-                        "replayed": replayed,
-                        "runtime_mode": runtime_mode,
-                    },
-                )
-            )
+    def on_delta(delta: str, *, persisted: bool = True, answer: str | None = None) -> None:
+        if not persisted:
+            # Presentation-only fallback for this live subscription. It is not
+            # a durable replay cursor or a second persistence/scheduling engine.
+            unsaved_body[:] = [answer if answer is not None else delta]
 
-        def on_delta(delta: str) -> None:
-            event_queue.put(("delta", delta))
+    def publish(name: str, body: dict[str, object]) -> None:
+        run_id = identity.get("run_id")
+        attempt_id = identity.get("attempt_id")
+        if not isinstance(run_id, UUID) or not isinstance(attempt_id, str):
+            return
+        with request.app.state.disciplinary_agent_scope() as app:
+            event = app.append_output_event(user_id=user_id, run_id=run_id,
+                                           attempt_id=attempt_id, name=name, payload=body)
+        if event is None:
+            raise AgentInterrupted("Agent execution lease was replaced")
 
-        def on_tool_event(event: AgentToolEvent) -> None:
-            event_queue.put(("tool", event))
-
-        def on_research_event(event: AgentResearchEvent) -> None:
-            event_queue.put(("research", event))
-
-        def run_agent() -> None:
+    def renew_execution_lease() -> None:
+        # Retain the existing execution lease while no browser is subscribed.
+        # This is transitional supervision of the current worker, not durable
+        # workflow recovery or a second scheduling/lease engine.
+        while not finished.wait(_SSE_HEARTBEAT_SECONDS):
+            run_id = identity.get("run_id")
+            if not isinstance(run_id, UUID):
+                continue
             try:
-                while True:
-                    try:
-                        with request.app.state.disciplinary_agent_scope() as app:
-                            execution = app.run_turn(
-                                user_id=user_id,
-                                conversation_id=payload.conversation_id,
-                                prompt=payload.message,
-                                idempotency_key=idempotency_key,
-                                workspace=payload.workspace,
-                                model_id=payload.model_id,
-                                reasoning_effort=payload.reasoning_effort,
-                                web_search=payload.web_search,
-                                task_id=payload.task_id,
-                                document_id=payload.document_id,
-                                section_id=payload.section_id,
-                                document_version=payload.document_version,
-                                theory_plan_id=payload.theory_plan_id,
-                                material_ids=payload.material_ids,
-                                reference_knowledge_base_id=payload.reference_knowledge_base_id,
-                                mode=payload.mode,
-                                deep_research_run_id=payload.deep_research_run_id,
-                                deep_research_action=payload.deep_research_action,
-                                deep_research_selection=payload.deep_research_selection,
-                                on_run_started=on_run_started,
-                                on_delta=on_delta,
-                                on_tool_event=on_tool_event,
-                                on_research_event=on_research_event,
-                                is_cancelled=cancel_event.is_set,
-                            )
-                        break
-                    except RunAlreadyActive:
-                        with request.app.state.disciplinary_agent_scope() as app:
-                            existing = app.find_run(
-                                user_id=user_id,
-                                idempotency_key=idempotency_key,
-                            )
-                        if existing is None or existing.status != "running":
-                            raise
-                        if cancel_event.wait(0.5):
-                            raise AgentInterrupted("Agent run was stopped") from None
-                event_queue.put(("completed", execution))
-            except Exception as error:
-                event_queue.put(("failed", error))
-            finally:
-                if registered_run_id is not None:
-                    _release_active_run(user_id, registered_run_id, cancel_event)
+                with request.app.state.disciplinary_agent_scope() as app:
+                    cancelled = app.heartbeat(user_id=user_id, run_id=run_id,
+                                              lease_token=identity.get("attempt_id"))
+                if cancelled:
+                    cancel_event.set()
+                    return
+            except Exception:
+                logger.exception("Agent execution lease renewal failed")
+                cancel_event.set()
+                return
 
-        worker = threading.Thread(target=run_agent, daemon=True)
-        worker.start()
-        yield _event("agent_status", {"status": "thinking"})
-        streamed_answer = False
+    def on_run_started(run_id: UUID, conversation_id: UUID, replayed: bool,
+                       *, lease_token: str | None = None) -> None:
+        identity.update(run_id=run_id, attempt_id=lease_token, conversation_id=conversation_id)
+        if not replayed:
+            _register_active_run(user_id, run_id, cancel_event)
+        with request.app.state.disciplinary_agent_scope() as app:
+            run = app.find_run_by_id(user_id=user_id, run_id=run_id)
+        if run is not None and lease_token is None:
+            identity["attempt_id"] = run.lease_token
+        publish("agent_status", {"status": "thinking"})
+        publish("turn_started", {
+            "conversation_id": str(conversation_id), "run_id": str(run_id),
+            "attempt_id": identity.get("attempt_id"), "replayed": replayed,
+            "runtime_mode": runtime_mode,
+            "output_attempts": [_output_attempt(item).model_dump(mode="json")
+                                for item in (run.output_attempts if run else ())],
+        })
+        ready.set()
+        threading.Thread(target=renew_execution_lease, daemon=True).start()
+
+    def on_tool_event(event: AgentToolEvent) -> None:
+        body: dict[str, object] = {"tool": event.tool, "call_id": event.call_id}
+        for name in ("input", "output", "detail"):
+            value = getattr(event, name)
+            if value is not None:
+                body[name] = dict(value) if name == "input" else value
+        if event.error is not None:
+            body.update(message=event.detail or "工具调用失败", error_code=event.error)
+        publish(f"tool_{event.phase}", body)
+        if (event.tool == "update_research_map" and event.phase == "finished"
+                and isinstance(event.output, dict) and event.output.get("schema_version") == 1):
+            publish("canvas_patch", event.output)
+
+    def run_agent() -> None:
         try:
-            while True:
-                if time.monotonic() >= next_heartbeat:
-                    if await asyncio.to_thread(heartbeat):
-                        cancel_event.set()
-                    next_heartbeat = time.monotonic() + _SSE_HEARTBEAT_SECONDS
-                    yield ": keep-alive\n\n"
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    yield _event(
-                        "turn_failed",
-                        {
-                            "code": "turn_timeout",
-                            "message": "连接等待超时，本轮正在暂停，已生成的内容会保留。",
-                        },
-                    )
-                    break
+            with request.app.state.disciplinary_agent_scope() as app:
+                execution = app.run_turn(
+                    user_id=user_id, conversation_id=payload.conversation_id,
+                    prompt=payload.message, idempotency_key=idempotency_key,
+                    workspace=payload.workspace, model_id=payload.model_id,
+                    reasoning_effort=payload.reasoning_effort, web_search=payload.web_search,
+                    task_id=payload.task_id, document_id=payload.document_id,
+                    section_id=payload.section_id, document_version=payload.document_version,
+                    writing_context=(payload.writing_context.model_dump(mode="json")
+                                     if payload.writing_context else None),
+                    theory_plan_id=payload.theory_plan_id, material_ids=payload.material_ids,
+                    reference_knowledge_base_id=payload.reference_knowledge_base_id,
+                    knowledge_index_action=payload.knowledge_index_action, mode=payload.mode,
+                    deep_research_run_id=payload.deep_research_run_id,
+                    deep_research_action=payload.deep_research_action,
+                    deep_research_selection=payload.deep_research_selection,
+                    on_run_started=on_run_started, on_delta=on_delta,
+                    on_tool_event=on_tool_event,
+                    on_research_event=lambda event: publish(
+                        f"research_{event.kind}", dict(event.payload)),
+                    is_cancelled=cancel_event.is_set,
+                )
+            delivery_state = getattr(execution, "delivery_state", {})
+            if delivery_state:
                 try:
-                    event_name, event_payload = event_queue.get_nowait()
-                except queue.Empty:
-                    # An async wait lets StreamingResponse cancel this generator
-                    # immediately on disconnect, including while the model is silent.
-                    await asyncio.sleep(0.05)
-                    continue
-                deadline = time.monotonic() + _AGENT_TURN_TIMEOUT_SECONDS
-                if event_name == "started":
-                    yield _event("turn_started", event_payload)  # type: ignore[arg-type]
-                elif event_name == "delta":
-                    if not streamed_answer:
-                        yield _event("agent_status", {"status": "answering"})
-                    streamed_answer = True
-                    yield _event("assistant_delta", {"delta": str(event_payload)})
-                elif event_name == "tool":
-                    if not isinstance(event_payload, AgentToolEvent):
-                        raise RuntimeError("Agent worker returned an invalid tool event")
-                    tool_payload: dict[str, object] = {
-                        "tool": event_payload.tool,
-                        "call_id": event_payload.call_id,
-                    }
-                    if event_payload.input is not None:
-                        tool_payload["input"] = dict(event_payload.input)
-                    if event_payload.output is not None:
-                        tool_payload["output"] = event_payload.output
-                    if event_payload.detail is not None:
-                        tool_payload["detail"] = event_payload.detail
-                    if event_payload.error is not None:
-                        tool_payload["message"] = event_payload.detail or "工具调用失败"
-                        tool_payload["error_code"] = event_payload.error
-                    yield _event(
-                        f"tool_{event_payload.phase}",
-                        tool_payload,
-                    )
-                    if (
-                        event_payload.tool == "update_research_map"
-                        and event_payload.phase == "finished"
-                        and isinstance(event_payload.output, dict)
-                        and event_payload.output.get("schema_version") == 1
-                    ):
-                        yield _event("canvas_patch", event_payload.output)
-                elif event_name == "research":
-                    if not isinstance(event_payload, AgentResearchEvent):
-                        raise RuntimeError("Agent worker returned an invalid research event")
-                    yield _event(
-                        f"research_{event_payload.kind}",
-                        dict(event_payload.payload),
-                    )
-                elif event_name == "failed":
-                    if isinstance(event_payload, BaseException):
-                        raise event_payload
-                    raise RuntimeError("Agent worker failed")
-                else:
-                    execution = event_payload
-                    if not hasattr(execution, "result"):
-                        raise RuntimeError("Agent worker returned no execution")
-                    if execution.pending_research is not None:
-                        pending = execution.pending_research
-                        yield _event(
-                            "research_waiting",
-                            {
-                                "run_id": str(execution.run_id),
-                                **pending,
-                            },
-                        )
-                        break
-                    if not streamed_answer:
-                        yield _event("agent_status", {"status": "answering"})
-                        for chunk in _chunks(execution.result.answer):
-                            yield _event("assistant_delta", {"delta": chunk})
-                    for citation in execution.result.citations:
-                        yield _event("citation_added", _citation(citation))
-                    yield _event(
-                        "turn_completed",
-                        {
-                            "conversation": _conversation(
-                                execution.conversation,
-                                tool_summaries={execution.turn.turn_id: execution.tool_summary}
-                                if execution.turn is not None
-                                else {},
-                                release_ids={execution.turn.turn_id: execution.result.release_id}
-                                if execution.turn is not None
-                                else {},
-                            ).model_dump(mode="json"),
-                            "knowledge_release_id": execution.result.release_id,
-                        },
-                    )
-                    break
-        except ConversationNotFound:
-            yield _event("turn_failed", {"code": "not_found", "message": "对话不存在或无权访问。"})
-        except ConversationTaskBindingConflict as error:
-            yield _event(
-                "turn_failed",
-                {
-                    "code": error.code,
-                    "message": "该对话已属于另一个研究任务，无法读取当前任务材料。",
-                },
-            )
-        except ResearchMaterialCitationUnavailable as error:
-            yield _event(
-                "turn_failed",
-                {
-                    "code": error.code,
-                    "message": "引用的个人研究材料已删除或不属于当前研究，本轮未保存。",
-                },
-            )
+                    publish("agent_delivery_state", delivery_state)
+                except Exception:
+                    unsaved_delivery_state.append(delivery_state)
+            if getattr(execution, "incomplete_reason", None) == "length":
+                publish("turn_interrupted", {
+                    "code": "output_truncated",
+                    "message": "模型本次输出达到上游长度限制，已收到的正文已保存，可以继续本轮。",
+                })
+            elif execution.pending_research is not None:
+                publish("research_waiting", {"run_id": str(execution.run_id),
+                                             **execution.pending_research})
+            else:
+                for citation in execution.result.citations:
+                    publish("citation_added", _citation(citation))
+                publish("turn_completed", {
+                    "conversation": _conversation(
+                        execution.conversation,
+                        tool_summaries={execution.turn.turn_id: execution.tool_summary}
+                        if execution.turn is not None else {},
+                        release_ids={execution.turn.turn_id: execution.result.release_id}
+                        if execution.turn is not None else {},
+                    ).model_dump(mode="json"),
+                    "knowledge_release_id": execution.result.release_id,
+                    "delivery_state": delivery_state,
+                })
         except RunAlreadyActive:
-            yield _event(
-                "turn_failed",
-                {"code": "run_in_progress", "message": "这段对话正在生成回答，请稍候。"},
-            )
-        except CreditRunInProgress:
-            yield _event(
-                "turn_failed",
-                {"code": "run_in_progress", "message": "当前账户已有一轮对话正在生成，请稍候。"},
-            )
-        except CreditsDepleted:
-            yield _event(
-                "turn_failed",
-                {
-                    "code": "credits_depleted",
-                    "message": "积分不足，请前往账户设置查看用量。",
-                },
-            )
-        except AgentModelSelectionUnavailable as error:
-            yield _event(
-                "turn_failed", {"code": "model_selection_unavailable", "message": str(error)}
-            )
-        except AgentModelRouteFailure as error:
-            messages = {
-                "agent_input_limit": "本轮资料超出模型上下文上限，请缩小研究范围或新建对话后重试。",
-                "agent_model_request_rejected": "模型服务拒绝了本轮请求，请稍后重试。",
-                "agent_model_unavailable": "模型服务暂时不可用，请稍后重试。",
-            }
-            yield _event("turn_failed", {
-                "code": error.code,
-                "message": messages.get(error.code, messages["agent_model_unavailable"]),
-            })
-        except BillingFailure as error:
-            _, code, message = billing_error(error)
-            yield _event("turn_failed", {"code": code, "message": message})
-        except AgentInterrupted:
-            yield _event(
-                "turn_interrupted",
-                {"code": "interrupted", "message": "已暂停，已生成的内容已保存，可以继续。"},
-            )
-        except RetrievalPipelineUnavailable:
-            logger.exception("Agent retrieval failed")
-            yield _event(
-                "turn_failed",
-                {
-                    "code": "retrieval_unavailable",
-                    "message": "发布绑定的知识检索暂时不可用，本轮未生成研究回答。",
-                },
-            )
-        except Exception:
-            logger.exception("Agent turn failed")
-            yield _event(
-                "turn_failed",
-                {"code": "agent_unavailable", "message": "Agent 暂时无法完成回答，请稍后重试。"},
-            )
+            # A competing POST may win admission. Attach once; no polling loop
+            # that can start a second provider attempt when the winner fails.
+            with request.app.state.disciplinary_agent_scope() as app:
+                run = app.find_run(user_id=user_id, idempotency_key=idempotency_key)
+            if run is None:
+                startup_failure.append(_agent_failure(RunAlreadyActive("run")))
+            else:
+                identity["run_id"] = run.run_id
+        except Exception as error:
+            failure = _agent_failure(error)
+            delivery_state = getattr(error, "agent_delivery_state", {})
+            if identity.get("run_id") is None:
+                startup_failure.append(failure)
+            else:
+                try:
+                    if delivery_state:
+                        try:
+                            publish("agent_delivery_state", delivery_state)
+                        except Exception:
+                            unsaved_delivery_state.append(delivery_state)
+                    publish(*failure)
+                except Exception:
+                    terminal_failure.append(failure)
+                    logger.exception("Agent terminal event could not be journaled")
         finally:
-            # Closing the stream is an implicit user stop (navigation, new
-            # conversation, tab close). The worker checks this cooperative
-            # signal before starting another model or tool operation.
-            cancel_event.set()
+            finished.set()
+            ready.set()
+            run_id = identity.get("run_id")
+            if isinstance(run_id, UUID):
+                _release_active_run(user_id, run_id, cancel_event)
 
+    # Execution starts before response iteration, so lost headers/disconnect do
+    # not prevent or cancel the command. Transport owns no model/tool worker.
+    threading.Thread(target=run_agent, daemon=True).start()
+
+    async def startup_events() -> AsyncIterator[str]:
+        while not ready.is_set():
+            await asyncio.sleep(0.02)
+        if startup_failure:
+            yield _event(*startup_failure[0])
+            return
+        run_id = identity.get("run_id")
+        if isinstance(run_id, UUID):
+            async for frame in _subscribe_run_events(
+                request, user_id, run_id, after=after, unsaved_body=unsaved_body,
+                terminal_failure=terminal_failure, worker_finished=finished,
+                unsaved_delivery_state=unsaved_delivery_state, fallback_identity=identity,
+            ):
+                yield frame
+
+    return StreamingResponse(startup_events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+_TERMINAL_EVENT_NAMES = frozenset({"turn_completed", "turn_failed", "turn_interrupted",
+                                   "research_waiting", "knowledge_index_choice_required"})
+
+
+def _agent_failure(error: Exception) -> tuple[str, dict[str, object]]:
+    if isinstance(error, AgentOutputStorageFailure):
+        return "turn_failed", {
+            "code": error.code,
+            "message": "正文保存失败，已收到的文字仍保留在此页面；未保存部分无法保证恢复。",
+        }
+    if isinstance(error, ConversationNotFound):
+        return "turn_failed", {"code": "not_found", "message": "对话不存在或无权访问。"}
+    if isinstance(error, ConversationTaskBindingConflict):
+        return "turn_failed", {"code": error.code,
+                               "message": "该对话已属于另一个研究任务，无法读取当前任务材料。"}
+    if isinstance(error, ResearchMaterialCitationUnavailable):
+        return "turn_failed", {"code": error.code,
+                               "message": "引用的个人研究材料已删除或不属于当前研究，本轮未保存。"}
+    if isinstance(error, (RunAlreadyActive, CreditRunInProgress)):
+        return "turn_failed", {
+            "code": "run_in_progress", "message": "这段对话正在生成回答，请稍候。",
+        }
+    if isinstance(error, CreditsDepleted):
+        return "turn_failed", {
+            "code": "credits_depleted", "message": "额度已用尽，请等待 receipt",
+        }
+    if isinstance(error, AgentModelSelectionUnavailable):
+        return "turn_failed", {"code": "model_selection_unavailable", "message": str(error)}
+    if isinstance(error, AgentModelRouteFailure):
+        messages = {
+            "agent_input_limit": "本轮资料超出模型上下文上限，请缩小研究范围或新建对话后重试。",
+            "agent_model_request_rejected": "模型服务拒绝了本轮请求，请稍后重试。",
+            "agent_model_unavailable": "模型服务暂时不可用，请稍后重试。",
+        }
+        return "turn_failed", {
+            "code": error.code,
+            "message": messages.get(error.code, messages["agent_model_unavailable"]),
+        }
+    if isinstance(error, BillingFailure):
+        _, code, message = billing_error(error)
+        return "turn_failed", {"code": code, "message": message}
+    if isinstance(error, AgentInterrupted):
+        return "turn_interrupted", {"code": "interrupted",
+                                    "message": "已暂停，已生成的内容已保存，可以继续。"}
+    choice = find_knowledge_index_choice(error)
+    if choice is not None:
+        return "knowledge_index_choice_required", {"status": choice.status}
+    if isinstance(error, RetrievalPipelineUnavailable):
+        return "turn_failed", {"code": "retrieval_unavailable",
+                               "message": "发布绑定的知识检索暂时不可用，本轮未生成研究回答。"}
+    logger.error("Agent turn failed", exc_info=(type(error), error, error.__traceback__))
+    return "turn_failed", {"code": "agent_unavailable",
+                           "message": "Agent 暂时无法完成回答，请稍后重试。"}
+
+
+def _run_event_response(request: Request, user_id: UUID, run_id: UUID, *, after: int,
+                        replay_completed: bool = False,
+                        snapshot_first: bool = False) -> StreamingResponse:
     return StreamingResponse(
-        events(),
+        _subscribe_run_events(request, user_id, run_id, after=after,
+                              replay_completed=replay_completed, snapshot_first=snapshot_first),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+async def _subscribe_run_events(request: Request, user_id: UUID, run_id: UUID, *, after: int,
+                                replay_completed: bool = False,
+                                snapshot_first: bool = False,
+                                unsaved_body: list[str] | None = None,
+                                terminal_failure: list[tuple[str, dict[str, object]]] | None = None,
+                                worker_finished: threading.Event | None = None,
+                                unsaved_delivery_state: list[dict[str, object]] | None = None,
+                                fallback_identity: dict[str, object] | None = None,
+                                ) -> AsyncIterator[str]:
+    unsaved_body = unsaved_body if unsaved_body is not None else []
+    terminal_failure = terminal_failure if terminal_failure is not None else []
+    unsaved_sent: str | None = None
+    unsaved_metadata_sent = 0
+    next_heartbeat = time.monotonic() + _SSE_HEARTBEAT_SECONDS
+    while True:
+        def read(cursor=after):
+            with request.app.state.disciplinary_agent_scope() as app:
+                run = app.find_run_by_id(user_id=user_id, run_id=run_id)
+                events = app.read_output_events(user_id=user_id, run_id=run_id, after=cursor)
+                conversation = (app.get_conversation(user_id=user_id,
+                                                     conversation_id=run.conversation_id)
+                                if run and run.status == "completed" else None)
+                releases = (app.release_ids_by_turn(user_id=user_id,
+                                                    conversation_id=run.conversation_id)
+                            if conversation is not None else {})
+                return run, events, conversation, releases
+
+        read_error = None
+        try:
+            run, events, conversation, releases = await asyncio.to_thread(read)
+        except Exception as error:
+            read_error = error
+            run, events, conversation, releases = None, (), None, {}
+        def unsaved_frames(observed_run, cursor):
+            nonlocal unsaved_sent
+            if not unsaved_body or (observed_run is not None and observed_run.output_redacted):
+                return
+            text = unsaved_body[0]
+            if text == unsaved_sent:
+                return
+            snapshot = _run_snapshot(observed_run) if observed_run is not None else {
+                "run_id": str(run_id),
+                "conversation_id": str((fallback_identity or {}).get("conversation_id", "")),
+                "attempt_id": (fallback_identity or {}).get("attempt_id"),
+                "status": "failed", "output_attempts": [],
+            }
+            # A complete current-attempt presentation snapshot avoids reversing
+            # prior durable deltas or duplicating an ambiguously committed tail.
+            # It carries no invented durable cursor/history or saved-body claim.
+            snapshot.update(partial_answer=text, last_event_sequence=cursor,
+                            output_persistence_failed=True)
+            unsaved_sent = text
+            yield _event("turn_snapshot", snapshot)
+            yield _event("output_persistence_failed", {
+                "message": "以下已收到的正文尚未保存，请先复制保留；未保存部分无法保证恢复。",
+            })
+
+        while unsaved_delivery_state and unsaved_metadata_sent < len(unsaved_delivery_state):
+            yield _event("agent_delivery_state", unsaved_delivery_state[unsaved_metadata_sent])
+            unsaved_metadata_sent += 1
+        if read_error is not None:
+            for frame in unsaved_frames(run, after):
+                yield frame
+            if worker_finished is None:
+                raise read_error
+            if worker_finished is not None and worker_finished.is_set():
+                yield _event("turn_failed", {
+                    "code": "agent_output_storage_error",
+                    "message": "无法读取正文保存状态，页面中的文字仍保留。请先复制保留。",
+                })
+                return
+            await asyncio.sleep(0.05)
+            continue
+        if run is None:
+            return
+        if replay_completed:
+            yield _event("turn_started", {
+                "run_id": str(run.run_id), "conversation_id": str(run.conversation_id),
+                "attempt_id": run.lease_token, "replayed": True,
+                "runtime_mode": _effective_agent_runtime_mode(request),
+                "output_attempts": [_output_attempt(item).model_dump(mode="json")
+                                    for item in run.output_attempts],
+            })
+            events = ()
+        if run.output_redacted or snapshot_first:
+            yield _event("turn_snapshot", _run_snapshot(run))
+            after = run.last_event_sequence
+            events = ()
+            snapshot_first = False
+        for event in events:
+            after = event.sequence
+            if event.attempt_id != run.lease_token:
+                continue
+            if event.name in _TERMINAL_EVENT_NAMES:
+                for frame in unsaved_frames(run, after):
+                    yield frame
+            yield _event(event.name, {**event.payload, "attempt_id": event.attempt_id},
+                         event_id=f"{run_id}:{event.sequence}")
+            if event.name in _TERMINAL_EVENT_NAMES:
+                return
+        if run.status == "running" and (
+            run.lease_expires_at is None or run.lease_expires_at <= datetime.now(UTC)
+        ):
+            yield _event("turn_failed", {
+                "code": "execution_lease_expired",
+                "message": "执行状态暂未确认，已收到的正文已保存。请刷新后查看或明确重试本轮。",
+            })
+            return
+        if run.status != "running" and (not events or replay_completed or run.output_redacted):
+            for frame in unsaved_frames(run, after):
+                yield frame
+            # A process may commit a canonical turn then die before its SSE
+            # terminal event. Read-only reconciliation closes that gap.
+            if run.status == "completed" and conversation is not None:
+                yield _event("turn_completed", {
+                    "conversation": _conversation(conversation, release_ids=releases)
+                    .model_dump(mode="json"),
+                    "knowledge_release_id": run.knowledge_release_id or "",
+                })
+            elif run.status.startswith("awaiting_"):
+                pending = next((item for item in run.tool_summary
+                                if item.get("kind") == "deep_research_pending"), {})
+                yield _event("research_waiting", {"run_id": str(run_id), **pending})
+            else:
+                name = "turn_interrupted" if run.status == "interrupted" else "turn_failed"
+                yield _event(name, {"code": run.status,
+                                    "message": "本轮已结束，已收到的正文已保存。"})
+            return
+        if worker_finished is not None and worker_finished.is_set() and terminal_failure:
+            for frame in unsaved_frames(run, after):
+                yield frame
+            yield _event(*terminal_failure[0])
+            return
+        if time.monotonic() >= next_heartbeat:
+            yield ": keep-alive\n\n"
+            next_heartbeat = time.monotonic() + _SSE_HEARTBEAT_SECONDS
+        await asyncio.sleep(0.05)
+
+
+def _run_snapshot(run) -> dict[str, object]:
+    return {
+        "run_id": str(run.run_id), "conversation_id": str(run.conversation_id),
+        "attempt_id": run.lease_token, "status": run.status,
+        "partial_answer": run.partial_answer, "last_event_sequence": run.last_event_sequence,
+        "delivery_state": run.delivery_state,
+        "output_attempts": [_output_attempt(item).model_dump(mode="json")
+                            for item in run.output_attempts],
+    }
+
+
+@router.get("/runs/{run_id}/events", operation_id="subscribe_agent_run_events",
+            response_class=StreamingResponse,
+            responses={200: {"content": {"text/event-stream": {"schema": {"type": "string"}}}}})
+def subscribe_agent_run_events(run_id: UUID, request: Request, current: CurrentSessionDependency,
+                               after: int = Query(default=0, ge=0)) -> StreamingResponse:
+    with request.app.state.disciplinary_agent_scope() as app:
+        run = app.find_run_by_id(user_id=current.user.user_id, run_id=run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="回答记录不存在或无权访问。")
+    last_event_id = request.headers.get("last-event-id")
+    if last_event_id:
+        prefix, separator, sequence = last_event_id.rpartition(":")
+        if not separator or prefix != str(run_id) or not sequence.isdigit():
+            raise HTTPException(status_code=422, detail="事件续接标识无效。")
+        after = max(after, int(sequence))
+    if after > run.last_event_sequence:
+        raise HTTPException(status_code=422, detail="事件续接位置超过已保存事件。")
+    return _run_event_response(request, current.user.user_id, run_id, after=after)
 
 
 @router.get(
@@ -760,6 +976,9 @@ def lookup_agent_run(
         status=run.status,
         cancel_requested=run.cancel_requested,
         partial_answer=run.partial_answer,
+        output_attempts=[_output_attempt(item) for item in run.output_attempts],
+        delivery_state=run.delivery_state,
+        last_event_sequence=run.last_event_sequence,
         request=original_request,
         updated_at=run.updated_at,
         turn_id=run.turn_id,
@@ -792,8 +1011,9 @@ def stop_agent_run(
     )
 
 
-def _event(name: str, payload: dict[str, object]) -> str:
-    return f"event: {name}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+def _event(name: str, payload: dict[str, object], *, event_id: str | None = None) -> str:
+    identity = f"id: {event_id}\n" if event_id is not None else ""
+    return f"{identity}event: {name}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
 def _chunks(value: str, size: int = 72) -> Iterator[str]:
@@ -841,6 +1061,8 @@ def _conversation(
                 ],
                 knowledge_release_id=resolved_release_ids.get(turn.turn_id),
                 canvas_patches=[dict(patch) for patch in turn.canvas_patches],
+                output_attempts=[_output_attempt(item) for item in turn.output_attempts],
+                delivery_state=turn.delivery_state,
             )
             for turn in item.turns
         ],
@@ -856,6 +1078,9 @@ def _conversation(
                     if key in AgentTurnRequest.model_fields
                 }),
                 partial_answer=run.partial_answer,
+                output_attempts=[_output_attempt(item) for item in run.output_attempts],
+                delivery_state=run.delivery_state,
+                last_event_sequence=run.last_event_sequence,
                 tool_summary=list(run.tool_summary),
                 updated_at=run.updated_at,
                 cancel_requested=run.cancel_requested,
@@ -863,6 +1088,13 @@ def _conversation(
             for run in item.unfinished_runs
             if run.request_snapshot
         ],
+    )
+
+
+def _output_attempt(item) -> AgentOutputAttemptResponse:
+    return AgentOutputAttemptResponse(
+        attempt_id=item.attempt_id, ordinal=item.ordinal, status=item.status,
+        answer=item.answer, created_at=item.created_at,
     )
 
 

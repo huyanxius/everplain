@@ -1,4 +1,9 @@
+import logging
+import re
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
+
+logger = logging.getLogger(__name__)
 
 
 class KnowledgeImportApplication:
@@ -23,7 +28,12 @@ class KnowledgeImportApplication:
             self.libraries.require_manage(user_id, library_id)
         else:
             existing = next(
-                (x for x in self.libraries.libraries(user_id) if x.name == "我的资料"), None
+                (
+                    x
+                    for x in self.libraries.libraries(user_id)
+                    if x.name == "我的资料" and x.owner_user_id == user_id
+                ),
+                None,
             )
             library_id = (
                 existing.id
@@ -61,13 +71,30 @@ class KnowledgeImportApplication:
                 converted = self.media.convert(item)
                 content = converted["content"]
                 filename, media_type = converted["filename"], converted["media_type"]
+                if item["source_type"] == "bilibili":
+                    item["details"] = item["details"] | {"metadata": converted["metadata"]}
+            fetched_text = None
             if not content and item.get("source_url"):
                 text = self.fetch_text(item["source_url"])
                 if not text:
                     raise ValueError("网页没有可读取的正文")
+                fetched_text = text
                 content = f"# {item['title']}\n\n来源：{item['source_url']}\n\n{text}".encode()
             if not content:
                 raise ValueError("没有可导入的正文")
+            if item["source_type"] == "chrome" and item.get("source_url"):
+                title = item["title"]
+                if _generic_bookmark_title(filename):
+                    title = _web_title(
+                        title,
+                        fetched_text or content.decode("utf-8", errors="replace"),
+                        item["source_url"],
+                    )
+                    filename = (
+                        re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", title).strip(" .")[:120] + ".md"
+                    )
+                if fetched_text is not None:
+                    content = f"# {title}\n\n来源：{item['source_url']}\n\n{fetched_text}".encode()
             doc = self.libraries.upload(
                 item["user_id"],
                 item["library_id"],
@@ -80,6 +107,12 @@ class KnowledgeImportApplication:
                 raise ValueError(doc.error_message or "正文解析失败")
             self.repository.complete(item, doc.id)
         except Exception as exc:
+            logger.warning(
+                "Import processing failed item=%s type=%s code=%s",
+                item["id"],
+                type(exc).__name__,
+                getattr(exc, "code", "import_error"),
+            )
             # Persist one item failure; other records continue in separate transactions.
             self.repository.fail(
                 item,
@@ -102,3 +135,28 @@ class KnowledgeImportApplication:
         batch = self.get(user_id, batch_id)
         self.libraries.require_manage(user_id, UUID(batch["library_id"]))
         return self.repository.retry(user_id, batch_id, item_id)
+
+
+def _generic_bookmark_title(title):
+    return bool(
+        re.fullmatch(
+            r"(?:bookmark(?:[-_]\d+)?|网页收藏|untitled)(?:\.(?:md|markdown|html?))?",
+            title.strip(),
+            re.I,
+        )
+    )
+
+
+def _web_title(title, text, url):
+    if title.strip() and not _generic_bookmark_title(title):
+        return title.strip()
+    for line in text.splitlines():
+        candidate = re.sub(r"^[#*\s]+", "", line).strip()
+        if (
+            not candidate
+            or _generic_bookmark_title(candidate)
+            or candidate.startswith(("来源：", "http://", "https://", "---"))
+        ):
+            continue
+        return re.split(r"[。！？]", candidate)[0][:80]
+    return urlsplit(url).hostname or "网页收藏"

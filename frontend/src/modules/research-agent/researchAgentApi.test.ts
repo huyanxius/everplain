@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const buildUrl = vi.hoisted(() => vi.fn())
+const get = vi.hoisted(() => vi.fn())
 
-vi.mock('../../api/client', () => ({ apiClient: { buildUrl } }))
+vi.mock('../../api/client', () => ({ apiClient: { buildUrl, get } }))
 
 import {
   confirmResearchStartProposal,
   deleteAgentConversation,
   getAgentConversation,
+  getConversationContextSummary,
   getResearchStartJourney,
   listAgentConversations,
   parseAgentEventStream,
@@ -17,20 +19,41 @@ import {
 
 beforeEach(() => {
   buildUrl.mockReset()
-  buildUrl.mockImplementation(({ path, url }: {
+  get.mockReset()
+  buildUrl.mockImplementation(({ path, url, query }: {
     path?: Record<string, unknown>
     url: string
+    query?: Record<string, unknown>
   }) => {
     const resolvedPath = Object.entries(path ?? {}).reduce(
       (current, [key, value]) => current.replace(`{${key}}`, encodeURIComponent(String(value))),
       url,
     )
-    return `https://api.qunxue.test${resolvedPath}`
+    const suffix = query ? `?${new URLSearchParams(Object.entries(query).map(([key, value]) => [key, String(value)]))}` : ''
+    return `https://api.qunxue.test${resolvedPath}${suffix}`
   })
 })
 
 afterEach(() => {
   vi.unstubAllGlobals()
+})
+
+describe('server-owned conversation context adapter', () => {
+  const summary = { status: 'ready', scope: 'conversation_messages', omitted_messages: 0, summary_sources: [], summary: '跨对话里你提到周五迁移与旧入口回退。', updated_at: '2026-10-05T00:00:00Z', cards: [{ title: '核对迁移回退入口', description: '根据两次迁移讨论整理。', prompt: '核对周五迁移与旧入口回退的安排。', sources: [{ role: 'user', sequence: 0, conversation_id: 'one', message_id: 'one-user-1', quote: '周五迁移', title: '迁移讨论' }] }] }
+  it('reads the authenticated server cache without generating a turn', async () => {
+    get.mockResolvedValue({ data: summary })
+    const controller = new AbortController()
+    expect(await getConversationContextSummary(controller.signal)).toEqual(summary)
+    expect(get).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ url: '/api/agent/context-summary', credentials: 'include', signal: controller.signal, cache: 'no-store' }))
+  })
+  it.each([{ items: [] }, { ...summary, scope: 'assistant_messages' }, { ...summary, cards: [{ ...summary.cards[0], sources: [] }] }])('does not invent cards for an invalid cached response', async payload => {
+    get.mockResolvedValue({ data: payload })
+    await expect(getConversationContextSummary()).rejects.toThrow('最近对话建议暂时不可用')
+  })
+  it('exposes an honest read failure instead of falling back to a template', async () => {
+    get.mockResolvedValue({ error: { detail: 'unavailable' }, response: new Response(null, { status: 503 }) })
+    await expect(getConversationContextSummary()).rejects.toThrow('无法读取最近对话建议')
+  })
 })
 
 describe('research agent SSE adapter', () => {
@@ -434,4 +457,85 @@ it('sends the selected course through the actual streaming request', async () =>
   vi.stubGlobal('fetch', fetch)
   await streamAgentTurn({ message: '按课件回答', reference_knowledge_base_id: 'course-1', idempotencyKey: 'course-turn' }, () => undefined)
   expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ reference_knowledge_base_id: 'course-1' })
+})
+
+describe('knowledge readiness SSE decisions', () => {
+  const status = { state: 'missing_index', embedding_model: 'embedding', total_count: 2, ready_count: 1, missing_count: 1, processing_count: 0, failed_count: 1,
+    ready_document_ids: ['ready'], ready_documents: [], missing_documents: [{ knowledge_base_id: 'kb', document_id: 'doc', parse_id: 'parse', filename: 'failed.pdf', index_status: 'failed', index_error: 'provider unavailable' }] }
+  it('parses a structured readiness decision and treats it as terminal without reconnecting', async () => {
+    const fetch = vi.fn(async () => new Response(`event: knowledge_index_choice_required\ndata: ${JSON.stringify({ status })}\n\n`, { headers: { 'Content-Type': 'text/event-stream' } }))
+    vi.stubGlobal('fetch', fetch)
+    const events = vi.fn()
+    await streamAgentTurn({ message: '检索资料', idempotencyKey: 'first' }, events)
+    expect(events).toHaveBeenCalledWith({ type: 'knowledge_index_choice_required', status })
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+  it('sends only an explicit ready-only choice, never a repair command in a model turn', async () => {
+    const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('event: turn_interrupted\ndata: {"code":"stop","message":"stop"}\n\n'))
+    vi.stubGlobal('fetch', fetch)
+    await streamAgentTurn({ message: '检索资料', idempotencyKey: 'skip', knowledge_index_action: 'skip_missing' }, vi.fn())
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ knowledge_index_action: 'skip_missing' })
+  })
+  it('rejects malformed status payloads rather than inventing counts', () => {
+    expect(parseAgentEventStream('event: knowledge_index_choice_required\ndata: {"status":{"state":"missing_index"}}\n\n')).toEqual([])
+  })
+})
+
+
+describe('cursor subscription recovery', () => {
+  function frame(id: number, name: string, body: unknown) {
+    return `id: run-1:${id}\nevent: ${name}\ndata: ${JSON.stringify(body)}\n\n`
+  }
+  const completed = { conversation: { conversation_id: 'conversation-1', turns: [] }, knowledge_release_id: 'release-1' }
+
+  it('replays by event identity without duplicated text or another POST', async () => {
+    let body = ''
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(frame(1, 'turn_started', { run_id: 'run-1', conversation_id: 'conversation-1', replayed: false }) + frame(2, 'assistant_delta', { delta: 'ABC' })))
+      .mockResolvedValueOnce(new Response(frame(2, 'assistant_delta', { delta: 'ABC' }) + frame(3, 'assistant_delta', { delta: 'DEF' }) + frame(4, 'turn_completed', completed)))
+    vi.stubGlobal('fetch', fetch)
+    await streamAgentTurn({ message: 'question', idempotencyKey: 'key' }, event => { if (event.type === 'assistant_delta') body += event.delta })
+    expect(body).toBe('ABCDEF')
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
+    expect(fetch.mock.calls[1][0]).toBe('https://api.qunxue.test/api/agent/runs/run-1/events?after=2')
+  })
+
+  it('reconciles lost initial headers with the original snapshot then subscribes after its cursor', async () => {
+    let body = ''
+    const snapshot = { run_id: 'run-1', conversation_id: 'conversation-1', idempotency_key: 'key', status: 'running', partial_answer: 'already persisted', last_event_sequence: 7, output_attempts: [{ attempt_id: 'attempt-1', ordinal: 1, status: 'running', answer: 'already persisted', created_at: '2026-10-05T00:00:00Z' }] }
+    const fetch = vi.fn()
+      .mockRejectedValueOnce(new TypeError('headers lost'))
+      .mockResolvedValueOnce(new Response(JSON.stringify(snapshot)))
+      .mockResolvedValueOnce(new Response(frame(8, 'assistant_delta', { delta: ' tail' }) + frame(9, 'turn_completed', completed)))
+    vi.stubGlobal('fetch', fetch)
+    await streamAgentTurn({ message: 'question', idempotencyKey: 'key' }, event => {
+      if (event.type === 'turn_snapshot') body = event.run.partial_answer
+      if (event.type === 'assistant_delta') body += event.delta
+    })
+    expect(body).toBe('already persisted tail')
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
+    expect(fetch.mock.calls[1][0]).toBe('https://api.qunxue.test/api/agent/runs/by-idempotency-key')
+    expect(fetch.mock.calls[2][0]).toBe('https://api.qunxue.test/api/agent/runs/run-1/events?after=7')
+  })
+
+  it('recovers an incomplete final frame by GET without regenerating', async () => {
+    const received: string[] = []
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(frame(1, 'turn_started', { run_id: 'run-1', conversation_id: 'conversation-1' }) + frame(2, 'assistant_delta', { delta: 'body' }) + 'id: run-1:3\nevent: turn_completed\ndata: {"conversation":'))
+      .mockResolvedValueOnce(new Response(frame(3, 'turn_completed', completed)))
+    vi.stubGlobal('fetch', fetch)
+    await streamAgentTurn({ message: 'question', idempotencyKey: 'key' }, event => received.push(event.type))
+    expect(received).toEqual(['turn_started', 'assistant_delta', 'turn_completed'])
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
+    expect(fetch.mock.calls[1][0]).toBe('https://api.qunxue.test/api/agent/runs/run-1/events?after=2')
+  })
+
+  it('resumes a server-running restored turn with no execution command', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(frame(10, 'turn_completed', completed)))
+    vi.stubGlobal('fetch', fetch)
+    await streamAgentTurn({ message: 'question', idempotencyKey: 'key' }, () => undefined, undefined, { runId: 'run-1', after: 9 })
+    expect(fetch.mock.calls).toHaveLength(1)
+    expect(fetch.mock.calls[0][0]).toBe('https://api.qunxue.test/api/agent/runs/run-1/events?after=9')
+    expect(fetch.mock.calls[0][1]?.method).toBeUndefined()
+  })
 })

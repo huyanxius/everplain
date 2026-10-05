@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal, cast
+from typing import Annotated, Literal, cast
 from urllib.parse import parse_qs, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
@@ -87,6 +87,104 @@ class ModelFallbackSettings(BaseModel):
         if value is None:
             return None
         return _normalize_model_name(value)
+
+
+class AgentProviderSettings(BaseModel):
+    """Server-only provider registry. Credentials are referenced, never serialized to clients."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    base_url: str
+    protocol: Literal["chat_completions", "responses"]
+    api_key_env: str = Field(pattern=r"^EVERPLAIN_[A-Z0-9_]+_API_KEY$")
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, value: str) -> str:
+        return _normalize_model_base_url(value)
+
+
+class AgentModelCapacitySettings(BaseModel):
+    """Verified upstream capacities, not product output or spending quotas."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    context_window_tokens: int = Field(gt=0, strict=True)
+    max_output_tokens: int = Field(gt=0, strict=True)
+    output_token_parameter: Literal["max_tokens", "max_completion_tokens", "max_output_tokens"]
+    source: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("upstream model capacity needs an evidence source")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_capacity(self):
+        if self.max_output_tokens > self.context_window_tokens:
+            raise ValueError("upstream output capacity must fit within its context window")
+        return self
+
+
+class AgentSelectableModelSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    model_id: str = Field(min_length=1, max_length=120)
+    label: str = Field(min_length=1, max_length=120)
+    provider: str = Field(min_length=1, max_length=80)
+    model: str = Field(min_length=1, max_length=120)
+    reasoning_efforts: tuple[Literal["none", "low", "medium", "high", "xhigh", "max"], ...] = ()
+    default_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] | None = None
+    capabilities: tuple[Literal["chat", "tools", "vision", "reasoning"], ...] = ("chat",)
+
+    @model_validator(mode="after")
+    def validate_reasoning(self):
+        if self.reasoning_efforts:
+            if self.default_reasoning_effort not in self.reasoning_efforts:
+                raise ValueError("reasoning default must be an explicitly supported effort")
+        elif self.default_reasoning_effort is not None:
+            raise ValueError("models without reasoning controls must omit the reasoning default")
+        return self
+
+
+class ModelTariffSettings(BaseModel):
+    """Explicit operator-approved rates; all four token classes are mandatory."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True)
+    version: str = Field(min_length=1, max_length=120)
+    source: str = Field(min_length=1, max_length=500)
+    currency: Literal["USD"]
+    unit: Literal["usd_micro_per_million_tokens"]
+    service_tier: Literal["standard"]
+    input: int = Field(ge=0, le=1_000_000_000_000)
+    cache_read: int = Field(ge=0, le=1_000_000_000_000)
+    cache_write: int = Field(ge=0, le=1_000_000_000_000)
+    output: int = Field(ge=0, le=1_000_000_000_000)
+    # Explicit null means verified flat pricing; never inherit Luna's long-context rule.
+    long_threshold: int | None = Field(ge=1)
+    long_rates: list[int] | None = Field(default=None, min_length=4, max_length=4)
+
+    @field_validator("version", "source")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("rate version and evidence source must not be blank")
+        return value.strip()
+
+    @model_validator(mode="after")
+    def complete_rates(self):
+        if not any((self.input, self.cache_read, self.cache_write, self.output)):
+            raise ValueError("a paid model tariff cannot be all zero")
+        if (self.long_threshold is None) != (self.long_rates is None):
+            raise ValueError("long-context threshold and all four long rates must be paired")
+        if self.long_rates is not None and (
+            any(
+                type(rate) is not int or not 0 <= rate <= 1_000_000_000_000
+                for rate in self.long_rates
+            )
+            or not any(self.long_rates)
+        ):
+            raise ValueError("long-context rates must be exact nonnegative integers")
+        return self
 
 
 class TavilyPriceSettings(BaseModel):
@@ -203,6 +301,8 @@ class Settings(BaseSettings):
         return self
 
     memory_learning_enabled: bool = True
+    conversation_summary_enabled: bool = True
+    conversation_summary_idle_seconds: int = Field(default=60, ge=0, le=3600)
     memory_learning_idle_seconds: int = Field(default=600, ge=60)
     memory_learning_daily_calls: int = Field(default=8, ge=0, le=32)
     memory_learning_daily_tokens: int = Field(default=64000, ge=0, le=256000)
@@ -218,8 +318,25 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5196",
         "http://localhost:5196",
     )
+    billing_plan_weekly_points: dict[str, Annotated[int, Field(strict=True, gt=0)]] = Field(
+        default_factory=dict
+    )
+
+    @field_validator("billing_plan_weekly_points")
+    @classmethod
+    def validate_weekly_plan_points(cls, value):
+        if any(
+            not key.strip() or type(points) is not int or points <= 0
+            for key, points in value.items()
+        ):
+            raise ValueError("weekly plan quotas must be positive integer points")
+        if "free" in value and value["free"] != 30:
+            raise ValueError("Free weekly quota is fixed at 30")
+        return value
+
     billing_credits_per_usd: int | None = Field(default=None, gt=0)
     billing_price_version: str | None = None
+    billing_model_tariffs: dict[str, ModelTariffSettings] = Field(default_factory=dict)
     billing_tavily_price: TavilyPriceSettings | None = None
     billing_fx_cny_per_usd_micro: int | None = Field(default=None, gt=0)
     billing_fx_snapshot_id: str | None = None
@@ -248,6 +365,36 @@ class Settings(BaseSettings):
     agent_model_supported_efforts: tuple[
         Literal["none", "low", "medium", "high", "xhigh", "max"], ...
     ] = ()
+    # Additional opt-in routes never replace the legacy/default model endpoint.
+    agent_providers: dict[str, AgentProviderSettings] = Field(default_factory=dict)
+    agent_selectable_models: list[AgentSelectableModelSettings] = Field(default_factory=list)
+    # Keys are exact base URL | protocol | model. Unknown routes never inherit
+    # another provider's similarly named model capacities.
+    agent_model_capacities: dict[str, AgentModelCapacitySettings] = Field(default_factory=dict)
+
+    @field_validator("agent_model_capacities")
+    @classmethod
+    def validate_agent_model_capacity_routes(cls, value):
+        normalized = {}
+        for key, capacity in value.items():
+            parts = key.split("|")
+            if len(parts) != 3 or parts[1] not in {"chat_completions", "responses"}:
+                raise ValueError("capacity keys must be base URL | protocol | model")
+            base_url, protocol, model = parts
+            if (
+                (protocol == "responses")
+                != (capacity.output_token_parameter == "max_output_tokens")
+            ):
+                raise ValueError("native output token parameter must match the route protocol")
+            route = "|".join((
+                _normalize_model_base_url(base_url), protocol, _normalize_model_name(model),
+            ))
+            if route in normalized:
+                raise ValueError("model capacity routes must be unique")
+            normalized[route] = capacity
+        return normalized
+
+    unigate_api_key: SecretStr | None = None
     model_timeout_seconds: float = Field(default=30, gt=0)
     model_max_input_tokens: int = Field(default=32000, gt=0)
     model_max_output_tokens: int = Field(default=3000, gt=0)

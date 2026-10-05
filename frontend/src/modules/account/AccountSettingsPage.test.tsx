@@ -246,7 +246,7 @@ describe('AccountSettingsPage', () => {
     expect(updatePreferences).not.toHaveBeenCalled()
   })
 
-  it('reaches all eight categories through the compact picker and retains the Agent editor', async () => {
+  it('reaches all nine categories through the compact picker and retains the Agent editor', async () => {
     const onResetAgent = vi.fn()
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     queryClient.setQueryData(['agent-profile', account.userId], {
@@ -257,7 +257,7 @@ describe('AccountSettingsPage', () => {
 
     const navigation = await screen.findByRole('navigation', { name: '账户设置分区' })
     expect(within(navigation).getAllByRole('button').map((button) => button.textContent)).toEqual([
-      '我的 Agent', '聊天平台', '个人资料', '使用情况', '使用偏好', '安全', '数据与隐私', '账户状态',
+      '我的 Agent', '我的形象', '聊天平台', '个人资料', '使用情况', '使用偏好', '安全', '数据与隐私', '账户状态',
     ])
     expect(screen.queryByRole('button', { name: '重新设置我的 AI 伙伴' })).not.toBeInTheDocument()
     expect(screen.getAllByText('林同学')).toHaveLength(1)
@@ -267,7 +267,7 @@ describe('AccountSettingsPage', () => {
     fireEvent.click(picker)
     const categoryOptions = within(screen.getByRole('listbox', { hidden: true })).getAllByRole('option', { hidden: true })
     expect(categoryOptions.map(option => option.textContent)).toEqual([
-      '我的 Agent', '聊天平台', '个人资料', '使用情况', '使用偏好', '安全', '数据与隐私', '账户状态',
+      '我的 Agent', '我的形象', '聊天平台', '个人资料', '使用情况', '使用偏好', '安全', '数据与隐私', '账户状态',
     ])
     const content = screen.getByRole('region', { name: '个人资料' })
     content.scrollTop = 240
@@ -407,7 +407,7 @@ describe('AccountSettingsPage', () => {
     expect(getCreditSummary).toHaveBeenCalledOnce()
     expect(screen.getByText('额度信息暂不可用')).toBeVisible()
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
-    expect(screen.queryByText(/1,162|3,000|39%|积分/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/1,162|3,000|39%/)).not.toBeInTheDocument()
     expect(screen.getByText('600 输入 · 800 输出 token')).toBeVisible()
     expect(screen.queryByText('-38')).not.toBeInTheDocument()
     expect(screen.getByText('已退款')).toBeVisible()
@@ -519,7 +519,7 @@ describe('AccountSettingsPage', () => {
     await waitFor(() => expect(screen.getByRole('progressbar', { name: '额外购买额度' })).toHaveAttribute('aria-valuenow', '50'))
     expect(screen.getByRole('status')).toHaveTextContent('兑换成功')
     await waitFor(() => expect(getCreditSummary).toHaveBeenCalledTimes(3))
-    expect(screen.queryByText(/3,000|6,000|积分/)).not.toBeInTheDocument()
+    expect(screen.getByText(/3,000.*6,000.*3,000/)).toBeInTheDocument()
   })
 
   it('shows an unlimited balance for the provisioned administrator', async () => {

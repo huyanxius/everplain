@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
+from streaming_test_support import chat_http_response
 
 from qunxue_api.adapters.media_import import (
     BilibiliFavoritesAdapter,
@@ -32,7 +33,14 @@ class MediaImportTests(unittest.TestCase):
                         ]
                     },
                 }
-            media = {"id": 100, "bvid": "BV1234567890", "title": "视频", "type": 2, "attr": 0}
+            media = {
+                "id": 100,
+                "bvid": "BV1234567890",
+                "title": "视频",
+                "intro": "讲解视频的大致内容",
+                "type": 2,
+                "attr": 0,
+            }
             if params["pn"] == 1:
                 return {"code": 0, "data": {"medias": [media], "has_more": True}}
             return {
@@ -55,8 +63,11 @@ class MediaImportTests(unittest.TestCase):
         self.assertEqual(len(report.items), 1)
         self.assertEqual(
             report.items[0].content.decode(),
-            "# 视频\n\nhttps://www.bilibili.com/video/BV1234567890\n",
+            "# 视频\n\n来源：https://www.bilibili.com/video/BV1234567890\n\n"
+            "资料范围：视频标题与简介\n\n## 简介\n\n讲解视频的大致内容\n",
         )
+        self.assertEqual(report.items[0].metadata["text_source"], "metadata")
+        self.assertEqual(report.items[0].metadata["description"], "讲解视频的大致内容")
         self.assertCountEqual(
             [e.code for e in report.errors], ["private_folder", "unavailable_media"]
         )
@@ -85,6 +96,29 @@ class MediaImportTests(unittest.TestCase):
             12
         )
         self.assertEqual(result.errors[0].code, "pagination_limit")
+
+    def test_gateway_retains_metadata_content_and_rejects_unavailable_retry(self):
+        from qunxue_api.adapters.media_import import FavoritesReport, ImportError, ImportItem
+        from qunxue_api.adapters.media_import.integration import MediaImportGateway
+
+        report = FavoritesReport(
+            items=(
+                ImportItem(
+                    "bilibili:BV1234567890", "视频", "video.txt", b"saved metadata",
+                    source_url="https://www.bilibili.com/video/BV1234567890",
+                ),
+            ),
+            errors=(ImportError("bilibili:gone", "unavailable_media", "Unavailable"),),
+        )
+        gateway = MediaImportGateway(
+            SimpleNamespace(enumerate_public_favorites=lambda uid: report), None
+        )
+        items = gateway.enumerate("123")
+        self.assertEqual(items[0]["content"], b"saved metadata")
+        self.assertEqual(items[1]["error"], "Unavailable")
+        unavailable = items[1] | {"source_type": "bilibili", "details": {"metadata": {}}}
+        with self.assertRaisesRegex(ValueError, "无效或不可用"):
+            gateway.convert(unavailable)
 
     def test_cookie_not_sent_or_retained(self):
         requests = []
@@ -193,9 +227,9 @@ class MediaImportTests(unittest.TestCase):
 
         def handle(request):
             requests.append(json.loads(request.content))
-            return httpx.Response(
-                200,
-                json={
+            return chat_http_response(
+                {
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
                     "choices": [
                         {
                             "message": {

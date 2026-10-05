@@ -6,6 +6,7 @@ from uuid import uuid4
 import httpx
 import pytest
 from sqlalchemy import text
+from streaming_test_support import chat_http_response
 from test_durable_billing import wallet  # noqa: F401
 
 from qunxue_api.adapters.model.metering import BillingContextMissing, OperationScope
@@ -49,7 +50,7 @@ def test_probe_records_operator_usage_without_creating_a_gift_account(wallet):
         timeout_seconds=1,
         capability_tier="base",
         require_billing=True,
-        probe_transport=httpx.MockTransport(lambda req: httpx.Response(200, json=body)),
+        probe_transport=httpx.MockTransport(lambda req: chat_http_response(body)),
     )
     with OperationScope(
         runtime,

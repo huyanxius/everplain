@@ -6,11 +6,16 @@ credentials are needed. Do not copy existing model credentials into a server.
 ## Single calls
 
 `EVERPLAIN_MODEL_MAX_INPUT_TOKENS` (default 32000) checks a conservative UTF-8
-payload bound before business Chat Completions and research Agent calls. It
+payload bound before structured business Chat Completions calls. It
 includes serialized messages, contracts/schema and a framing allowance; it is
 not an exact tokenizer count. Oversized requests are rejected before transport.
 `EVERPLAIN_MODEL_MAX_OUTPUT_TOKENS` (default 3000) caps the outgoing `max_tokens`
-parameter. Agent calls preserve a smaller existing output limit.
+parameter for those structured business calls. Neither setting limits research
+Agent input or answer output. The Agent's old fixed 2400-token output setting,
+shared 3000-token minimum and conservative 32k admission veto are removed.
+Actual provider context limits still apply. See
+[Agent model capacity](engineering/agent-model-capacity.md) for verified native
+output parameters, route-specific configuration and the required billing rollout.
 `EVERPLAIN_MODEL_MAX_RETRIES` (default 0) limits automatic endpoint fallback in
 both synchronous and asynchronous shared routing. SDK retries remain disabled.
 
@@ -61,7 +66,7 @@ costs. No database migration or public API change is required.
 Independent memory extraction/overview, topic naming, health probes, embeddings,
 reranking, vision and transcription transports are not covered by this budget.
 Shared routing limits fallback for transports that use it, but the single-call
-token checks above cover business Chat Completions and research Agent bridge
-calls only. Disabling unknown-price bulk organization does not disable those
+token checks above cover structured business Chat Completions calls only.
+Disabling unknown-price bulk organization does not disable those
 independent transports. Keep them disabled or separately bounded when using an
 unverified paid provider.

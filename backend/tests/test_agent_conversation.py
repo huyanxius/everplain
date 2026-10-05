@@ -644,7 +644,7 @@ def test_sqlite_failed_key_reset_does_not_bypass_a_concurrent_active_run() -> No
         started_at=datetime.now(UTC),
     )
     session = Mock()
-    session.scalar.side_effect = [failed, None, active]
+    session.scalar.side_effect = [failed, None, 0, active]
     session.flush.side_effect = IntegrityError("update", {}, RuntimeError("race"))
     repository = SqliteConversationRepository(session)
     run = AgentRun(
@@ -677,7 +677,8 @@ def test_sqlite_failed_key_retry_refreshes_pre_run_identity() -> None:
         started_at=datetime.now(UTC),
     )
     session = Mock()
-    session.scalar.side_effect = [failed, None]
+    session.scalar.side_effect = [failed, None, 0]
+    session.scalars.return_value = []
     repository = SqliteConversationRepository(session)
 
     retried = repository.start_run(
@@ -706,7 +707,8 @@ def test_sqlite_agent_run_persists_and_restores_material_attachment_snapshots() 
         parse_id=UUID("00000000-0000-0000-0000-000000000084"),
     )
     session = Mock()
-    session.scalar.side_effect = [None, None]
+    session.scalar.side_effect = [None, None, 0]
+    session.scalars.return_value = []
     repository = SqliteConversationRepository(session)
     run = AgentRun(
         run_id=UUID("00000000-0000-0000-0000-000000000085"),
@@ -720,7 +722,8 @@ def test_sqlite_agent_run_persists_and_restores_material_attachment_snapshots() 
 
     repository.start_run(run)
 
-    stored = session.add.call_args.args[0]
+    stored = next(call.args[0] for call in session.add.call_args_list
+                  if isinstance(call.args[0], AgentRunRow))
     assert stored.material_attachments == [
         {
             "material_id": str(attachment.material_id),
@@ -1181,7 +1184,7 @@ def test_deepseek_flash_disables_thinking_by_default() -> None:
 
     assert runner._agent.model.settings == {
         "timeout": 30,
-        "max_tokens": 2400,
+        "max_tokens": 384000,
         "extra_body": {"thinking": {"type": "disabled"}},
     }
     assert runner._usage_limits.request_limit == 12
@@ -1284,7 +1287,17 @@ def test_agent_fallback_call_merges_its_defaults_with_runtime_overrides(
     )
     routed_model = runner._agent.model
     observed_settings: list[dict[str, object]] = []
-    streamed_response = object()
+    class _ProcessedStream:
+        def __aiter__(self):
+            async def events():
+                if False:
+                    yield None
+            return events()
+
+        def get(self):
+            return ModelResponse(parts=[TextPart(content="fallback answer")])
+
+    streamed_response = _ProcessedStream()
 
     class _FakeStream:
         async def __aenter__(self):
@@ -1301,7 +1314,7 @@ def test_agent_fallback_call_merges_its_defaults_with_runtime_overrides(
         model_request_parameters,
     ):
         del messages, model_request_parameters
-        assert actual_stream is stream
+        assert actual_stream is True
         observed_settings.append(dict(model_settings))
         if self is routed_model:
             raise ModelHTTPError(
@@ -1309,9 +1322,7 @@ def test_agent_fallback_call_merges_its_defaults_with_runtime_overrides(
                 model_name=primary_model,
                 body={"message": "temporarily unavailable"},
             )
-        if stream:
-            return _FakeStream()
-        return ModelResponse(parts=[TextPart(content="fallback answer")])
+        return _FakeStream()
 
     async def process_stream(*args, **kwargs):
         del args, kwargs
@@ -1336,11 +1347,10 @@ def test_agent_fallback_call_merges_its_defaults_with_runtime_overrides(
     assert len(observed_settings) == 2
     fallback_settings = observed_settings[1]
     assert fallback_settings["temperature"] == 0.37
-    assert fallback_settings["max_tokens"] == 777
+    assert fallback_settings.get("max_tokens",
+                                 fallback_settings.get("extra_body", {}).get("max_tokens")) == 777
     if fallback_model == "deepseek-v4-flash":
-        assert fallback_settings["extra_body"] == {
-            "thinking": {"type": "disabled"}
-        }
+        assert fallback_settings["extra_body"]["thinking"] == {"type": "disabled"}
     else:
         assert "extra_body" not in fallback_settings
     if stream:
@@ -3191,7 +3201,7 @@ def test_read_published_entry_returns_uniform_entry_evidence() -> None:
 
 
 @pytest.mark.parametrize('input_limit', [10, 32000])
-def test_agent_enforces_configured_single_call_limits(monkeypatch, input_limit):
+def test_agent_ignores_legacy_product_single_call_limits(monkeypatch, input_limit):
     from pydantic_ai.messages import ModelRequest, UserPromptPart
 
     endpoints = _agent_endpoints()[:1]
@@ -3213,10 +3223,6 @@ def test_agent_enforces_configured_single_call_limits(monkeypatch, input_limit):
         [ModelRequest(parts=[UserPromptPart(content='原文')])],
         False, {'max_tokens': 9999}, ModelRequestParameters(),
     )
-    if input_limit == 10:
-        with pytest.raises(AgentModelRouteError):
-            asyncio.run(call)
-        assert not captured
-    else:
-        asyncio.run(call)
-        assert captured[0]['max_tokens'] == 700
+    asyncio.run(call)
+    assert len(captured) == 1
+    assert captured[0]['max_tokens'] == 9999

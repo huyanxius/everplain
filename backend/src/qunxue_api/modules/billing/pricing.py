@@ -27,9 +27,14 @@ class Tariff:
     reservation_rates: tuple[int, int, int, int] | None = None
     currency: str = "USD"
     service_tier: str = "standard"
+    long_rates: tuple[int, int, int, int] | None = None
+    source: str | None = None
+    version: str | None = None
 
     def rates(self, input_tokens: int) -> tuple[int, int, int, int]:
         if self.long_threshold is not None and input_tokens > self.long_threshold:
+            if self.long_rates is not None:
+                return tuple(self.long_rates)
             return self.input * 2, self.cache_read * 2, self.cache_write * 2, self.output * 3 // 2
         return self.input, self.cache_read, self.cache_write, self.output
 
@@ -150,7 +155,12 @@ class PriceBook:
                         tariff.output,
                     )
                 )
-                or tariff.output % 2
+                or (tariff.long_rates is not None and (
+                    tariff.long_threshold is None or len(tariff.long_rates) != 4
+                    or any(type(rate) is not int or rate < 0 for rate in tariff.long_rates)
+                ))
+                or (tariff.long_threshold is not None and tariff.long_rates is None
+                    and tariff.output % 2)
             ):
                 raise ValueError("tariff must contain exact nonnegative USD integer rates")
 

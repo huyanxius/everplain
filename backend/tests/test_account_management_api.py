@@ -365,7 +365,8 @@ def test_administrator_generates_hashed_codes_and_member_redeems_once(
 
     assert generated.status_code == 201
     payload = generated.json()
-    assert payload["points"] == 10000
+    assert payload["points"] == 30
+    assert payload["action"] == "bank_reset"
     assert len(payload["codes"]) == len(set(payload["codes"])) == 2
     assert all(code.startswith("QX-") and len(code) == 22 for code in payload["codes"])
 
@@ -409,14 +410,21 @@ def test_administrator_generates_hashed_codes_and_member_redeems_once(
     )
 
     assert redeemed.status_code == 200
-    assert redeemed.json() == {"redeemed_points": 10000, "balance": 10000}
+    assert redeemed.json()["redeemed_points"] == 30
+    assert redeemed.json()["balance"] == 30
+    assert redeemed.json()["delta_points"] == -1170
+    assert redeemed.json()["action"] == "bank_reset"
     assert replayed_redemption.status_code == 200
-    assert replayed_redemption.json() == {"redeemed_points": 10000, "balance": 2936}
+    assert replayed_redemption.json()["redeemed_points"] == 30
+    assert replayed_redemption.json()["balance"] == 2936
+    assert replayed_redemption.json()["quota_period_expires_at"] == (
+        redeemed.json()["quota_period_expires_at"]
+    )
     summary = client.get("/api/account/credits").json()
     assert summary["balance"] == 2936
-    assert summary["credit_limit"] == 0
-    assert summary["quota_status"] == "unavailable"
-    assert summary["active_usage_buckets"] == []
+    assert summary["credit_limit"] == 30
+    assert summary["quota_status"] == "known"
+    assert summary["active_usage_buckets"][0]["limit_points"] == 30
     assert summary["entries"] == []
     with client.app.state.database.engine.connect() as connection:
         redemption_entry = connection.execute(
@@ -426,7 +434,7 @@ def test_administrator_generates_hashed_codes_and_member_redeems_once(
             ),
             {"user_id": redeemer_user_id},
         ).one()
-    assert redemption_entry == ("redemption", 10000)
+    assert redemption_entry == ("redemption", -1170)
 
     client.cookies.clear()
     register(client, "other-redeemer@example.com")

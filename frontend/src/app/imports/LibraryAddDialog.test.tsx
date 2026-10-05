@@ -51,7 +51,7 @@ it('defaults to extension with all nine imports plus files in three groups, and 
   const trigger = screen.getByRole('button', { name: '安装教程' }); fireEvent.click(trigger)
   const guide = screen.getByRole('region', { name: '安装 Everplain 收藏助手' })
   fireEvent.click(within(guide).getByText('手动安装、权限与常见问题'))
-  expect(within(guide).getByText('chrome://extensions')).toBeVisible()
+  expect(within(guide).getAllByText('chrome://extensions')[0]).toBeVisible()
   expect(within(guide).getByRole('link', { name: 'e.qunxue.xyz' })).toHaveAttribute('href', 'https://e.qunxue.xyz')
   expect(within(guide).getByText(/只收藏网页无需开启书签权限/)).toBeVisible()
   expect(within(guide).getByText(/已提交.*不代表全部入库/)).toBeVisible()
@@ -130,7 +130,7 @@ it('submits only the entered public UID to Bilibili and preserves background acc
   mount({ initialSource: 'bilibili', initialLibraryId: 'owned' })
   const submit = screen.getByRole('button', { name: '读取公开收藏' }); await waitFor(() => expect(submit).not.toBeDisabled())
   fireEvent.change(screen.getByRole('textbox', { name: '公开账户 UID' }), { target: { value: '123456' } }); fireEvent.click(submit)
-  await screen.findByText('已开始读取公开收藏，字幕提取会在后台继续')
+  await screen.findByText('已开始读取公开收藏，标题与简介会在后台整理')
   expect(importBilibili).toHaveBeenCalledWith('123456')
 })
 

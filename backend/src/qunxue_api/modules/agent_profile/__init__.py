@@ -26,6 +26,7 @@ class AgentProfile:
     memory_ids: dict = field(default_factory=dict)
     version: int = 0
     soul_text: str = ""
+    user_avatar: dict | None = None
 
     def persona(self) -> dict:
         # Raw questionnaire is deliberately absent: forgotten memories stay forgotten.

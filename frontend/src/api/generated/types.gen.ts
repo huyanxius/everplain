@@ -610,7 +610,7 @@ export type AgentModelChoiceResponse = {
     /**
      * Default Reasoning Effort
      */
-    default_reasoning_effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+    default_reasoning_effort: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
     /**
      * Label
      */
@@ -623,6 +623,32 @@ export type AgentModelChoiceResponse = {
      * Reasoning Efforts
      */
     reasoning_efforts: Array<'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
+};
+
+/**
+ * AgentOutputAttemptResponse
+ */
+export type AgentOutputAttemptResponse = {
+    /**
+     * Answer
+     */
+    answer: string;
+    /**
+     * Attempt Id
+     */
+    attempt_id: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Ordinal
+     */
+    ordinal: number;
+    /**
+     * Status
+     */
+    status: string;
 };
 
 /**
@@ -662,6 +688,7 @@ export type AgentProfileResponse = {
      * Speaking Style
      */
     speaking_style: string;
+    user_avatar?: UserAvatar | null;
     /**
      * Version
      */
@@ -705,6 +732,7 @@ export type AgentProfileUpdate = {
      * Speaking Style
      */
     speaking_style?: 'clear' | 'warm' | 'rigorous' | 'curious' | null;
+    user_avatar?: UserAvatar | null;
 };
 
 /**
@@ -846,9 +874,23 @@ export type AgentRunLookupResponse = {
      */
     conversation_id: string;
     /**
+     * Delivery State
+     */
+    delivery_state?: {
+        [key: string]: unknown;
+    };
+    /**
      * Idempotency Key
      */
     idempotency_key: string;
+    /**
+     * Last Event Sequence
+     */
+    last_event_sequence?: number;
+    /**
+     * Output Attempts
+     */
+    output_attempts?: Array<AgentOutputAttemptResponse>;
     /**
      * Partial Answer
      */
@@ -881,9 +923,23 @@ export type AgentRunRecoveryResponse = {
      */
     cancel_requested: boolean;
     /**
+     * Delivery State
+     */
+    delivery_state?: {
+        [key: string]: unknown;
+    };
+    /**
      * Idempotency Key
      */
     idempotency_key: string;
+    /**
+     * Last Event Sequence
+     */
+    last_event_sequence?: number;
+    /**
+     * Output Attempts
+     */
+    output_attempts?: Array<AgentOutputAttemptResponse>;
     /**
      * Partial Answer
      */
@@ -992,6 +1048,10 @@ export type AgentTurnRequest = {
      */
     document_version?: number | null;
     /**
+     * Knowledge Index Action
+     */
+    knowledge_index_action?: 'skip_missing' | null;
+    /**
      * Material Ids
      */
     material_ids?: Array<string>;
@@ -1035,6 +1095,7 @@ export type AgentTurnRequest = {
      * Workspace
      */
     workspace?: 'agent' | 'research';
+    writing_context?: AgentWritingContext | null;
 };
 
 /**
@@ -1047,9 +1108,19 @@ export type AgentTurnResponse = {
      */
     canvas_patches?: Array<AgentResearchMapPatchResponse>;
     /**
+     * Delivery State
+     */
+    delivery_state?: {
+        [key: string]: unknown;
+    };
+    /**
      * Knowledge Release Id
      */
     knowledge_release_id?: string | null;
+    /**
+     * Output Attempts
+     */
+    output_attempts?: Array<AgentOutputAttemptResponse>;
     /**
      * Tool Traces
      */
@@ -1059,6 +1130,28 @@ export type AgentTurnResponse = {
      */
     turn_id: string;
     user: AgentMessageResponse;
+};
+
+/**
+ * AgentWritingContext
+ */
+export type AgentWritingContext = {
+    /**
+     * Document Id
+     */
+    document_id: string;
+    /**
+     * Document Version
+     */
+    document_version: number;
+    /**
+     * Selection End
+     */
+    selection_end?: number | null;
+    /**
+     * Selection Start
+     */
+    selection_start?: number | null;
 };
 
 /**
@@ -1480,6 +1573,16 @@ export type BodyCreateImportBatch = {
  */
 export type BodyImportLiteratureEntries = {
     exchange_format: LiteratureExchangeFormat;
+    /**
+     * File
+     */
+    file: Blob | File;
+};
+
+/**
+ * Body_preview_writing_samples
+ */
+export type BodyPreviewWritingSamples = {
     /**
      * File
      */
@@ -2187,6 +2290,118 @@ export type ConfirmedTheoryPlanResponse = {
 export type ConsentScope = 'public_use' | 'project_only' | 'team_only' | 'manual_review_only' | 'withdrawn';
 
 /**
+ * ConversationExcerptResponse
+ */
+export type ConversationExcerptResponse = {
+    /**
+     * Excerpt
+     */
+    excerpt: string;
+    /**
+     * Message Id
+     */
+    message_id: string;
+    /**
+     * Sequence
+     */
+    sequence: number;
+};
+
+/**
+ * ConversationSuggestionResponse
+ */
+export type ConversationSuggestionResponse = {
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Prompt
+     */
+    prompt: string;
+    /**
+     * Sources
+     */
+    sources: Array<ConversationSummarySourceResponse>;
+    /**
+     * Title
+     */
+    title: string;
+};
+
+/**
+ * ConversationSummaryResponse
+ */
+export type ConversationSummaryResponse = {
+    /**
+     * Cards
+     */
+    cards: Array<ConversationSuggestionResponse>;
+    /**
+     * Omitted Messages
+     */
+    omitted_messages: number;
+    /**
+     * Retry At
+     */
+    retry_at?: string | null;
+    /**
+     * Scope
+     */
+    scope: 'conversation_messages';
+    /**
+     * Status
+     */
+    status: 'ready' | 'pending' | 'empty' | 'disabled' | 'failed';
+    /**
+     * Status Reason
+     */
+    status_reason?: 'queued' | 'active_run' | 'idle_wait' | 'generating' | 'retry_wait' | 'daily_budget' | 'attempt_limit' | 'generation_failed' | 'generator_unavailable' | null;
+    /**
+     * Summary
+     */
+    summary: string;
+    /**
+     * Summary Sources
+     */
+    summary_sources: Array<ConversationSummarySourceResponse>;
+    /**
+     * Updated At
+     */
+    updated_at: string | null;
+};
+
+/**
+ * ConversationSummarySourceResponse
+ */
+export type ConversationSummarySourceResponse = {
+    /**
+     * Conversation Id
+     */
+    conversation_id: string;
+    /**
+     * Message Id
+     */
+    message_id: string;
+    /**
+     * Quote
+     */
+    quote: string;
+    /**
+     * Role
+     */
+    role: 'user' | 'assistant';
+    /**
+     * Sequence
+     */
+    sequence: number;
+    /**
+     * Title
+     */
+    title: string;
+};
+
+/**
  * CourseKnowledgeResponse
  */
 export type CourseKnowledgeResponse = {
@@ -2633,6 +2848,10 @@ export type CreditCodeBatchCreateRequest = {
  */
 export type CreditCodeBatchResponse = {
     /**
+     * Action
+     */
+    action?: 'bank_reset';
+    /**
      * Codes
      */
     codes: Array<string>;
@@ -2682,6 +2901,10 @@ export type CreditLedgerEntryResponse = {
      * Points
      */
     points: number;
+    /**
+     * Quota Period Epoch
+     */
+    quota_period_epoch?: number | null;
 };
 
 /**
@@ -2753,9 +2976,25 @@ export type CreditRedemptionRequest = {
  */
 export type CreditRedemptionResponse = {
     /**
+     * Action
+     */
+    action?: 'bank_reset';
+    /**
      * Balance
      */
     balance: number;
+    /**
+     * Delta Points
+     */
+    delta_points?: number;
+    /**
+     * Quota Period Expires At
+     */
+    quota_period_expires_at?: string | null;
+    /**
+     * Quota Period Started At
+     */
+    quota_period_started_at?: string | null;
     /**
      * Redeemed Points
      */
@@ -2810,9 +3049,25 @@ export type CreditSummaryResponse = {
     }>;
     pricing: CreditPricingResponse;
     /**
+     * Quota Period Expires At
+     */
+    quota_period_expires_at?: string | null;
+    /**
+     * Quota Period Started At
+     */
+    quota_period_started_at?: string | null;
+    /**
+     * Quota Plan Id
+     */
+    quota_plan_id?: string | null;
+    /**
      * Quota Status
      */
     quota_status?: 'known' | 'unavailable';
+    /**
+     * Quota Window Hours
+     */
+    quota_window_hours?: 168;
     /**
      * Total Entries
      */
@@ -3215,7 +3470,7 @@ export type EntryType = 'direct_input' | 'material_input';
 /**
  * ErrorCode
  */
-export type ErrorCode = 'unauthenticated' | 'session_expired' | 'forbidden' | 'not_found' | 'method_not_allowed' | 'conflict' | 'idempotency_conflict' | 'reauthentication_required' | 'account_inactive' | 'capability_unavailable' | 'provisioned_administrator_protected' | 'password_reset_invalid' | 'token_expired' | 'credits_depleted' | 'credit_run_in_progress' | 'billing_budget_exceeded' | 'billing_not_configured' | 'billing_replay_blocked' | 'billing_provider_error' | 'credit_code_unavailable' | 'credit_code_batch_conflict' | 'email_verification_invalid' | 'email_verification_rate_limited' | 'email_delivery_unavailable' | 'research_task_not_found' | 'research_start_proposal_not_found' | 'research_start_idempotency_conflict' | 'research_start_proposal_conflict' | 'research_start_source_incomplete' | 'research_material_not_found' | 'research_material_too_large' | 'unsupported_material_format' | 'no_extractable_text' | 'research_material_idempotency_conflict' | 'research_material_version_conflict' | 'validation_error' | 'phenomenon_unconfirmed' | 'catalog_not_ready' | 'retrieval_unavailable' | 'doi_metadata_unavailable' | 'no_adopted_theory' | 'candidate_ineligible' | 'external_candidate_adoption_blocked' | 'model_timeout' | 'no_reliable_candidate' | 'insufficient_sources' | 'stale_framework_revision' | 'unresolved_blocking_audit' | 'not_implemented' | 'internal_server_error';
+export type ErrorCode = 'unauthenticated' | 'session_expired' | 'forbidden' | 'not_found' | 'method_not_allowed' | 'conflict' | 'idempotency_conflict' | 'reauthentication_required' | 'account_inactive' | 'capability_unavailable' | 'provisioned_administrator_protected' | 'password_reset_invalid' | 'token_expired' | 'credits_depleted' | 'credit_run_in_progress' | 'billing_budget_exceeded' | 'billing_not_configured' | 'billing_replay_blocked' | 'billing_provider_error' | 'credit_code_unavailable' | 'quota_configuration_unavailable' | 'credit_code_batch_conflict' | 'email_verification_invalid' | 'email_verification_rate_limited' | 'email_delivery_unavailable' | 'research_task_not_found' | 'research_start_proposal_not_found' | 'research_start_idempotency_conflict' | 'research_start_proposal_conflict' | 'research_start_source_incomplete' | 'research_material_not_found' | 'research_material_too_large' | 'unsupported_material_format' | 'no_extractable_text' | 'research_material_idempotency_conflict' | 'research_material_version_conflict' | 'validation_error' | 'phenomenon_unconfirmed' | 'catalog_not_ready' | 'retrieval_unavailable' | 'doi_metadata_unavailable' | 'no_adopted_theory' | 'candidate_ineligible' | 'external_candidate_adoption_blocked' | 'model_timeout' | 'no_reliable_candidate' | 'insufficient_sources' | 'stale_framework_revision' | 'unresolved_blocking_audit' | 'not_implemented' | 'internal_server_error';
 
 /**
  * ErrorDetail
@@ -4183,6 +4438,149 @@ export type KnowledgeEntrySummaryResponse = {
      * Title
      */
     title: string;
+};
+
+/**
+ * KnowledgeIndexChoiceResponse
+ */
+export type KnowledgeIndexChoiceResponse = {
+    /**
+     * Code
+     */
+    code?: 'knowledge_index_choice_required';
+    status: KnowledgeIndexStatusResponse;
+};
+
+/**
+ * KnowledgeIndexDocumentResponse
+ */
+export type KnowledgeIndexDocumentResponse = {
+    /**
+     * Document Id
+     */
+    document_id: string;
+    /**
+     * Filename
+     */
+    filename: string;
+    /**
+     * Index Error
+     */
+    index_error?: string | null;
+    /**
+     * Index Status
+     */
+    index_status: string;
+    /**
+     * Knowledge Base Id
+     */
+    knowledge_base_id: string;
+    /**
+     * Knowledge Error
+     */
+    knowledge_error?: string | null;
+    /**
+     * Knowledge Status
+     */
+    knowledge_status?: string | null;
+    /**
+     * Parse Id
+     */
+    parse_id: string;
+    /**
+     * Reason
+     */
+    reason?: string | null;
+    /**
+     * Stage
+     */
+    stage?: 'ready' | 'index' | 'knowledge';
+};
+
+/**
+ * KnowledgeIndexRepairDocument
+ */
+export type KnowledgeIndexRepairDocument = {
+    /**
+     * Document Id
+     */
+    document_id: string;
+    /**
+     * Knowledge Base Id
+     */
+    knowledge_base_id: string;
+    /**
+     * Parse Id
+     */
+    parse_id: string;
+};
+
+/**
+ * KnowledgeIndexRepairRequest
+ */
+export type KnowledgeIndexRepairRequest = {
+    /**
+     * Documents
+     */
+    documents: Array<KnowledgeIndexRepairDocument>;
+    /**
+     * Purpose
+     */
+    purpose?: 'search' | 'graph';
+    /**
+     * Reference Knowledge Base Id
+     */
+    reference_knowledge_base_id?: string | null;
+};
+
+/**
+ * KnowledgeIndexStatusResponse
+ */
+export type KnowledgeIndexStatusResponse = {
+    /**
+     * Embedding Model
+     */
+    embedding_model: string | null;
+    /**
+     * Failed Count
+     */
+    failed_count: number;
+    /**
+     * Missing Count
+     */
+    missing_count: number;
+    /**
+     * Missing Documents
+     */
+    missing_documents: Array<KnowledgeIndexDocumentResponse>;
+    /**
+     * Processing Count
+     */
+    processing_count: number;
+    /**
+     * Purpose
+     */
+    purpose?: 'search' | 'graph';
+    /**
+     * Ready Count
+     */
+    ready_count: number;
+    /**
+     * Ready Document Ids
+     */
+    ready_document_ids: Array<string>;
+    /**
+     * Ready Documents
+     */
+    ready_documents: Array<KnowledgeIndexDocumentResponse>;
+    /**
+     * State
+     */
+    state: 'ready' | 'missing_index' | 'unavailable';
+    /**
+     * Total Count
+     */
+    total_count: number;
 };
 
 /**
@@ -5444,6 +5842,24 @@ export type PasswordResetLinkResponse = {
 };
 
 /**
+ * PersonalGraphCoverage
+ */
+export type PersonalGraphCoverage = {
+    /**
+     * Excluded Count
+     */
+    excluded_count: number;
+    /**
+     * Included Count
+     */
+    included_count: number;
+    /**
+     * Total Count
+     */
+    total_count: number;
+};
+
+/**
  * PersonalGraphEdge
  */
 export type PersonalGraphEdge = {
@@ -5496,6 +5912,16 @@ export type PersonalGraphNode = {
 };
 
 /**
+ * PersonalGraphRefreshRequest
+ */
+export type PersonalGraphRefreshRequest = {
+    /**
+     * Knowledge Index Action
+     */
+    knowledge_index_action?: 'skip_missing' | null;
+};
+
+/**
  * PersonalGraphResponse
  */
 export type PersonalGraphResponse = {
@@ -5507,6 +5933,7 @@ export type PersonalGraphResponse = {
      * Color
      */
     color: string;
+    coverage?: PersonalGraphCoverage | null;
     /**
      * Document Count
      */
@@ -5515,6 +5942,7 @@ export type PersonalGraphResponse = {
      * Edges
      */
     edges: Array<PersonalGraphEdge>;
+    knowledge_index_status?: KnowledgeIndexStatusResponse | null;
     /**
      * Mode
      */
@@ -6018,6 +6446,50 @@ export type Questionnaire = {
      * Occupation
      */
     occupation?: string;
+};
+
+/**
+ * RecentConversationContextResponse
+ */
+export type RecentConversationContextResponse = {
+    /**
+     * Conversation Id
+     */
+    conversation_id: string;
+    /**
+     * Excerpt
+     */
+    excerpt: string;
+    /**
+     * Kind
+     */
+    kind: 'user_excerpt';
+    /**
+     * Recent Excerpts
+     */
+    recent_excerpts: Array<ConversationExcerptResponse>;
+    /**
+     * Source Message Id
+     */
+    source_message_id: string | null;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
+ * RecentConversationContextsResponse
+ */
+export type RecentConversationContextsResponse = {
+    /**
+     * Items
+     */
+    items: Array<RecentConversationContextResponse>;
 };
 
 /**
@@ -9230,6 +9702,32 @@ export type UpdateSharedKnowledgeRequest = {
 };
 
 /**
+ * UserAvatar
+ */
+export type UserAvatar = {
+    /**
+     * Blush
+     */
+    blush?: boolean;
+    /**
+     * Hair
+     */
+    hair?: string;
+    /**
+     * Id
+     */
+    id: 'xiaoping' | 'mo' | 'silver' | 'sand' | 'cat' | 'hime';
+    /**
+     * Skin
+     */
+    skin?: string;
+    /**
+     * Sleeve
+     */
+    sleeve?: string;
+};
+
+/**
  * ValidationError
  */
 export type ValidationError = {
@@ -9442,6 +9940,14 @@ export type WritingRevisionResponse = {
      */
     revision_id: string;
     /**
+     * Selection End
+     */
+    selection_end?: number | null;
+    /**
+     * Selection Start
+     */
+    selection_start?: number | null;
+    /**
      * Status
      */
     status: 'pending' | 'accepted' | 'rejected' | 'stale';
@@ -9474,6 +9980,42 @@ export type WritingSampleList = {
      * Items
      */
     items: Array<WritingSampleResponse>;
+};
+
+/**
+ * WritingSamplePreview
+ */
+export type WritingSamplePreview = {
+    /**
+     * Items
+     */
+    items: Array<WritingSamplePreviewItem>;
+    /**
+     * Warnings
+     */
+    warnings: Array<string>;
+};
+
+/**
+ * WritingSamplePreviewItem
+ */
+export type WritingSamplePreviewItem = {
+    /**
+     * Character Count
+     */
+    character_count: number;
+    /**
+     * Excluded Reason
+     */
+    excluded_reason: string | null;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Title
+     */
+    title: string;
 };
 
 /**
@@ -10400,6 +10942,39 @@ export type UpdateAgentProfileResponses = {
 
 export type UpdateAgentProfileResponse = UpdateAgentProfileResponses[keyof UpdateAgentProfileResponses];
 
+export type ReadConversationSummaryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/agent/context-summary';
+};
+
+export type ReadConversationSummaryErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ReadConversationSummaryError = ReadConversationSummaryErrors[keyof ReadConversationSummaryErrors];
+
+export type ReadConversationSummaryResponses = {
+    /**
+     * Successful Response
+     */
+    200: ConversationSummaryResponse;
+};
+
+export type ReadConversationSummaryResponse = ReadConversationSummaryResponses[keyof ReadConversationSummaryResponses];
+
 export type ListAgentConversationsData = {
     body?: never;
     path?: never;
@@ -10687,6 +11262,87 @@ export type GetAgentResearchStartProposalResponses = {
 
 export type GetAgentResearchStartProposalResponse = GetAgentResearchStartProposalResponses[keyof GetAgentResearchStartProposalResponses];
 
+export type RepairAgentKnowledgeIndexData = {
+    body: KnowledgeIndexRepairRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/agent/knowledge-index-repairs';
+};
+
+export type RepairAgentKnowledgeIndexErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type RepairAgentKnowledgeIndexError = RepairAgentKnowledgeIndexErrors[keyof RepairAgentKnowledgeIndexErrors];
+
+export type RepairAgentKnowledgeIndexResponses = {
+    /**
+     * Successful Response
+     */
+    202: KnowledgeIndexStatusResponse;
+};
+
+export type RepairAgentKnowledgeIndexResponse = RepairAgentKnowledgeIndexResponses[keyof RepairAgentKnowledgeIndexResponses];
+
+export type GetAgentKnowledgeIndexStatusData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Reference Knowledge Base Id
+         */
+        reference_knowledge_base_id?: string | null;
+        /**
+         * Purpose
+         */
+        purpose?: 'search' | 'graph';
+    };
+    url: '/api/agent/knowledge-index-status';
+};
+
+export type GetAgentKnowledgeIndexStatusErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetAgentKnowledgeIndexStatusError = GetAgentKnowledgeIndexStatusErrors[keyof GetAgentKnowledgeIndexStatusErrors];
+
+export type GetAgentKnowledgeIndexStatusResponses = {
+    /**
+     * Successful Response
+     */
+    200: KnowledgeIndexStatusResponse;
+};
+
+export type GetAgentKnowledgeIndexStatusResponse = GetAgentKnowledgeIndexStatusResponses[keyof GetAgentKnowledgeIndexStatusResponses];
+
 export type PrepareAgentMaterialContextData = {
     body: AgentMaterialContextRequest;
     headers: {
@@ -10801,6 +11457,39 @@ export type ListAgentModelsResponses = {
 
 export type ListAgentModelsResponse = ListAgentModelsResponses[keyof ListAgentModelsResponses];
 
+export type ListRecentConversationContextData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/agent/recent-context';
+};
+
+export type ListRecentConversationContextErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ListRecentConversationContextError = ListRecentConversationContextErrors[keyof ListRecentConversationContextErrors];
+
+export type ListRecentConversationContextResponses = {
+    /**
+     * Successful Response
+     */
+    200: RecentConversationContextsResponse;
+};
+
+export type ListRecentConversationContextResponse = ListRecentConversationContextResponses[keyof ListRecentConversationContextResponses];
+
 export type ConfirmAgentResearchStartData = {
     body: ConfirmResearchStartRequest;
     headers: {
@@ -10887,6 +11576,49 @@ export type LookupAgentRunResponses = {
 };
 
 export type LookupAgentRunResponse = LookupAgentRunResponses[keyof LookupAgentRunResponses];
+
+export type SubscribeAgentRunEventsData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: {
+        /**
+         * After
+         */
+        after?: number;
+    };
+    url: '/api/agent/runs/{run_id}/events';
+};
+
+export type SubscribeAgentRunEventsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type SubscribeAgentRunEventsError = SubscribeAgentRunEventsErrors[keyof SubscribeAgentRunEventsErrors];
+
+export type SubscribeAgentRunEventsResponses = {
+    /**
+     * Successful Response
+     */
+    200: string;
+};
+
+export type SubscribeAgentRunEventsResponse = SubscribeAgentRunEventsResponses[keyof SubscribeAgentRunEventsResponses];
 
 export type StopAgentRunData = {
     body?: never;
@@ -13253,7 +13985,10 @@ export type GetPersonalGraphResponses = {
 export type GetPersonalGraphResponse = GetPersonalGraphResponses[keyof GetPersonalGraphResponses];
 
 export type RefreshPersonalGraphData = {
-    body?: never;
+    /**
+     * Payload
+     */
+    body?: PersonalGraphRefreshRequest | null;
     headers: {
         /**
          * Idempotency-Key
@@ -13266,6 +14001,10 @@ export type RefreshPersonalGraphData = {
 };
 
 export type RefreshPersonalGraphErrors = {
+    /**
+     * Conflict
+     */
+    409: KnowledgeIndexChoiceResponse;
     /**
      * Validation Error
      */
@@ -17362,6 +18101,31 @@ export type CreateWritingSampleResponses = {
 };
 
 export type CreateWritingSampleResponse = CreateWritingSampleResponses[keyof CreateWritingSampleResponses];
+
+export type PreviewWritingSamplesData = {
+    body: BodyPreviewWritingSamples;
+    path?: never;
+    query?: never;
+    url: '/api/writing/samples/preview';
+};
+
+export type PreviewWritingSamplesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PreviewWritingSamplesError = PreviewWritingSamplesErrors[keyof PreviewWritingSamplesErrors];
+
+export type PreviewWritingSamplesResponses = {
+    /**
+     * Successful Response
+     */
+    200: WritingSamplePreview;
+};
+
+export type PreviewWritingSamplesResponse = PreviewWritingSamplesResponses[keyof PreviewWritingSamplesResponses];
 
 export type UploadWritingSampleData = {
     body: BodyUploadWritingSample;

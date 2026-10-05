@@ -1,9 +1,12 @@
-import { ArrowLeftIcon, FileTextIcon, GlobeIcon, XIcon } from '@phosphor-icons/react'
+import { ArrowLeftIcon, FileTextIcon, XIcon } from '@phosphor-icons/react'
 import { useEffect, useRef, useState } from 'react'
 import { citationGroup } from '../../modules/research-agent'
 import { useAppLocale } from '../../i18n/AppLocaleProvider'
 import { useNativeDialogCancel } from '../../ui/usePresence'
 import { ConversationToolDetail, ConversationToolStatus } from './ConversationActivity'
+import { toolResultSiteUrl } from './toolResultSiteUrl'
+import { SiteIcon } from '../ui/SiteIcon'
+import { CitationSiteIcon } from './CitationSiteIcon'
 import { ConversationActionControl } from './ConversationHandoff'
 import type { ConversationSourcePanelProps } from './types'
 import './conversation-view.css'
@@ -48,7 +51,7 @@ export function ConversationSourcePanel({ closing = false, detail, activity, cit
     <header className="cv-source-panel__head">
       <div>
         {(detail || activity) && onBack ? <button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={text('依据', 'Basis')} title={text('返回研究面板', 'Back to research panel')} onClick={onBack}><ArrowLeftIcon /></button> : null}
-        {detail ? <span className="qx-tag">{group === 'web' ? <GlobeIcon /> : <FileTextIcon />}{kindLabel}</span> : <h2 className="qx-heading">{label}</h2>}
+        {detail ? <span className="qx-tag">{group === 'web' ? <CitationSiteIcon citation={detail.citation} /> : <FileTextIcon />}{kindLabel}</span> : <h2 className="qx-heading">{label}</h2>}
       </div>
       <button className="qx-btn qx-btn--ghost qx-btn--icon" type="button" aria-label={text('关闭研究面板', 'Close research panel')} onClick={onClose}><XIcon /></button>
     </header>
@@ -65,9 +68,9 @@ export function ConversationSourcePanel({ closing = false, detail, activity, cit
       {(['knowledge', 'web', 'material'] as const).map(kind => {
         const items = citations.filter(citation => citationGroup(citation) === kind)
         const title = kind === 'knowledge' ? text('知识库', 'Knowledge base') : kind === 'web' ? text('网页', 'Web pages') : text('用户文件', 'Your files')
-        return <section key={kind} role="group" aria-label={title}><h3>{title}<span>{items.length}</span></h3>{items.length ? <ol className="cv-source-panel__rows">{items.map(citation => <li key={citation.citation_id}>{onSelectCitation ? <button className="qx-btn qx-btn--ghost" type="button" data-citation-id={citation.citation_id} aria-label={`${citations.indexOf(citation) + 1} ${citation.label}`} onClick={() => onSelectCitation(citation)}><span className="cv-source-number">{citations.indexOf(citation) + 1}</span><span>{citation.label}<span className="qx-meta cv-source-panel__result">{kind === 'knowledge' ? text('知识库资料', 'Library material') : kind === 'material' ? text('研究材料', 'Research material') : text('网页', 'Web page')}</span></span></button> : <span>{citation.label}</span>}</li>)}</ol> : <p className="qx-meta">{text('本轮暂无来源。', 'No sources for this turn yet.')}</p>}</section>
+        return <section key={kind} role="group" aria-label={title}><h3>{title}<span>{items.length}</span></h3>{items.length ? <ol className="cv-source-panel__rows">{items.map(citation => <li key={citation.citation_id}>{onSelectCitation ? <button className="qx-btn qx-btn--ghost" type="button" data-citation-id={citation.citation_id} aria-label={`${citations.indexOf(citation) + 1} ${citation.label}`} onClick={() => onSelectCitation(citation)}><span className="cv-source-number">{citations.indexOf(citation) + 1}</span><CitationSiteIcon citation={citation} /><span>{citation.label}<span className="qx-meta cv-source-panel__result">{kind === 'knowledge' ? text('知识库资料', 'Library material') : kind === 'material' ? text('研究材料', 'Research material') : text('网页', 'Web page')}</span></span></button> : <span><CitationSiteIcon citation={citation} />{citation.label}</span>}</li>)}</ol> : <p className="qx-meta">{text('本轮暂无来源。', 'No sources for this turn yet.')}</p>}</section>
       })}
-      <section role="group" aria-label={text('工作流程', 'Workflow')}><h3>{text('工作流程', 'Workflow')}<span>{toolSteps.length}</span></h3>{toolSteps.length ? <ol className="cv-source-panel__rows">{toolSteps.map(step => <li key={step.id}>{onSelectActivity ? <button className="qx-btn qx-btn--ghost" type="button" onClick={() => onSelectActivity(step)}><span>{step.label}{step.detail && step.detail.length <= 160 ? <span className="qx-meta cv-source-panel__result">{step.detail}</span> : null}{step.resultItems?.map(item => <span className="cv-source-panel__result" key={item.id}>{item.title}</span>)}</span><ConversationToolStatus step={step} /></button> : <div><strong>{step.label}</strong><ConversationToolStatus step={step} /></div>}</li>)}</ol> : <p className="qx-meta">{text('实际工具步骤会出现在这里。', 'Actual tool steps will appear here.')}</p>}</section>
+      <section role="group" aria-label={text('工作流程', 'Workflow')}><h3>{text('工作流程', 'Workflow')}<span>{toolSteps.length}</span></h3>{toolSteps.length ? <ol className="cv-source-panel__rows">{toolSteps.map(step => <li key={step.id}>{onSelectActivity ? <button className="qx-btn qx-btn--ghost" type="button" onClick={() => onSelectActivity(step)}><span>{step.label}{step.detail && step.detail.length <= 160 ? <span className="qx-meta cv-source-panel__result">{step.detail}</span> : null}{step.resultItems?.map((item, index) => <span className="cv-source-panel__result" key={item.id}>{toolResultSiteUrl(step.output, index) ? <SiteIcon url={toolResultSiteUrl(step.output, index)} /> : null}{item.title}</span>)}</span><ConversationToolStatus step={step} /></button> : <div><strong>{step.label}</strong><ConversationToolStatus step={step} /></div>}</li>)}</ol> : <p className="qx-meta">{text('实际工具步骤会出现在这里。', 'Actual tool steps will appear here.')}</p>}</section>
     </div>}
   </aside>
   return mobile ? <dialog ref={dialogRef} data-motion-surface="sheet" data-presence={closing ? 'closing' : 'open'} inert={closing} aria-hidden={closing || undefined} className="cv-source-sheet" aria-label={label} onCancel={event => { event.preventDefault(); onClose() }} onClick={event => { if (event.target === event.currentTarget) onClose() }}>{content}</dialog> : content

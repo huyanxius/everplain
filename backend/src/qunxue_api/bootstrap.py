@@ -24,10 +24,8 @@ from qunxue_api.adapters.empty_catalog import EmptyKnowledgeCatalog
 from qunxue_api.adapters.import_sources.fetch import fetch_bookmark
 from qunxue_api.adapters.media_import import (
     BilibiliFavoritesAdapter,
-    BilibiliTemporaryAudioProvider,
     ImageImportAdapter,
     OpenAICompatibleVisionProvider,
-    VideoImportAdapter,
 )
 from qunxue_api.adapters.media_import.integration import MediaImportGateway, parse_files
 from qunxue_api.adapters.model import (
@@ -52,6 +50,9 @@ from qunxue_api.adapters.research_agent import (
     ResearchDocumentToolRegistry,
     SiliconFlowRerankerProvider,
 )
+from qunxue_api.adapters.research_agent.conversation_summarizer import (
+    PydanticConversationSummarizer,
+)
 from qunxue_api.adapters.research_agent.course_cost import CourseCostLimits
 from qunxue_api.adapters.research_agent.course_organization import (
     CourseKnowledgeGenerator,
@@ -66,6 +67,7 @@ from qunxue_api.adapters.research_agent.shared_knowledge import SharedKnowledgeR
 from qunxue_api.adapters.research_exchange import map_published_qunxue_project
 from qunxue_api.adapters.research_materials import parse_material
 from qunxue_api.adapters.research_materials.doi import CrossrefDoiMetadataResolver
+from qunxue_api.adapters.research_materials.indexing import ResearchMaterialIndexer
 from qunxue_api.adapters.retrieval import (
     RETRIEVAL_CORPUS_SCHEMA_VERSION,
     HybridRetriever,
@@ -77,6 +79,9 @@ from qunxue_api.adapters.sqlite.agent_memory_repository import SqliteMemoryRepos
 from qunxue_api.adapters.sqlite.agent_profile import SqliteAgentProfileRepository
 from qunxue_api.adapters.sqlite.billing_repository import SqliteCreditRepository
 from qunxue_api.adapters.sqlite.channel_gateway import SqliteChannelGatewayRepository
+from qunxue_api.adapters.sqlite.conversation_summary_repository import (
+    SqliteConversationSummaryRepository,
+)
 from qunxue_api.adapters.sqlite.database import Database
 from qunxue_api.adapters.sqlite.external_agents import SqliteExternalAgentRepository
 from qunxue_api.adapters.sqlite.identity_repository import SqliteIdentityRepository
@@ -177,6 +182,7 @@ from qunxue_api.application import (
 from qunxue_api.application.agent_profile import AgentProfileApplication
 from qunxue_api.application.agent_research_workflow import AgentResearchWorkflow
 from qunxue_api.application.channel_gateway import ChannelGatewayApplication
+from qunxue_api.application.conversation_summary import ConversationSummaryWorker
 from qunxue_api.application.external_agents import ExternalAgentApplication
 from qunxue_api.application.knowledge_import import KnowledgeImportApplication
 from qunxue_api.application.memory_learning import MemoryLearningWorker
@@ -296,7 +302,11 @@ def create_app(
     async def lifespan(app: FastAPI):
         if app.state.billing_operations.runtime:
             app.state.billing_operations.runtime.recover_stale(
-                before=datetime.now(UTC) - timedelta(minutes=30)
+                before=datetime.now(UTC) - timedelta(minutes=30),
+                # Production is single-instance/single-worker. On startup no
+                # prior process owns these live requests; release their wallet
+                # capacity while retaining unknown provider-cost evidence.
+                recover_actual_usage=True,
             )
         probe_task = None
         memory_task = None
@@ -334,12 +344,18 @@ def create_app(
             course_task = asyncio.create_task(
                 organize_courses(), name="everplain-course-processing"
             )
-        if resolved_settings.memory_learning_enabled and app.state.model_endpoints:
+        if app.state.model_endpoints and (
+            resolved_settings.memory_learning_enabled
+            or resolved_settings.conversation_summary_enabled
+        ):
 
             async def learn_memories():
                 while True:
                     try:
-                        await asyncio.to_thread(app.state.memory_worker.run_once)
+                        if resolved_settings.conversation_summary_enabled:
+                            await asyncio.to_thread(app.state.context_summary_worker.run_once)
+                        if resolved_settings.memory_learning_enabled:
+                            await asyncio.to_thread(app.state.memory_worker.run_once)
                     except asyncio.CancelledError:
                         raise
                     except Exception:
@@ -471,7 +487,10 @@ def create_app(
     app.state.model_endpoints = model_endpoints
     app.state.model_router = model_router
     app.state.model_attempt_recorder = model_attempt_recorder
-    from qunxue_api.adapters.research_agent.model_selection import selectable_agent_model
+    from qunxue_api.adapters.research_agent.model_selection import (
+        registered_agent_models,
+        selectable_agent_model,
+    )
     from qunxue_api.modules.agent_conversation import MOCK_AGENT_MODEL_CHOICES
 
     selected_choices, selected_endpoint = selectable_agent_model(
@@ -480,18 +499,17 @@ def create_app(
         supported_efforts=resolved_settings.agent_model_supported_efforts,
         default_effort=resolved_settings.model_reasoning_effort,
     )
+    additional_choices, additional_routes = registered_agent_models(resolved_settings)
     app.state.agent_model_choices = (
         MOCK_AGENT_MODEL_CHOICES
         if _effective_model_runtime_mode(resolved_settings) == "mock"
-        else selected_choices
+        else selected_choices + additional_choices
     )
     selected_agent_router = (
         ModelRouteExecutor(
             endpoints=(selected_endpoint,),
             recorder=model_attempt_recorder,
             max_retries=resolved_settings.model_max_retries,
-            max_input_tokens=resolved_settings.model_max_input_tokens,
-            max_output_tokens=resolved_settings.model_max_output_tokens,
         )
         if selected_endpoint is not None else None
     )
@@ -627,6 +645,10 @@ def create_app(
                 parser=parse_material,
                 search=SqliteResearchMaterialSearchRepository(session),
                 transcription_available=resolved_settings.has_transcription_provider,
+                index_material=app.state.research_material_indexer,
+                schedule_ingestion=(
+                    lambda job_id: app.state.schedule_research_material_ingestion(job_id)
+                ),
                 commit=session.commit,
                 rollback=session.rollback,
             )
@@ -782,12 +804,6 @@ def create_app(
         )
     app.state.media_import_gateway = MediaImportGateway(
         BilibiliFavoritesAdapter(),
-        VideoImportAdapter(
-            audio=BilibiliTemporaryAudioProvider(),
-            transcription=_build_transcription_provider(resolved_settings)
-            if resolved_settings.runtime_mode != "mock"
-            else None,
-        ),
         ImageImportAdapter(provider=vision),
     )
     app.state.knowledge_import_scope = knowledge_import_scope
@@ -1167,25 +1183,36 @@ def create_app(
                     extra_headers=primary_endpoint.extra_headers,
                     reasoning_effort=resolved_settings.model_reasoning_effort,
                     route_executor=app.state.model_router,
+                    model_capacities=resolved_settings.agent_model_capacities,
                     require_billing=True,
                 )
             def runner_for_selection(selection):
                 if not use_real_agent:
                     return runner
-                if selected_endpoint is None or selected_agent_router is None:
+                route_endpoint, route_protocol = additional_routes.get(
+                    selection.model_id, (selected_endpoint, "responses"),
+                )
+                route_executor = (
+                    ModelRouteExecutor(
+                        endpoints=(route_endpoint,), recorder=model_attempt_recorder,
+                        max_retries=resolved_settings.model_max_retries,
+                    ) if selection.model_id in additional_routes else selected_agent_router
+                )
+                if route_endpoint is None or route_executor is None:
                     from qunxue_api.modules.agent_conversation import (
                         AgentModelSelectionUnavailable,
                     )
                     raise AgentModelSelectionUnavailable("当前服务尚未接通所选模型路由。")
                 return PydanticAIKnowledgeRunner(
-                    base_url=selected_endpoint.base_url,
-                    api_key=selected_endpoint.api_key,
-                    model=selected_endpoint.model,
-                    timeout_seconds=selected_endpoint.timeout_seconds,
-                    extra_headers=selected_endpoint.extra_headers,
+                    base_url=route_endpoint.base_url,
+                    api_key=route_endpoint.api_key,
+                    model=route_endpoint.model,
+                    timeout_seconds=route_endpoint.timeout_seconds,
+                    extra_headers=route_endpoint.extra_headers,
                     reasoning_effort=selection.reasoning_effort,
-                    protocol="responses",
-                    route_executor=selected_agent_router,
+                    protocol=route_protocol,
+                    route_executor=route_executor,
+                    model_capacities=resolved_settings.agent_model_capacities,
                     require_billing=True,
                 )
 
@@ -1204,7 +1231,7 @@ def create_app(
                     ),
                     persona_factory=current_persona,
                     memory_tools_factory=lambda **scope: AgentMemoryTools(
-                        memory_service_scope, **scope
+                        memory_service_scope, conversation_scope=conversation_context_scope, **scope
                     ),
                     conversations=conversations,
                     runner=runner,
@@ -1215,7 +1242,9 @@ def create_app(
                     ),
                     rollback=session.rollback,
                     credits=CreditService(
-                        SqliteCreditRepository(session),
+                        SqliteCreditRepository(
+                            session, plan_limits=resolved_settings.billing_plan_weekly_points
+                        ),
                         exempt_user_ids=getattr(
                             app.state,
                             "credit_exempt_user_ids",
@@ -1261,7 +1290,9 @@ def create_app(
                         material_vector_cache_factory=lambda **scope: SqliteMaterialVectorCache(
                             session, **scope
                         ),
+                        require_material_vectors=resolved_settings.runtime_mode != "mock",
                         analysis=analysis_application,
+                        writing=WritingApplication(SqliteWritingRepository(session)),
                     ),
                 )
             except Exception:
@@ -1278,6 +1309,22 @@ def create_app(
             yield MemoryService(SqliteMemoryRepository(memory_session))
 
     app.state.memory_service_scope = memory_service_scope
+
+    @contextmanager
+    def conversation_context_scope():
+        from qunxue_api.adapters.sqlite.conversation_context_repository import (
+            SqliteConversationContextRepository,
+        )
+        with resolved_database.session() as session:
+            yield (
+                SqliteConversationContextRepository(
+                    session, summary_enabled=resolved_settings.conversation_summary_enabled
+                ),
+                SqliteMemoryRepository(session),
+            )
+
+    app.state.conversation_context_scope = conversation_context_scope
+
 
     @contextmanager
     def agent_profile_scope():
@@ -1377,6 +1424,29 @@ def create_app(
         daily_calls=resolved_settings.memory_learning_daily_calls,
         daily_tokens=resolved_settings.memory_learning_daily_tokens,
     )
+    @contextmanager
+    def context_summary_scope():
+        with resolved_database.session() as summary_session:
+            yield SqliteConversationSummaryRepository(
+                summary_session, enabled=resolved_settings.conversation_summary_enabled
+            )
+
+    app.state.context_summary_scope = context_summary_scope
+    context_summarizer = None
+    if app.state.model_endpoints and resolved_settings.conversation_summary_enabled:
+        summary_endpoint = app.state.model_endpoints[0]
+        context_summarizer = PydanticConversationSummarizer(
+            base_url=summary_endpoint.base_url, api_key=summary_endpoint.api_key,
+            model=summary_endpoint.model, extra_headers=summary_endpoint.extra_headers,
+            timeout_seconds=min(resolved_settings.model_timeout_seconds, 45),
+        )
+    app.state.context_summary_worker = ConversationSummaryWorker(
+        context_summary_scope, generate=context_summarizer,
+        billing=app.state.billing_operations if context_summarizer else None,
+        idle_seconds=resolved_settings.conversation_summary_idle_seconds,
+        daily_calls=resolved_settings.memory_learning_daily_calls,
+        daily_tokens=resolved_settings.memory_learning_daily_tokens,
+    )
     course_embedder = None
     if resolved_settings.embedding_model and resolved_settings.embedding_api_key:
         course_embedder = OpenAICompatibleEmbeddingProvider(
@@ -1385,6 +1455,13 @@ def create_app(
             model=resolved_settings.embedding_model,
             timeout_seconds=resolved_settings.embedding_timeout_seconds,
         )
+    app.state.research_material_indexer = (
+        ResearchMaterialIndexer(
+            resolved_database, embedder=course_embedder,
+            embedding_model=resolved_settings.embedding_model,
+        )
+        if resolved_settings.runtime_mode != "mock" else None
+    )
     app.state.course_organization_worker = CourseOrganizationWorker(
         resolved_database,
         generate=CourseKnowledgeGenerator(
@@ -1820,8 +1897,6 @@ def _model_provider_from_settings(
         endpoints=endpoints,
         recorder=attempt_recorder,
         max_retries=settings.model_max_retries,
-        max_input_tokens=settings.model_max_input_tokens,
-        max_output_tokens=settings.model_max_output_tokens,
     )
     return (
         RoutedModelProvider(providers=providers, router=router),
@@ -1869,6 +1944,7 @@ def _model_headers_from_settings(settings: Settings) -> dict[str, str]:
 
 
 def _billing_runtime(settings, database):
+    from qunxue_api.adapters.model.tariff_config import configured_model_tariffs
     from qunxue_api.adapters.sqlite.durable_billing import DurableBilling
     from qunxue_api.modules.billing import PriceBook, TavilyPrice
 
@@ -1903,6 +1979,7 @@ def _billing_runtime(settings, database):
         price_book=PriceBook(
             **conversion,
             version=settings.billing_price_version,
+            tariffs=configured_model_tariffs(settings),
             aliases=settings.billing_model_aliases,
             usage_policies=settings.billing_usage_policies,
             deepseek_time_basis=settings.billing_deepseek_time_basis,
@@ -1916,4 +1993,5 @@ def _billing_runtime(settings, database):
         max_operation_pico=settings.billing_max_operation_usd_micro * 10**6,
         daily_budget_pico=settings.billing_daily_budget_usd_micro * 10**6,
         max_attempts=settings.billing_max_attempts,
+        plan_limits=settings.billing_plan_weekly_points,
     )

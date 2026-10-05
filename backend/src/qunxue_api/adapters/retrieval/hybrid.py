@@ -165,6 +165,7 @@ class HybridRetriever:
         limit: int,
         retrieval_index_id: str = "external-chunks",
         vector_cache: DocumentVectorCache | None = None,
+        embed_missing_documents: bool = True,
     ) -> HybridRetrievalResult:
         """Run the same lexical/semantic/RRF/reranker pipeline over transient chunks.
 
@@ -192,13 +193,19 @@ class HybridRetriever:
         embed_documents = getattr(self._embedder, "embed_documents", None)
         if callable(embed_documents):
             try:
-                query_vector = self._embedder.embed_query(query)
+                query_vector = (
+                    self._embedder.embed_query(query) if embed_missing_documents else None
+                )
                 vectors = (
                     vector_cache.get_many(values, self._embedding_model)
                     if vector_cache
                     else [None] * len(values)
                 )
                 missing = [index for index, vector in enumerate(vectors) if vector is None]
+                if missing and not embed_missing_documents:
+                    raise RetrievalPipelineUnavailable("document vectors are not ready")
+                if query_vector is None:
+                    query_vector = self._embedder.embed_query(query)
                 # Bounded batches keep long attachment sets within provider request limits.
                 for start in range(0, len(missing), 16):
                     indexes = missing[start : start + 16]

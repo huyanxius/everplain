@@ -59,6 +59,9 @@ export type ActiveUsageBucket = {
 export type CreditSummary = {
   balance: number
   activeUsageBuckets?: ActiveUsageBucket[] | null
+  quotaPeriodStartedAt?: string | null
+  quotaPeriodExpiresAt?: string | null
+  quotaPlanId?: string | null
   creditLimit: number
   grantAmount: number
   isUnlimited: boolean

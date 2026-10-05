@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -25,6 +26,8 @@ from qunxue_api.modules.research_materials import (
     ResearchMaterialSearchResult,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class ResearchMaterialApplication:
     """Owns task authorization and the parse/save transaction boundary.
@@ -45,6 +48,8 @@ class ResearchMaterialApplication:
         clock: Callable[[], datetime] | None = None,
         commit: Callable[[], None] | None = None,
         rollback: Callable[[], None] | None = None,
+        index_material: Callable[[MaterialIngestionJob], None] | None = None,
+        schedule_ingestion: Callable[[UUID], None] | None = None,
     ) -> None:
         self._materials = materials
         self._research_tasks = research_tasks
@@ -57,6 +62,8 @@ class ResearchMaterialApplication:
         # alternate adapters can keep the no-op default.
         self._commit = commit or (lambda: None)
         self._rollback = rollback or (lambda: None)
+        self._index_material = index_material
+        self._schedule_ingestion = schedule_ingestion or self.process_ingestion
 
     def upload(
         self,
@@ -116,7 +123,13 @@ class ResearchMaterialApplication:
         self._commit()
         if defer_processing:
             return material
-        self.process_ingestion(job.job_id, map_unavailable_reason=False)
+        processed = self.process_ingestion(job.job_id, map_unavailable_reason=False)
+        if (
+            processed is not None
+            and processed.ingestion_status is MaterialIngestionStatus.FAILED
+            and processed.completed_at is None
+        ):
+            self._schedule_ingestion(job.job_id)
         return self.get(user_id=user_id, task_id=task_id, material_id=material.material_id)
 
     def get_ingestion(
@@ -218,17 +231,46 @@ class ResearchMaterialApplication:
                 return self._materials.get_ingestion(job_id)
             self._commit()
             return failed
+        indexing = False
         try:
-            self._parse_and_save(
-                material=material,
-                user_id=job.user_id,
-                task_id=job.task_id,
-                content=content,
-                parse_id=job.parse_id,
-                begin=material.status is not MaterialStatus.PARSING,
-                commit=False,
-                map_unavailable_reason=map_unavailable_reason,
+            parsed = self._materials.get_parse(
+                job.material_id, job.parse_id, user_id=job.user_id, task_id=job.task_id
             )
+            if parsed is None:
+                self._parse_and_save(
+                    material=material,
+                    user_id=job.user_id,
+                    task_id=job.task_id,
+                    content=content,
+                    parse_id=job.parse_id,
+                    begin=material.status is not MaterialStatus.PARSING,
+                    commit=False,
+                    map_unavailable_reason=map_unavailable_reason,
+                )
+            if self._index_material is not None:
+                # Persist the successful parse behind the lease fence before any
+                # external call. Retries retain it and the completed vector batches.
+                checkpoint = self._materials.checkpoint_ingestion(
+                    job_id,
+                    expected_attempt_count=job.attempt_count,
+                    expected_parse_id=job.parse_id,
+                    now=self._clock(),
+                )
+                if checkpoint is None:
+                    self._rollback()
+                    superseded = self._materials.fail_ingestion(
+                        job_id,
+                        expected_attempt_count=job.attempt_count,
+                        expected_parse_id=job.parse_id,
+                        error_code="material_indexing_superseded",
+                        retry_at=None,
+                        now=self._clock(),
+                    )
+                    self._commit()
+                    return superseded or self._materials.get_ingestion(job_id)
+                self._commit()
+                indexing = True
+                self._index_material(job)
         except MaterialParseError as error:
             error_code = (
                 self._ingestion_error_code(material, error.code)
@@ -248,7 +290,7 @@ class ResearchMaterialApplication:
                 return self._materials.get_ingestion(job_id)
             self._commit()
             raise MaterialParseError(error_code, str(error).split(": ", 1)[-1]) from error
-        except Exception:
+        except Exception as error:
             self._rollback()
             failed_at = self._clock()
             retry_at = (
@@ -256,15 +298,34 @@ class ResearchMaterialApplication:
                 if job.attempt_count < job.max_attempts
                 else None
             )
-            self._materials.fail_ingestion(
+            index_code = getattr(error, "code", "failed")
+            if indexing and isinstance(error, MaterialVersionConflict):
+                index_code = "superseded"
+                retry_at = None
+            if index_code not in {
+                "not_configured", "authentication", "quota_exhausted", "access_denied",
+                "endpoint_unavailable", "rate_limited", "request_rejected", "timeout",
+                "network_error", "service_error", "invalid_response", "policy_denied", "superseded",
+            }:
+                index_code = "failed"
+            if indexing:
+                logger.warning(
+                    "Material indexing failed material=%s attempt=%s type=%s code=%s",
+                    job.material_id, job.attempt_count, type(error).__name__, index_code,
+                )
+            failed = self._materials.fail_ingestion(
                 job_id,
                 expected_attempt_count=job.attempt_count,
                 expected_parse_id=job.parse_id,
-                error_code="ingestion_worker_error",
+                error_code=(
+                    f"material_indexing_{index_code}" if indexing else "ingestion_worker_error"
+                ),
                 retry_at=retry_at,
                 now=failed_at,
             )
             self._commit()
+            if indexing:
+                return failed or self._materials.get_ingestion(job_id)
             raise
         completed = self._materials.complete_ingestion(
             job_id,
@@ -541,8 +602,15 @@ class ResearchMaterialApplication:
             now=self._clock(),
         )
         self._materials.save_parse(parse_version)
+        index_job = None
+        if commit and self._index_material is not None:
+            index_job = self._materials.enqueue_ingestion(
+                material=material, parse_id=parse_id, now=self._clock()
+            )
         if commit:
             self._commit()
+        if index_job is not None:
+            self._schedule_ingestion(index_job.job_id)
         updated = self._materials.get(
             material.material_id, user_id=user_id, task_id=task_id
         )

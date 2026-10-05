@@ -1057,16 +1057,23 @@
       "AgentModelChoiceResponse": {
         "properties": {
           "default_reasoning_effort": {
-            "enum": [
-              "none",
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Default Reasoning Effort",
-            "type": "string"
+            "title": "Default Reasoning Effort"
           },
           "label": {
             "title": "Label",
@@ -1099,6 +1106,40 @@
           "default_reasoning_effort"
         ],
         "title": "AgentModelChoiceResponse",
+        "type": "object"
+      },
+      "AgentOutputAttemptResponse": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "ordinal",
+          "status",
+          "answer",
+          "created_at"
+        ],
+        "title": "AgentOutputAttemptResponse",
         "type": "object"
       },
       "AgentProfileResponse": {
@@ -1138,6 +1179,16 @@
           "speaking_style": {
             "title": "Speaking Style",
             "type": "string"
+          },
+          "user_avatar": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserAvatar"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "version": {
             "title": "Version",
@@ -1235,7 +1286,7 @@
           "setup_step": {
             "anyOf": [
               {
-                "maximum": 4.0,
+                "maximum": 6.0,
                 "minimum": 0.0,
                 "type": "integer"
               },
@@ -1273,6 +1324,16 @@
               }
             ],
             "title": "Speaking Style"
+          },
+          "user_avatar": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserAvatar"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1542,9 +1603,26 @@
             "title": "Conversation Id",
             "type": "string"
           },
+          "delivery_state": {
+            "additionalProperties": true,
+            "title": "Delivery State",
+            "type": "object"
+          },
           "idempotency_key": {
             "title": "Idempotency Key",
             "type": "string"
+          },
+          "last_event_sequence": {
+            "default": 0,
+            "title": "Last Event Sequence",
+            "type": "integer"
+          },
+          "output_attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AgentOutputAttemptResponse"
+            },
+            "title": "Output Attempts",
+            "type": "array"
           },
           "partial_answer": {
             "title": "Partial Answer",
@@ -1615,9 +1693,26 @@
             "title": "Cancel Requested",
             "type": "boolean"
           },
+          "delivery_state": {
+            "additionalProperties": true,
+            "title": "Delivery State",
+            "type": "object"
+          },
           "idempotency_key": {
             "title": "Idempotency Key",
             "type": "string"
+          },
+          "last_event_sequence": {
+            "default": 0,
+            "title": "Last Event Sequence",
+            "type": "integer"
+          },
+          "output_attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AgentOutputAttemptResponse"
+            },
+            "title": "Output Attempts",
+            "type": "array"
           },
           "partial_answer": {
             "title": "Partial Answer",
@@ -1849,6 +1944,18 @@
             ],
             "title": "Document Version"
           },
+          "knowledge_index_action": {
+            "anyOf": [
+              {
+                "const": "skip_missing",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Index Action"
+          },
           "material_ids": {
             "default": [],
             "items": {
@@ -1966,6 +2073,16 @@
             ],
             "title": "Workspace",
             "type": "string"
+          },
+          "writing_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentWritingContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1986,6 +2103,11 @@
             "title": "Canvas Patches",
             "type": "array"
           },
+          "delivery_state": {
+            "additionalProperties": true,
+            "title": "Delivery State",
+            "type": "object"
+          },
           "knowledge_release_id": {
             "anyOf": [
               {
@@ -1996,6 +2118,13 @@
               }
             ],
             "title": "Knowledge Release Id"
+          },
+          "output_attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AgentOutputAttemptResponse"
+            },
+            "title": "Output Attempts",
+            "type": "array"
           },
           "tool_traces": {
             "items": {
@@ -2019,6 +2148,51 @@
           "assistant"
         ],
         "title": "AgentTurnResponse",
+        "type": "object"
+      },
+      "AgentWritingContext": {
+        "additionalProperties": false,
+        "properties": {
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "document_version": {
+            "minimum": 1.0,
+            "title": "Document Version",
+            "type": "integer"
+          },
+          "selection_end": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection End"
+          },
+          "selection_start": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Start"
+          }
+        },
+        "required": [
+          "document_id",
+          "document_version"
+        ],
+        "title": "AgentWritingContext",
         "type": "object"
       },
       "AnalysisAnnotationKind": {
@@ -2809,6 +2983,20 @@
           "file"
         ],
         "title": "Body_import_literature_entries",
+        "type": "object"
+      },
+      "Body_preview_writing_samples": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_preview_writing_samples",
         "type": "object"
       },
       "Body_upload_research_material": {
@@ -4007,6 +4195,205 @@
         "title": "ConsentScope",
         "type": "string"
       },
+      "ConversationExcerptResponse": {
+        "properties": {
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message_id",
+          "sequence",
+          "excerpt"
+        ],
+        "title": "ConversationExcerptResponse",
+        "type": "object"
+      },
+      "ConversationSuggestionResponse": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationSummarySourceResponse"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "prompt",
+          "sources"
+        ],
+        "title": "ConversationSuggestionResponse",
+        "type": "object"
+      },
+      "ConversationSummaryResponse": {
+        "properties": {
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationSuggestionResponse"
+            },
+            "title": "Cards",
+            "type": "array"
+          },
+          "omitted_messages": {
+            "title": "Omitted Messages",
+            "type": "integer"
+          },
+          "retry_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry At"
+          },
+          "scope": {
+            "const": "conversation_messages",
+            "title": "Scope",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "pending",
+              "empty",
+              "disabled",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "queued",
+                  "active_run",
+                  "idle_wait",
+                  "generating",
+                  "retry_wait",
+                  "daily_budget",
+                  "attempt_limit",
+                  "generation_failed",
+                  "generator_unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "summary_sources": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationSummarySourceResponse"
+            },
+            "title": "Summary Sources",
+            "type": "array"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "summary_sources",
+          "cards",
+          "updated_at",
+          "scope",
+          "omitted_messages"
+        ],
+        "title": "ConversationSummaryResponse",
+        "type": "object"
+      },
+      "ConversationSummarySourceResponse": {
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 0.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "sequence",
+          "conversation_id",
+          "message_id",
+          "quote",
+          "title"
+        ],
+        "title": "ConversationSummarySourceResponse",
+        "type": "object"
+      },
       "CourseKnowledgeResponse": {
         "properties": {
           "relations": {
@@ -4844,6 +5231,12 @@
       },
       "CreditCodeBatchResponse": {
         "properties": {
+          "action": {
+            "const": "bank_reset",
+            "default": "bank_reset",
+            "title": "Action",
+            "type": "string"
+          },
           "codes": {
             "items": {
               "type": "string"
@@ -4920,6 +5313,17 @@
           "points": {
             "title": "Points",
             "type": "integer"
+          },
+          "quota_period_epoch": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Period Epoch"
           }
         },
         "required": [
@@ -5074,10 +5478,45 @@
       },
       "CreditRedemptionResponse": {
         "properties": {
+          "action": {
+            "const": "bank_reset",
+            "default": "bank_reset",
+            "title": "Action",
+            "type": "string"
+          },
           "balance": {
             "minimum": 0.0,
             "title": "Balance",
             "type": "integer"
+          },
+          "delta_points": {
+            "default": 0,
+            "title": "Delta Points",
+            "type": "integer"
+          },
+          "quota_period_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Period Expires At"
+          },
+          "quota_period_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Period Started At"
           },
           "redeemed_points": {
             "exclusiveMinimum": 0.0,
@@ -5166,6 +5605,41 @@
           "pricing": {
             "$ref": "#/components/schemas/CreditPricingResponse"
           },
+          "quota_period_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Period Expires At"
+          },
+          "quota_period_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Period Started At"
+          },
+          "quota_plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Plan Id"
+          },
           "quota_status": {
             "default": "unavailable",
             "enum": [
@@ -5174,6 +5648,12 @@
             ],
             "title": "Quota Status",
             "type": "string"
+          },
+          "quota_window_hours": {
+            "const": 168,
+            "default": 168,
+            "title": "Quota Window Hours",
+            "type": "integer"
           },
           "total_entries": {
             "minimum": 0.0,
@@ -5848,6 +6328,7 @@
           "billing_replay_blocked",
           "billing_provider_error",
           "credit_code_unavailable",
+          "quota_configuration_unavailable",
           "credit_code_batch_conflict",
           "email_verification_invalid",
           "email_verification_rate_limited",
@@ -7545,6 +8026,269 @@
           "eligibility"
         ],
         "title": "KnowledgeEntrySummaryResponse",
+        "type": "object"
+      },
+      "KnowledgeIndexChoiceResponse": {
+        "properties": {
+          "code": {
+            "const": "knowledge_index_choice_required",
+            "default": "knowledge_index_choice_required",
+            "title": "Code",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/KnowledgeIndexStatusResponse"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "KnowledgeIndexChoiceResponse",
+        "type": "object"
+      },
+      "KnowledgeIndexDocumentResponse": {
+        "properties": {
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "index_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Error"
+          },
+          "index_status": {
+            "title": "Index Status",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "format": "uuid",
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "knowledge_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Error"
+          },
+          "knowledge_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Status"
+          },
+          "parse_id": {
+            "format": "uuid",
+            "title": "Parse Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "stage": {
+            "default": "index",
+            "enum": [
+              "ready",
+              "index",
+              "knowledge"
+            ],
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "document_id",
+          "parse_id",
+          "filename",
+          "index_status"
+        ],
+        "title": "KnowledgeIndexDocumentResponse",
+        "type": "object"
+      },
+      "KnowledgeIndexRepairDocument": {
+        "properties": {
+          "document_id": {
+            "format": "uuid",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "knowledge_base_id": {
+            "format": "uuid",
+            "title": "Knowledge Base Id",
+            "type": "string"
+          },
+          "parse_id": {
+            "format": "uuid",
+            "title": "Parse Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_base_id",
+          "document_id",
+          "parse_id"
+        ],
+        "title": "KnowledgeIndexRepairDocument",
+        "type": "object"
+      },
+      "KnowledgeIndexRepairRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeIndexRepairDocument"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Documents",
+            "type": "array"
+          },
+          "purpose": {
+            "default": "search",
+            "enum": [
+              "search",
+              "graph"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "reference_knowledge_base_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Knowledge Base Id"
+          }
+        },
+        "required": [
+          "documents"
+        ],
+        "title": "KnowledgeIndexRepairRequest",
+        "type": "object"
+      },
+      "KnowledgeIndexStatusResponse": {
+        "properties": {
+          "embedding_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding Model"
+          },
+          "failed_count": {
+            "title": "Failed Count",
+            "type": "integer"
+          },
+          "missing_count": {
+            "title": "Missing Count",
+            "type": "integer"
+          },
+          "missing_documents": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeIndexDocumentResponse"
+            },
+            "title": "Missing Documents",
+            "type": "array"
+          },
+          "processing_count": {
+            "title": "Processing Count",
+            "type": "integer"
+          },
+          "purpose": {
+            "default": "search",
+            "enum": [
+              "search",
+              "graph"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "ready_count": {
+            "title": "Ready Count",
+            "type": "integer"
+          },
+          "ready_document_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Ready Document Ids",
+            "type": "array"
+          },
+          "ready_documents": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeIndexDocumentResponse"
+            },
+            "title": "Ready Documents",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "ready",
+              "missing_index",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "state",
+          "embedding_model",
+          "total_count",
+          "ready_count",
+          "missing_count",
+          "processing_count",
+          "failed_count",
+          "ready_document_ids",
+          "ready_documents",
+          "missing_documents"
+        ],
+        "title": "KnowledgeIndexStatusResponse",
         "type": "object"
       },
       "KnowledgeRelationPageResponse": {
@@ -9715,6 +10459,29 @@
         "title": "PasswordResetLinkResponse",
         "type": "object"
       },
+      "PersonalGraphCoverage": {
+        "properties": {
+          "excluded_count": {
+            "title": "Excluded Count",
+            "type": "integer"
+          },
+          "included_count": {
+            "title": "Included Count",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "included_count",
+          "total_count",
+          "excluded_count"
+        ],
+        "title": "PersonalGraphCoverage",
+        "type": "object"
+      },
       "PersonalGraphEdge": {
         "properties": {
           "direction": {
@@ -9787,6 +10554,24 @@
         "title": "PersonalGraphNode",
         "type": "object"
       },
+      "PersonalGraphRefreshRequest": {
+        "properties": {
+          "knowledge_index_action": {
+            "anyOf": [
+              {
+                "const": "skip_missing",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Index Action"
+          }
+        },
+        "title": "PersonalGraphRefreshRequest",
+        "type": "object"
+      },
       "PersonalGraphResponse": {
         "properties": {
           "avatar_id": {
@@ -9796,6 +10581,16 @@
           "color": {
             "title": "Color",
             "type": "string"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PersonalGraphCoverage"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "document_count": {
             "title": "Document Count",
@@ -9807,6 +10602,16 @@
             },
             "title": "Edges",
             "type": "array"
+          },
+          "knowledge_index_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeIndexStatusResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "mode": {
             "enum": [
@@ -10755,6 +11560,79 @@
           }
         },
         "title": "Questionnaire",
+        "type": "object"
+      },
+      "RecentConversationContextResponse": {
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "kind": {
+            "const": "user_excerpt",
+            "title": "Kind",
+            "type": "string"
+          },
+          "recent_excerpts": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationExcerptResponse"
+            },
+            "title": "Recent Excerpts",
+            "type": "array"
+          },
+          "source_message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Message Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "title",
+          "updated_at",
+          "kind",
+          "excerpt",
+          "source_message_id",
+          "recent_excerpts"
+        ],
+        "title": "RecentConversationContextResponse",
+        "type": "object"
+      },
+      "RecentConversationContextsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecentConversationContextResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RecentConversationContextsResponse",
         "type": "object"
       },
       "RegisterSessionRequest": {
@@ -16671,6 +17549,47 @@
         "title": "UpdateSharedKnowledgeRequest",
         "type": "object"
       },
+      "UserAvatar": {
+        "additionalProperties": false,
+        "properties": {
+          "blush": {
+            "title": "Blush",
+            "type": "boolean"
+          },
+          "hair": {
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Hair",
+            "type": "string"
+          },
+          "id": {
+            "enum": [
+              "xiaoping",
+              "mo",
+              "silver",
+              "sand",
+              "cat",
+              "hime"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "skin": {
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Skin",
+            "type": "string"
+          },
+          "sleeve": {
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Sleeve",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "UserAvatar",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -17027,6 +17946,30 @@
             "title": "Revision Id",
             "type": "string"
           },
+          "selection_end": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection End"
+          },
+          "selection_start": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Start"
+          },
           "status": {
             "enum": [
               "pending",
@@ -17100,6 +18043,65 @@
           "items"
         ],
         "title": "WritingSampleList",
+        "type": "object"
+      },
+      "WritingSamplePreview": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WritingSamplePreviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "warnings"
+        ],
+        "title": "WritingSamplePreview",
+        "type": "object"
+      },
+      "WritingSamplePreviewItem": {
+        "properties": {
+          "character_count": {
+            "title": "Character Count",
+            "type": "integer"
+          },
+          "excluded_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded Reason"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "text",
+          "character_count",
+          "excluded_reason"
+        ],
+        "title": "WritingSamplePreviewItem",
         "type": "object"
       },
       "WritingSampleResponse": {
@@ -18705,6 +19707,57 @@
         ]
       }
     },
+    "/api/agent/context-summary": {
+      "get": {
+        "operationId": "read_conversation_summary",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Read Conversation Summary",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
     "/api/agent/conversations": {
       "get": {
         "operationId": "list_agent_conversations",
@@ -19195,6 +20248,164 @@
         ]
       }
     },
+    "/api/agent/knowledge-index-repairs": {
+      "post": {
+        "operationId": "repair_agent_knowledge_index",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeIndexRepairRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Repair Agent Knowledge Index",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/knowledge-index-status": {
+      "get": {
+        "operationId": "get_agent_knowledge_index_status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "reference_knowledge_base_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reference Knowledge Base Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "purpose",
+            "required": false,
+            "schema": {
+              "default": "search",
+              "enum": [
+                "search",
+                "graph"
+              ],
+              "title": "Purpose",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Get Agent Knowledge Index Status",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
     "/api/agent/material-context": {
       "post": {
         "operationId": "prepare_agent_material_context",
@@ -19396,6 +20607,57 @@
         ]
       }
     },
+    "/api/agent/recent-context": {
+      "get": {
+        "operationId": "list_recent_conversation_context",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentConversationContextsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "List Recent Conversation Context",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
     "/api/agent/research-start-proposals/{proposal_id}/confirm": {
       "post": {
         "operationId": "confirm_agent_research_start",
@@ -19550,6 +20812,80 @@
           }
         },
         "summary": "Lookup Agent Run",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/agent/runs/{run_id}/events": {
+      "get": {
+        "operationId": "subscribe_agent_run_events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Subscribe Agent Run Events",
         "tags": [
           "agent"
         ]
@@ -23730,6 +25066,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PersonalGraphRefreshRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -23740,6 +25093,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexChoiceResponse"
+                }
+              }
+            },
+            "description": "Conflict"
           },
           "422": {
             "content": {
@@ -31022,6 +32385,47 @@
           }
         },
         "summary": "Create Sample",
+        "tags": [
+          "writing"
+        ]
+      }
+    },
+    "/api/writing/samples/preview": {
+      "post": {
+        "operationId": "preview_writing_samples",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_preview_writing_samples"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritingSamplePreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Samples",
         "tags": [
           "writing"
         ]

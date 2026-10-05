@@ -1,15 +1,46 @@
+export { siteIconUrl } from '../ui/siteIconUrl'
 import type { SharedDocument } from '../../modules/shared-knowledge'
 
-export function documentKind(document: SharedDocument) {
+export type WebMaterialSource = { url?: string | null; title?: string | null }
+
+export function webSourceUrl(source?: WebMaterialSource) {
+  try {
+    const url = new URL(source?.url ?? '')
+    if (/^https?:$/.test(url.protocol) && !url.username && !url.password) return url
+  } catch { /* Invalid source metadata stays a normal document. */ }
+  return null
+}
+
+export function documentKind(document: SharedDocument, source?: WebMaterialSource) {
   const extension = document.filename.split('.').pop()?.toLocaleLowerCase()
   if (extension === 'pdf' || document.mediaType === 'application/pdf') return 'PDF'
   if (extension === 'docx') return 'Word'
   if (extension === 'pptx') return '演示文稿'
   if (document.mediaType?.startsWith('image/')) return '图片'
+  if (webSourceUrl(source)) return '网页'
   if (extension === 'html' || extension === 'htm') return '网页'
   return '笔记'
 }
 
 export function isProcessing(document: SharedDocument) {
   return document.status === 'processing' || (document.status === 'ready' && [document.knowledgeStatus, document.indexStatus].some(status => status === 'queued' || status === 'running'))
+}
+
+const genericBookmarkTitle = /^(?:bookmark(?:[-_]\d+)?|网页收藏|untitled)(?:\.(?:md|markdown|html?))?$/i
+
+function meaningfulWebTitle(value?: string | null) {
+  const title = value?.trim()
+  if (!title || genericBookmarkTitle.test(title) || /^(?:new tab|new page|新标签页|新建标签页|新分頁|新分页|无标题|未命名|about:blank)$/i.test(title)) return undefined
+  if (/^(?:https?:\/\/\S+|www\.\S+|(?:[a-z\d-]+\.)+[a-z]{2,}(?:[/:?#]\S*)?)$/i.test(title)) return undefined
+  return title
+}
+
+export function documentTitle(document: SharedDocument, source?: WebMaterialSource) {
+  if (!webSourceUrl(source) || !genericBookmarkTitle.test(document.filename.trim())) return document.filename
+  const title = meaningfulWebTitle(source?.title)
+  if (title) return title
+  const topic = document.knowledge?.topics.map(item => meaningfulWebTitle(item.title)).find(Boolean)
+  if (topic) return topic
+  const summary = document.knowledge?.summary?.trim().split(/[。！？\n]/)[0]?.replace(/^[#*\s]+/, '').trim()
+  return meaningfulWebTitle(summary)?.slice(0, 80) || webSourceUrl(source)!.hostname.replace(/^www\./, '')
 }

@@ -4,9 +4,34 @@ from uuid import UUID, uuid4
 
 import pytest
 from test_research_material_api import _authenticate
-from test_shared_knowledge_api import create_library, mutation, upload
+from test_shared_knowledge_api import create_library, mutation
+from test_shared_knowledge_api import upload as upload_unindexed
 
 from qunxue_api.modules.agent_conversation import AgentRunResult
+
+
+def upload(client, *args, **kwargs):
+    """These source-bound tests explicitly start from completed import indexes."""
+    from types import SimpleNamespace
+
+    from qunxue_api.adapters.sqlite.shared_knowledge import SharedDocumentRow
+
+    doc = upload_unindexed(client, *args, **kwargs)
+    retriever = client.app.state.knowledge_retriever
+    if retriever is None:
+        retriever = SimpleNamespace()
+        client.app.state.knowledge_retriever = retriever
+    retriever._embedding_model = "existing-model"
+    with client.app.state.shared_knowledge_scope() as app:
+        row = app.repository.session.get(SharedDocumentRow, doc["id"])
+        row.vectors = {
+            "existing-model": {
+                f"material:{row.id}:{segment['segment_id']}": [1.0, 0.0] for segment in row.segments
+            }
+        }
+        row.index_status = "ready"
+        app.repository.commit()
+    return doc
 
 
 class InspectingRunner:
@@ -14,6 +39,12 @@ class InspectingRunner:
         self.inputs = []
 
     def run(self, *, prompt, conversation, tools):
+        if (
+            prompt != "你好"
+            and getattr(tools, "private_knowledge", None) is not None
+            and getattr(tools, "shared_reference_context", None) is None
+        ):
+            tools.search_knowledge(prompt)
         self.inputs.append((conversation, getattr(tools, "shared_reference_context", None)))
         citations = tuple(tools.evidence.values())
         return AgentRunResult(
@@ -184,9 +215,9 @@ def test_removed_document_is_not_replayed_as_model_history(client):
             idempotency_key=str(uuid4()),
         )
     assert "QX-A17" not in str(runner.inputs[-1])
-    restored = client.get(
-        f"/api/agent/conversations/{first.conversation.conversation_id}"
-    ).json()["turns"][0]["assistant"]
+    restored = client.get(f"/api/agent/conversations/{first.conversation.conversation_id}").json()[
+        "turns"
+    ][0]["assistant"]
     assert "QX-A17" not in restored["content"]
     assert restored["citations"][0]["deleted"] is True
 

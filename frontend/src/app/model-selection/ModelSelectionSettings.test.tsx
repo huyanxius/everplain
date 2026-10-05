@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { ModelSelectionSettings } from './ModelSelectionSettings'
 import type { AgentModelSelectionState } from './useAgentModelSelection'
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers() })
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals() })
 const state = (): AgentModelSelectionState => ({
   owner: 'owner', status: 'ready', runtimeMode: 'base',
   catalog: [{ id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoningEfforts: ['low', 'medium', 'high'], defaultReasoningEffort: 'medium' }],
@@ -20,8 +20,8 @@ it('shows the real model and effort summary and opens the reference radio list a
   expect(screen.queryByRole('slider')).not.toBeInTheDocument()
   fireEvent.click(summary)
   expect(screen.getByRole('dialog')).toHaveStyle({ width: '300px' })
-  expect(screen.getByRole('radiogroup', { name: '模型' })).toBeVisible()
-  expect(screen.getByRole('radio', { name: 'GPT 6 Luna' })).toHaveFocus()
+  expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '选择模型：GPT 6 Luna · 中' })).toHaveFocus()
   expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   const slider = screen.getByRole('slider', { name: '思考强度' })
   expect(slider).toBeVisible()
@@ -43,7 +43,7 @@ it('dismisses on an outside pointer and can be reopened and toggled repeatedly',
   expect(summary).toHaveAttribute('aria-expanded', 'false')
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   fireEvent.click(summary)
-  expect(screen.getByRole('radio')).toHaveAttribute('aria-checked', 'true')
+  expect(screen.getByRole('button', { name: '选择模型：GPT 6 Luna · 中' })).toHaveFocus()
   fireEvent.click(summary)
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
@@ -94,7 +94,8 @@ it('locks controls to the active request instead of displaying the next-turn pre
   fireEvent.click(screen.getByRole('button', { name: /GPT 6 Luna · 低/ }))
   expect(screen.getByRole('slider')).toHaveAttribute('aria-valuenow', '0')
   expect(screen.getByRole('slider')).toHaveAttribute('aria-disabled', 'true')
-  expect(screen.getByRole('radio')).toBeDisabled()
+  expect(screen.getByRole('radio', { hidden: true })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '选择模型：GPT 6 Luna · 低' })).toBeDisabled()
   fireEvent.keyDown(screen.getByRole('slider'), { key: 'End' })
   fireEvent.click(screen.getByRole('button', { name: '高' }))
   expect(selection.onChange).not.toHaveBeenCalled()
@@ -145,4 +146,69 @@ it('retains the native popover through exit and cancels removal when reopened', 
   expect(panel).not.toBeInTheDocument()
   expect(hide).toHaveBeenCalledOnce()
   expect(trigger).toHaveFocus()
+})
+
+
+it.each([null, undefined])('locks a resumed no-effort model with %s effort to the original turn', reasoning_effort => {
+  const selection = state()
+  selection.catalog = [...selection.catalog, { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', reasoningEfforts: [], defaultReasoningEffort: null }]
+  const view = render(<ModelSelectionSettings state={selection} disabled activeRequest={{ message: '继续', model_id: 'gemini-3.5-flash', reasoning_effort }} />)
+  const summary = screen.getByRole('button', { name: '模型与思考强度：Gemini 3.5 Flash' })
+  expect(summary.querySelector('.model-selection-settings__summary-effort')).toBeNull()
+  fireEvent.click(summary)
+  expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+  const radios = screen.getAllByRole('radio', { hidden: true })
+  expect(radios.find(element => element.textContent?.trim() === 'Gemini 3.5 Flash')).toHaveAttribute('aria-checked', 'true')
+  expect(radios.find(element => element.textContent?.trim() === 'Gemini 3.5 Flash')).toBeDisabled()
+  fireEvent.click(radios.find(element => element.textContent?.trim() === 'GPT 6 Luna')!)
+  expect(selection.onChange).not.toHaveBeenCalled()
+  view.rerender(<ModelSelectionSettings state={selection} disabled={false} />)
+  expect(screen.getByRole('button', { name: '模型与思考强度：GPT 6 Luna · 中' })).toBeVisible()
+})
+
+
+it('handles Escape one layer at a time and keeps focus on the active controls', () => {
+  render(<ModelSelectionSettings state={state()} disabled={false} />)
+  const trigger = screen.getByRole('button', { name: '模型与思考强度：GPT 6 Luna · 中' })
+  fireEvent.click(trigger)
+  const top = screen.getByRole('button', { name: '选择模型：GPT 6 Luna · 中' })
+  expect(top).toHaveFocus()
+  fireEvent.click(top)
+  const current = screen.getByRole('radio', { name: 'GPT 6 Luna' })
+  expect(current).toHaveFocus()
+  fireEvent.keyDown(current, { key: 'Escape' })
+  expect(screen.getByRole('dialog')).toBeInTheDocument()
+  expect(screen.queryByRole('radio')).not.toBeInTheDocument()
+  expect(top).toHaveFocus()
+  fireEvent.keyDown(top, { key: 'Escape' })
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(trigger).toHaveFocus()
+})
+
+it('returns model selection to the summary on reopening during retained exit', () => {
+  vi.useFakeTimers()
+  render(<ModelSelectionSettings state={state()} disabled={false} />)
+  const trigger = screen.getByRole('button', { name: '模型与思考强度：GPT 6 Luna · 中' })
+  fireEvent.click(trigger)
+  const panel = screen.getByRole('dialog')
+  panel.style.transitionProperty = 'opacity, transform'
+  panel.style.transitionDuration = '0.14s'
+  panel.style.transitionDelay = '0s'
+  fireEvent.click(screen.getByRole('button', { name: '选择模型：GPT 6 Luna · 中' }))
+  expect(screen.getByRole('radio')).toHaveFocus()
+  fireEvent.pointerDown(document.body)
+  expect(panel).toHaveAttribute('data-presence', 'closing')
+  fireEvent.click(trigger)
+  expect(screen.getByRole('dialog')).toBe(panel)
+  expect(screen.queryByRole('radio')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '选择模型：GPT 6 Luna · 中' })).toHaveFocus()
+  act(() => vi.advanceTimersByTime(500))
+  expect(panel).toBeInTheDocument()
+})
+
+it('focuses the dialog instead of an inactive back button when the running controls are disabled', () => {
+  render(<ModelSelectionSettings state={state()} disabled activeRequest={{ message: '继续', model_id: 'gpt-6-luna', reasoning_effort: 'low' }} />)
+  fireEvent.click(screen.getByRole('button', { name: '模型与思考强度：GPT 6 Luna · 低' }))
+  expect(screen.getByRole('dialog')).toHaveFocus()
+  expect(screen.queryByRole('radio')).not.toBeInTheDocument()
 })

@@ -25,6 +25,7 @@ class AgentProfileRow(Base):
     memory_ids: Mapped[dict] = mapped_column(JSON)
     version: Mapped[int] = mapped_column(Integer)
     soul_text: Mapped[str] = mapped_column(Text, default="", server_default="")
+    user_avatar: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
 
 
 class SqliteAgentProfileRepository:

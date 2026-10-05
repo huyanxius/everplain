@@ -4,6 +4,9 @@ import hashlib
 import json
 from contextvars import ContextVar
 
+from pydantic_ai.exceptions import UnexpectedModelBehavior
+
+from qunxue_api.adapters.model.dispatch import attach_dispatch, response_dispatch_hook
 from qunxue_api.adapters.model.routing import current_model_route_scope
 from qunxue_api.adapters.model.token_usage import (
     ResponsesUsageSnapshot,
@@ -136,7 +139,8 @@ def _assert_responses_text_budget(payload):
 
 class OperationScope:
     def __init__(self, runtime, *, user_id, run_id, fingerprint, exempt=False,
-                 before_network=None, resume=False, settlement_connection=None):
+                 before_network=None, resume=False, settlement_connection=None, quota_start=True,
+                 billing_policy=None):
         self.runtime = runtime
         self.run_id = str(run_id)
         self.user_id = str(user_id)
@@ -147,6 +151,13 @@ class OperationScope:
         self.resume = resume
         self.settlement_connection = settlement_connection
         self.response_attempts = {}
+        self.quota_start = quota_start
+        self.billing_policy = billing_policy
+        self.independent_delivery = False
+        self.output_finish_reason = "complete"
+        self.receipt_persistence = "saved"
+        self.unsaved_receipts = {}
+        self.observed_usage = {}
 
     def __enter__(self):
         self.runtime.start(
@@ -155,20 +166,77 @@ class OperationScope:
             fingerprint=self.fingerprint,
             exempt=self.exempt,
             **({"resume": True} if self.resume else {}),
+            **({"quota_start": False} if not self.quota_start else {}),
+            **({"billing_policy": self.billing_policy} if self.billing_policy else {}),
+        )
+        self.independent_delivery = bool(
+            getattr(self.runtime, "uses_independent_delivery", lambda _run: False)(self.run_id)
         )
         self.token = _current_operation.set(self)
         self.last_token = _last_attempt.set(None)
         return self
 
+    @property
+    def delivery_state(self):
+        try:
+            state = getattr(self.runtime, "delivery_state", lambda _run: {
+                "usage_status": "pending", "settlement_status": "pending",
+                "quota_exhausted": False,
+            })(self.run_id)
+        except Exception:
+            if not self.independent_delivery:
+                raise
+            self.receipt_persistence = "unsaved"
+            state = {"usage_status": "pending", "settlement_status": "pending",
+                     "quota_exhausted": False}
+        if self.receipt_persistence == "unsaved":
+            state = {**state, "settlement_status": "pending"}
+            if self.observed_usage:
+                state["usage_status"] = (
+                    "known" if all(self.observed_usage.values()) else "pending"
+                )
+        return {**state, "output_finish_reason": self.output_finish_reason,
+                "receipt_persistence": self.receipt_persistence}
+
+    def _record_attempt(self, **record):
+        self.observed_usage[record["attempt_id"]] = bool(
+            record.get("usage_known", True) and record.get("input_tokens") is not None
+            and record.get("output_tokens") is not None
+        )
+        try:
+            self.runtime.complete_attempt(**record)
+        except Exception:
+            if not self.independent_delivery:
+                raise
+            # Retry only this receipt, not provider HTTP or account payment.
+            try:
+                self.runtime.complete_attempt(**{
+                    **record, "defer_settlement": True,
+                    "failure_code": record.get("failure_code") or "settlement_pending",
+                })
+            except Exception:
+                # This is explicitly volatile evidence, never a second ledger.
+                # The caller must show unsaved status while retaining body.
+                self.receipt_persistence = "unsaved"
+                self.unsaved_receipts[record["attempt_id"]] = record
+
     def finish(self, outcome, *, connection=None):
         if connection is None and outcome in {"success", "paused"} and self.settlement_connection:
             connection = self.settlement_connection()
-        settled = self.runtime.finish(
-            run_id=self.run_id, outcome=outcome,
-            **({"connection": connection} if connection is not None else {}),
-        )
+        try:
+            settled = self.runtime.finish(
+                run_id=self.run_id, outcome=outcome,
+                **({"connection": connection} if connection is not None else {}),
+            )
+        except Exception:
+            if not self.independent_delivery:
+                raise
+            self.receipt_persistence = "unsaved"
+            settled = None
         self.finished = True
-        if outcome in {"success", "paused"} and settled in {"error", "cancelled", "refunded"}:
+        if not self.independent_delivery and outcome in {"success", "paused"} and settled in {
+            "error", "cancelled", "refunded"
+        }:
             raise ModelDeliveryRejected("billing operation failed delivery checks")
 
     def __exit__(self, exc_type, exc, tb):
@@ -192,7 +260,9 @@ class OperationScope:
             )
         )
         if type(output_limit) is not int or output_limit <= 0:
-            raise BillingContextMissing("a finite provider output token cap is required")
+            if not self.independent_delivery:
+                raise BillingContextMissing("a finite provider output token cap is required")
+            output_limit = -1  # Unspecified provider capacity, not a fabricated token cap.
         if payload.get("web_search_options") or any(
             tool.get("type") != "function" for tool in payload.get("tools", ())
         ):
@@ -226,7 +296,8 @@ class OperationScope:
         return attempt
 
     def complete(
-        self, attempt_id, response=None, *, outcome="error", failure_code=None, finish_reason=None
+        self, attempt_id, response=None, *, outcome="error", failure_code=None, finish_reason=None,
+        usage_known=True,
     ):
         counts = {}
         raw = getattr(response, "usage", None)
@@ -242,21 +313,41 @@ class OperationScope:
         )
         if receipt:
             self.response_attempts[receipt] = attempt_id
-        if raw is not None:
+        choices = (
+            response.get("choices", ())
+            if isinstance(response, dict)
+            else getattr(response, "choices", ())
+        )
+        reasons = [
+            c.get("finish_reason") if isinstance(c, dict) else getattr(c, "finish_reason", None)
+            for c in choices
+        ]
+        if finish_reason is not None:
+            reasons = [finish_reason]
+        self.output_finish_reason = (
+            "truncated" if any(r in {"length", "max_output_tokens"} for r in reasons)
+            else "rejected" if "content_filter" in reasons
+            else "upstream_error" if outcome == "error"
+            else "complete"
+        )
+        if raw is not None and usage_known:
             try:
                 self.runtime.assert_usage_contract(attempt_id, raw)
                 usage = normalized_usage(raw)
             except UnknownTokenUsage:
-                self.runtime.complete_attempt(
+                self._record_attempt(
                     attempt_id=attempt_id,
                     returned_model=returned,
                     provider_response_id=receipt,
                     outcome="error",
                     failure_code="invalid_token_usage",
+                    finish_reason=reasons[0] if reasons else None,
                     usage_known=False,
                     raw_usage_json=json.dumps(_safe_usage_evidence(raw), sort_keys=True),
                 )
-                raise
+                if not self.independent_delivery:
+                    raise
+                return
             counts = dict(
                 reasoning_tokens=usage.details.get("reasoning_tokens", 0),
                 raw_usage_json=json.dumps(
@@ -274,24 +365,15 @@ class OperationScope:
                 cache_read_tokens=usage.cache_read_tokens,
                 cache_write_tokens=usage.cache_write_tokens,
             )
-        choices = (
-            response.get("choices", ())
-            if isinstance(response, dict)
-            else getattr(response, "choices", ())
-        )
-        reasons = [
-            c.get("finish_reason") if isinstance(c, dict) else getattr(c, "finish_reason", None)
-            for c in choices
-        ]
-        if finish_reason is not None:
-            reasons = [finish_reason]
         rejected = outcome == "success" and any(r in {"length", "content_filter"} for r in reasons)
         if rejected:
             outcome = "limited" if "length" in reasons else "rejected"
         missing_usage = outcome == "success" and not counts
         if missing_usage:
-            outcome, failure_code = "error", "missing_token_usage"
-        self.runtime.complete_attempt(
+            failure_code = failure_code or "missing_token_usage"
+            if not self.independent_delivery:
+                outcome = "error"
+        record = dict(
             attempt_id=attempt_id,
             returned_model=returned,
             provider_response_id=receipt,
@@ -301,18 +383,22 @@ class OperationScope:
             returned_service_tier=response.get("service_tier")
             if isinstance(response, dict)
             else getattr(response, "service_tier", None),
+            usage_known=bool(counts),
+            raw_usage_json=json.dumps(_safe_usage_evidence(raw), sort_keys=True) if not counts
+            else counts.pop("raw_usage_json"),
             **counts,
         )
-        if rejected:
+        self._record_attempt(**record)
+        if rejected and not self.independent_delivery:
             raise ModelDeliveryRejected("model output was limited or refused")
-        if missing_usage:
+        if missing_usage and not self.independent_delivery:
             raise UnknownTokenUsage("paid response has no usage")
 
 
 class _MeteredStream:
     def __init__(self, source, scope, attempt, continuous=False):
         self.source, self.scope, self.attempt = source, scope, attempt
-        self.snapshots = UsageSnapshot(continuous)
+        self.snapshots = UsageSnapshot(continuous, tolerate=scope.independent_delivery)
         self.done = False
 
     async def __aenter__(self):
@@ -335,8 +421,10 @@ class _MeteredStream:
             self.done = True
             self.scope.complete(
                 self.attempt,
-                self.snapshots.final_response,
+                self.snapshots.final_response or self.snapshots.receipt,
                 outcome="success",
+                usage_known=(not self.scope.independent_delivery or
+                             self.snapshots.final is not None),
                 finish_reason=self.snapshots.finish_reason,
             )
         except BaseException:
@@ -344,8 +432,10 @@ class _MeteredStream:
                 self.done = True
                 self.scope.complete(
                     self.attempt,
-                    self.snapshots.final_response,
+                    self.snapshots.final_response or self.snapshots.receipt,
                     outcome="error",
+                    usage_known=(not self.scope.independent_delivery or
+                             self.snapshots.final is not None),
                     failure_code="stream_incomplete",
                     finish_reason=self.snapshots.finish_reason,
                 )
@@ -359,14 +449,16 @@ class _MeteredStream:
                 self.done = True
                 self.scope.complete(
                     self.attempt,
-                    self.snapshots.final_response,
+                    self.snapshots.final_response or self.snapshots.receipt,
                     outcome="error",
+                    usage_known=(not self.scope.independent_delivery or
+                             self.snapshots.final is not None),
                     failure_code="stream_cancelled",
                     finish_reason=self.snapshots.finish_reason,
                 )
 
 
-def _complete_responses(scope, attempt, response, *, finish_reason=None):
+def _complete_responses(scope, attempt, response, *, finish_reason=None, usage_known=True):
     status = response_value(response, "status")
     reason = finish_reason or responses_finish_reason(response)
     success = status == "completed" and reason == "completed"
@@ -378,15 +470,18 @@ def _complete_responses(scope, attempt, response, *, finish_reason=None):
         outcome="success" if success else "limited" if reason == "max_output_tokens" else "error",
         failure_code=None if success else f"response_{status or 'missing_status'}",
         finish_reason=reason,
+        usage_known=usage_known,
     )
-    if not success:
+    if not success and not scope.independent_delivery:
         raise ModelDeliveryRejected("Responses output was not completed")
+    if scope.independent_delivery and status in {"failed", "cancelled"}:
+        raise UnexpectedModelBehavior("Responses reported an upstream delivery failure")
 
 
 class _MeteredResponsesStream(_MeteredStream):
     def __init__(self, source, scope, attempt):
         super().__init__(source, scope, attempt)
-        self.snapshots = ResponsesUsageSnapshot()
+        self.snapshots = ResponsesUsageSnapshot(tolerate=scope.independent_delivery)
 
     def _fail(self, code):
         if not self.done:
@@ -396,6 +491,8 @@ class _MeteredResponsesStream(_MeteredStream):
                 self.snapshots.final_response or self.snapshots.receipt,
                 outcome="error",
                 failure_code=code,
+                usage_known=(not self.scope.independent_delivery or
+                             self.snapshots.final is not None),
                 finish_reason=self.snapshots.finish_reason,
             )
 
@@ -405,13 +502,18 @@ class _MeteredResponsesStream(_MeteredStream):
                 self.snapshots.accept(chunk)
                 yield chunk
             if self.snapshots.final_response is None:
-                raise UnknownTokenUsage("stream ended without terminal Responses usage")
+                if not self.scope.independent_delivery:
+                    raise UnknownTokenUsage("stream ended without terminal Responses usage")
+                self._fail("missing_terminal_response")
+                return
             self.done = True
             _complete_responses(
                 self.scope,
                 self.attempt,
                 self.snapshots.final_response,
                 finish_reason=self.snapshots.finish_reason,
+                usage_known=(not self.scope.independent_delivery or
+                             self.snapshots.final is not None),
             )
         except BaseException:
             self._fail("stream_incomplete")
@@ -428,13 +530,27 @@ async def _wire_hook(request):
     state = _wire_request.get()
     if state is None:
         return
-    payload = json.loads(request.content)
-    state["attempt"] = state["scope"].before_attempt_payload(
-        payload,
-        state["route"],
-        request.url.host,
-        api_type=state.get("api_type", "chat_completions"),
-    )
+    try:
+        if request.extensions.get("everplain_dispatch") is not None:
+            raise BillingContextMissing(
+                "metered redirect or auth resend requires a new explicit request"
+            )
+        payload = json.loads(request.content)
+        state["attempt"] = state["scope"].before_attempt_payload(
+            payload,
+            state["route"],
+            request.url.host,
+            api_type=state.get("api_type", "chat_completions"),
+        )
+        state["dispatch"] = attach_dispatch(
+            request, state["scope"].runtime, state["attempt"], state["client"]
+        )
+    except Exception as error:
+        # OpenAI wraps HTTP client hook exceptions as APIConnectionError. This
+        # guard ran locally before the network; preserve its actual failure so
+        # budget, configuration and lease errors keep their existing contracts.
+        state["local_error"] = error
+        raise
 
 
 class MeteredOpenAIChatModel(UsageSafeOpenAIChatModel):
@@ -444,6 +560,8 @@ class MeteredOpenAIChatModel(UsageSafeOpenAIChatModel):
         client = self.client._client
         if _wire_hook not in client.event_hooks["request"]:
             client.event_hooks["request"].append(_wire_hook)
+        if response_dispatch_hook not in client.event_hooks["response"]:
+            client.event_hooks["response"].append(response_dispatch_hook)
 
     async def _completions_create(self, messages, stream, model_settings, model_request_parameters):
         scope = _current_operation.get()
@@ -456,13 +574,21 @@ class MeteredOpenAIChatModel(UsageSafeOpenAIChatModel):
         if self.client.max_retries != 0:
             raise BillingContextMissing("SDK automatic retries must be disabled")
         _mark_validation_retry(scope, messages)
-        state = {"scope": scope, "attempt": None, "route": current_model_route_scope()}
+        state = {"scope": scope, "attempt": None, "route": current_model_route_scope(),
+                 "client": self.client._client}
         token = _wire_request.set(state)
         try:
             value = await super()._completions_create(
                 messages, stream, model_settings, model_request_parameters
             )
         except BaseException as error:
+            if state.get("dispatch") is not None:
+                state["dispatch"].finish_failed(error)
+            if state.get("local_error") is not None:
+                if state["attempt"] is not None:
+                    scope.complete(state["attempt"], outcome="error",
+                                   failure_code="local_guard_after_dispatch")
+                raise state["local_error"] from None
             if state["attempt"] is not None:
                 scope.complete(
                     state["attempt"],
@@ -495,6 +621,8 @@ class MeteredOpenAIResponsesModel(UsageSafeOpenAIResponsesModel):
         client = self.client._client
         if _wire_hook not in client.event_hooks["request"]:
             client.event_hooks["request"].append(_wire_hook)
+        if response_dispatch_hook not in client.event_hooks["response"]:
+            client.event_hooks["response"].append(response_dispatch_hook)
 
     async def _responses_compact(self, *args, **kwargs):
         if self.require_billing or _current_operation.get() is not None:
@@ -519,6 +647,7 @@ class MeteredOpenAIResponsesModel(UsageSafeOpenAIResponsesModel):
             "attempt": None,
             "route": current_model_route_scope(),
             "api_type": "responses",
+            "client": self.client._client,
         }
         token = _wire_request.set(state)
         try:
@@ -526,6 +655,13 @@ class MeteredOpenAIResponsesModel(UsageSafeOpenAIResponsesModel):
                 messages, stream, model_settings, model_request_parameters
             )
         except BaseException as error:
+            if state.get("dispatch") is not None:
+                state["dispatch"].finish_failed(error)
+            if state.get("local_error") is not None:
+                if state["attempt"] is not None:
+                    scope.complete(state["attempt"], outcome="error",
+                                   failure_code="local_guard_after_dispatch")
+                raise state["local_error"] from None
             if state["attempt"] is not None:
                 scope.complete(
                     state["attempt"],

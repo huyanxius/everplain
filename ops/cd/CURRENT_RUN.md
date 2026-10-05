@@ -64,6 +64,15 @@ local/public health and entrypoint-byte checks are retained. A schema/storage-tr
 change requires the existing reviewed compatibility allowlist; unchanged schema
 passes without an extra migration authorization shortcut.
 
+An exact `reviewed_forward_only_migration_transitions` entry may authorize this
+route's maintenance transition when old application writes are incompatible.
+Only this updater consumes it; the rollback-capable controller rejects it. Its
+candidate-start retention boundary remains mandatory. The quota 0600 transition
+and synthetic two-version evidence are reviewed in [QUOTA_0600_REVIEW.md](QUOTA_0600_REVIEW.md).
+This is not permission to restart the old application on a used candidate DB.
+The exact 0600-to-0610 transition uses the same forward-only boundary; its
+old-writer and pricing-policy evidence is in [JOURNAL_0610_REVIEW.md](JOURNAL_0610_REVIEW.md).
+
 Failures before candidate API start restore the untouched old containers/data.
 After candidate API start, accepted/background writes are retained; the existing
 conservative forward-stop behavior remains. This is not a claim of completed

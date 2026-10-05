@@ -10,6 +10,9 @@ export {
 } from './researchAgentGateway'
 export type {
   AgentCitation,
+  AgentOutputAttempt,
+  AgentDeliveryState,
+  AgentStreamResume,
   AgentConversation,
   AgentConversationSummary,
   AgentTurnRequest,
@@ -56,3 +59,12 @@ export { citationGroup, parseCitationText } from './citationPresentation'
 
 export { getAgentModelCatalog } from './researchAgentGateway'
 export type { AgentModelCatalog, AgentReasoningEffort } from './model'
+
+export { listRecentConversationContext } from './researchAgentGateway'
+export type { RecentConversationContext } from './model'
+export { getConversationContextSummary } from './researchAgentGateway'
+export type { ConversationContextSummary, ConversationContextSuggestion, ConversationContextSource } from './model'
+
+export { readKnowledgeIndexStatus, repairKnowledgeIndex } from './researchAgentGateway'
+export { isKnowledgeIndexStatus } from './knowledgeIndexReadiness'
+export type { KnowledgeIndexStatus } from './model'

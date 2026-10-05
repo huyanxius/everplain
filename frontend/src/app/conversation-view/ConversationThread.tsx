@@ -5,6 +5,7 @@ import { citationGroup, displayAgentText } from '../../modules/research-agent'
 import { useAppLocale } from '../../i18n/AppLocaleProvider'
 import { AgentAnswerMarkdown } from '../agent/AgentAnswerMarkdown'
 import { useStreamPacer } from '../agent/useStreamPacer'
+import { CitationSiteIcon } from './CitationSiteIcon'
 import { ConversationThinking } from './ConversationThinking'
 import { flyBubble, takeLaunch } from './sendFlight'
 import { ConversationActivity } from './ConversationActivity'
@@ -41,7 +42,8 @@ export function ConversationTurn({ turn, agent, renderAvatar, onSelectCitation, 
   const bubble = useRef<HTMLDivElement>(null)
   const launchedWhileStreaming = useRef(turn.streaming)
   const cancelFlight = useRef<(() => void) | undefined>(undefined)
-  const pacer = useStreamPacer(turn.answer, Boolean(turn.streaming))
+  const paced = useStreamPacer(turn.liveText ? '' : turn.answer, Boolean(turn.streaming), Boolean(turn.interrupted || turn.failure))
+  const pacer = turn.liveText ? { visible: turn.answer, revealedAt: [], now: performance.now() } : paced
   useLayoutEffect(() => {
     const node = bubble.current
     if (!node || !launchedWhileStreaming.current) return
@@ -64,12 +66,18 @@ export function ConversationTurn({ turn, agent, renderAvatar, onSelectCitation, 
     ['web', text('公开网页', 'Public web')],
   ].flatMap(([group, label]) => { const count = turn.citations.filter(citation => !citation.deleted && citationGroup(citation) === group).length; return count ? [`${label} ${count}`] : [] })
   return <article style={{ '--agent-color': agent?.color ?? agentAvatarById[agent?.avatar ?? 'cheng'].color } as CSSProperties} className="cv-turn" data-turn-id={turn.id} data-streaming={turn.streaming || undefined}>
-    <div className="cv-turn__question" data-role="user-message"><div ref={bubble} className="qx-bubble">{turn.question}</div></div>
+    {turn.question && <div className="cv-turn__question" data-role="user-message"><div ref={bubble} className="qx-bubble">{turn.question}</div></div>}
     <div className="cv-turn__answer" data-role="assistant-response">
       <div className="cv-turn__avatar">{renderAvatar ? renderAvatar(avatarState, turn.id) : <AgentAvatar avatar={agent?.avatar ?? 'cheng'} color={agent?.color} size={32} state={avatarState} label={agent?.name ?? 'Everplain'} />}</div>
       <div className="cv-turn__body">
         <ConversationThinking turn={turn} />
         <ConversationActivity steps={steps} onOpen={onOpenActivity ? step => onOpenActivity(turn.id, step) : undefined} />
+        {turn.previousOutputs?.map(output => <details key={output.id} open className="cv-turn__previous-output">
+          <summary>{output.unsaved
+            ? text(`第 ${output.ordinal} 次生成的未保存原文`, `Unsaved output from attempt ${output.ordinal}`)
+            : text(`第 ${output.ordinal} 次生成的原文`, `Original output from attempt ${output.ordinal}`)}</summary>
+          <div className="qx-prose cv-turn__prose"><AgentAnswerMarkdown citations={[]} onSelectCitation={chooseCitation}>{output.answer}</AgentAnswerMarkdown></div>
+        </details>)}
         {pacer.visible ? <div className="qx-prose cv-turn__prose">
           {progressEnd ? <AgentAnswerMarkdown citations={turn.citations} onSelectCitation={chooseCitation} progress reveal={pacer}>{pacer.visible.slice(0, progressEnd)}</AgentAnswerMarkdown> : null}
           <AgentAnswerMarkdown citations={turn.citations} onSelectCitation={chooseCitation} reveal={{ now: pacer.now, revealedAt: pacer.revealedAt.slice(progressEnd) }}>{pacer.visible.slice(progressEnd)}</AgentAnswerMarkdown>
@@ -80,7 +88,7 @@ export function ConversationTurn({ turn, agent, renderAvatar, onSelectCitation, 
         {turn.failure && turn.onRegenerate ? <div className="cv-turn__actions"><button className="qx-btn qx-btn--ghost" type="button" disabled={turn.actionsDisabled} onClick={turn.onRegenerate}><ArrowClockwiseIcon />{text('重试本轮', 'Retry this turn')}</button></div> : null}
         {turn.provenance ? <p className="cv-turn__provenance"><WarningCircleIcon />{turn.provenance}</p> : null}
         {sources.length ? <p className="cv-visually-hidden" role="status" aria-label={text('本轮证据来源', 'Evidence sources for this answer')}>{text('本轮引用', 'Cited this turn')} · {sources.join(' · ')}</p> : null}
-        {turn.citations.length ? <div className="cv-turn__sources" aria-label={text('回答证据', 'Answer evidence')}>{turn.citations.map((citation, index) => <button className="qx-tag qx-tag--outline" type="button" key={citation.citation_id} aria-label={text(`查看证据：${citation.label}`, `View evidence: ${citation.label}`)} onClick={() => chooseCitation(citation)}><span className="cv-source-number">{index + 1}</span><span className="cv-source-label">{citation.label}</span>{citation.deleted ? <span className="cv-visually-hidden">{text('已删除', 'Deleted')}</span> : null}</button>)}</div> : null}
+        {turn.citations.length ? <div className="cv-turn__sources" aria-label={text('回答证据', 'Answer evidence')}>{turn.citations.map((citation, index) => <button className="qx-tag qx-tag--outline" type="button" key={citation.citation_id} aria-label={text(`查看证据：${citation.label}`, `View evidence: ${citation.label}`)} onClick={() => chooseCitation(citation)}><span className="cv-source-number">{index + 1}</span><CitationSiteIcon citation={citation} /><span className="cv-source-label">{citation.label}</span>{citation.deleted ? <span className="cv-visually-hidden">{text('已删除', 'Deleted')}</span> : null}</button>)}</div> : null}
         {turn.handoffs?.map(handoff => <ConversationHandoffCard key={handoff.id} handoff={handoff} />)}
         <TurnActions turn={turn} />
       </div>

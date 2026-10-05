@@ -156,10 +156,23 @@ class Planner(Runner):
         )
 
 
+class HistoricalSnapshotBillingOperations(SqliteBillingOperations):
+    """Explicit pre-v2 snapshots test historical refund/atomicity contracts.
+
+    Current default Agent v2 + real Free30 are covered independently by
+    test_agent_v2_delivery_policy. This does not change the product factory.
+    """
+
+    def open(self, **kwargs):
+        scope = super().open(**kwargs)
+        scope.billing_policy = self.runtime.billing_policy
+        return scope
+
+
 def build_application(database, session, *, runner=None, **application_options):
     runtime = synthetic_billing_runtime(database.engine)
     repository = SqliteConversationRepository(session)
-    operations = SqliteBillingOperations(database, runtime).bound_to(session)
+    operations = HistoricalSnapshotBillingOperations(database, runtime).bound_to(session)
     return (
         DisciplinaryAgentApplication(
             conversations=ConversationService(repository),

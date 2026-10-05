@@ -47,6 +47,7 @@ import {
 
 import './shared-editor.css'
 import { splitMarkdown, joinMarkdown, canEditProperties } from './markdownSource'
+import { mapMarkdownSelection, type MarkdownSelection } from './markdownSelection'
 
 import { Callout, Highlight, Image, Search, Table, TableCell, TableHeader, TableRow, TagDecor, WikiLink, findMatches, searchKey, tableCommands, tableJSON } from './extensions'
 
@@ -65,7 +66,7 @@ import { Callout, Highlight, Image, Search, Table, TableCell, TableHeader, Table
  */
 
 export type Property = { key: string; value: string }
-export type SelectionAction = { id: string; label: string; icon?: ReactNode; run: (editor: Editor, text: string) => void }
+export type SelectionAction = { id: string; label: string; icon?: ReactNode; disabled?: boolean; run: (editor: Editor, text: string, selection: MarkdownSelection) => void }
 
 type Menu = { kind: 'slash' | 'wiki'; query: string; from: number; x: number; y: number; index: number } | null
 
@@ -78,8 +79,11 @@ export function SharedEditor({
   onOpenLink,
   onReady,
   onChange,
+  onSelectionChange,
   saveState = 'saved',
   readOnly = false,
+  bodyPreview,
+  statusContent,
 }: {
   markdown: string
   properties?: Property[]
@@ -89,14 +93,19 @@ export function SharedEditor({
   onOpenLink?: (target: string) => void
   onReady?: (editor: Editor) => void
   onChange?: (markdown: string) => void
+  onSelectionChange?: (selection: MarkdownSelection) => void
   saveState?: 'saved' | 'dirty' | 'saving' | 'error'
   readOnly?: boolean
+  /** A reversible host preview. It never replaces the live editor or its history. */
+  bodyPreview?: ReactNode
+  statusContent?: ReactNode
 }) {
   const initial = useRef(splitMarkdown(markdown))
   const raw = useRef(markdown)
   const frontmatter = useRef(initial.current.frontmatter)
   const [propertySourceOnly, setPropertySourceOnly] = useState(!canEditProperties(initial.current.frontmatter))
   const callback = useRef(onChange); callback.current = onChange
+  const selectionCallback = useRef(onSelectionChange); selectionCallback.current = onSelectionChange
   const suppressChange = useRef(false)
   const userEditing = useRef(false)
   const [props, setProps] = useState<Property[]>(initialProps.length ? initialProps : initial.current.properties)
@@ -106,6 +115,7 @@ export function SharedEditor({
   const [link, setLink] = useState<{ x: number; y: number; href: string } | null>(null)
   const [find, setFind] = useState<{ term: string; replace: string; index: number; cs: boolean; withReplace: boolean } | null>(null)
   const [source, setSource] = useState<string | null>(null)
+  const [sourceSelection, setSourceSelection] = useState<MarkdownSelection>(null)
   const [focusMode, setFocusMode] = useState(false)
   const [wide, setWide] = useState(false)
   const [help, setHelp] = useState(false)
@@ -113,6 +123,13 @@ export function SharedEditor({
   const shell = useRef<HTMLDivElement>(null)
   const imageInput = useRef<HTMLInputElement>(null)
   const [imageError, setImageError] = useState('')
+  const [selectionError, setSelectionError] = useState('')
+  const reportSelection = (selection: MarkdownSelection) => {
+    setSourceSelection(selection)
+    setSelectionError(selection && 'error' in selection ? selection.error : '')
+    selectionCallback.current?.(selection)
+    return selection
+  }
   const insertImage = (file: File, target: Editor) => {
     if (!file.type.startsWith('image/')) return
     if (file.size > 48 * 1024) { setImageError('内嵌图片请小于 48 KB；较大的图片可先放到资料库，再在源码中添加链接。'); return }
@@ -208,6 +225,15 @@ export function SharedEditor({
 
   useEffect(() => { editorRef.current = editor; if (editor) onReady?.(editor); return () => { editorRef.current = null } }, [editor, onReady])
   useEffect(() => { editor?.setEditable(!readOnly) }, [editor, readOnly])
+  useEffect(() => {
+    if (!editor) return
+    const changed = () => {
+      reportSelection(mapMarkdownSelection(editor, raw.current))
+    }
+    editor.on('selectionUpdate', changed)
+    editor.on('update', changed)
+    return () => { editor.off('selectionUpdate', changed); editor.off('update', changed) }
+  }, [editor])
   useEffect(() => {
     if (!editor || markdown === raw.current) return
     raw.current = markdown
@@ -371,7 +397,8 @@ export function SharedEditor({
     <div className="se" data-focus={focusMode} data-wide={wide} inert={readOnly} onBeforeInputCapture={() => { userEditing.current = true }} onPasteCapture={() => { userEditing.current = true }} onDropCapture={() => { userEditing.current = true }} onKeyDownCapture={event => { if (event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Enter' || event.key.length === 1) userEditing.current = true }} onClickCapture={event => { const button = (event.target as Element).closest('button'); if (button && button.getAttribute('role') !== 'tab') userEditing.current = true }}>
       <input ref={imageInput} hidden type="file" accept="image/*" onChange={event => { const file = event.currentTarget.files?.[0]; if (file && editor) insertImage(file, editor); event.currentTarget.value = '' }} />
       {imageError && <p className="qx-notice qx-notice--danger" role="alert">{imageError}</p>}
-      <div className="se-toolbar" role="toolbar" aria-label="编辑工具">
+      {selectionError && <p className="qx-notice qx-notice--danger" role="alert">{selectionError}</p>}
+      <div className="se-toolbar" role="toolbar" aria-label="编辑工具" inert={Boolean(bodyPreview)}>
         <T label="撤销" kbd="⌘Z" onClick={() => editor.chain().focus().undo().run()}><ArrowCounterClockwiseIcon /></T>
         <T label="重做" kbd="⇧⌘Z" onClick={() => editor.chain().focus().redo().run()}><ArrowClockwiseIcon /></T>
         <span className="se-gap" />
@@ -407,7 +434,7 @@ export function SharedEditor({
         </div>
       </div>
 
-      {find ? (
+      {find && !bodyPreview ? (
         <div className="se-find" role="search">
           <div className="se-find__row">
             <label className="qx-search se-find__field"><MagnifyingGlassIcon />
@@ -429,7 +456,7 @@ export function SharedEditor({
         </div>
       ) : null}
 
-      {inTable && source === null ? (
+      {inTable && source === null && !bodyPreview ? (
         <div className="se-tablebar" role="toolbar" aria-label="表格">
           <span>表格</span>
           <button type="button" className="qx-btn qx-btn--ghost" onMouseDown={(e) => e.preventDefault()} onClick={() => run('addRowAfter')}><RowsPlusBottomIcon /> 加一行</button>
@@ -442,15 +469,18 @@ export function SharedEditor({
 
       <div className="se-scroll" ref={shell}>
         <div className="se-page">
+          {bodyPreview}
+          <div hidden={Boolean(bodyPreview)}>
           {source === null && (propertySourceOnly ? <button type="button" className="qx-btn qx-btn--ghost" onClick={toSource}>在源码中编辑属性（保留完整 YAML）</button> : <Properties props={props} onChange={updateProperties} />)}
           {source !== null ? (
-            <textarea className="se-source" value={source} spellCheck={false} readOnly={readOnly} onChange={(e) => { setSource(e.target.value); raw.current = e.target.value; callback.current?.(e.target.value) }} aria-label="Markdown 源码" />
+            <textarea className="se-source" onSelect={event => { const el = event.currentTarget; reportSelection(el.selectionStart < el.selectionEnd ? { start: el.selectionStart, end: el.selectionEnd, text: el.value.slice(el.selectionStart, el.selectionEnd) } : null) }} value={source} spellCheck={false} readOnly={readOnly} onChange={(e) => { const el = e.currentTarget; setSource(el.value); raw.current = el.value; callback.current?.(el.value); reportSelection(el.selectionStart < el.selectionEnd ? { start: el.selectionStart, end: el.selectionEnd, text: el.value.slice(el.selectionStart, el.selectionEnd) } : null) }} aria-label="Markdown 源码" />
           ) : (
             <EditorContent editor={editor} />
           )}
+          </div>
         </div>
 
-        {menu && items.length && source === null ? (
+        {menu && items.length && source === null && !bodyPreview ? (
           <div className="se-pop se-suggest" style={{ left: menu.x, top: menu.y }} role="listbox" onMouseDown={(e) => e.preventDefault()}>
             {menu.kind === 'wiki' ? <p className="se-pop__label">链接到笔记</p> : null}
             {menu.kind === 'wiki'
@@ -468,7 +498,7 @@ export function SharedEditor({
           </div>
         ) : null}
 
-        {link ? (
+        {link && !bodyPreview ? (
           <form className="se-pop se-linkpop" style={{ left: link.x, top: link.y }} onSubmit={(e) => { e.preventDefault(); applyLink(link.href) }}>
             <LinkIcon />
             <input autoFocus placeholder="粘贴链接，回车确认" value={link.href} onChange={(e) => setLink({ ...link, href: e.target.value })} onKeyDown={(e) => e.key === 'Escape' && setLink(null)} />
@@ -477,7 +507,9 @@ export function SharedEditor({
         ) : null}
       </div>
 
-      <BubbleMenu editor={editor} shouldShow={({ editor: ed, state }) => !state.selection.empty && !ed.isActive('codeBlock') && !ed.isActive('image') && source === null} options={{ placement: 'top', offset: 10 }}>
+      {source !== null && !bodyPreview && sourceSelection && 'start' in sourceSelection && selectionActions.length > 0 && <div className="se-source-bubble se-bubble" role="toolbar" aria-label="源码选区操作">{selectionActions.map(action => <button key={action.id} type="button" className="qx-btn qx-btn--ghost se-bubble__text" disabled={action.disabled} onMouseDown={event => event.preventDefault()} onClick={() => action.run(editor, sourceSelection.text, sourceSelection)}>{action.icon}{action.label}</button>)}</div>}
+
+      <BubbleMenu editor={editor} shouldShow={({ editor: ed, state }) => !bodyPreview && !state.selection.empty && !ed.isActive('codeBlock') && !ed.isActive('image') && source === null} options={{ placement: 'top', offset: 10 }}>
         <div className="se-bubble">
           <button type="button" aria-label="加粗" aria-pressed={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}><TextBIcon /></button>
           <button type="button" aria-label="斜体" aria-pressed={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}><TextItalicIcon /></button>
@@ -487,7 +519,7 @@ export function SharedEditor({
           <button type="button" aria-label="链接" aria-pressed={editor.isActive('link')} onClick={openLink}><LinkIcon /></button>
           {selectionActions.length ? <span className="se-bubble__sep" /> : null}
           {selectionActions.map((a) => (
-            <button key={a.id} type="button" className="se-bubble__text" onClick={() => { const { from, to } = editor.state.selection; a.run(editor, editor.state.doc.textBetween(from, to, ' ')) }}>{a.icon}{a.label}</button>
+            <button key={a.id} type="button" className="qx-btn qx-btn--ghost se-bubble__text" disabled={a.disabled} onMouseDown={event => event.preventDefault()} onClick={() => { const { from, to } = editor.state.selection; a.run(editor, editor.state.doc.textBetween(from, to, ' '), reportSelection(mapMarkdownSelection(editor, raw.current))) }}>{a.icon}{a.label}</button>
           ))}
         </div>
       </BubbleMenu>
@@ -496,6 +528,7 @@ export function SharedEditor({
         <span>{words.toLocaleString()} 字</span>
         <span>{editor.storage.characterCount.characters().toLocaleString()} 字符</span>
         <span>约 {Math.max(1, Math.round(words / 400))} 分钟</span>
+        {statusContent}
         <span className="se-spacer" />
         {source !== null ? <span className="se-status__mode">源码模式 · Markdown</span> : focusMode ? <span className="se-status__mode">专注模式</span> : null}
         <span className="se-status__save" data-state={saveState}>{saveState === 'saving' ? '保存中…' : saveState === 'dirty' ? '尚未保存' : saveState === 'error' ? '保存失败，修改仍在' : '已保存'}</span>

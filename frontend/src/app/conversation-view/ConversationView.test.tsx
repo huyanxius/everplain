@@ -23,6 +23,16 @@ const turn: ConversationTurnView = {
 }
 
 describe('ConversationThread', () => {
+  it('keeps previous attempt bodies visible during an empty, short and failed retry', async () => {
+    const previousOutputs = [{ id: 'attempt-A', ordinal: 1, answer: '较长的已收到原文始终保留。' }]
+    const { rerender } = render(<ConversationThread turns={[{ ...turn, answer: '', streaming: true, previousOutputs }]} onSelectCitation={vi.fn()} />)
+    expect(screen.getByText('较长的已收到原文始终保留。')).toBeVisible()
+    rerender(<ConversationThread turns={[{ ...turn, answer: '短', failure: '失败', previousOutputs }]} onSelectCitation={vi.fn()} />)
+    expect(screen.getByText('较长的已收到原文始终保留。')).toBeVisible()
+    await waitFor(() => expect(screen.getByText('短')).toBeVisible())
+    expect(screen.getByText('第 1 次生成的原文')).toBeVisible()
+  })
+
   it('renders the mock-style content with no legacy layout dependency and returns turn-scoped citation context', () => {
     const select = vi.fn()
     const { container } = render(<ConversationThread turns={[turn]} agent={{ name: '澄', avatar: 'cheng' }} onSelectCitation={select} />)
@@ -189,4 +199,18 @@ describe('ConversationResearchFlow', () => {
     fireEvent.click(screen.getByRole('button', { name: '继续形成研究' })); expect(research).toHaveBeenCalledOnce()
     expect(screen.getByRole('region', { name: '研究结论' })).toHaveTextContent('知识库 2 条 · 网页资料 1 条')
   })
+})
+
+it('shows received writing text immediately before completion and preserves natural questions', () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+  const first = '这是已经从服务端收到的第一段真实文字。'.repeat(8)
+  const latest = `${first}\n\n这是第二个收到的片段。`
+  const view = render(<ConversationThread turns={[{ id: 'writing', question: '', answer: first, citations: [], streaming: true, liveText: true }]} onSelectCitation={vi.fn()} />)
+  expect(view.container.querySelector('[data-role="user-message"]')).not.toBeInTheDocument()
+  expect(view.container.querySelector('.cv-turn__prose')).toHaveTextContent(first)
+  expect(view.container.querySelector('.cv-turn')).toHaveAttribute('data-streaming')
+  view.rerender(<ConversationThread turns={[{ id: 'writing', question: '', answer: latest, citations: [], streaming: true, liveText: true }]} onSelectCitation={vi.fn()} />)
+  expect(view.container.querySelector('.cv-turn__prose')).toHaveTextContent('这是第二个收到的片段。')
+  view.rerender(<ConversationThread turns={[{ id: 'natural', question: '优化当前选区', answer: latest, citations: [], liveText: true }]} onSelectCitation={vi.fn()} />)
+  expect(view.container.querySelector('[data-role="user-message"]')).toHaveTextContent('优化当前选区')
 })

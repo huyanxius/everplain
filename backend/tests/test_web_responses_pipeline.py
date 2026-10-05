@@ -22,6 +22,7 @@ from qunxue_api.adapters.research_agent import pydantic_runner
 from qunxue_api.adapters.research_agent.catalog_tools import KnowledgeToolRegistry
 from qunxue_api.adapters.research_agent.web_research import OpenWebResearchClient
 from qunxue_api.modules.billing.pricing import PriceBook, TavilyPrice
+from qunxue_api.settings import AgentModelCapacitySettings
 
 
 class EmptyCatalog:
@@ -173,6 +174,13 @@ def test_full_search_read_reply_with_large_provider_results(wallet, monkeypatch,
         reasoning_effort="none",
         timeout_seconds=10,
         require_billing=True,
+        model_capacities={
+            "https://synthetic.test/v1|responses|gpt-6-luna": AgentModelCapacitySettings(
+                context_window_tokens=100000, max_output_tokens=2400,
+                output_token_parameter="max_output_tokens",
+                source="synthetic test provider contract",
+            ),
+        },
         route_executor=ModelRouteExecutor(
             endpoints=(
                 ModelEndpoint("primary", "https://synthetic.test/v1", "gpt-6-luna", None, 10),

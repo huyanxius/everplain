@@ -1,0 +1,150 @@
+"""Real copy/upgrade/old-writer/downgrade, preserving reset audit protections."""
+
+import sqlite3
+from pathlib import Path
+from uuid import uuid4
+
+import pytest
+from alembic import command
+
+SCHEMA = Path(__file__).parent / "fixtures/billing_reset_schema.sql"
+
+
+def test_0560_to_0570_copy_upgrade_old_writer_and_downgrade(
+    tmp_path, monkeypatch, alembic_config
+):
+    # Build the actual old source schema. Current head includes financial quota
+    # evidence that must never be dropped just to prepare a historical fixture.
+    original_path = tmp_path / "source-0560.db"
+    database_url = f"sqlite:///{original_path}"
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", database_url)
+    command.upgrade(alembic_config, "20261005_0560")
+    owner = uuid4()
+    conversation_id, turn_id = uuid4(), uuid4()
+    with sqlite3.connect(original_path) as source:
+        source.execute(
+            "INSERT INTO users(user_id,email,password_hash,role,status,version,created_at,"
+            "updated_at) VALUES (?,'migration@example.com','synthetic','member','active',1,"
+            "'2026-10-05','2026-10-05')",
+            (str(owner),),
+        )
+        source.execute(
+            "INSERT INTO credit_accounts(user_id,balance,created_at,updated_at) "
+            "VALUES (?,30,'2026-10-05','2026-10-05')",
+            (str(owner),),
+        )
+        source.execute(
+            "INSERT INTO credit_ledger(entry_id,user_id,kind,points,balance_after,input_tokens,"
+            "output_tokens,created_at) VALUES (?,?,'signup_grant',30,30,0,0,'2026-10-05')",
+            (str(uuid4()), str(owner)),
+        )
+        source.execute(
+            "INSERT INTO agent_conversations(conversation_id,user_id,title,version,created_at,"
+            "updated_at) VALUES (?,?,'Migration fixture',1,'2026-10-05','2026-10-05')",
+            (str(conversation_id), str(owner)),
+        )
+        for sequence, (role, content) in enumerate((
+            ("user", "Synthetic source"), ("assistant", "Synthetic reply"),
+        )):
+            source.execute(
+                "INSERT INTO agent_messages(message_id,conversation_id,turn_id,role,content,"
+                "citations,sequence,created_at) VALUES (?,?,?,?,?,'[]',?,'2026-10-05')",
+                (str(uuid4()), str(conversation_id), str(turn_id), role, content, sequence),
+            )
+    candidate_path = tmp_path / "candidate.db"
+    with sqlite3.connect(original_path) as source:
+        source.executescript(SCHEMA.read_text())
+        source.execute(
+            "INSERT INTO billing_operations(run_id,user_id,fingerprint,status,hold_points,"
+            "exempt,price_json,credit_pico,created_at,updated_at) "
+            "VALUES ('old-op',?,'fixture','success',0,0,'{}','100','2026-10-05','2026-10-05')",
+            (str(owner),),
+        )
+        source.execute(
+            "INSERT INTO billing_precision_adjustments VALUES "
+            "('synthetic-reset',?,'fixture','100','-100','0',29,1,30,'[\"old-op\"]','2026-10-05')",
+            (str(owner),),
+        )
+        source.commit()
+        names = (
+            "users",
+            "agent_messages",
+            "agent_conversations",
+            "billing_operations",
+            "billing_attempts",
+            "credit_accounts",
+            "credit_ledger",
+            "billing_precision_adjustments",
+        )
+        original = {
+            name: source.execute(f"SELECT * FROM {name} ORDER BY 1").fetchall() for name in names
+        }
+        protected = source.execute(
+            "SELECT type,name,sql FROM sqlite_master WHERE name IN "
+            "('billing_precision_adjustments','billing_reset_terminal_fence') ORDER BY name"
+        ).fetchall()
+        with sqlite3.connect(candidate_path) as candidate:
+            source.backup(candidate)
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", f"sqlite:///{candidate_path}")
+    command.upgrade(alembic_config, "20261005_0570")
+    with sqlite3.connect(candidate_path) as candidate:
+        for name, expected in original.items():
+            assert candidate.execute(f"SELECT * FROM {name} ORDER BY 1").fetchall() == expected
+        assert candidate.execute("SELECT * FROM agent_conversation_summaries").fetchall() == []
+        # The old application never mentions the new derived-cache table and keeps writing.
+        candidate.execute(
+            "UPDATE agent_conversations SET title='old-writer' WHERE conversation_id=?",
+            (str(conversation_id),),
+        )
+        new_id = str(uuid4())
+        candidate.execute(
+            "INSERT INTO agent_conversations(conversation_id,user_id,title,version,created_at,"
+            "updated_at) VALUES (?,?,'old-writer-new',1,'2026-10-05','2026-10-05')",
+            (new_id, str(owner)),
+        )
+        candidate.execute(
+            "INSERT INTO agent_conversation_summaries(user_id) VALUES (?)", (str(owner),)
+        )
+        candidate.commit()
+        with pytest.raises(sqlite3.IntegrityError, match="predates account reset"):
+            candidate.execute("UPDATE billing_operations SET status='error' WHERE run_id='old-op'")
+    command.downgrade(alembic_config, "20261005_0560")
+    with sqlite3.connect(candidate_path) as candidate:
+        assert (
+            candidate.execute(
+                "SELECT name FROM sqlite_master WHERE name='agent_conversation_summaries'"
+            ).fetchone()
+            is None
+        )
+        assert (
+            candidate.execute(
+                "SELECT type,name,sql FROM sqlite_master WHERE name IN "
+                "('billing_precision_adjustments','billing_reset_terminal_fence') "
+                "ORDER BY name"
+            ).fetchall()
+            == protected
+        )
+        for name in names:
+            if name != "agent_conversations":
+                assert (
+                    candidate.execute(f"SELECT * FROM {name} ORDER BY 1").fetchall()
+                    == original[name]
+                )
+        assert (
+            candidate.execute(
+                "SELECT title FROM agent_conversations WHERE conversation_id=?",
+                (str(conversation_id),),
+            ).fetchone()[0]
+            == "old-writer"
+        )
+        with pytest.raises(sqlite3.IntegrityError, match="predates account reset"):
+            candidate.execute(
+                "UPDATE billing_operations SET charged_points=2 WHERE run_id='old-op'"
+            )
+    with sqlite3.connect(original_path) as source:
+        assert (
+            source.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+            == "20261005_0560"
+        )
+        for name, expected in original.items():
+            assert source.execute(f"SELECT * FROM {name} ORDER BY 1").fetchall() == expected

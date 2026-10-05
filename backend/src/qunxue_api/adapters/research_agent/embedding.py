@@ -10,6 +10,30 @@ from urllib.request import Request, urlopen
 class EmbeddingProviderError(RuntimeError):
     """The configured embedding service returned an unusable response."""
 
+    def __init__(self, message, *, code="invalid_response", status_code=None):
+        super().__init__(message)
+        self.code = code
+        self.status_code = status_code
+
+
+def index_error_message(error):
+    messages = {
+        "not_configured": "语义索引服务尚未配置，请联系站点维护者。",
+        "authentication": "语义索引服务拒绝授权，请联系站点维护者检查服务凭据与权限。",
+        "quota_exhausted": "上游向量服务额度不足，语义索引暂不可用，请联系站点维护者处理。",
+        "access_denied": "语义索引请求被服务拒绝（HTTP 403），请联系站点维护者检查访问策略。",
+        "endpoint_unavailable": "语义索引接口或模型不可用，请联系站点维护者检查配置。",
+        "rate_limited": "语义索引服务限流，请稍后重试。",
+        "request_rejected": "语义索引请求被服务拒绝，请联系站点维护者检查模型与请求配置。",
+        "timeout": "语义索引服务响应超时，请稍后重试。",
+        "network_error": "无法连接语义索引服务，请稍后重试。",
+        "service_error": "语义索引服务暂时异常，请稍后重试。",
+        "invalid_response": "语义索引服务返回了无效向量，请联系站点维护者。",
+    }
+    return messages.get(
+        getattr(error, "code", None), "语义索引未完成，请稍后重试；持续失败请联系站点维护者。"
+    )
+
 
 class OpenAICompatibleEmbeddingProvider:
     """Call a hosted or self-hosted ``/embeddings`` endpoint.
@@ -43,15 +67,45 @@ class OpenAICompatibleEmbeddingProvider:
         if not inputs:
             return []
         body = json.dumps({"input": inputs, "model": self._model}).encode("utf-8")
-        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Everplain/1.0",
+        }
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
         request = Request(self._endpoint, data=body, headers=headers, method="POST")
         try:
             with urlopen(request, timeout=self._timeout_seconds) as response:
                 payload = json.loads(response.read())
-        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
-            raise EmbeddingProviderError("embedding service request failed") from error
+        except HTTPError as error:
+            code = (
+                "authentication"
+                if error.code == 401
+                else "quota_exhausted"
+                if error.code == 402
+                else "access_denied"
+                if error.code == 403
+                else "endpoint_unavailable"
+                if error.code == 404
+                else "rate_limited"
+                if error.code == 429
+                else "request_rejected"
+                if 400 <= error.code < 500
+                else "service_error"
+            )
+            raise EmbeddingProviderError(
+                "embedding service request failed", code=code, status_code=error.code
+            ) from error
+        except (TimeoutError, URLError, OSError) as error:
+            code = (
+                "timeout"
+                if isinstance(error.reason if isinstance(error, URLError) else error, TimeoutError)
+                else "network_error"
+            )
+            raise EmbeddingProviderError("embedding service request failed", code=code) from error
+        except (json.JSONDecodeError, UnicodeDecodeError) as error:
+            raise EmbeddingProviderError("embedding response is invalid") from error
         return _parse_embeddings(payload, expected_count=len(inputs))
 
 

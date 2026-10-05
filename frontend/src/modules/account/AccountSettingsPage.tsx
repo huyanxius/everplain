@@ -3,6 +3,8 @@ import { ChartBarIcon, ChatsCircleIcon, GearSixIcon, LockSimpleIcon, ShieldIcon,
 import { useId, useRef, useState, type ReactNode } from 'react'
 import { AccountConfirmationDialog } from './SettingsConfirmation'
 import { AgentSettingsPanel } from './AgentSettingsPanel'
+import { UserAvatarSettingsPanel } from './UserAvatarSettingsPanel'
+import { SettingRow } from './SettingRow'
 import { ChannelBindingsPanel } from '../channel-gateway'
 import { Select } from '../../ui/Select'
 import { accountUsageFromCredits } from './accountUsage'
@@ -17,6 +19,7 @@ type PanelProps = { controller: ReadySettingsController }
 
 const sections = [
   ['agent', '我的 Agent', 'My Agent', SmileyIcon],
+  ['look', '我的形象', 'My avatar', UserIcon],
   ['channels', '聊天平台', 'Chat platforms', ChatsCircleIcon],
   ['profile', '个人资料', 'Profile', UserIcon],
   ['credits', '使用情况', 'Usage', ChartBarIcon],
@@ -33,17 +36,13 @@ function dateLabel(value: string | null, locale: string) {
   return date.toLocaleString(locale, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
-/** Mock's label/control row is the only field layout used by the new panels. */
-function SettingRow({ label, children }: { label: string; children: ReactNode }) {
-  return <div className="ep-setting-row"><span className="ep-setting-row__label">{label}</span><div className="ep-setting-row__control">{children}</div></div>
-}
-
 export function AccountSettingsPage({ adminHref = '/admin/users', onLogout, onResetAgent, ...options }: SettingsProps) {
   const controller = useAccountSettingsController(options)
   const { text, state } = controller
   const titleId = useId()
   const content = useRef<HTMLElement>(null)
   const [agentOpened, setAgentOpened] = useState(false)
+  const [avatarOpened, setAvatarOpened] = useState(false)
 
   if (state.status !== 'ready') return (
     <div className="ep-settings-load" role={state.status === 'loading' ? undefined : 'alert'}>
@@ -59,6 +58,7 @@ export function AccountSettingsPage({ adminHref = '/admin/users', onLogout, onRe
   const active = sections.find(([id]) => id === controller.section)!
   const select = (id: SettingsSection) => {
     if (id === 'agent') setAgentOpened(true)
+    if (id === 'look') setAvatarOpened(true)
     controller.selectSection(id)
     if (content.current) content.current.scrollTop = 0
   }
@@ -88,6 +88,7 @@ export function AccountSettingsPage({ adminHref = '/admin/users', onLogout, onRe
           {controller.feedback ? <p className="qx-notice" role="status" aria-live="polite">{controller.feedback}</p> : null}
           {controller.error && !controller.confirmation ? <p className="qx-notice qx-notice--danger" role="alert">{controller.error}</p> : null}
           {agentOpened ? <AgentSettingsPanel key={state.account.userId} userId={state.account.userId} active={controller.section === 'agent'} text={text} onResetAgent={onResetAgent} /> : null}
+          {avatarOpened ? <UserAvatarSettingsPanel key={state.account.userId} userId={state.account.userId} active={controller.section === 'look'} text={text} /> : null}
           {controller.section === 'channels' ? <ChannelBindingsPanel key={state.account.userId} userId={state.account.userId} text={text} /> : null}
           {controller.section === 'profile' ? <ProfilePanel controller={ready} /> : null}
           {controller.section === 'credits' ? <CreditsPanel controller={ready} /> : null}
@@ -158,18 +159,20 @@ function CreditsPanel({ controller: c }: PanelProps) {
         return <div key={bucket.id}>
           <p className="ep-settings-inline"><span>{label}</span><strong>{bucket.remainingPercent === null ? c.text('暂不可用', 'Unavailable') : `${bucket.remainingPercent}%`}</strong></p>
           {bucket.remainingPercent !== null ? <div className="ep-settings-meter" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={bucket.remainingPercent}><span style={{ width: `${bucket.remainingPercent}%` }} /></div> : null}
-          {bucket.expiresAt ? <small className="qx-meta">{c.text('有效至', 'Valid until')} {dateLabel(bucket.expiresAt, c.locale)}</small> : null}
+          {bucket.remainingPoints != null && bucket.usedPoints != null && bucket.limitPoints != null ? <small className="qx-meta">{c.text('剩余', 'Remaining')} {bucket.remainingPoints.toLocaleString(c.locale, { maximumFractionDigits: 4 })} / {bucket.limitPoints.toLocaleString(c.locale)} · {c.text('已用', 'Used')} {bucket.usedPoints.toLocaleString(c.locale, { maximumFractionDigits: 4 })}</small> : null}
+          {bucket.expiresAt ? <small className="qx-meta">{c.text('下次重置', 'Next reset')} {dateLabel(bucket.expiresAt, c.locale)}</small> : null}
         </div>
       })}</div>}
     </SettingRow>
+    {!credits.isUnlimited ? <p className="qx-meta">{c.text('7 天额度从首次有效消息请求开始，每满 168 小时恢复套餐满额。Free 每 7 天 30 积分。', 'Your 7-day allowance starts with your first valid message and resets every 168 hours. Free includes 30 points every 7 days.')}</p> : null}
     {!credits.isUnlimited ? <SettingRow label={c.text('兑换码', 'Redemption code')}>
       <form className="ep-settings-redeem" onSubmit={c.redeemCredits}><input className="qx-input" aria-label={c.text('兑换码', 'Redemption code')} autoComplete="off" maxLength={64} placeholder="QX-XXXX-XXXX" value={c.redemptionCode} onChange={event => c.setRedemptionCode(event.target.value)} /><button className="qx-btn qx-btn--secondary" disabled={c.pending || !c.redemptionCode.trim()}>{c.pendingAction === 'credit-redemption' ? c.text('正在兑换…', 'Redeeming…') : c.text('兑换', 'Redeem')}</button></form>
-      <small className="qx-meta">{c.text('每个兑换码仅可使用一次', 'Each code can be used once')}</small>
+      <small className="qx-meta">{c.text('bank RESET：恢复当前套餐的 100%，并从现在重新计算 7 天。每个兑换码仅可使用一次。', 'bank RESET restores 100% of your current plan and starts a new 7-day period. Each code can be used once.')}</small>
     </SettingRow> : null}
     <section className="ep-settings-history" aria-label={c.text('用量记录', 'Usage history')}>
       <header className="ep-settings-inline"><h3 className="qx-heading">{c.text('用量记录', 'Usage history')}</h3><span className="qx-meta">{c.text(`共 ${credits.totalEntries} 笔`, `${credits.totalEntries} total`)}</span></header>
       {credits.entries.length ? <ol className="ep-settings-list">{credits.entries.map(entry => <li key={entry.entryId}>
-        <div><strong>{entry.kind === 'usage' ? c.text('Agent 对话', 'Agent conversation') : entry.kind === 'redemption' ? c.text('兑换码到账', 'Code redemption') : c.text('新用户赠送', 'Welcome allowance')}</strong><time className="qx-meta" dateTime={entry.createdAt}>{dateLabel(entry.createdAt, c.locale)}</time>{entry.kind === 'usage' ? <small className="qx-meta">{entry.inputTokens.toLocaleString(c.locale)} {c.text('输入', 'input')} · {entry.outputTokens.toLocaleString(c.locale)} {c.text('输出', 'output')} token</small> : null}</div>
+        <div><strong>{entry.kind === 'usage' ? c.text('Agent 对话', 'Agent conversation') : entry.kind === 'redemption' ? c.text('bank RESET', 'bank RESET') : c.text('新用户赠送', 'Welcome allowance')}</strong><time className="qx-meta" dateTime={entry.createdAt}>{dateLabel(entry.createdAt, c.locale)}</time>{entry.kind === 'usage' ? <small className="qx-meta">{entry.inputTokens.toLocaleString(c.locale)} {c.text('输入', 'input')} · {entry.outputTokens.toLocaleString(c.locale)} {c.text('输出', 'output')} token</small> : null}</div>
         <div className="ep-settings-usage-status">
           {entry.status ? <small className="qx-meta">{statusLabels[entry.status]}</small> : null}
           {typeof entry.chargedCny === 'number' && Number.isFinite(entry.chargedCny) && entry.chargedCny >= 0 ? <small className="qx-meta">{c.text('费用', 'Cost')} {money(entry.chargedCny)}</small> : null}

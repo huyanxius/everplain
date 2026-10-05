@@ -6,6 +6,8 @@ from uuid import UUID, uuid4
 from qunxue_api.modules.agent_conversation.domain import (
     AgentCitation,
     AgentMaterialAttachment,
+    AgentOutputAttempt,
+    AgentOutputEvent,
     AgentRun,
     AgentTurn,
     Conversation,
@@ -30,6 +32,7 @@ class _MemoryRepository:
         self.conversations: dict[UUID, Conversation] = {}
         self.turn_keys: dict[tuple[UUID, str], UUID] = {}
         self.runs: dict[UUID, AgentRun] = {}
+        self.output_events: dict[UUID, list[AgentOutputEvent]] = {}
         self.research_task_ids: dict[UUID, UUID] = {}
         self.canvas_edits: dict[UUID, dict] = {}
 
@@ -87,6 +90,10 @@ class _MemoryRepository:
                     turn,
                     tool_summary=runs_by_turn.get(turn.turn_id, turn.tool_summary),
                     canvas_patches=patches_by_turn.get(turn.turn_id, turn.canvas_patches),
+                    delivery_state=next((run.delivery_state for run in self.runs.values()
+                                         if run.turn_id == turn.turn_id), {}),
+                    output_attempts=next((run.output_attempts for run in self.runs.values()
+                                          if run.turn_id == turn.turn_id), ()) ,
                 )
                 for turn in conversation.turns
             ),
@@ -201,7 +208,13 @@ class _MemoryRepository:
         self.turn_keys[key] = turn.turn_id
         return turn
 
-    def start_run(self, run: AgentRun) -> AgentRun:
+    def start_run(
+        self,
+        run: AgentRun,
+        *,
+        enforce_expected_generation: bool = False,
+        expected_previous_lease_token: str | None = None,
+    ) -> AgentRun:
         existing = next(
             (
                 item
@@ -211,6 +224,9 @@ class _MemoryRepository:
             ),
             None,
         )
+        current_token = (existing.lease_token or "") if existing is not None else None
+        if enforce_expected_generation and current_token != expected_previous_lease_token:
+            raise RunAlreadyActive(str(run.conversation_id))
         if existing is not None:
             if existing.status == "running":
                 raise RunAlreadyActive(str(run.conversation_id))
@@ -228,12 +244,24 @@ class _MemoryRepository:
                 lease_token=run.lease_token,
                 lease_expires_at=run.lease_expires_at,
                 updated_at=run.updated_at,
+                delivery_state={},
             )
         if any(
             item.conversation_id == run.conversation_id and item.status == "running"
             for item in self.runs.values()
         ):
             raise RunAlreadyActive(str(run.conversation_id))
+        attempts = run.output_attempts
+        if not attempts and run.partial_answer:
+            attempts = (AgentOutputAttempt(
+                attempt_id=existing.lease_token if existing else run.lease_token,
+                ordinal=1, status=existing.status if existing else run.status,
+                answer=run.partial_answer, created_at=run.updated_at,
+            ),)
+        run = replace(run, output_attempts=(*attempts, AgentOutputAttempt(
+            attempt_id=run.lease_token, ordinal=len(attempts) + 1,
+            status="running", created_at=run.updated_at,
+        )))
         self.runs[run.run_id] = run
         return run
 
@@ -278,6 +306,9 @@ class _MemoryRepository:
             model=model or current.model,
             turn_id=turn_id,
             tool_summary=tool_summary,
+            output_attempts=tuple(replace(attempt, status=status)
+                                  if attempt.attempt_id == current.lease_token else attempt
+                                  for attempt in current.output_attempts),
             updated_at=datetime.now(UTC),
             lease_expires_at=None,
         )
@@ -311,6 +342,40 @@ class _MemoryRepository:
             changes["request_snapshot"] = dict(request_snapshot)
         self.runs[run_id] = replace(run, **changes)
         return True
+
+    def append_output_event(
+        self, *, user_id: UUID, run_id: UUID, attempt_id: str,
+        name: str, payload: dict[str, object],
+    ) -> AgentOutputEvent | None:
+        run = self.find_run_by_id(user_id=user_id, run_id=run_id)
+        if run is None or run.lease_token != attempt_id:
+            return None
+        sequence = run.last_event_sequence + 1
+        attempts = run.output_attempts
+        answer = run.partial_answer
+        if name == "assistant_delta":
+            attempts = tuple(replace(attempt, answer=attempt.answer + str(payload["delta"]))
+                             if attempt.attempt_id == attempt_id else attempt
+                             for attempt in attempts)
+            answer = next(
+                attempt.answer for attempt in attempts if attempt.attempt_id == attempt_id
+            )
+        self.runs[run_id] = replace(run, output_attempts=attempts, partial_answer=answer,
+                                    delivery_state=dict(payload) if name == "agent_delivery_state"
+                                    else run.delivery_state,
+                                    last_event_sequence=sequence)
+        event = AgentOutputEvent(run_id=run_id, attempt_id=attempt_id, sequence=sequence,
+                                 name=name, payload=dict(payload))
+        self.output_events.setdefault(run_id, []).append(event)
+        return event
+
+    def read_output_events(
+        self, *, user_id: UUID, run_id: UUID, after: int = 0, limit: int = 200,
+    ) -> tuple[AgentOutputEvent, ...]:
+        if self.find_run_by_id(user_id=user_id, run_id=run_id) is None:
+            raise ConversationNotFound(str(run_id))
+        return tuple(event for event in self.output_events.get(run_id, [])
+                     if event.sequence > after)[:min(200, max(1, limit))]
 
     def request_cancel(self, *, user_id: UUID, run_id: UUID) -> AgentRun:
         run = self.find_run_by_id(user_id=user_id, run_id=run_id)
@@ -482,7 +547,10 @@ class ConversationService:
         model: str = "knowledge-agent",
         material_attachments: tuple[AgentMaterialAttachment, ...] = (),
         request_snapshot: dict[str, object] | None = None,
+        enforce_expected_generation: bool = False,
+        expected_previous_lease_token: str | None = None,
     ) -> AgentRun:
+        """Claim the validated generation; enforced None means the run must not exist."""
         self.get_conversation(user_id=user_id, conversation_id=conversation_id)
         normalized_provider = provider.strip()
         normalized_model = model.strip()
@@ -500,7 +568,9 @@ class ConversationService:
                 knowledge_release_id=knowledge_release_id,
                 material_attachments=material_attachments,
                 request_snapshot=dict(request_snapshot or {}),
-            )
+            ),
+            enforce_expected_generation=enforce_expected_generation,
+            expected_previous_lease_token=expected_previous_lease_token,
         )
 
     def find_run(self, *, user_id: UUID, idempotency_key: str) -> AgentRun | None:
@@ -534,6 +604,12 @@ class ConversationService:
 
     def checkpoint_run(self, **kwargs) -> bool:
         return self._repository.checkpoint_run(**kwargs)
+
+    def append_output_event(self, **kwargs) -> AgentOutputEvent | None:
+        return self._repository.append_output_event(**kwargs)
+
+    def read_output_events(self, **kwargs) -> tuple[AgentOutputEvent, ...]:
+        return self._repository.read_output_events(**kwargs)
 
     def request_cancel(self, *, user_id: UUID, run_id: UUID) -> AgentRun:
         return self._repository.request_cancel(user_id=user_id, run_id=run_id)

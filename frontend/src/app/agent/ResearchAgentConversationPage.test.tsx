@@ -1458,7 +1458,7 @@ describe('ResearchAgentConversationPage', () => {
     expect(await screen.findByRole('textbox', { name: '问 Everplain' })).toHaveValue('')
   })
 
-  it('automatically resumes a disconnected turn with the original idempotency key', async () => {
+  it('reconnects a disconnected turn with a read-only cursor subscription', async () => {
     const question = '为什么青年在熟人社区里也会感到孤独？'
     const conversation = conversationFixture({ prompt: question, answer: '可以从关系稳定性与情感劳动继续分析。' })
     const turnRequests: RequestInit[] = []
@@ -1475,6 +1475,7 @@ describe('ResearchAgentConversationPage', () => {
             ]), { headers: { 'Content-Type': 'text/event-stream' } })
           : streamResponse(conversation)
       }
+      if (url.pathname.endsWith('/events')) return streamResponse(conversation)
       if (url.pathname === '/api/agent/conversations') return json({ items: [] })
       return json({}, 404)
     }))
@@ -1490,10 +1491,8 @@ describe('ResearchAgentConversationPage', () => {
     expect(within(region).queryByRole('button', { name: '重试本轮' })).not.toBeInTheDocument()
     expect(turnRequests.map((request) => new Headers(request.headers).get('Idempotency-Key'))).toEqual([
       'stable-agent-turn-key',
-      'stable-agent-turn-key',
     ])
     expect(turnRequests.map((request) => JSON.parse(String(request.body)))).toEqual([
-      expect.objectContaining({ message: question, workspace: 'agent' }),
       expect.objectContaining({ message: question, workspace: 'agent' }),
     ])
     expect(randomUUID).toHaveBeenCalledTimes(1)
@@ -1737,7 +1736,7 @@ describe('ResearchAgentConversationPage', () => {
     expect(within(restored).getByRole('button', { name: '继续研究' })).toBeVisible()
   })
 
-  it('stops the server run when the user leaves the Agent page', async () => {
+  it('detaches the connection without stopping the server run when leaving the Agent page', async () => {
     const liveStream = deferredStream([
       ['turn_started', { conversation_id: 'conversation-leave', run_id: 'run-leave', replayed: false, runtime_mode: 'base' }],
       ['assistant_delta', { delta: '尚未完成的研究内容。' }],
@@ -1758,7 +1757,7 @@ describe('ResearchAgentConversationPage', () => {
 
     page.unmount()
 
-    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => urlFor(input).pathname === '/api/agent/runs/run-leave/stop')).toBe(true))
+    expect(fetchMock.mock.calls.some(([input]) => urlFor(input).pathname === '/api/agent/runs/run-leave/stop')).toBe(false)
   })
 
   it('dismisses deep research progress when the user stops the run', async () => {
@@ -1849,7 +1848,14 @@ it.each(['standalone', 'embedded'] as const)('shows model and effort outside the
   expect(summary).toBeVisible()
   expect(within(composer).queryByRole('slider')).not.toBeInTheDocument()
   fireEvent.click(summary)
-  expect(within(composer).getByRole('radio', { name: 'GPT 6 Luna' })).toBeVisible()
+  const modelRow = within(composer).getByRole('button', { name: '选择模型：GPT 6 Luna · 中' })
+  expect(modelRow).toHaveFocus()
+  expect(within(composer).queryByRole('radio')).not.toBeInTheDocument()
+  fireEvent.click(modelRow)
+  const selectedModel = within(composer).getByRole('radio', { name: 'GPT 6 Luna' })
+  expect(selectedModel).toHaveFocus()
+  fireEvent.click(selectedModel)
+  expect(modelRow).toHaveFocus()
   const slider = within(composer).getByRole('slider', { name: '思考强度' })
   expect(slider).toHaveAttribute('aria-valuemax', '2')
   fireEvent.keyDown(slider, { key: 'End' })
@@ -2037,7 +2043,7 @@ describe('conversation lifecycle recovery', () => {
     expect(JSON.parse(String(requests[1].body))).toMatchObject({ message: '原始研究问题', mode: 'standard', conversation_id: 'recover-a' })
   })
 
-  it('pauses on pagehide but continues when only visibility changes', async () => {
+  it('does not cancel execution on pagehide or visibility changes', async () => {
     const pauses: RequestInit[] = []
     const running = deferredStream([
       ['turn_started', { conversation_id: 'leave-a', run_id: 'leave-run', replayed: false }],
@@ -2057,8 +2063,7 @@ describe('conversation lifecycle recovery', () => {
     fireEvent(document, new Event('visibilitychange'))
     expect(pauses).toHaveLength(0)
     fireEvent(window, new Event('pagehide'))
-    await waitFor(() => expect(pauses).toHaveLength(1))
-    expect(pauses[0]).toMatchObject({ keepalive: true })
+    expect(pauses).toHaveLength(0)
   })
 })
 
@@ -2116,7 +2121,7 @@ it('waits for stop confirmation and retries a rejected pause before allowing con
   expect(screen.getByText('暂停确认中的输出')).toBeVisible()
 })
 
-it('cancels a bound conversation when props switch and ignores its late stream', async () => {
+it('detaches a bound conversation when props switch and ignores its late stream', async () => {
   const old = deferredStream([
     ['turn_started', { conversation_id: 'bound-a', run_id: 'bound-run-a', replayed: false }],
     ['assistant_delta', { delta: 'A 的未完成内容' }],
@@ -2138,7 +2143,7 @@ it('cancels a bound conversation when props switch and ignores its late stream',
   expect(await screen.findByText('A 的未完成内容')).toBeVisible()
   page.rerender(<MemoryRouter><ResearchAgentConversationPage embedded userId="owner" conversationId="bound-b" /></MemoryRouter>)
   expect(await screen.findByText('B 的已保存回答')).toBeVisible()
-  expect(pauses).toEqual(['/api/agent/runs/bound-run-a/stop'])
+  expect(pauses).toEqual([])
   old.finish([['assistant_delta', { delta: '不能污染 B 的迟到内容' }]])
   expect(screen.queryByText('A 的未完成内容')).not.toBeInTheDocument()
   expect(screen.queryByText('不能污染 B 的迟到内容')).not.toBeInTheDocument()
@@ -2360,4 +2365,258 @@ it('allocates distinct presentation keys when a paused run returns beside a comp
     expect(new Headers(requests[2].headers).get('Idempotency-Key')).toBe(new Headers(requests[0].headers).get('Idempotency-Key'))
     expect(JSON.parse(String(requests[2].body))).toMatchObject({ conversation_id: id, message: questionA })
   } finally { errors.mockRestore() }
+})
+
+it('uses the existing stream with versioned writing context and deduplicates clicks during save', async () => {
+  let saved!: (value: { document_id: string; document_version: number; selection_start: number; selection_end: number }) => void
+  const prepare = vi.fn(() => new Promise<{ document_id: string; document_version: number; selection_start: number; selection_end: number }>(resolve => { saved = resolve }))
+  const requests: Record<string, unknown>[] = []
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (urlFor(input).pathname === '/api/agent/turns') { requests.push(JSON.parse(String(init?.body))); return streamResponse(conversationFixture({ prompt: '改进选区', answer: '已提出待定修订。' })) }
+    return json({ items: [], tasks: [] })
+  }))
+  render(<MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" writingDocumentId="writing-doc" prepareWritingContext={prepare} composerAriaLabel="写作旁的 Agent 对话" /></MemoryRouter>)
+  const input = await screen.findByRole('textbox', { name: '写作旁的 Agent 对话' })
+  fireEvent.change(input, { target: { value: '改进选区' } })
+  fireEvent.submit(input.closest('form')!)
+  fireEvent.submit(input.closest('form')!)
+  expect(prepare).toHaveBeenCalledTimes(1)
+  expect(requests).toHaveLength(0)
+  await act(async () => saved({ document_id: 'writing-doc', document_version: 7, selection_start: 2, selection_end: 5 }))
+  await waitFor(() => expect(requests).toHaveLength(1))
+  expect(requests[0]).toMatchObject({ workspace: 'agent', message: '改进选区', writing_context: { document_id: 'writing-doc', document_version: 7, selection_start: 2, selection_end: 5 } })
+})
+
+it('keeps the user prompt and sends no turn when writing preparation fails', async () => {
+  const turns = vi.fn()
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => { if (urlFor(input).pathname === '/api/agent/turns') turns(); return json({ items: [], tasks: [] }) }))
+  render(<MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" writingDocumentId="writing-doc" prepareWritingContext={async () => { throw new Error('文稿版本冲突') }} /></MemoryRouter>)
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  fireEvent.change(input, { target: { value: '保留我的修改要求' } })
+  fireEvent.submit(input.closest('form')!)
+  await screen.findByText('文稿版本冲突')
+  expect(input).toHaveValue('保留我的修改要求')
+  expect(turns).not.toHaveBeenCalled()
+})
+
+it('isolates unsent writing chat drafts by document', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => json({ items: [], tasks: [] })))
+  const page = (id: string) => <MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" writingDocumentId={id} /></MemoryRouter>
+  const view = render(page('writing-a'))
+  fireEvent.change(await screen.findByRole('textbox', { name: '问 Everplain' }), { target: { value: '甲文稿的未发送要求' } })
+  view.rerender(page('writing-b'))
+  expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('')
+  view.rerender(page('writing-a'))
+  expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('甲文稿的未发送要求')
+})
+
+it('shows readiness only after a real tool decision, preserves scope and submits an explicit ready-only continuation', async () => {
+  const status = { state: 'missing_index', embedding_model: 'embedding', total_count: 2, ready_count: 1, missing_count: 1, processing_count: 0, failed_count: 1,
+    ready_document_ids: ['ready'], ready_documents: [{ knowledge_base_id: 'kb', document_id: 'ready', parse_id: 'ready-parse', filename: 'ready.pdf', index_status: 'ready' }],
+    missing_documents: [{ knowledge_base_id: 'kb', document_id: 'failed', parse_id: 'failed-parse', filename: 'failed.pdf', index_status: 'failed', index_error: '索引服务不可用' }] }
+  let turnRequests = 0
+  const completed = conversationFixture({ id: 'choice-conversation', prompt: '检索我的资料', answer: '仅根据已就绪的资料回答。' })
+  // Explicitly release EOF so route/scope effects settle before the continuation click.
+  let closeChoiceStream!: () => void
+  const choiceStream = new ReadableStream({ start(controller) {
+    controller.enqueue(new TextEncoder().encode(eventStream([
+      ['turn_started', { conversation_id: 'choice-conversation', run_id: 'choice-run', replayed: false }],
+      ['knowledge_index_choice_required', { status }],
+    ])))
+    closeChoiceStream = () => controller.close()
+  } })
+  const fetch = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+    const url = urlFor(input)
+    if (url.pathname === '/api/agent/turns') {
+      turnRequests += 1
+      return turnRequests === 1 ? new Response(choiceStream, { headers: { 'Content-Type': 'text/event-stream' } }) : streamResponse(completed)
+    }
+    if (url.pathname === '/api/agent/conversations/choice-conversation') return json({ ...completed, turns: [], turn_count: 0 })
+    if (url.pathname === '/api/agent/models') return json({ runtime_mode: 'base', items: [{ model_id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoning_efforts: ['medium'], default_reasoning_effort: 'medium' }] })
+    return json({ items: [] })
+  })
+  vi.stubGlobal('fetch', fetch)
+  renderPage()
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  expect(screen.queryByRole('region', { name: '知识库还未整理完全，确定现在开始吗？' })).not.toBeInTheDocument()
+  expect(fetch.mock.calls.some(([input]) => urlFor(input).pathname.includes('knowledge-index'))).toBe(false)
+  fireEvent.change(input, { target: { value: '检索我的资料' } })
+  fireEvent.submit(input.closest('form')!)
+  const choice = await screen.findByRole('region', { name: '知识库还未整理完全，确定现在开始吗？' })
+  expect(choice).toHaveTextContent('索引服务不可用')
+  expect(within(choice).getByRole('button', { name: '直接开始，忽略未就绪资料' })).toBeDisabled()
+  await act(async () => closeChoiceStream())
+  const currentChoice = await screen.findByRole('region', { name: '知识库还未整理完全，确定现在开始吗？' })
+  await waitFor(() => expect(within(currentChoice).getByRole('button', { name: '直接开始，忽略未就绪资料' })).toBeEnabled())
+  await act(async () => fireEvent.click(within(currentChoice).getByRole('button', { name: '直接开始，忽略未就绪资料' })))
+  await waitFor(() => expect(turnRequests).toBe(2))
+  const requests = fetch.mock.calls.filter(([input]) => urlFor(input).pathname === '/api/agent/turns')
+  expect(JSON.parse(String(requests[1][1]?.body))).toMatchObject({ message: '检索我的资料', conversation_id: 'choice-conversation', knowledge_index_action: 'skip_missing' })
+  expect(new Headers(requests[1][1]?.headers).get('Idempotency-Key')).not.toBe(new Headers(requests[0][1]?.headers).get('Idempotency-Key'))
+  expect(fetch.mock.calls.some(([input]) => urlFor(input).pathname.includes('repairs'))).toBe(false)
+})
+
+it('keeps ready-only coverage visible when a saved answer is reopened', async () => {
+  const conversation = conversationFixture()
+  conversation.turns[0].tool_traces = [{ tool: 'knowledge_index_scope', phase: 'finished', call_id: 'coverage', output: { knowledge_index_coverage: {
+    state: 'missing_index', embedding_model: 'embedding', total_count: 12, ready_count: 9, missing_count: 3, processing_count: 0, failed_count: 3,
+    ready_document_ids: [], ready_documents: [], missing_documents: [],
+  } } }]
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => urlFor(input).pathname === `/api/agent/conversations/${conversation.conversation_id}` ? json(conversation) : json({ items: [] })))
+  renderPage('user-agent', `/agent?conversation_id=${conversation.conversation_id}`)
+  expect(await screen.findByText('本轮仅覆盖已就绪的 9 / 12 份资料，其余 3 份未参与检索。')).toBeVisible()
+})
+
+it('waits for the current stream to release before enabling a readiness continuation', async () => {
+  const status = { state: 'missing_index', embedding_model: 'embedding', total_count: 2, ready_count: 1, missing_count: 1, processing_count: 0, failed_count: 1,
+    ready_document_ids: ['ready'], ready_documents: [{ knowledge_base_id: 'kb', document_id: 'ready', parse_id: 'ready-parse', filename: 'ready.pdf', index_status: 'ready' }],
+    missing_documents: [{ knowledge_base_id: 'kb', document_id: 'failed', parse_id: 'failed-parse', filename: 'failed.pdf', index_status: 'failed', index_error: '索引服务不可用' }] }
+  let turnRequests = 0
+  let closeStream!: () => void
+  const completed = conversationFixture({ id: 'delayed-choice', prompt: '检索我的资料', answer: '仅根据已就绪资料回答。' })
+  const stream = new ReadableStream({ start(controller) {
+    controller.enqueue(new TextEncoder().encode(eventStream([
+      ['turn_started', { conversation_id: 'delayed-choice', run_id: 'delayed-run', replayed: false }],
+      ['knowledge_index_choice_required', { status }],
+    ])))
+    closeStream = () => controller.close()
+  } })
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = urlFor(input)
+    if (url.pathname === '/api/agent/turns') {
+      turnRequests += 1
+      return turnRequests === 1 ? new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } }) : streamResponse(completed)
+    }
+    if (url.pathname === '/api/agent/conversations/delayed-choice') return json({ ...completed, turns: [], turn_count: 0 })
+    if (url.pathname === '/api/agent/models') return json({ runtime_mode: 'base', items: [{ model_id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoning_efforts: ['medium'], default_reasoning_effort: 'medium' }] })
+    return json({ items: [] })
+  }))
+  renderPage()
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  fireEvent.change(input, { target: { value: '检索我的资料' } })
+  fireEvent.submit(input.closest('form')!)
+  const choice = await screen.findByRole('region', { name: '知识库还未整理完全，确定现在开始吗？' })
+  const skip = within(choice).getByRole('button', { name: '直接开始，忽略未就绪资料' })
+  expect(skip).toBeDisabled()
+  fireEvent.click(skip)
+  expect(turnRequests).toBe(1)
+  await act(async () => closeStream())
+  await waitFor(() => expect(skip).toBeEnabled())
+  fireEvent.click(skip)
+  await waitFor(() => expect(turnRequests).toBe(2))
+})
+
+it.each([true, false])('executes a writing shortcut without a second send and preserves chat draft (existing=%s)', async existing => {
+  const completed = conversationFixture({ id: 'writing-existing', prompt: '直接优化', answer: '已提出待定修订。' })
+  const requests: Record<string, unknown>[] = []
+  const finished = vi.fn()
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = urlFor(input).pathname
+    if (path === '/api/agent/models') return json({ runtime_mode: 'base', items: [{ model_id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoning_efforts: ['none'], default_reasoning_effort: 'none' }] })
+    if (path === '/api/agent/conversations/writing-existing') return json(conversationFixture({ id: 'writing-existing' }))
+    if (path === '/api/agent/turns') { requests.push(JSON.parse(String(init?.body))); return streamResponse(completed) }
+    return json({ items: [], tasks: [] })
+  }))
+  const action = { id: 'writing-click-once', text: '直接优化' }
+  const prepare = vi.fn(async () => ({ document_id: 'writing-doc', document_version: 4 }))
+  const page = (value: typeof action | null) => <MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" conversationId={existing ? "writing-existing" : null} writingDocumentId="writing-doc" prepareWritingContext={prepare} writingAction={value} onWritingActionFinished={finished} /></MemoryRouter>
+  const view = render(page(null))
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  await waitFor(() => expect(input).not.toBeDisabled())
+  fireEvent.change(input, { target: { value: '尚未发送的自由聊天草稿' } })
+  view.rerender(page(action))
+  await waitFor(() => expect(requests).toHaveLength(1))
+  await waitFor(() => expect(finished).toHaveBeenCalledWith('writing-click-once'))
+  expect(requests[0]).toMatchObject({ conversation_id: existing ? 'writing-existing' : null, mode: 'standard', message: '直接优化', writing_context: { document_id: 'writing-doc', document_version: 4 } })
+  expect(input).toHaveValue('尚未发送的自由聊天草稿')
+  expect(localStorage.getItem('everplain.agent.composer-draft.v2.writing-owner.conversation.writing-existing')).toBe('尚未发送的自由聊天草稿')
+  view.rerender(page({ ...action }))
+  await act(async () => {})
+  expect(requests).toHaveLength(1)
+})
+
+it('streams writing deltas before completion and hides only the automatic action echo', async () => {
+  const message = '优化当前选区', first = '实际收到的第一段。'.repeat(12), second = '实际收到的第二段。'
+  const completed = conversationFixture({ id: 'writing-live', prompt: message, answer: first + second })
+  let controller!: ReadableStreamDefaultController<Uint8Array>
+  const stream = new ReadableStream<Uint8Array>({ start(value) { controller = value } })
+  const encoder = new TextEncoder(), finished = vi.fn()
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const path = urlFor(input).pathname
+    if (path === '/api/agent/models') return json({ runtime_mode: 'base', items: [{ model_id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoning_efforts: ['none'], default_reasoning_effort: 'none' }] })
+    if (path === '/api/agent/turns') return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } })
+    return json({ items: [], tasks: [] })
+  }))
+  const action = { id: 'writing-ui:rewrite:live', text: message }
+  const { container } = render(<MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" writingDocumentId="writing-doc" prepareWritingContext={async () => ({ document_id: 'writing-doc', document_version: 1 })} writingAction={action} onWritingActionFinished={finished} /></MemoryRouter>)
+  await screen.findByRole('textbox', { name: '问 Everplain' })
+  await act(async () => { controller.enqueue(encoder.encode(eventStream([
+    ['turn_started', { conversation_id: 'writing-live', run_id: 'writing-live-run', replayed: false }],
+    ['assistant_delta', { delta: first }],
+  ]))) })
+  await waitFor(() => expect(container.querySelector('.cv-turn__prose')).toHaveTextContent(first))
+  expect(finished).not.toHaveBeenCalled()
+  expect(container.querySelector('[data-role="user-message"]')).not.toBeInTheDocument()
+  await act(async () => { controller.enqueue(encoder.encode(eventStream([['assistant_delta', { delta: second }]]))) })
+  await waitFor(() => expect(container.querySelector('.cv-turn__prose')).toHaveTextContent(first + second))
+  expect(finished).not.toHaveBeenCalled()
+  await act(async () => { controller.enqueue(encoder.encode(eventStream([['turn_completed', { conversation: completed, knowledge_release_id: 'release-test' }]]))); controller.close() })
+  await waitFor(() => expect(finished).toHaveBeenCalledWith(action.id))
+  expect(container.querySelector('[data-role="user-message"]')).not.toBeInTheDocument()
+})
+
+it('keeps an identical natural writing message visible after restoring automatic action origin', async () => {
+  const completed = conversationFixture({ id: 'writing-origins', prompt: '优化当前选区', answer: '已提出修订。' })
+  const automatic = { ...completed.turns[0], turn_id: 'automatic', tool_traces: [{ tool: 'writing_ui_action', phase: 'finished' as const, call_id: 'origin', input: { origin: 'selection_toolbar' } }] }
+  completed.turns = [automatic, { ...completed.turns[0], turn_id: 'natural' }]
+  completed.turn_count = 2
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => urlFor(input).pathname === '/api/agent/conversations/writing-origins' ? json(completed) : json({ items: [], tasks: [] })))
+  const { container } = render(<MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" writingDocumentId="writing-doc" conversationId="writing-origins" /></MemoryRouter>)
+  await waitFor(() => expect(container.querySelectorAll('[data-role="user-message"]')).toHaveLength(1))
+  expect(container.querySelector('[data-role="user-message"]')).toHaveTextContent('优化当前选区')
+  expect(container.querySelector('[data-turn-id="automatic"] [data-role="user-message"]')).not.toBeInTheDocument()
+})
+
+it('keeps a body visible and explicitly unsaved when a journal write fails', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const path = urlFor(input).pathname
+    if (path === '/api/agent/turns') return new Response(eventStream([
+      ['turn_started', { run_id: 'run-unsaved', conversation_id: 'conversation-unsaved', attempt_id: 'attempt-unsaved', replayed: false }],
+      ['assistant_delta', { delta: '数据库失败时' }],
+      ['turn_snapshot', { run_id: 'run-unsaved', conversation_id: 'conversation-unsaved', attempt_id: 'attempt-unsaved', status: 'failed', partial_answer: '数据库失败时仍显示的合法正文。', last_event_sequence: 2, output_persistence_failed: true, output_attempts: [{ attempt_id: 'attempt-unsaved', ordinal: 1, status: 'failed', answer: '数据库失败时', created_at: '2026-10-05T00:00:00Z' }] }],
+      ['output_persistence_failed', { message: '正文尚未保存' }],
+      ['turn_failed', { code: 'agent_output_storage_error', message: '正文保存失败，页面文字仍保留。' }],
+    ]), { headers: { 'Content-Type': 'text/event-stream' } })
+    return json({ items: [] })
+  }))
+  renderPage()
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  fireEvent.change(input, { target: { value: '问题' } })
+  fireEvent.submit(input.closest('form')!)
+  expect(await screen.findByText('数据库失败时仍显示的合法正文。')).toBeVisible()
+  expect(screen.getByText('以下已收到的正文尚未保存，请先复制保留；未保存部分无法保证恢复。')).toBeVisible()
+  expect(screen.getByRole('button', { name: '重试本轮' })).toBeEnabled()
+})
+
+
+it('keeps a complete canonical answer visible while its receipt is unsaved', async () => {
+  const conversation = conversationFixture({ answer: '已经完整收到的回答。' })
+  const state = { output_finish_reason: 'complete', usage_status: 'known', settlement_status: 'pending', receipt_persistence: 'unsaved' }
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const path = urlFor(input).pathname
+    if (path === '/api/agent/turns') return new Response(eventStream([
+      ['turn_started', { run_id: 'run-receipt-unsaved', conversation_id: conversation.conversation_id, replayed: false }],
+      ['assistant_delta', { delta: '已经完整收到的回答。' }],
+      ['agent_delivery_state', state],
+      ['turn_completed', { conversation, knowledge_release_id: 'release-a', delivery_state: state }],
+    ]), { headers: { 'Content-Type': 'text/event-stream' } })
+    return json({ items: [] })
+  }))
+  renderPage()
+  const input = await screen.findByRole('textbox', { name: '问 Everplain' })
+  fireEvent.change(input, { target: { value: '问题' } })
+  fireEvent.submit(input.closest('form')!)
+  expect(await screen.findByText('已经完整收到的回答。')).toBeVisible()
+  expect(screen.getByText('用量记录未保存。正文仍保留，请等待 receipt。')).toBeVisible()
 })

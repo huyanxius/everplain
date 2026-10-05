@@ -44,3 +44,35 @@ def selectable_agent_model(
         (AgentModelChoice("gpt-6-luna", "GPT 6 Luna", efforts, default),),
         replace(endpoint, base_url=urlunsplit(parsed).rstrip("/")),
     )
+
+
+def registered_agent_models(settings):
+    """Resolve operator-registered routes; missing secrets never yield selectable entries."""
+    import os
+
+    choices = []
+    routes = {}
+    seen = set()
+    for entry in settings.agent_selectable_models:
+        if entry.model_id in seen or entry.model_id == "gpt-6-luna":
+            raise ValueError("additional model identifiers must be unique and preserve Luna")
+        seen.add(entry.model_id)
+        provider = settings.agent_providers.get(entry.provider)
+        if provider is None:
+            raise ValueError("selectable model references an unregistered provider")
+        secret = os.environ.get(provider.api_key_env)
+        attribute = provider.api_key_env.removeprefix("EVERPLAIN_").lower()
+        configured = getattr(settings, attribute, None)
+        if not secret and configured is not None:
+            secret = configured.get_secret_value()
+        if not secret or not secret.strip():
+            continue
+        choices.append(AgentModelChoice(
+            entry.model_id, entry.label, entry.reasoning_efforts, entry.default_reasoning_effort,
+        ))
+        # Each selected model has a strict single-endpoint route, never a cross-model fallback.
+        routes[entry.model_id] = (ModelEndpoint(
+            endpoint_id="primary", base_url=provider.base_url, model=entry.model,
+            api_key=secret, timeout_seconds=settings.model_timeout_seconds, provider=entry.provider,
+        ), provider.protocol)
+    return tuple(choices), routes

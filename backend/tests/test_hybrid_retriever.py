@@ -282,3 +282,115 @@ def test_material_vectors_are_reused_across_questions(tmp_path):
         result = retriever.search_chunks(query=question, chunks=chunks, limit=5, vector_cache=cache)
         assert result.hits[0].chunk.text == "紫藤社区有37人参加夜间互助"
     assert document_calls == [("紫藤社区有37人参加夜间互助",)]
+
+
+@pytest.mark.parametrize("cached_count", [0, 1, 2, 3])
+def test_read_only_retrieval_never_embeds_missing_documents(tmp_path, cached_count):
+    index, _ = _ready_index(tmp_path)
+    query_calls = []
+    chunks = tuple(
+        RetrievalChunk(
+            chunk_id=f"material:doc-{i}:segment-{i}",
+            document_kind="research_material",
+            knowledge_id=None,
+            theory_id=None,
+            content_version=1,
+            content_hash=f"content-{i}",
+            title="Townscaper",
+            text="Townscaper is a toy",
+            source_ids=(f"source-{i}",),
+        )
+        for i in range(3)
+    )
+
+    class Embedder:
+        def embed_query(self, query):
+            query_calls.append(query)
+            return [1.0, 0.0]
+
+        def embed_documents(self, texts):
+            raise AssertionError("Chat cannot create document vectors")
+
+    class Cache:
+        def get_many(self, chunks, model):
+            return [[1.0, 0.0] if i < cached_count else None for i in range(3)]
+
+        def put_many(self, *args):
+            raise AssertionError("Chat cannot write index cache")
+
+    retriever = HybridRetriever(
+        index=index,
+        embedder=Embedder(),
+        embedding_model="existing-model",
+        chunk_schema_version="1",
+        reranker=_PassingReranker(),
+        reranker_model="test",
+        min_rerank_score=0,
+    )
+    kwargs = dict(
+        query="Townscaper",
+        chunks=chunks,
+        limit=3,
+        vector_cache=Cache(),
+        embed_missing_documents=False,
+    )
+    if cached_count < 3:
+        with pytest.raises(RetrievalPipelineUnavailable, match="not ready"):
+            retriever.search_chunks(**kwargs)
+        assert query_calls == []
+    else:
+        result = retriever.search_chunks(**kwargs)
+        assert query_calls == ["Townscaper"]
+        assert result.mode == "hybrid_reranked"
+        assert {hit.chunk.source_ids for hit in result.hits} == {(f"source-{i}",) for i in range(3)}
+
+
+@pytest.mark.parametrize("failure", ["embedding", "reranker"])
+def test_read_only_provider_failure_is_not_silent_lexical_success(tmp_path, failure):
+    index, _ = _ready_index(tmp_path)
+    chunk = RetrievalChunk(
+        chunk_id="material:owner:segment",
+        document_kind="research_material",
+        knowledge_id=None,
+        theory_id=None,
+        content_version=1,
+        content_hash="current",
+        title="Townscaper",
+        text="Townscaper is a toy.",
+        source_ids=("owner-source",),
+    )
+
+    class Embedder:
+        def embed_query(self, query):
+            if failure == "embedding":
+                raise EmbeddingProviderError("unavailable")
+            return [1.0, 0.0]
+
+        def embed_documents(self, texts):
+            raise AssertionError("No document embedding in global chat")
+
+    class Cache:
+        def get_many(self, chunks, model):
+            return [[1.0, 0.0]]
+
+    class Reranker:
+        def rerank(self, **kwargs):
+            raise RerankerProviderError("unavailable")
+
+    retriever = HybridRetriever(
+        index=index,
+        embedder=Embedder(),
+        embedding_model="existing-model",
+        chunk_schema_version="1",
+        reranker=Reranker(),
+        reranker_model="test",
+        min_rerank_score=0,
+    )
+    with pytest.raises(RetrievalPipelineUnavailable, match=failure):
+        retriever.search_chunks(
+            query="Townscaper",
+            chunks=(chunk,),
+            limit=3,
+            vector_cache=Cache(),
+            embed_missing_documents=False,
+        )

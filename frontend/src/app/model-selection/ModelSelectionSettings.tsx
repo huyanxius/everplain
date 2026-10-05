@@ -22,14 +22,16 @@ export function ModelSelectionSettings({ state, disabled, activeRequest }: {
   const panel = useRef<HTMLDivElement>(null)
   const motion = usePresence(open, panel)
   const id = useId()
-  const activeSelection: ModelSelection | null = disabled && activeRequest?.model_id && activeRequest.reasoning_effort
-    ? { modelId: activeRequest.model_id, reasoningEffort: activeRequest.reasoning_effort } : null
+  const activeSelection: ModelSelection | null = disabled && activeRequest?.model_id
+    ? { modelId: activeRequest.model_id, reasoningEffort: activeRequest.reasoning_effort ?? null } : null
   const activeUsesDefault = Boolean(disabled && activeRequest && !activeRequest.model_id)
   const selection = activeUsesDefault ? null : activeSelection ?? state.selection
   const supported = Boolean(selection && isModelSelectionValid(selection, state.catalog))
   const model = state.catalog.find(item => item.id === selection?.modelId)
+  const effortLabel = selection?.reasoningEffort && supported
+    ? text(effortLabels[selection.reasoningEffort][0], effortLabels[selection.reasoningEffort][1]) : null
   const summary = state.status === 'ready' && model && selection && supported
-    ? `${model.label} · ${text(effortLabels[selection.reasoningEffort][0], effortLabels[selection.reasoningEffort][1])}`
+    ? `${model.label}${effortLabel ? ` · ${effortLabel}` : ''}`
     : activeSelection || activeUsesDefault ? text('本轮沿用原设置', 'Original turn settings')
     : state.status === 'loading' ? text('正在读取模型', 'Loading models')
     : state.status === 'error' ? text('模型暂不可用 · 服务端默认', 'Models unavailable · Server default')
@@ -71,7 +73,7 @@ export function ModelSelectionSettings({ state, disabled, activeRequest }: {
       menu.style.top = `${upwards ? Math.max(top, rect.top - Math.min(menu.scrollHeight, above, 400) - 8) : rect.bottom + 8}px`
     }
     place()
-    const firstControl = menu.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]:not(:disabled)') ?? menu.querySelector<HTMLElement>('button:not(:disabled)') ?? menu
+    const firstControl = menu.querySelector<HTMLElement>('[data-model-summary]:not(:disabled)') ?? Array.from(menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')).find(button => !button.closest('[inert]')) ?? menu
     firstControl.focus()
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place)
     observer?.observe(menu)
@@ -92,11 +94,11 @@ export function ModelSelectionSettings({ state, disabled, activeRequest }: {
       aria-label={`${text('模型与思考强度', 'Model and reasoning effort')}：${summary}`} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
       title={state.runtimeMode === 'mock' ? text('当前是隔离测试模型。', 'This is the isolated test runtime.') : undefined}
       onClick={() => setOpen(value => !value)}>{state.status === 'ready' && model && selection && supported
-        ? <><span>{model.label}</span><span className="model-selection-settings__summary-effort">{text(effortLabels[selection.reasoningEffort][0], effortLabels[selection.reasoningEffort][1])}</span></>
+        ? <><span>{model.label}</span>{effortLabel && <span className="model-selection-settings__summary-effort">{effortLabel}</span>}</>
         : <span>{summary}</span>}<CaretDownIcon size={12} aria-hidden="true" /></button>
     {motion.present && <div ref={panel} id={id} className="qx-menu model-selection-settings__popover" data-motion-surface="popover" {...motion.props} popover="manual" role="dialog" tabIndex={-1} aria-label={text('选择模型与思考强度', 'Choose model and reasoning effort')}>
     {state.status === 'ready' && selection && supported ? <>
-      <ModelSelectionControl className="model-selection--compact" catalog={state.catalog} value={selection} onChange={value => { if (!disabled) state.onChange(value) }} disabled={disabled} />
+      <ModelSelectionControl className="model-selection--compact" catalog={state.catalog} value={selection} active={open} onChange={value => { if (!disabled) state.onChange(value) }} disabled={disabled} />
       {state.runtimeMode === 'mock' && <p className="qx-meta">{text('当前是隔离测试模型。', 'This is the isolated test runtime.')}</p>}
     </> : <p className="qx-meta" role="status">{activeUsesDefault
       ? text('本轮沿用服务端默认设置，结束后可调整。', 'This turn uses server defaults. You can change this after it finishes.')

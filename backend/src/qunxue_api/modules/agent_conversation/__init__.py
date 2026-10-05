@@ -4,6 +4,8 @@ from qunxue_api.modules.agent_conversation.domain import (
     AgentCitation,
     AgentMaterialAttachment,
     AgentMessage,
+    AgentOutputAttempt,
+    AgentOutputEvent,
     AgentRun,
     AgentTurn,
     Conversation,
@@ -14,6 +16,7 @@ from qunxue_api.modules.agent_conversation.errors import (
     AgentConversationError,
     AgentInterrupted,
     AgentModelRouteFailure,
+    AgentOutputStorageFailure,
     ConversationNotFound,
     ConversationTaskBindingConflict,
     ResearchMaterialCitationUnavailable,
@@ -39,6 +42,7 @@ from qunxue_api.modules.agent_conversation.research_map import (
 from qunxue_api.modules.agent_conversation.service import ConversationService
 
 from .canvas_editing import CanvasEditConflict, apply_canvas_edits, prepare_canvas_edit
+from .context import excerpt, merge_digest, render_recent_context
 from .model_selection import (
     LUNA_REASONING_EFFORTS,
     MOCK_AGENT_MODEL_CHOICES,
@@ -50,7 +54,14 @@ from .model_selection import (
 )
 
 __all__ = [
+    "excerpt",
+    "ContextSummaryBatch",
+    "ContextSummaryGenerationFailure",
+    "ContextSummaryRepository",
+    "merge_digest",
+    "render_recent_context",
     "AgentModelRouteFailure",
+    "AgentOutputStorageFailure",
     "AgentModelChoice",
     "AgentModelSelection",
     "AgentModelSelectionUnavailable",
@@ -74,6 +85,8 @@ __all__ = [
     "AgentInterrupted",
     "ConversationTaskBindingConflict",
     "AgentMessage",
+    "AgentOutputAttempt",
+    "AgentOutputEvent",
     "AgentRun",
     "AgentTurn",
     "Conversation",
@@ -90,3 +103,9 @@ __all__ = [
     "normalize_research_map_patch",
     "patches_from_tool_summary",
 ]
+
+from .summary import (
+    ContextSummaryBatch,
+    ContextSummaryGenerationFailure,
+    ContextSummaryRepository,
+)

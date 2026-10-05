@@ -50,15 +50,19 @@ class SqliteBillingOperations:
             raise BillingContextMissing("optional naming and probes must be operator-funded")
         if policy not in {"user", "operator"}:
             raise BillingContextMissing(
-                "this standalone model phase needs an explicit billing policy"
+                "this standalone model phase needs an explicit billing policy",
+                reason="phase_policy_missing",
             )
         if self.runtime is None:
             raise BillingContextMissing(
-                "billing conversion, price version and risk budgets are required"
+                "billing conversion, price version and risk budgets are required",
+                reason="billing_runtime_missing",
             )
         if policy == "user":
             with self.database.session() as session:
-                CreditService(SqliteCreditRepository(session)).summary(user_id=user_id, limit=1)
+                CreditService(SqliteCreditRepository(
+                    session, plan_limits=self.runtime.plan_limits
+                )).summary(user_id=user_id, limit=1)
         fingerprint = hashlib.sha256(
             json.dumps(payload, default=str, sort_keys=True, ensure_ascii=False).encode()
         ).hexdigest()
@@ -80,6 +84,8 @@ class SqliteBillingOperations:
             before_network=before_network,
             resume=resume,
             settlement_connection=self._settlement_connection if self.session is not None else None,
+            quota_start=phase in {"agent_turn", "user_research", "writing"},
+            billing_policy="actual_usage_v2" if phase in {"agent_turn", "user_research"} else None,
         )
 
     def close(self, *, run_id, outcome):
