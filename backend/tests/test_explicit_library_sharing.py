@@ -156,10 +156,9 @@ def test_migration_does_not_activate_ignored_legacy_grants(tmp_path, monkeypatch
     from uuid import uuid4
 
     from alembic import command
-    from sqlalchemy import func, select
+    from sqlalchemy import func, select, text
 
     from qunxue_api.adapters.sqlite.database import Database
-    from qunxue_api.adapters.sqlite.identity_model import UserRow
     from qunxue_api.adapters.sqlite.shared_knowledge import (
         SharedKnowledgeBaseRow,
         SharedKnowledgeSubscriptionRow,
@@ -173,14 +172,18 @@ def test_migration_does_not_activate_ignored_legacy_grants(tmp_path, monkeypatch
     owner, reader, kb = (str(uuid4()) for _ in range(3))
     with database.session() as session:
         for user_id in (owner, reader):
-            session.add(
-                UserRow(
-                    user_id=user_id,
-                    email=f"{user_id}@example.test",
-                    password_hash="fixture",
-                    created_at=now,
-                    updated_at=now,
-                )
+            # Use the actual 0470 user contract, before login_mode exists.
+            session.execute(
+                text(
+                    "INSERT INTO users(user_id,email,password_hash,role,status,version,"
+                    "created_at,updated_at) "
+                    "VALUES (:id,:email,'fixture','member','active',1,:now,:now)"
+                ),
+                {
+                    "id": user_id,
+                    "email": f"{user_id}@example.test",
+                    "now": now.isoformat(),
+                },
             )
         session.flush()
         session.add(

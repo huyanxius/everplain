@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OAuthActions, OAuthCallbackNotice } from './OAuthActions'
 import { startOAuth } from './accountApi'
@@ -8,6 +8,22 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('configured OAuth actions', () => {
+  it('adds decorative official marks without changing provider button names', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ providers: ['google', 'github'] })))
+    render(<OAuthActions returnPath="/library" />)
+    const google = await screen.findByRole('button', { name: '使用 Google 继续' })
+    const github = screen.getByRole('button', { name: '使用 GitHub 继续' })
+    expect(google.querySelector('img')).toHaveAttribute('src', expect.stringContaining('/auth/google.png'))
+    expect(github.querySelectorAll('img')).toHaveLength(2)
+    expect(google.firstElementChild).toHaveAttribute('aria-hidden', 'true')
+    expect(github.firstElementChild).toHaveAttribute('aria-hidden', 'true')
+    expect(within(google).queryByRole('img')).not.toBeInTheDocument()
+    expect(within(github).queryByRole('img')).not.toBeInTheDocument()
+    const divider = screen.getByText('或使用以下方式')
+    expect(divider.compareDocumentPosition(google) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByText('或使用邮箱')).not.toBeInTheDocument()
+  })
+
   it('keeps providers hidden when configuration is empty or unavailable', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ providers: [] })))
     const { unmount } = render(<OAuthActions returnPath="/library" />)
@@ -53,6 +69,7 @@ describe('configured OAuth actions', () => {
     const navigate = vi.fn()
     render(<OAuthActions returnPath="/settings?section=security" link onNavigate={navigate} />)
     expect(await screen.findByText('Google 已绑定')).toBeInTheDocument()
+    expect(screen.queryByText('或使用以下方式')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '绑定 Google' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '绑定 GitHub' }))
     await waitFor(() => expect(navigate).toHaveBeenCalledOnce())

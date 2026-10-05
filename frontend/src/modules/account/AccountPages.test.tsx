@@ -16,6 +16,49 @@ afterEach(() => {
 })
 
 describe('account pages', () => {
+  it('keeps email login first and restores optional providers after going back', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ providers: ['google', 'github'] }), {
+      headers: { 'Content-Type': 'application/json' },
+    })))
+    const login = vi.fn()
+    render(<LoginPage onLogin={login} onAuthenticated={vi.fn()} registerHref="/register" />)
+
+    const google = await screen.findByRole('button', { name: '使用 Google 继续' })
+    const emailForm = screen.getByRole('form', { name: '登录到 Everplain' })
+    expect(emailForm.compareDocumentPosition(google) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getAllByRole('button').map(button => button.textContent)).toEqual([
+      '继续', '使用 Google 继续', '使用 GitHub 继续',
+    ])
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'reader@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: '继续' }))
+    expect(screen.getByLabelText('密码')).toBeVisible()
+    expect(screen.queryByRole('region', { name: '第三方登录' })).not.toBeInTheDocument()
+    expect(login).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '返回' }))
+    expect(await screen.findByRole('button', { name: '使用 GitHub 继续' })).toBeVisible()
+    expect(screen.getByLabelText('邮箱')).toHaveValue('reader@example.com')
+  })
+
+  it('places optional registration providers below the email form only on its first step', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ providers: ['google', 'github'] }), {
+      headers: { 'Content-Type': 'application/json' },
+    })))
+    const sendCode = vi.fn(async () => ({ resendAfterSeconds: 60 }))
+    render(<RegisterPage onRegister={vi.fn()} onSendRegistrationCode={sendCode} onAuthenticated={vi.fn()} loginHref="/login" />)
+
+    const google = await screen.findByRole('button', { name: '使用 Google 继续' })
+    const emailForm = screen.getByRole('form', { name: '创建 Everplain 账号' })
+    expect(emailForm.compareDocumentPosition(google) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getAllByRole('button').map(button => button.textContent)).toEqual([
+      '发送验证码', '使用 Google 继续', '使用 GitHub 继续',
+    ])
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'new@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送验证码' }))
+    expect(await screen.findByLabelText('验证码')).toBeVisible()
+    expect(sendCode).toHaveBeenCalledWith('new@example.com')
+    expect(screen.queryByRole('region', { name: '第三方登录' })).not.toBeInTheDocument()
+  })
+
   it('reveals and hides the login password without changing its value or submitting', () => {
     const login = vi.fn(async () => undefined)
     render(

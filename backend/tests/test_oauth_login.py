@@ -1,5 +1,6 @@
 """Synthetic provider traffic and real Authlib/JWKS verification; no third-party accounts."""
 
+import logging
 from base64 import urlsafe_b64encode
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -20,6 +21,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from qunxue_api.adapters.oauth import OAuthClients
 from qunxue_api.adapters.sqlite import UserRow, UserSessionRow
+from qunxue_api.adapters.sqlite.account_management_model import AccountPasswordResetRow
 from qunxue_api.adapters.sqlite.billing_model import CreditLedgerRow
 from qunxue_api.adapters.sqlite.oauth_model import FederatedIdentityRow, OAuthTransactionRow
 from qunxue_api.adapters.sqlite.oauth_transactions import OAuthTransactions
@@ -36,6 +38,7 @@ class Provider:
         self.signing_key = self.key
         self.subject = "synthetic-subject"
         self.email = "oauth@example.com"
+        self.display_name = "Platform Display Name"
         self.github_id = 12345
         self.github_scope = "user:email"
         self.github_verified = True
@@ -96,6 +99,7 @@ class Provider:
                 iat=int(time()),
                 email=self.email,
                 email_verified=True,
+                name=self.display_name,
                 nonce=self.code_params[data["code"][0]]["nonce"],
             )
             claims.update(self.claims)
@@ -114,7 +118,13 @@ class Provider:
             )
         if path == "/user":
             return httpx.Response(
-                200, json={"id": self.github_id, "email": "untrusted@example.com"}
+                200,
+                json={
+                    "id": self.github_id,
+                    "email": "untrusted@example.com",
+                    "name": self.display_name,
+                    "login": "platform-handle",
+                },
             )
         if path == "/user/emails":
             return httpx.Response(
@@ -132,7 +142,7 @@ class Provider:
         assert response.headers["cache-control"] == "no-store"
         params = parse_qs(urlsplit(response.json()["authorization_url"]).query)
         assert params["code_challenge_method"] == ["S256"]
-        assert params["scope"] == ["openid email" if provider == "google" else "user:email"]
+        assert params["scope"] == ["openid email profile" if provider == "google" else "user:email"]
         assert params["redirect_uri"] == [ORIGIN + f"/api/session/oauth/{provider}/callback"]
         with client.app.state.database.session() as db:
             row = db.scalar(
@@ -283,33 +293,75 @@ def test_browser_origin_state_binding_expiry_and_denied_callback(plain_client):
     assert not mock.exchanges
 
 
-def test_same_email_is_never_automatically_linked_and_authenticated_link_works(plain_client):
+def test_same_email_creates_separate_provider_account_and_explicit_binding_still_works(
+    plain_client,
+):
     mock = Provider(plain_client)
     original = register(plain_client)
+    original_id = original["user"]["user_id"]
     plain_client.cookies.clear()
-    state, code = mock.start(plain_client)
-    assert "account_link_required" in mock.finish(plain_client, state, code).headers["location"]
-    assert counts(plain_client) == (1, 1, 0)
-    assert plain_client.get("/api/session").status_code == 401
     assert (
         plain_client.post(
             "/api/session/oauth/google/link", headers={"Origin": ORIGIN}, json={}
         ).status_code
         == 401
     )
-    response = plain_client.post(
+    state, code = mock.start(plain_client)
+    assert mock.finish(plain_client, state, code).headers["location"] == "/library"
+    provider_user = plain_client.get("/api/session").json()["user"]
+    assert provider_user["user_id"] != original_id
+    assert provider_user["email"] is None and provider_user["login_mode"] == "federated"
+    assert provider_user["display_name"] == mock.display_name
+    assert counts(plain_client) == (2, 2, 1)
+    plain_client.cookies.clear()
+    local = plain_client.post(
         "/api/session/login",
         headers={"Idempotency-Key": str(uuid4())},
         json={"email": mock.email, "password": "email-passphrase"},
     )
-    assert response.status_code == 200
+    assert local.status_code == 200 and local.json()["user"]["user_id"] == original_id
+    assert local.json()["user"]["login_mode"] == "email_password"
+    state, code = mock.start(plain_client, link=True)
+    assert "account_link_required" in mock.finish(plain_client, state, code).headers["location"]
+    assert plain_client.get("/api/session/oauth/linked").json() == {"providers": []}
+    mock.subject = "explicitly-linked-subject"
     state, code = mock.start(plain_client, link=True, return_path="/settings")
     assert mock.finish(plain_client, state, code).headers["location"] == "/settings"
     assert plain_client.get("/api/session/oauth/linked").json() == {"providers": ["google"]}
     plain_client.cookies.clear()
     state, code = mock.start(plain_client)
     assert mock.finish(plain_client, state, code).headers["location"] == "/library"
-    assert plain_client.get("/api/session").json()["user"]["user_id"] == original["user"]["user_id"]
+    assert plain_client.get("/api/session").json()["user"]["user_id"] == original_id
+
+
+def test_google_and_github_same_contact_email_remain_separate_accounts(plain_client):
+    mock = Provider(plain_client)
+    users = []
+    for provider in ("google", "github"):
+        plain_client.cookies.clear()
+        state, code = mock.start(plain_client, provider)
+        assert mock.finish(plain_client, state, code, provider).headers["location"] == "/library"
+        user = plain_client.get("/api/session").json()["user"]
+        users.append(user["user_id"])
+        assert user["email"] is None and user["login_mode"] == "federated"
+        assert user["display_name"] == mock.display_name
+        assert plain_client.get("/api/session/oauth/linked").json() == {"providers": [provider]}
+    assert users[0] != users[1] and counts(plain_client) == (2, 2, 2)
+    with plain_client.app.state.database.session() as db:
+        assert {row.verified_email for row in db.scalars(select(FederatedIdentityRow))} == {
+            mock.email
+        }
+        assert sum(db.scalars(select(CreditLedgerRow.points))) == 60
+    plain_client.cookies.clear()
+    assert (
+        plain_client.post(
+            "/api/session/login",
+            headers={"Idempotency-Key": str(uuid4())},
+            json={"email": mock.email, "password": "guessed-password"},
+        ).status_code
+        == 401
+    )
+    assert register(plain_client)["user"]["user_id"] not in users
 
 
 def test_link_requires_the_original_live_session_and_cannot_take_other_identity(plain_client):
@@ -491,15 +543,12 @@ def test_partial_configuration_stays_disabled_and_https_needs_secure_cookies():
         )
 
 
-def test_existing_admin_reset_can_set_an_oauth_only_password_without_bypassing_checks(
-    plain_client, monkeypatch
-):
+def test_oauth_only_account_cannot_gain_password_login_through_reset(plain_client, monkeypatch):
     mock = Provider(plain_client)
     state, code = mock.start(plain_client)
     mock.finish(plain_client, state, code)
     user_id = plain_client.get("/api/session").json()["user"]["user_id"]
     oauth_cookie = plain_client.cookies.get("everplain_session")
-    # A signed-in member cannot issue their own administrator reset grant.
     assert (
         plain_client.post(
             f"/api/admin/users/{user_id}/password-reset-links",
@@ -522,69 +571,58 @@ def test_existing_admin_reset_can_set_an_oauth_only_password_without_bypassing_c
     original_scope = plain_client.app.state.account_management_service_scope
 
     @contextmanager
-    def synthetic_signing_scope():
+    def signing_scope():
         with original_scope() as service:
             service._password_reset_signing_secret = b"synthetic-reset-signing-only"
             yield service
 
-    monkeypatch.setattr(
-        plain_client.app.state, "account_management_service_scope", synthetic_signing_scope
-    )
+    monkeypatch.setattr(plain_client.app.state, "account_management_service_scope", signing_scope)
     plain_client.cookies.clear()
     admin = register(plain_client, "synthetic-admin@example.com")
     with plain_client.app.state.database.session() as db:
         db.get(UserRow, admin["user"]["user_id"]).role = "admin"
-    issued = plain_client.post(
-        f"/api/admin/users/{user_id}/password-reset-links",
-        headers={"Idempotency-Key": str(uuid4())},
-    )
-    assert issued.status_code == 201
-    token = issued.json()["reset_token"]
-    plain_client.cookies.clear()
     assert (
         plain_client.post(
-            "/api/account/password-resets/consume",
+            f"/api/admin/users/{user_id}/password-reset-links",
             headers={"Idempotency-Key": str(uuid4())},
-            json={"token": "wrong-token" * 5, "new_password": "new-password-for-oauth"},
         ).status_code
         == 410
     )
+    token = "synthetic-old-reset-token-for-oauth-only-account"
+    now = datetime.now(UTC)
+    with plain_client.app.state.database.session() as db:
+        db.add(
+            AccountPasswordResetRow(
+                reset_id=str(uuid4()),
+                user_id=user_id,
+                token_digest=sha256(token.encode()).hexdigest(),
+                requested_by_user_id=admin["user"]["user_id"],
+                created_at=now,
+                expires_at=now + timedelta(minutes=10),
+                used_at=None,
+            )
+        )
+    plain_client.cookies.clear()
     consumed = plain_client.post(
         "/api/account/password-resets/consume",
         headers={"Idempotency-Key": str(uuid4())},
         json={"token": token, "new_password": "new-password-for-oauth"},
     )
-    assert consumed.status_code == 200
+    assert consumed.status_code == 410
+    with plain_client.app.state.database.session() as db:
+        assert db.get(UserRow, user_id).password_hash == "!oauth-only"
+        assert db.scalar(select(AccountPasswordResetRow)).used_at is None
+    plain_client.cookies.set("everplain_session", oauth_cookie)
+    assert plain_client.get("/api/session").status_code == 200
+    plain_client.cookies.clear()
     assert (
         plain_client.post(
-            "/api/account/password-resets/consume",
+            "/api/session/login",
             headers={"Idempotency-Key": str(uuid4())},
-            json={"token": token, "new_password": "changed-password-again"},
+            json={"email": mock.email, "password": "new-password-for-oauth"},
         ).status_code
-        == 410
+        == 401
     )
-    plain_client.cookies.set("everplain_session", oauth_cookie)
-    assert plain_client.get("/api/session").status_code == 401
-    plain_client.cookies.clear()
-    login = plain_client.post(
-        "/api/session/login",
-        headers={"Idempotency-Key": str(uuid4())},
-        json={"email": "oauth@example.com", "password": "new-password-for-oauth"},
-    )
-    assert login.status_code == 200
-    assert login.json()["user"]["user_id"] == user_id
-    assert plain_client.get("/api/session/oauth/linked").json() == {"providers": ["google"]}
-    changed = plain_client.post(
-        "/api/account/password/change",
-        headers={"Idempotency-Key": str(uuid4())},
-        json={
-            "current_password": "new-password-for-oauth",
-            "new_password": "next-password-for-oauth",
-            "revoke_other_sessions": True,
-        },
-    )
-    assert changed.status_code == 200
-    plain_client.cookies.clear()
     state, code = mock.start(plain_client)
     assert mock.finish(plain_client, state, code).headers["location"] == "/library"
     assert plain_client.get("/api/session").json()["user"]["user_id"] == user_id
@@ -648,3 +686,79 @@ def test_https_oauth_cookie_is_host_bound_and_plain_cookie_cannot_satisfy_state(
     with plain_client.app.state.database.session() as db:
         assert db.scalar(select(func.count()).select_from(OAuthTransactionRow)) == 0
     assert not mock.exchanges
+
+
+@pytest.fixture
+def operational_loggers(monkeypatch):
+    # Alembic fileConfig in the synthetic migration fixture disables imported
+    # application loggers; production migrations and API run in separate processes.
+    for name in ("qunxue_api.adapters.oauth", "qunxue_api.application.oauth_login"):
+        monkeypatch.setattr(logging.getLogger(name), "disabled", False)
+
+
+def test_provider_initialization_failure_is_diagnosable_without_logging_credentials(
+    plain_client, caplog, operational_loggers
+):
+    mock = Provider(plain_client)
+    client = plain_client.app.state.oauth_clients.client("google")
+    marker = "synthetic-token-code-secret-must-not-be-logged"
+
+    def unavailable(request):
+        raise httpx.ConnectError(marker, request=request)
+
+    client.client_kwargs["transport"] = httpx.MockTransport(unavailable)
+    with caplog.at_level("WARNING"):
+        response = plain_client.post(
+            "/api/session/oauth/google/start",
+            headers={"Origin": ORIGIN},
+            json={"return_path": "/library"},
+        )
+    assert response.status_code == 503
+    assert "provider=google operation=authorization category=ConnectError" in caplog.text
+    assert marker not in caplog.text
+    assert "synthetic-test-only" not in caplog.text
+    assert plain_client.cookies.get("everplain_oauth_google") is None
+    with plain_client.app.state.database.session() as db:
+        assert db.scalar(select(func.count()).select_from(OAuthTransactionRow)) == 0
+    assert not mock.exchanges
+
+
+def test_callback_reports_missing_browser_binder_without_leaking_flow(
+    plain_client, caplog, operational_loggers
+):
+    mock = Provider(plain_client)
+    state, code = mock.start(plain_client, "github")
+    binder = plain_client.cookies.get("everplain_oauth_github")
+    plain_client.cookies.clear()
+    with caplog.at_level("WARNING"):
+        response = mock.finish(plain_client, state, code, "github")
+    assert "invalid_flow" in response.headers["location"]
+    assert "provider=github stage=state_validation" in caplog.text
+    assert "browser_cookie_present=False" in caplog.text
+    assert all(value not in caplog.text for value in (state, code, binder))
+    assert not mock.exchanges
+
+
+def test_callback_exchange_failure_is_distinct_from_state_validation(
+    plain_client, caplog, operational_loggers
+):
+    mock = Provider(plain_client)
+    remote = plain_client.app.state.oauth_clients.client("github")
+    marker = "synthetic-code-client-secret-redacted"
+
+    def unavailable(request):
+        if request.url.path == "/login/oauth/access_token":
+            raise httpx.ReadTimeout(marker, request=request)
+        return mock.http(request)
+
+    remote.client_kwargs["transport"] = httpx.MockTransport(unavailable)
+    state, code = mock.start(plain_client, "github")
+    binder = plain_client.cookies.get("everplain_oauth_github")
+    with caplog.at_level("WARNING"):
+        response = mock.finish(plain_client, state, code, "github")
+    assert "invalid_flow" in response.headers["location"]
+    assert "provider=github operation=identity category=ReadTimeout" in caplog.text
+    assert "provider=github stage=provider_identity" in caplog.text
+    assert "browser_cookie_present=True" in caplog.text
+    assert all(value not in caplog.text for value in (state, code, binder, marker))
+    assert counts(plain_client) == (0, 0, 0)

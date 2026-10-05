@@ -92,6 +92,9 @@ superseded. This deploys the checked main snapshot, not every intermediate commi
   The [OAuth 0620 review](OAUTH_0620_REVIEW.md) binds the exact 0615-to-0620
   edge to the same copied-data and forward-stop boundary; it does not authorize
   old-app rollback, in-place interrupted-DDL retry or skipping the import head.
+  The [federated account 0630 review](FEDERATED_ACCOUNTS_0630_REVIEW.md) separately
+  binds 0620-to-0630 to that route and verifies transactional users reconstruction
+  with cascading data retained; it does not approve generic rollback.
 - `EVERPLAIN_MIGRATIONS_MANAGED=1` is set only by this controller. API startup then skips
   implicit migration. That permits the old compatible app to run against a newer schema
   it cannot name in its old Alembic history. Existing Compose/manual startup retains its
