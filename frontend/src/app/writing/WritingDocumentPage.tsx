@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Editor } from '@tiptap/core'
 import { Link, useLocation, useParams } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { DownloadSimpleIcon, SparkleIcon } from '@phosphor-icons/react'
 import { genres, genreLabel, writingApi, type Genre, type WritingDocument, type WritingRevision } from '../../modules/writing'
-import { SharedEditor, revisionFormattingError, type MarkdownSelection, type SelectionAction } from '../../modules/shared-editor'
+import { SharedEditor, type MarkdownSelection, type SelectionAction } from '../../modules/shared-editor'
 import { ResearchAgentConversationPage } from '../agent/ResearchAgentConversationPage'
 import { PageShell } from '../ui/PageShell'
 import { Select } from '../ui/Select'
@@ -15,11 +15,6 @@ import { WritingRevisionComparison, WritingRevisionPreview } from './WritingRevi
 import { useWritingPanelWidth } from './useWritingPanelWidth'
 import './reference-workbench.css'
 import './writing.css'
-
-function revisionScope(revision: WritingRevision) {
-  if (!('selection_start' in revision) || !('selection_end' in revision) || revision.selection_start == null || revision.selection_end == null) return null
-  return { start: typeof revision.selection_start === 'number' ? revision.selection_start : NaN, end: typeof revision.selection_end === 'number' ? revision.selection_end : NaN }
-}
 
 export function WritingDocumentPage({ userId }: { userId: string | null }) {
   const { documentId = '' } = useParams()
@@ -57,9 +52,8 @@ export function WritingDocumentEditor({ userId, documentId }: { userId: string |
   const hasLocalChanges = () => { const base = documentRef.current, draft = draftRef.current; return Boolean(base && (draft.title !== base.title || draft.genre !== base.genre || draft.markdown !== base.markdown)) }
   const sameDraft = (draft: typeof draftRef.current) => { const latest = draftRef.current; return latest.title === draft.title && latest.genre === draft.genre && latest.markdown === draft.markdown }
   const pending = revisions.find(item => item.status === 'pending')
-  const formattingError = useMemo(() => pending ? editor ? revisionFormattingError(editor, pending.before_markdown, pending.after_markdown, revisionScope(pending)) : '编辑器尚未准备好，请稍后再接受修订。' : null, [editor, pending])
   const preview = pending ? revisionDiff(pending.before_markdown, pending.after_markdown) : null
-  const inlinePending = Boolean(pending && !dirty && !formattingError && pending.base_version === document?.version && pending.before_markdown === markdown && editingRevisionId !== pending.revision_id)
+  const inlinePending = Boolean(pending && !dirty && pending.base_version === document?.version && pending.before_markdown === markdown && editingRevisionId !== pending.revision_id)
   useEffect(() => {
     if (!acceptedAnimation) return
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || markdown !== acceptedAnimation.after_markdown) { setAcceptedAnimation(null); return }
@@ -150,10 +144,6 @@ export function WritingDocumentEditor({ userId, documentId }: { userId: string |
       const current = documentRef.current
       if (!current) return
       if (decision === 'accept' && hasLocalChanges()) throw new Error('正文有未保存修改。请先保存，或撤回这条修订。')
-      if (decision === 'accept') {
-        const unsafe = editor ? revisionFormattingError(editor, revision.before_markdown, revision.after_markdown, revisionScope(revision)) : '编辑器尚未准备好，请稍后再接受修订。'
-        if (unsafe) throw new Error(unsafe)
-      }
       const draft = draftRef.current
       const body = { decision, expected_version: current.version }
       const result = await writingApi.resolve(documentId, revision.revision_id, body, keyFor(`resolve:${revision.revision_id}`, body))
@@ -190,10 +180,9 @@ export function WritingDocumentEditor({ userId, documentId }: { userId: string |
     {refreshNotice && <div className="qx-notice writing-notice"><p>{refreshNotice}</p><details><summary>查看服务器正文</summary><pre className="writing-raw">{document.markdown}</pre></details></div>}
     <div className="wr-body" ref={panel.layoutRef} data-resizing={panel.resizing} style={{ '--writing-agent-width': `${panel.width}px` } as CSSProperties}><section className="wr-editor">
       {actionNotice && <div className="qx-notice writing-action-notice" role="status"><p>{actionNotice}</p>{actionNotice.includes('样文') && <Link className="qx-btn qx-btn--ghost" to="/writing">管理同文体样文</Link>}</div>}
-      {pending && (dirty || formattingError || pending.base_version !== document.version || pending.before_markdown !== markdown || pending.warnings.length > 0 || editingRevisionId === pending.revision_id) && <div className="writing-action-notice" role="status">
+      {pending && (dirty || pending.base_version !== document.version || pending.before_markdown !== markdown || pending.warnings.length > 0 || editingRevisionId === pending.revision_id) && <div className="writing-action-notice" role="status">
         {editingRevisionId === pending.revision_id && !dirty && <p className="qx-meta">正在编辑原文。修改会保留；建议稿可用“对照”查看。保存原文后需重新生成修订。</p>}
         {dirty && <p className="qx-meta">你有新的手写修改，已保留；请先核对，当前修订不会覆盖它。</p>}
-        {formattingError && <p className="qx-notice qx-notice--danger" role="alert">{formattingError}</p>}
         {!dirty && (pending.base_version !== document.version || pending.before_markdown !== markdown) && <p className="qx-meta">修订的原文版本已变化，请取消后重新修改。</p>}
         {pending.warnings.map((warning, i) => <p className="qx-meta" key={i}>{warning}</p>)}
       </div>}
@@ -202,7 +191,7 @@ export function WritingDocumentEditor({ userId, documentId }: { userId: string |
           bodyPreview={editor && inlinePending && pending ? <WritingRevisionPreview key={pending.revision_id} editor={editor} before={pending.before_markdown} after={pending.after_markdown} /> : editor && acceptedAnimation && markdown === acceptedAnimation.after_markdown ? <WritingRevisionPreview key={`accepted:${acceptedAnimation.revision_id}`} editor={editor} before={acceptedAnimation.before_markdown} after={acceptedAnimation.after_markdown} animate /> : undefined}
           statusContent={<><label className="writing-status-genre">文体<Select aria-label="文稿文体" disabled={busy} value={genre} onChange={value => setGenre(value as Genre)} options={genres.map(item => ({ value: item.id, label: item.label }))} /></label><span>版本 {document.version}</span>{revisions.find(item => item.status === 'accepted' && item.after_markdown === document.markdown) && <button type="button" className="qx-btn qx-btn--ghost" disabled={busy || dirty} onClick={() => { setAcceptedAnimation(null); void undoRevision(revisions.find(item => item.status === 'accepted' && item.after_markdown === document.markdown)!) }}>撤销最近优化</button>}</>} />
         {preview && pending && <WritingRevisionBubble editor={editor} markdown={pending.before_markdown} offset={preview.prefix.length} previewKey={inlinePending ? pending.revision_id : 'original'}>
-          <div className="se-bubble" role="toolbar" aria-label="确认当前正文修订"><button type="button" disabled={busy} title="返回原文编辑，再次点击继续预览建议" aria-pressed={editingRevisionId === pending.revision_id} onClick={() => setEditingRevisionId(editingRevisionId === pending.revision_id ? null : pending.revision_id)}>修改</button><button type="button" disabled={!editor} aria-expanded={compareId === pending.revision_id} onClick={() => setCompareId(compareId === pending.revision_id ? null : pending.revision_id)}>对照</button><button type="button" disabled={busy} onClick={() => void resolve(pending, 'reject')}>取消</button><button type="button" disabled={busy || dirty || Boolean(formattingError) || pending.base_version !== document.version || pending.before_markdown !== markdown} onClick={() => void resolve(pending, 'accept')}>同意</button></div>
+          <div className="se-bubble" role="toolbar" aria-label="确认当前正文修订"><button type="button" disabled={busy} title="返回原文编辑，再次点击继续预览建议" aria-pressed={editingRevisionId === pending.revision_id} onClick={() => setEditingRevisionId(editingRevisionId === pending.revision_id ? null : pending.revision_id)}>修改</button><button type="button" disabled={!editor} aria-expanded={compareId === pending.revision_id} onClick={() => setCompareId(compareId === pending.revision_id ? null : pending.revision_id)}>对照</button><button type="button" disabled={busy} onClick={() => void resolve(pending, 'reject')}>取消</button><button type="button" disabled={busy || dirty || pending.base_version !== document.version || pending.before_markdown !== markdown} onClick={() => void resolve(pending, 'accept')}>同意</button></div>
         </WritingRevisionBubble>}
         {editor && pending && compareId === pending.revision_id && <WritingRevisionComparison editor={editor} before={pending.before_markdown} after={pending.after_markdown} onClose={() => setCompareId(null)} />}
       </div>
