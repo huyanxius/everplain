@@ -163,7 +163,7 @@ export function ModelSelectionControl({ value, onChange, disabled = false, catal
     const first = view === 'summary' ? summaryRow.current
       : modelButtons.current.get(model?.id ?? catalog[0]?.id) ?? backButton.current
     if (!first?.disabled) first?.focus({ preventScroll: true })
-  }, [active, view])
+  }, [active, view, model?.id, catalog])
 
   useLayoutEffect(() => {
     const surface = viewport.current

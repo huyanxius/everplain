@@ -37,7 +37,11 @@ export function layoutOptions(
   }
 }
 
-export function fitView(graph: Core, focusNodeId?: string, preview = false) {
+export function fitView(graph: Core, focusNodeId?: string, preview = false, duration = 0) {
+  const applyViewport = (viewport: { zoom: number; pan: { x: number; y: number } }) => {
+    if (duration > 0) graph.stop().animate(viewport, { duration, easing: 'ease-out-cubic', queue: false })
+    else graph.viewport(viewport)
+  }
   if (!focusNodeId) {
     const container = graph.container?.()
     const nodes = graph.nodes?.()
@@ -55,7 +59,7 @@ export function fitView(graph: Core, focusNodeId?: string, preview = false) {
         (container.clientHeight - padding * 2) / bounds.h,
       ) * (preview ? 0.9 : 1),
     )
-    graph.viewport({
+    applyViewport({
       zoom,
       pan: {
         x: container.clientWidth / 2 - (bounds.x1 + bounds.w / 2) * zoom,
@@ -83,7 +87,7 @@ export function fitView(graph: Core, focusNodeId?: string, preview = false) {
       (container.clientHeight - padding * 2) / (halfHeight * 2),
     ),
   )
-  graph.viewport({
+  applyViewport({
     zoom,
     pan: {
       x: container.clientWidth / 2 - position.x * zoom,

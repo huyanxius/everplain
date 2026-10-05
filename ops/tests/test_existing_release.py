@@ -93,8 +93,10 @@ class RegistryReleaseTests(unittest.TestCase):
                      patch.object(release, "read_state", return_value=None), \
                      patch.object(release, "run", return_value="") as commands, \
                      patch.object(release, "metadata", return_value=api), \
-                     patch.object(release, "environment", return_value={"EVERPLAIN_RUNTIME_MODE": "base"}), \
-                     patch.object(release, "public_health", side_effect=RuntimeError("health") if failed else None), \
+                     patch.object(release, "environment",
+                                  return_value={"EVERPLAIN_RUNTIME_MODE": "base"}), \
+                     patch.object(release, "public_health",
+                                  side_effect=RuntimeError("health") if failed else None), \
                      patch.object(update, "complete"), patch.object(update, "record"):
                     if failed:
                         with self.assertRaises(RuntimeError):
@@ -123,8 +125,11 @@ class RegistryReleaseTests(unittest.TestCase):
                 with patch.object(release, "REVISION", "c" * 40), \
                      patch.object(release.sys, "stdin", io.StringIO("synthetic-job-token\n")), \
                      patch.object(release.subprocess, "run", return_value=login) as auth, \
-                     patch.object(release, "run", side_effect=RuntimeError("pull failed") if failed
-                                  else None, return_value="aaa: Already exists\nbbb: Pull complete\n") as run, \
+                     patch.object(release, "pull_registry_image",
+                                  side_effect=RuntimeError("pull failed") if failed else None,
+                                  return_value="aaa: Already exists\n"
+                                               "bbb: Pull complete\n") as pull, \
+                     patch.object(release, "run", return_value=""), \
                      patch.object(release, "registry_image", return_value=info):
                     if failed:
                         with self.assertRaises(RuntimeError):
@@ -134,10 +139,119 @@ class RegistryReleaseTests(unittest.TestCase):
                         self.assertEqual(set(images), {"api", "web"})
                         self.assertEqual(report["api_reused_layer_count"], 1)
                         self.assertTrue(report["registry_credentials_removed"])
-                        self.assertEqual(run.call_args_list[0].args[0][-1],
+                        self.assertEqual(pull.call_args_list[0].args[0],
                                          manifest["registry_images"]["api"])
                     self.assertNotIn("synthetic-job-token", str(auth.call_args.args))
+                    self.assertTrue(report["registry_credentials_removed"])
                     self.assertEqual(list(Path(d).iterdir()), [])
+
+
+class RegistryPullTests(unittest.TestCase):
+    reference = "ghcr.io/huyanxius/everplain-web@sha256:" + "a" * 64
+
+    def test_failure_classification_is_fixed_and_permanent_errors_take_precedence(self):
+        cases = (
+            ("unauthorized: authentication required; connection reset by peer", "authentication"),
+            ("denied: requested access to the resource is denied", "authentication"),
+            ("manifest unknown; unexpected EOF", "not_found"),
+            ("no space left on device; i/o timeout", "storage"),
+            ("permission denied", "storage"),
+            ("x509: certificate signed by unknown authority; i/o timeout", "certificate"),
+            ("checksum mismatch; unexpected EOF", "integrity"),
+            ("toomanyrequests: registry rate limit", "rate_limit"),
+            ("Get https://synthetic.invalid/path?token=synthetic-private: i/o timeout",
+             "transient_network"),
+            ("TLS handshake timeout", "transient_network"),
+            ("unexpected EOF", "transient_network"),
+            ("connection reset by peer", "transient_network"),
+            ("context deadline exceeded", "unknown"),
+            ("unclassified synthetic-private response", "unknown"),
+        )
+        for error, expected in cases:
+            with self.subTest(expected=expected, error=error):
+                self.assertEqual(release.classify_pull_failure(error), expected)
+
+    def test_transient_retry_keeps_exact_digest_and_remaining_command_budget(self):
+        failed = subprocess.CompletedProcess([], 1, "", "i/o timeout: synthetic-private")
+        succeeded = subprocess.CompletedProcess([], 0, "aaa: Already exists\n", "")
+        report = {}
+        with patch.object(release.subprocess, "run", side_effect=[failed, succeeded]) as command, \
+             patch.object(release.time, "monotonic", side_effect=[10, 10, 30, 35]), \
+             patch.object(release.time, "sleep") as sleep:
+            self.assertEqual(
+                release.pull_registry_image(self.reference, "/synthetic", "web", report),
+                succeeded.stdout)
+        self.assertEqual(command.call_args_list[0].args, command.call_args_list[1].args)
+        self.assertEqual(command.call_args.args[0][-1], self.reference)
+        self.assertEqual([call.kwargs["timeout"] for call in command.call_args_list], [600, 575])
+        sleep.assert_called_once_with(5)
+        self.assertEqual(report["web_pull_attempts"], 2)
+        self.assertEqual(report["web_pull_retry_count"], 1)
+        self.assertTrue(report["web_pull_command_succeeded"])
+        self.assertEqual(report["web_pull_last_failure_class"], "transient_network")
+        self.assertNotIn("synthetic-private", json.dumps(report))
+
+    def test_repeated_network_failure_stops_at_three_attempts_without_output_leaks(self):
+        error = "Get https://synthetic.invalid/path?token=synthetic-private: unexpected EOF"
+        report = {}
+        with (
+            patch.object(release.subprocess, "run",
+                         return_value=subprocess.CompletedProcess([], 1, "", error)) as command,
+            patch.object(release.time, "sleep") as sleep,
+            self.assertRaisesRegex(RuntimeError, "transient_network") as caught,
+        ):
+            release.pull_registry_image(self.reference, "/synthetic", "web", report)
+        self.assertEqual(command.call_count, 3)
+        self.assertEqual([call.args[0] for call in command.call_args_list],
+                         [command.call_args.args[0]] * 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [5, 10])
+        self.assertEqual(report["web_pull_retry_count"], 2)
+        self.assertNotIn("synthetic-private", str(caught.exception) + json.dumps(report))
+        self.assertNotIn("https://", json.dumps(report))
+
+    def test_non_transient_failures_stop_without_retry(self):
+        for error in ("unauthorized", "manifest unknown", "no space left", "x509: invalid",
+                      "checksum mismatch", "toomanyrequests", "unknown synthetic-private"):
+            with self.subTest(error=error), \
+                 patch.object(release.subprocess, "run", return_value=
+                              subprocess.CompletedProcess([], 1, "", error)) as command, \
+                 patch.object(release.time, "sleep") as sleep:
+                report = {}
+                with self.assertRaises(RuntimeError):
+                    release.pull_registry_image(self.reference, "/synthetic", "web", report)
+                command.assert_called_once()
+                sleep.assert_not_called()
+                self.assertEqual(report["web_pull_retry_count"], 0)
+                self.assertNotIn("synthetic-private", json.dumps(report))
+
+    def test_command_timeout_and_local_start_failure_are_not_assumed_network_failures(self):
+        cases = ((subprocess.TimeoutExpired(["synthetic-private"], 600), "process_timeout"),
+                 (OSError("synthetic-private"), "local_command"))
+        for error, category in cases:
+            with self.subTest(category=category), \
+                 patch.object(release.subprocess, "run", side_effect=error) as command, \
+                 patch.object(release.time, "sleep") as sleep:
+                report = {}
+                with self.assertRaisesRegex(RuntimeError, category) as caught:
+                    release.pull_registry_image(self.reference, "/synthetic", "web", report)
+                command.assert_called_once()
+                sleep.assert_not_called()
+                self.assertNotIn("synthetic-private", str(caught.exception) + json.dumps(report))
+
+    def test_insufficient_retry_budget_stops_and_mutable_references_never_run(self):
+        failed = subprocess.CompletedProcess([], 1, "", "i/o timeout")
+        with patch.object(release.subprocess, "run", return_value=failed) as command, \
+             patch.object(release.time, "monotonic", side_effect=[0, 0, 598]), \
+             patch.object(release.time, "sleep") as sleep:
+            with self.assertRaises(RuntimeError):
+                release.pull_registry_image(self.reference, "/synthetic", "web", {})
+            command.assert_called_once()
+            sleep.assert_not_called()
+        with patch.object(release.subprocess, "run") as command:
+            with self.assertRaises(RuntimeError):
+                release.pull_registry_image("ghcr.io/huyanxius/everplain-web:latest",
+                                            "/synthetic", "web", {})
+            command.assert_not_called()
 
 
 def container(role, source):
@@ -492,9 +606,9 @@ class ExistingReleaseTests(unittest.TestCase):
     def test_ancillary_copy_failure_restores_original_data_and_containers(self):
         original = self.source / "private.bin"
         original.write_bytes(b"retained")
-        with patch.object(release, "copy_ancillary_data", side_effect=OSError("copy failed")):
-            with self.assertRaises(OSError):
-                self.execute()
+        with patch.object(release, "copy_ancillary_data", side_effect=OSError("copy failed")), \
+             self.assertRaises(OSError):
+            self.execute()
         self.assertEqual(original.read_bytes(), b"retained")
         self.assertTrue(self.updater.report["old_service_restored"])
         self.assertFalse(self.updater.report["candidate_started"])

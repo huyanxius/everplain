@@ -344,35 +344,130 @@ def registry_image(expected, reference, role, report):
     return value
 
 
+PULL_FAILURE_SUMMARIES = {
+    "authentication": "Registry authentication or authorization failed.",
+    "not_found": "Registry image or manifest was not found.",
+    "storage": "Local image storage is unavailable.",
+    "certificate": "Registry certificate verification failed.",
+    "integrity": "Image reference or content verification failed.",
+    "rate_limit": "Registry rate limit was reached.",
+    "transient_network": "Registry network connection was interrupted.",
+    "process_timeout": "Registry pull exceeded its command time budget.",
+    "local_command": "Local registry pull command could not start.",
+    "unknown": "Registry pull failed for an unclassified reason.",
+}
+
+
+def classify_pull_failure(error):
+    """Only fixed labels leave this boundary; never return any provider output."""
+    error = error.lower()
+    categories = (
+        ("storage", ("no space left", "disk quota exceeded", "read-only file system",
+                     "permission denied")),
+        ("authentication", ("unauthorized", "authentication required", "authentication failed",
+                            "failed to authorize", "insufficient_scope", "denied:",
+                            "requested access to the resource is denied", "403 forbidden")),
+        ("not_found", ("manifest unknown", "not found", "name unknown",
+                       "repository does not exist")),
+        ("certificate", ("x509:", "certificate signed", "certificate has expired",
+                         "certificate is not valid", "tls: failed to verify")),
+        ("integrity", ("digest mismatch", "checksum mismatch", "verification failed",
+                       "invalid reference format", "unsupported media type")),
+        ("rate_limit", ("toomanyrequests", "too many requests")),
+        ("transient_network", ("unexpected eof", "connection reset by peer", "connection refused",
+                               "tls handshake timeout", "i/o timeout", "connection timed out",
+                               "timeout awaiting response headers", "client.timeout exceeded",
+                               "network is unreachable", "no route to host",
+                               "temporary failure in name resolution")),
+    )
+    for category, patterns in categories:
+        if any(pattern in error for pattern in patterns):
+            return category
+    return "unknown"
+
+
+def pull_registry_image(reference, private, role, report):
+    """Retry only explicit transport failures, within the existing 600-second pull budget."""
+    require(role in {"api", "web"})
+    require(bool(re.fullmatch(r"ghcr\.io/huyanxius/everplain-" + role + r"@sha256:[0-9a-f]{64}",
+                              reference)))
+    command = ["docker", "--config", private, "pull", "--platform", "linux/amd64", reference]
+    prefix = role + "_pull_"
+    deadline = time.monotonic() + 600
+    report[prefix + "retry_count"] = 0
+    for attempt in range(1, 4):
+        report[prefix + "attempts"] = attempt
+        report.update({prefix + key: False for key in
+                       ("command_succeeded", "exit_1", "no_space", "missing_file",
+                        "permission_denied", "unsupported_format", "timed_out")})
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(command, 600)
+            result = subprocess.run(command, capture_output=True, text=True,
+                                    timeout=remaining, check=False)
+            error = result.stderr.lower()
+            report.update({
+                prefix + "command_succeeded": result.returncode == 0,
+                prefix + "exit_1": result.returncode == 1,
+                prefix + "no_space": "no space left" in error,
+                prefix + "missing_file": "no such file" in error,
+                prefix + "permission_denied": "permission denied" in error,
+                prefix + "unsupported_format": any(word in error for word in
+                                                     ("unsupported", "invalid tar",
+                                                      "invalid argument", "unrecognized")),
+            })
+            if result.returncode == 0:
+                return result.stdout
+            category = classify_pull_failure(error)
+        except subprocess.TimeoutExpired:
+            category = "process_timeout"
+            report[prefix + "timed_out"] = True
+        except OSError:
+            category = "local_command"
+        report[prefix + "last_failure_class"] = category
+        report[prefix + "failure_summary"] = PULL_FAILURE_SUMMARIES[category]
+        delay = 5 * attempt
+        if (category != "transient_network" or attempt == 3
+                or deadline - time.monotonic() <= delay):
+            raise RuntimeError("registry pull failed (" + category + ")") from None
+        report[prefix + "retry_count"] += 1
+        time.sleep(delay)
+
+
 def pull_registry_images(manifest, stage, report, roles=("api", "web")):
     """Use the job's temporary read token; Docker reuses local content-addressed layers."""
     token = sys.stdin.readline(8193).strip()
     require(0 < len(token) <= 8192 and not any(c.isspace() for c in token))
     images = {}
-    with tempfile.TemporaryDirectory(prefix="registry-auth-", dir=stage) as private:
-        login = subprocess.run(
-            ["docker", "--config", private, "login", "ghcr.io", "--username", "huyanxius",
-             "--password-stdin"],
-            input=token + "\n", capture_output=True, text=True, timeout=30, check=False,
-        )
-        report["registry_authentication_succeeded"] = login.returncode == 0
-        require(login.returncode == 0, "registry authentication failed")
-        for role, reference in manifest["registry_images"].items():
-            if role not in roles:
-                continue
-            output = run(["docker", "--config", private, "pull", "--platform", "linux/amd64",
-                          reference], timeout=600, report=report, prefix=role + "_pull_")
-            report[role + "_reused_layer_count"] = len(set(re.findall(
-                r"^([a-f0-9]+): Already exists", output, re.MULTILINE)))
-            report[role + "_downloaded_layer_count"] = len(set(re.findall(
-                r"^([a-f0-9]+): Pull complete", output, re.MULTILINE)))
-            run(["docker", "tag", reference, "everplain-" + role + ":" + REVISION])
-            info = registry_image(manifest["images"][role], reference, role, report)
-            require(info["Architecture"] == "amd64" and info["Os"] == "linux")
-            require(info["Config"]["Labels"].get("org.opencontainers.image.revision") == REVISION)
-            images[role] = info["Id"]
-            report[role + "_image_verified"] = True
-    report["registry_credentials_removed"] = True
+    private = None
+    try:
+        with tempfile.TemporaryDirectory(prefix="registry-auth-", dir=stage) as private:
+            login = subprocess.run(
+                ["docker", "--config", private, "login", "ghcr.io", "--username", "huyanxius",
+                 "--password-stdin"],
+                input=token + "\n", capture_output=True, text=True, timeout=30, check=False,
+            )
+            report["registry_authentication_succeeded"] = login.returncode == 0
+            require(login.returncode == 0, "registry authentication failed")
+            for role, reference in manifest["registry_images"].items():
+                if role not in roles:
+                    continue
+                output = pull_registry_image(reference, private, role, report)
+                report[role + "_reused_layer_count"] = len(set(re.findall(
+                    r"^([a-f0-9]+): Already exists", output, re.MULTILINE)))
+                report[role + "_downloaded_layer_count"] = len(set(re.findall(
+                    r"^([a-f0-9]+): Pull complete", output, re.MULTILINE)))
+                run(["docker", "tag", reference, "everplain-" + role + ":" + REVISION])
+                info = registry_image(manifest["images"][role], reference, role, report)
+                require(info["Architecture"] == "amd64" and info["Os"] == "linux")
+                require(info["Config"]["Labels"].get("org.opencontainers.image.revision")
+                        == REVISION)
+                images[role] = info["Id"]
+                report[role + "_image_verified"] = True
+    finally:
+        if private is not None:
+            report["registry_credentials_removed"] = not Path(private).exists()
     return images
 
 
