@@ -1061,6 +1061,8 @@
               {
                 "enum": [
                   "none",
+                  "enabled",
+                  "minimal",
                   "low",
                   "medium",
                   "high",
@@ -1087,6 +1089,8 @@
             "items": {
               "enum": [
                 "none",
+                "enabled",
+                "minimal",
                 "low",
                 "medium",
                 "high",
@@ -1999,6 +2003,8 @@
               {
                 "enum": [
                   "none",
+                  "enabled",
+                  "minimal",
                   "low",
                   "medium",
                   "high",

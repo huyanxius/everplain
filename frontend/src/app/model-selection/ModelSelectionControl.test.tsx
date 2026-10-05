@@ -340,3 +340,31 @@ it('maps logos only from exact known ID prefixes and inherits the OpenAI mark te
   expect(rows[3].querySelector('img')).toHaveAttribute('src', deepseekMark)
   for (const row of rows.slice(4)) expect(row.querySelector('.model-selection__brand')).toBeNull()
 })
+
+it('renders only the native server stops including minimal without a fabricated off switch', () => {
+  const catalog: readonly ModelDefinition[] = [
+    { id: 'gemini-native-fixture', label: 'Gemini native fixture', reasoningEfforts: ['minimal', 'low', 'medium', 'high'], defaultReasoningEffort: 'medium' },
+    { id: 'claude-native-fixture', label: 'Claude native fixture', reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultReasoningEffort: 'high' },
+  ]
+  const { container } = render(<ControlledSelection catalog={catalog} initial={{ modelId: catalog[0].id, reasoningEffort: 'minimal' }} />)
+  expect(container.querySelectorAll('.model-selection__tick')).toHaveLength(4)
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '极低')
+  expect(screen.queryByText('无')).not.toBeInTheDocument()
+  openModels()
+  fireEvent.click(screen.getByRole('radio', { name: 'Claude native fixture' }))
+  expect(container.querySelectorAll('.model-selection__tick')).toHaveLength(5)
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '高')
+  expect(screen.queryByText('无')).not.toBeInTheDocument()
+})
+
+it('shows the server binary thinking stops with a truthful on label', () => {
+  const catalog: readonly ModelDefinition[] = [
+    { id: 'binary-thinking-fixture', label: 'Binary fixture', reasoningEfforts: ['none', 'enabled'], defaultReasoningEffort: 'enabled' },
+  ]
+  const { container } = render(<ControlledSelection catalog={catalog} initial={{ modelId: catalog[0].id, reasoningEffort: 'enabled' }} />)
+  expect(container.querySelectorAll('.model-selection__tick')).toHaveLength(2)
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '开启')
+  fireEvent.keyDown(screen.getByRole('slider'), { key: 'Home' })
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '无')
+  expect(screen.queryByText('高')).not.toBeInTheDocument()
+})
