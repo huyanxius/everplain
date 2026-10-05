@@ -5870,6 +5870,36 @@ export type NextResearchStepContract = {
 };
 
 /**
+ * OAuthProvidersResponse
+ */
+export type OAuthProvidersResponse = {
+    /**
+     * Providers
+     */
+    providers: Array<'google' | 'github'>;
+};
+
+/**
+ * OAuthStartRequest
+ */
+export type OAuthStartRequest = {
+    /**
+     * Return Path
+     */
+    return_path?: string;
+};
+
+/**
+ * OAuthStartResponse
+ */
+export type OAuthStartResponse = {
+    /**
+     * Authorization Url
+     */
+    authorization_url: string;
+};
+
+/**
  * PasswordResetConsumeRequest
  */
 export type PasswordResetConsumeRequest = {
@@ -17106,6 +17136,98 @@ export type LogoutSessionResponses = {
 };
 
 export type LogoutSessionResponse2 = LogoutSessionResponses[keyof LogoutSessionResponses];
+
+export type GetLinkedOauthProvidersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/session/oauth/linked';
+};
+
+export type GetLinkedOauthProvidersResponses = {
+    /**
+     * Successful Response
+     */
+    200: OAuthProvidersResponse;
+};
+
+export type GetLinkedOauthProvidersResponse = GetLinkedOauthProvidersResponses[keyof GetLinkedOauthProvidersResponses];
+
+export type GetOauthProvidersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/session/oauth/providers';
+};
+
+export type GetOauthProvidersResponses = {
+    /**
+     * Successful Response
+     */
+    200: OAuthProvidersResponse;
+};
+
+export type GetOauthProvidersResponse = GetOauthProvidersResponses[keyof GetOauthProvidersResponses];
+
+export type StartOauthLinkData = {
+    body: OAuthStartRequest;
+    path: {
+        /**
+         * Provider
+         */
+        provider: 'google' | 'github';
+    };
+    query?: never;
+    url: '/api/session/oauth/{provider}/link';
+};
+
+export type StartOauthLinkErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type StartOauthLinkError = StartOauthLinkErrors[keyof StartOauthLinkErrors];
+
+export type StartOauthLinkResponses = {
+    /**
+     * Successful Response
+     */
+    200: OAuthStartResponse;
+};
+
+export type StartOauthLinkResponse = StartOauthLinkResponses[keyof StartOauthLinkResponses];
+
+export type StartOauthLoginData = {
+    body: OAuthStartRequest;
+    path: {
+        /**
+         * Provider
+         */
+        provider: 'google' | 'github';
+    };
+    query?: never;
+    url: '/api/session/oauth/{provider}/start';
+};
+
+export type StartOauthLoginErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type StartOauthLoginError = StartOauthLoginErrors[keyof StartOauthLoginErrors];
+
+export type StartOauthLoginResponses = {
+    /**
+     * Successful Response
+     */
+    200: OAuthStartResponse;
+};
+
+export type StartOauthLoginResponse = StartOauthLoginResponses[keyof StartOauthLoginResponses];
 
 export type RegisterSessionData = {
     body: RegisterSessionRequest;
