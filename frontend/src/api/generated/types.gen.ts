@@ -4119,6 +4119,44 @@ export type HealthResponse = {
 };
 
 /**
+ * ImportAttachmentResponse
+ */
+export type ImportAttachmentResponse = {
+    /**
+     * Filename
+     */
+    filename: string;
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Media Type
+     */
+    media_type: string;
+    /**
+     * References
+     *
+     * Percent-decoded local targets in the original note
+     */
+    references: Array<string>;
+    /**
+     * Relative Path
+     */
+    relative_path: string;
+    /**
+     * Size Bytes
+     */
+    size_bytes: number;
+    /**
+     * Url
+     *
+     * Owner-authenticated relative asset URL; null until the note is imported
+     */
+    url: string | null;
+};
+
+/**
  * ImportBatchListResponse
  */
 export type ImportBatchListResponse = {
@@ -4132,6 +4170,18 @@ export type ImportBatchListResponse = {
  * ImportBatchResponse
  */
 export type ImportBatchResponse = {
+    /**
+     * Attachment Bytes
+     *
+     * Bytes of referenced attachments across items
+     */
+    attachment_bytes?: number;
+    /**
+     * Attachment Count
+     *
+     * Referenced attachments across batch items
+     */
+    attachment_count?: number;
     /**
      * Created At
      */
@@ -4176,12 +4226,20 @@ export type ImportBatchResponse = {
      * Total
      */
     total: number;
+    /**
+     * Updated
+     */
+    updated?: number;
 };
 
 /**
  * ImportItemResponse
  */
 export type ImportItemResponse = {
+    /**
+     * Attachments
+     */
+    attachments?: Array<ImportAttachmentResponse>;
     /**
      * Attempts
      */
@@ -4213,7 +4271,7 @@ export type ImportItemResponse = {
     /**
      * Status
      */
-    status: 'queued' | 'running' | 'imported' | 'duplicate' | 'failed';
+    status: 'queued' | 'running' | 'imported' | 'updated' | 'duplicate' | 'failed';
     /**
      * Title
      */
@@ -8509,6 +8567,10 @@ export type SharedDocumentResponse = {
  * SharedDocumentSourceResponse
  */
 export type SharedDocumentSourceResponse = {
+    /**
+     * Attachments
+     */
+    attachments?: Array<ImportAttachmentResponse>;
     document: SharedDocumentResponse;
     /**
      * Knowledge Base Id
@@ -12448,6 +12510,38 @@ export type GetImportImageAssetErrors = {
 export type GetImportImageAssetError = GetImportImageAssetErrors[keyof GetImportImageAssetErrors];
 
 export type GetImportImageAssetResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type GetImportAttachmentAssetData = {
+    body?: never;
+    path: {
+        /**
+         * Document Id
+         */
+        document_id: string;
+        /**
+         * Attachment Id
+         */
+        attachment_id: string;
+    };
+    query?: never;
+    url: '/api/imports/assets/{document_id}/attachments/{attachment_id}';
+};
+
+export type GetImportAttachmentAssetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetImportAttachmentAssetError = GetImportAttachmentAssetErrors[keyof GetImportAttachmentAssetErrors];
+
+export type GetImportAttachmentAssetResponses = {
     /**
      * Successful Response
      */
