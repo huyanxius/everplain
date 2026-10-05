@@ -1053,3 +1053,27 @@ def test_export_includes_audit_rows_where_the_user_is_the_target_not_the_actor(
     serialized = json.dumps(payload, ensure_ascii=False)
     assert "password_reset.issued" in serialized
     assert reset.json()["reset_token"] not in serialized
+
+
+def test_credit_codes_use_dedicated_secret_without_admin_provisioning(plain_client):
+    from sqlalchemy import text
+
+    user = register(plain_client, "existing-admin@example.com")["user"]["user_id"]
+    with plain_client.app.state.database.session() as session:
+        session.execute(text("UPDATE users SET role='admin' WHERE user_id=:user"), {"user": user})
+    plain_client.app.state.settings.credit_code_signing_secret = SecretStr(
+        "synthetic-dedicated-code-secret-32"
+    )
+    plain_client.app.state.account_management_installed = False
+    install_account_management(
+        plain_client.app, database=plain_client.app.state.database,
+        password_hasher=Argon2PasswordHasher(),
+    )
+    response = plain_client.post(
+        "/api/admin/credit-redemption-codes",
+        headers={"Idempotency-Key": str(uuid4())},
+        json={"count": 1, "expires_in_days": 7},
+    )
+    assert response.status_code == 201, response.text
+    assert len(response.json()["codes"]) == 1
+    assert plain_client.app.state.credit_exempt_user_ids == frozenset()
