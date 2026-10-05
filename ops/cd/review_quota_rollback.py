@@ -15,10 +15,11 @@ from uuid import uuid4
 
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from sqlalchemy import create_engine, text
+
 from qunxue_api.adapters.sqlite.durable_billing import DurableBilling
 from qunxue_api.adapters.sqlite.quota_periods import ensure_quota_period
 from qunxue_api.modules.billing import PriceBook, Tariff
-from sqlalchemy import create_engine, text
 
 ROOT = Path(__file__).resolve().parents[2]
 PREVIOUS_DURABLE_SHA256 = "8760b4a3bb3dd199480e451ae105050ca1e12d1614e0893491c2dc50d7da5b4c"
