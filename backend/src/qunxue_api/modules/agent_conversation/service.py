@@ -201,7 +201,13 @@ class _MemoryRepository:
         self.turn_keys[key] = turn.turn_id
         return turn
 
-    def start_run(self, run: AgentRun) -> AgentRun:
+    def start_run(
+        self,
+        run: AgentRun,
+        *,
+        enforce_expected_generation: bool = False,
+        expected_previous_lease_token: str | None = None,
+    ) -> AgentRun:
         existing = next(
             (
                 item
@@ -211,6 +217,9 @@ class _MemoryRepository:
             ),
             None,
         )
+        current_token = (existing.lease_token or "") if existing is not None else None
+        if enforce_expected_generation and current_token != expected_previous_lease_token:
+            raise RunAlreadyActive(str(run.conversation_id))
         if existing is not None:
             if existing.status == "running":
                 raise RunAlreadyActive(str(run.conversation_id))
@@ -482,7 +491,10 @@ class ConversationService:
         model: str = "knowledge-agent",
         material_attachments: tuple[AgentMaterialAttachment, ...] = (),
         request_snapshot: dict[str, object] | None = None,
+        enforce_expected_generation: bool = False,
+        expected_previous_lease_token: str | None = None,
     ) -> AgentRun:
+        """Claim the validated generation; enforced None means the run must not exist."""
         self.get_conversation(user_id=user_id, conversation_id=conversation_id)
         normalized_provider = provider.strip()
         normalized_model = model.strip()
@@ -500,7 +512,9 @@ class ConversationService:
                 knowledge_release_id=knowledge_release_id,
                 material_attachments=material_attachments,
                 request_snapshot=dict(request_snapshot or {}),
-            )
+            ),
+            enforce_expected_generation=enforce_expected_generation,
+            expected_previous_lease_token=expected_previous_lease_token,
         )
 
     def find_run(self, *, user_id: UUID, idempotency_key: str) -> AgentRun | None:

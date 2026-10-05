@@ -15,7 +15,11 @@ from test_phase_billing_p0 import Planner, build_application, record, register_w
 
 from qunxue_api.adapters.model.metering import current_operation
 from qunxue_api.adapters.sqlite.database import Database
-from qunxue_api.modules.agent_conversation import AgentInterrupted, RunAlreadyActive
+from qunxue_api.modules.agent_conversation import (
+    AgentInterrupted,
+    ConversationService,
+    RunAlreadyActive,
+)
 from qunxue_api.modules.billing import BillingReplayBlocked
 
 
@@ -335,7 +339,13 @@ def crash_before_failure_settlement(database_url, user_id):
 
         def finish(**kwargs):
             if kwargs["outcome"] == "error":
-                os._exit(73)
+                with database.engine.connect() as connection:
+                    status = connection.scalar(
+                        text("SELECT status FROM billing_operations WHERE run_id=:run"),
+                        {"run": str(kwargs["run_id"])},
+                    )
+                if status == "active":
+                    os._exit(73)
             return original(**kwargs)
 
         runtime.finish = finish
@@ -396,6 +406,238 @@ def test_failed_row_active_billing_crash_is_repaired_before_retry_reservation(pl
             == 0
         )
         assert session.scalar(text("SELECT count(*) FROM credit_ledger WHERE kind='usage'")) == 1
+
+
+@pytest.mark.parametrize("legacy_lease", ["unchanged", None, ""])
+def test_late_retry_cannot_overwrite_a_new_failed_generation_before_settlement(
+    plain_client, legacy_lease
+):
+    user = UUID(register_with_phase_budget(plain_client))
+    database = plain_client.app.state.database
+    args = dict(
+        user_id=user,
+        conversation_id=None,
+        prompt="synthetic",
+        idempotency_key="failed-before-settlement",
+    )
+    with database.session() as session:
+        app, _, _ = build_application(database, session, runner=FailOnceRunner(RuntimeError))
+        with pytest.raises(RuntimeError):
+            app.run_turn(**args)
+        if legacy_lease != "unchanged":
+            session.execute(
+                text("UPDATE agent_runs SET lease_token=:lease"), {"lease": legacy_lease}
+            )
+            session.commit()
+
+    entered, release = threading.Event(), threading.Event()
+    late_runner = Runner()
+
+    def late_retry():
+        with database.session() as session:
+            app, _, _ = build_application(database, session, runner=late_runner)
+            original_tools_factory = app._tools_factory
+
+            def blocked_tools_factory():
+                entered.set()
+                assert release.wait(30)
+                return original_tools_factory()
+
+            app._tools_factory = blocked_tools_factory
+            return app.run_turn(**args)
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        delayed = executor.submit(late_retry)
+        try:
+            assert entered.wait(10)
+            process = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "from test_agent_retry_billing import crash_before_failure_settlement; "
+                    "import sys; crash_before_failure_settlement(*sys.argv[1:])",
+                    database.engine.url.render_as_string(),
+                    str(user),
+                ],
+                env={
+                    **os.environ,
+                    "PYTHONDONTWRITEBYTECODE": "1",
+                    "PYTHONPATH": os.pathsep.join(
+                        [
+                            str(Path(__file__).parents[2] / "src"),
+                            str(Path(__file__).parents[1]),
+                            str(Path(__file__).parent),
+                            os.environ.get("PYTHONPATH", ""),
+                        ]
+                    ),
+                },
+                capture_output=True,
+                timeout=20,
+            )
+            assert process.returncode == 73, process.stderr.decode()
+            with database.engine.connect() as connection:
+                interrupted_generation = dict(
+                    connection.execute(text("SELECT * FROM agent_runs")).mappings().one()
+                )
+                active_operation = dict(
+                    connection.execute(
+                        text("SELECT * FROM billing_operations WHERE status='active'")
+                    ).mappings().one()
+                )
+                assert interrupted_generation["status"] == "failed"
+                snapshot = json.loads(interrupted_generation["request_snapshot"])
+                assert snapshot["_billing_run_id"] == active_operation["run_id"]
+        finally:
+            release.set()
+        with pytest.raises(RunAlreadyActive):
+            delayed.result(timeout=10)
+
+    assert late_runner.calls == 0
+    with database.engine.connect() as connection:
+        assert dict(connection.execute(text("SELECT * FROM agent_runs")).mappings().one()) == (
+            interrupted_generation
+        )
+        assert dict(
+            connection.execute(
+                text("SELECT * FROM billing_operations WHERE status='active'")
+            ).mappings().one()
+        ) == active_operation
+    with database.session() as session:
+        runner = Runner()
+        app, runtime, _ = build_application(database, session, runner=runner)
+        assert app.run_turn(**args).turn is not None
+        assert app.run_turn(**args).replayed
+        assert runner.calls == 1
+        assert runtime.available_balance(user) == 2908
+        assert (
+            session.scalar(text("SELECT count(*) FROM billing_operations WHERE status='active'"))
+            == 0
+        )
+        assert session.scalar(text("SELECT count(*) FROM credit_ledger WHERE kind='usage'")) == 1
+
+
+@pytest.mark.parametrize("storage", ["memory", "sqlite"])
+@pytest.mark.parametrize("state", ["absent", "failed", "completed", "awaiting_plan_confirmation"])
+def test_expected_generation_rejects_stale_or_absent_claim_before_replay(
+    plain_client, storage, state
+):
+    user = UUID(register_with_phase_budget(plain_client))
+    database = plain_client.app.state.database
+    with database.session() as session:
+        app, _, _ = build_application(database, session)
+        service = ConversationService.in_memory() if storage == "memory" else app._conversations
+        conversation = service.create_conversation(user_id=user, title="synthetic")
+        args = dict(
+            user_id=user,
+            conversation_id=conversation.conversation_id,
+            idempotency_key="generation-fence",
+            knowledge_release_id="synthetic",
+        )
+        first = service.start_run(
+            **args, enforce_expected_generation=True, expected_previous_lease_token=None
+        )
+        service.finish_run(run_id=first.run_id, status="failed")
+        service.commit()
+        expected = None if state == "absent" else first.lease_token
+        if state != "absent":
+            winner = service.start_run(
+                **args,
+                enforce_expected_generation=True,
+                expected_previous_lease_token=first.lease_token,
+            )
+            service.finish_run(run_id=winner.run_id, status=state)
+            service.commit()
+        before = service.find_run_by_id(user_id=user, run_id=first.run_id)
+        with pytest.raises(RunAlreadyActive):
+            service.start_run(
+                **args,
+                enforce_expected_generation=True,
+                expected_previous_lease_token=expected,
+                request_snapshot={"_billing_run_id": "must-never-be-persisted"},
+            )
+        assert service.find_run_by_id(user_id=user, run_id=first.run_id) == before
+
+
+@pytest.mark.parametrize("lease_value", [None, ""])
+@pytest.mark.parametrize("failure", [RuntimeError, AgentInterrupted])
+def test_legacy_failed_or_interrupted_lease_can_retry(plain_client, lease_value, failure):
+    user = UUID(register_with_phase_budget(plain_client))
+    database = plain_client.app.state.database
+    runner = FailOnceRunner(failure)
+    args = dict(user_id=user, conversation_id=None, prompt="synthetic", idempotency_key="legacy")
+    with database.session() as session:
+        app, runtime, repository = build_application(database, session, runner=runner)
+        with pytest.raises(failure):
+            app.run_turn(**args)
+        old = repository.find_run(user_id=user, idempotency_key="legacy")
+        session.execute(
+            text("UPDATE agent_runs SET lease_token=:lease WHERE run_id=:run"),
+            {"lease": lease_value, "run": str(old.run_id)},
+        )
+        session.commit()
+        delivered = app.run_turn(**args)
+        assert delivered.run_id == old.run_id
+        assert delivered.turn is not None and not delivered.replayed
+        assert app.run_turn(**args).replayed
+        assert runner.calls == 2
+        assert runtime.available_balance(user) == 2908
+        assert session.scalar(text("SELECT count(*) FROM credit_ledger WHERE kind='usage'")) == 1
+
+
+def test_existing_null_lease_is_not_an_absent_generation(plain_client):
+    user = UUID(register_with_phase_budget(plain_client))
+    database = plain_client.app.state.database
+    with database.session() as session:
+        app, _, _ = build_application(database, session)
+        service = app._conversations
+        conversation = service.create_conversation(user_id=user, title="synthetic")
+        args = dict(
+            user_id=user,
+            conversation_id=conversation.conversation_id,
+            idempotency_key="legacy-absence",
+            knowledge_release_id="synthetic",
+        )
+        original = service.start_run(**args)
+        service.finish_run(run_id=original.run_id, status="failed")
+        session.execute(
+            text("UPDATE agent_runs SET lease_token=NULL WHERE run_id=:run"),
+            {"run": str(original.run_id)},
+        )
+        service.commit()
+        with pytest.raises(RunAlreadyActive):
+            service.start_run(
+                **args, enforce_expected_generation=True, expected_previous_lease_token=None
+            )
+        assert service.find_run_by_id(user_id=user, run_id=original.run_id).status == "failed"
+
+
+@pytest.mark.parametrize("lease_value", [None, ""])
+def test_legacy_paused_lease_reuses_its_financial_operation(plain_client, lease_value):
+    user = UUID(register_with_phase_budget(plain_client))
+    database = plain_client.app.state.database
+    with database.session() as session:
+        app, runtime, repository = build_application(database, session)
+        args = dict(
+            user_id=user,
+            conversation_id=None,
+            prompt="synthetic",
+            idempotency_key="legacy-paused",
+            mode="deep_research",
+        )
+        planned = app.run_turn(**args)
+        first = repository.find_run(user_id=user, idempotency_key="legacy-paused")
+        assert first.status == "awaiting_plan_confirmation"
+        session.execute(
+            text("UPDATE agent_runs SET lease_token=:lease WHERE run_id=:run"),
+            {"lease": lease_value, "run": str(first.run_id)},
+        )
+        session.commit()
+        confirmed = app.run_turn(
+            **args, deep_research_run_id=planned.run_id, deep_research_action="confirm"
+        )
+        assert confirmed.run_id == planned.run_id and confirmed.turn is not None
+        assert runtime.available_balance(user) == 2878
+        assert session.scalar(text("SELECT count(*) FROM billing_operations")) == 1
 
 
 @pytest.mark.parametrize("stage", ["before_billing", "after_billing"])

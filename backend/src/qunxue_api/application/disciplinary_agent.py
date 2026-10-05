@@ -556,6 +556,10 @@ class DisciplinaryAgentApplication:
             model=runtime_identity.model,
             material_attachments=material_attachments,
             request_snapshot=request_snapshot,
+            enforce_expected_generation=True,
+            expected_previous_lease_token=(
+                existing_run.lease_token if existing_run is not None else None
+            ),
         )
         self._conversations.commit()
         prior_summary = (

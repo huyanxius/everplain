@@ -188,7 +188,13 @@ class ConversationRepository(Protocol):
         idempotency_key: str,
     ) -> AgentTurn | IdempotentTurn: ...
 
-    def start_run(self, run: AgentRun) -> AgentRun: ...
+    def start_run(
+        self,
+        run: AgentRun,
+        *,
+        enforce_expected_generation: bool = False,
+        expected_previous_lease_token: str | None = None,
+    ) -> AgentRun: ...
 
     def find_run(self, *, user_id: UUID, idempotency_key: str) -> AgentRun | None: ...
 
