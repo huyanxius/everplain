@@ -155,6 +155,9 @@ class OperationScope:
         self.billing_policy = billing_policy
         self.independent_delivery = False
         self.output_finish_reason = "complete"
+        self.receipt_persistence = "saved"
+        self.unsaved_receipts = {}
+        self.observed_usage = {}
 
     def __enter__(self):
         self.runtime.start(
@@ -175,19 +178,61 @@ class OperationScope:
 
     @property
     def delivery_state(self):
-        state = getattr(self.runtime, "delivery_state", lambda _run: {
-            "usage_status": "pending", "settlement_status": "pending",
-            "quota_exhausted": False,
-        })(self.run_id)
-        return {**state, "output_finish_reason": self.output_finish_reason}
+        try:
+            state = getattr(self.runtime, "delivery_state", lambda _run: {
+                "usage_status": "pending", "settlement_status": "pending",
+                "quota_exhausted": False,
+            })(self.run_id)
+        except Exception:
+            if not self.independent_delivery:
+                raise
+            self.receipt_persistence = "unsaved"
+            state = {"usage_status": "pending", "settlement_status": "pending",
+                     "quota_exhausted": False}
+        if self.receipt_persistence == "unsaved":
+            state = {**state, "settlement_status": "pending"}
+            if self.observed_usage:
+                state["usage_status"] = (
+                    "known" if all(self.observed_usage.values()) else "pending"
+                )
+        return {**state, "output_finish_reason": self.output_finish_reason,
+                "receipt_persistence": self.receipt_persistence}
+
+    def _record_attempt(self, **record):
+        self.observed_usage[record["attempt_id"]] = bool(
+            record.get("usage_known", True) and record.get("input_tokens") is not None
+            and record.get("output_tokens") is not None
+        )
+        try:
+            self.runtime.complete_attempt(**record)
+        except Exception:
+            if not self.independent_delivery:
+                raise
+            # Retry only this receipt, not provider HTTP or account payment.
+            try:
+                self.runtime.complete_attempt(**{
+                    **record, "defer_settlement": True,
+                    "failure_code": record.get("failure_code") or "settlement_pending",
+                })
+            except Exception:
+                # This is explicitly volatile evidence, never a second ledger.
+                # The caller must show unsaved status while retaining body.
+                self.receipt_persistence = "unsaved"
+                self.unsaved_receipts[record["attempt_id"]] = record
 
     def finish(self, outcome, *, connection=None):
         if connection is None and outcome in {"success", "paused"} and self.settlement_connection:
             connection = self.settlement_connection()
-        settled = self.runtime.finish(
-            run_id=self.run_id, outcome=outcome,
-            **({"connection": connection} if connection is not None else {}),
-        )
+        try:
+            settled = self.runtime.finish(
+                run_id=self.run_id, outcome=outcome,
+                **({"connection": connection} if connection is not None else {}),
+            )
+        except Exception:
+            if not self.independent_delivery:
+                raise
+            self.receipt_persistence = "unsaved"
+            settled = None
         self.finished = True
         if not self.independent_delivery and outcome in {"success", "paused"} and settled in {
             "error", "cancelled", "refunded"
@@ -268,17 +313,35 @@ class OperationScope:
         )
         if receipt:
             self.response_attempts[receipt] = attempt_id
+        choices = (
+            response.get("choices", ())
+            if isinstance(response, dict)
+            else getattr(response, "choices", ())
+        )
+        reasons = [
+            c.get("finish_reason") if isinstance(c, dict) else getattr(c, "finish_reason", None)
+            for c in choices
+        ]
+        if finish_reason is not None:
+            reasons = [finish_reason]
+        self.output_finish_reason = (
+            "truncated" if any(r in {"length", "max_output_tokens"} for r in reasons)
+            else "rejected" if "content_filter" in reasons
+            else "upstream_error" if outcome == "error"
+            else "complete"
+        )
         if raw is not None and usage_known:
             try:
                 self.runtime.assert_usage_contract(attempt_id, raw)
                 usage = normalized_usage(raw)
             except UnknownTokenUsage:
-                self.runtime.complete_attempt(
+                self._record_attempt(
                     attempt_id=attempt_id,
                     returned_model=returned,
                     provider_response_id=receipt,
                     outcome="error",
                     failure_code="invalid_token_usage",
+                    finish_reason=reasons[0] if reasons else None,
                     usage_known=False,
                     raw_usage_json=json.dumps(_safe_usage_evidence(raw), sort_keys=True),
                 )
@@ -302,23 +365,6 @@ class OperationScope:
                 cache_read_tokens=usage.cache_read_tokens,
                 cache_write_tokens=usage.cache_write_tokens,
             )
-        choices = (
-            response.get("choices", ())
-            if isinstance(response, dict)
-            else getattr(response, "choices", ())
-        )
-        reasons = [
-            c.get("finish_reason") if isinstance(c, dict) else getattr(c, "finish_reason", None)
-            for c in choices
-        ]
-        if finish_reason is not None:
-            reasons = [finish_reason]
-        self.output_finish_reason = (
-            "truncated" if any(r in {"length", "max_output_tokens"} for r in reasons)
-            else "rejected" if "content_filter" in reasons
-            else "upstream_error" if outcome == "error"
-            else "complete"
-        )
         rejected = outcome == "success" and any(r in {"length", "content_filter"} for r in reasons)
         if rejected:
             outcome = "limited" if "length" in reasons else "rejected"
@@ -327,7 +373,7 @@ class OperationScope:
             failure_code = failure_code or "missing_token_usage"
             if not self.independent_delivery:
                 outcome = "error"
-        self.runtime.complete_attempt(
+        record = dict(
             attempt_id=attempt_id,
             returned_model=returned,
             provider_response_id=receipt,
@@ -342,6 +388,7 @@ class OperationScope:
             else counts.pop("raw_usage_json"),
             **counts,
         )
+        self._record_attempt(**record)
         if rejected and not self.independent_delivery:
             raise ModelDeliveryRejected("model output was limited or refused")
         if missing_usage and not self.independent_delivery:

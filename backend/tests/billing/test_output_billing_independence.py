@@ -252,3 +252,292 @@ def test_operation_policy_override_does_not_change_operator_or_old_snapshots(wal
             )
         ]
     assert policies == ["delivery_v1", "actual_usage_v2"]
+
+
+@pytest.mark.parametrize("policy", ["actual_usage_v1", "delivery_v1"])
+@pytest.mark.parametrize("exempt", [False, True])
+def test_operator_and_historical_scopes_keep_strict_missing_usage(wallet, policy, exempt):
+    from qunxue_api.modules.billing import UnknownTokenUsage
+
+    runtime, engine = wallet
+    runtime.billing_policy = policy
+
+    async def run():
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda _r: httpx.Response(
+                    200,
+                    headers={"content-type": "text/event-stream"},
+                    content=chat_stream(missing_usage=True),
+                )
+            )
+        ) as http:
+            model = MeteredOpenAIChatModel(
+                "gpt-6.1-sol",
+                require_billing=True,
+                settings={"max_tokens": 100},
+                provider=OpenAIProvider(
+                    openai_client=AsyncOpenAI(
+                        api_key="synthetic",
+                        base_url="https://synthetic.test/v1",
+                        http_client=http,
+                        max_retries=0,
+                    )
+                ),
+            )
+            with OperationScope(
+                runtime, user_id="user", run_id=uuid4(), fingerprint="strict", exempt=exempt
+            ):
+                await Agent(model).run("Reply OK")
+
+    with pytest.raises(UnknownTokenUsage):
+        asyncio.run(run())
+    assert rows(engine)[0]["input_tokens"] is None
+    assert balance(engine) == 10000
+
+
+def test_late_confirmed_v2_receipt_stays_pending_without_retroactive_collection(independent_wallet):
+    runtime, engine = independent_wallet
+    run = operation(runtime)
+    ident = wire(runtime, run)
+    runtime.record_response_received(ident, "late-request")
+    runtime.complete_attempt(attempt_id=ident, usage_known=False, outcome="success")
+    runtime.finish(run_id=run, outcome="success")
+    actual = dict(
+        attempt_id=ident,
+        provider_host="synthetic.test",
+        provider_request_id="late-request",
+        model="gpt-6.1-sol",
+        input_tokens=1000,
+        output_tokens=100,
+        cache_read_tokens=200,
+        cache_write_tokens=300,
+    )
+    assert runtime.reconcile_usage(**actual) == "reconciled"
+    assert runtime.reconcile_usage(**actual) == "already_known"
+    state = runtime.delivery_state(run)
+    assert state["usage_status"] == "known"
+    assert state["settlement_status"] == "pending"
+    assert state["pending_credit_numerator"] == "27700000000000"
+    assert state["quota_exhausted"] is False
+    assert balance(engine) == 10000
+    with engine.connect() as conn:
+        assert conn.scalar(text("SELECT count(*) FROM credit_ledger")) == 0
+        assert conn.scalar(text("SELECT reference_cost_pico FROM billing_attempts")) == 2770000000
+
+
+def test_valid_usage_with_unconfigured_price_is_known_but_settlement_pending(independent_wallet):
+    runtime, engine = independent_wallet
+    run = operation(runtime)
+    ident = runtime.before_attempt(
+        run_id=run,
+        endpoint_id="synthetic",
+        model="unknown-model",
+        input_limit=100,
+        output_limit=-1,
+        request_hash="unknown-price",
+    )
+    runtime.complete_attempt(
+        attempt_id=ident,
+        returned_model="unknown-model",
+        input_tokens=10,
+        output_tokens=5,
+        outcome="success",
+    )
+    assert runtime.delivery_state(run)["usage_status"] == "known"
+    assert runtime.delivery_state(run)["settlement_status"] == "pending"
+    assert runtime.delivery_state(run)["quota_exhausted"] is False
+    assert rows(engine)[0]["reference_cost_pico"] is None
+    assert balance(engine) == 10000
+    assert wire(runtime, run)
+
+
+def test_duplicate_identical_responses_terminal_receipt_settles_once(independent_wallet):
+    from test_responses_metering import stream_events
+
+    runtime, engine = independent_wallet
+    body = response_body()
+    events = stream_events(body)
+    events.append(events[-1].copy())
+    encoded = (
+        "".join(
+            "data: " + json.dumps({**e, "sequence_number": n}) + "\n\n"
+            for n, e in enumerate(events)
+        )
+        + "data: [DONE]\n\n"
+    )
+
+    async def run():
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda _r: httpx.Response(
+                    200, headers={"content-type": "text/event-stream"}, content=encoded
+                )
+            )
+        ) as http:
+            model = MeteredOpenAIResponsesModel(
+                "gpt-6.1-sol",
+                require_billing=True,
+                provider=OpenAIProvider(
+                    openai_client=AsyncOpenAI(
+                        api_key="synthetic",
+                        base_url="https://synthetic.test/v1",
+                        http_client=http,
+                        max_retries=0,
+                    )
+                ),
+            )
+            with OperationScope(
+                runtime, user_id="user", run_id=uuid4(), fingerprint="duplicate-terminal"
+            ) as scope:
+                assert (await Agent(model).run("Reply OK")).output == "OK"
+                scope.finish("success")
+                assert scope.delivery_state["usage_status"] == "known"
+
+    asyncio.run(run())
+    with engine.connect() as conn:
+        assert conn.scalar(text("SELECT count(*) FROM billing_attempts")) == 1
+        assert conn.scalar(text("SELECT count(*) FROM credit_ledger")) == 1
+
+
+def test_failed_debit_defers_real_receipt_and_continues_delivery(independent_wallet):
+    from sqlalchemy import event
+
+    runtime, engine = independent_wallet
+
+    def fail_debit(_connection, _cursor, statement, _parameters, _context, _executemany):
+        if statement.startswith("UPDATE credit_accounts SET balance=balance-"):
+            raise RuntimeError("synthetic settlement writer failure")
+
+    event.listen(engine, "before_cursor_execute", fail_debit)
+    try:
+        with OperationScope(
+            runtime, user_id="user", run_id=uuid4(), fingerprint="deferred"
+        ) as scope:
+            ident = scope.before_attempt_payload(
+                {"model": "gpt-6.1-sol", "messages": []}, provider_host="synthetic.test"
+            )
+            scope.complete(
+                ident,
+                {
+                    "id": "deferred-receipt",
+                    "model": "gpt-6.1-sol",
+                    "usage": {
+                        "prompt_tokens": 1000,
+                        "completion_tokens": 100,
+                        "total_tokens": 1100,
+                        "prompt_tokens_details": {"cached_tokens": 200, "cache_write_tokens": 300},
+                    },
+                },
+                outcome="success",
+                finish_reason="length",
+            )
+            assert scope.delivery_state["output_finish_reason"] == "truncated"
+            assert scope.delivery_state["usage_status"] == "known"
+            assert scope.delivery_state["settlement_status"] == "pending"
+            assert scope.delivery_state["quota_exhausted"] is False
+            assert scope.before_attempt_payload({"model": "gpt-6.1-sol", "messages": []})
+            scope.finish("success")
+    finally:
+        event.remove(engine, "before_cursor_execute", fail_debit)
+    known = rows(engine)[0]
+    assert known["reference_cost_pico"] == 2770000000
+    assert known["input_tokens"] == 1000
+    assert known["output_tokens"] == 100
+    assert balance(engine) == 10000
+    with engine.connect() as conn:
+        assert conn.scalar(text("SELECT count(*) FROM credit_ledger")) == 0
+        assert (
+            conn.scalar(text("SELECT original_credit_pico FROM billing_operations"))
+            == "27700000000000"
+        )
+
+
+def test_invalid_cache_contract_preserves_length_and_pending_usage(independent_wallet):
+    runtime, _engine = independent_wallet
+    with OperationScope(
+        runtime, user_id="user", run_id=uuid4(), fingerprint="invalid-cache"
+    ) as scope:
+        ident = scope.before_attempt_payload(
+            {"model": "gpt-6.1-sol", "messages": []}, provider_host="synthetic.test"
+        )
+        scope.complete(
+            ident,
+            {
+                "id": "invalid-cache",
+                "model": "gpt-6.1-sol",
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "prompt_tokens_details": {"cached_tokens": 0},
+                },
+            },
+            outcome="success",
+            finish_reason="length",
+        )
+        assert scope.delivery_state["output_finish_reason"] == "truncated"
+        assert scope.delivery_state["usage_status"] == "pending"
+        assert scope.delivery_state["quota_exhausted"] is False
+        scope.finish("success")
+
+
+@pytest.mark.parametrize("failure_stage", ["receipt", "finish"])
+def test_unwritable_financial_record_returns_body_and_marks_unsaved(
+    independent_wallet, failure_stage
+):
+    from sqlalchemy import event
+
+    runtime, engine = independent_wallet
+    observed = {}
+
+    def fail_finance(_connection, _cursor, statement, _parameters, _context, _executemany):
+        if (
+            failure_stage == "receipt"
+            and statement.startswith("UPDATE billing_attempts SET billable")
+        ) or (
+            failure_stage == "finish"
+            and statement.startswith("UPDATE billing_operations SET status=")
+        ):
+            raise RuntimeError("synthetic financial record unavailable")
+
+    async def run():
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda _r: httpx.Response(
+                    200, headers={"content-type": "text/event-stream"}, content=chat_stream()
+                )
+            )
+        ) as http:
+            model = MeteredOpenAIChatModel(
+                "gpt-6.1-sol",
+                require_billing=True,
+                provider=OpenAIProvider(
+                    openai_client=AsyncOpenAI(
+                        api_key="synthetic",
+                        base_url="https://synthetic.test/v1",
+                        http_client=http,
+                        max_retries=0,
+                    )
+                ),
+            )
+            with OperationScope(
+                runtime, user_id="user", run_id=uuid4(), fingerprint="unsaved-finance"
+            ) as scope:
+                result = await Agent(model).run("Reply OK")
+                assert result.output == "OK"
+                scope.finish("success")
+                observed.update(scope.delivery_state)
+                if failure_stage == "receipt":
+                    assert len(scope.unsaved_receipts) == 1
+                    assert next(iter(scope.unsaved_receipts.values()))["output_tokens"] == 30
+
+    event.listen(engine, "before_cursor_execute", fail_finance)
+    try:
+        asyncio.run(run())
+    finally:
+        event.remove(engine, "before_cursor_execute", fail_finance)
+    assert observed["output_finish_reason"] == "complete"
+    assert observed["usage_status"] == "known"
+    assert observed["settlement_status"] == "pending"
+    assert observed["receipt_persistence"] == "unsaved"
+    assert observed["quota_exhausted"] is False

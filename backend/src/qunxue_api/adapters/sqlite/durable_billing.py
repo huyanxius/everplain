@@ -187,6 +187,22 @@ class DurableBilling:
     def _independent_delivery(run):
         return json.loads(run["price_json"]).get("billing_policy") == "actual_usage_v2"
 
+    def _confirmed_quota_exhausted(self, conn, run):
+        if run["exempt"]:
+            return False
+        epoch = run.get("quota_period_epoch")
+        period = get_quota_period(conn, run["user_id"], epoch) if epoch is not None else None
+        account = period or self._one(conn,
+            "SELECT balance FROM credit_accounts WHERE user_id=:u", u=run["user_id"])
+        if account is None:
+            return False
+        precision = period or self._one(conn,
+            "SELECT total_credit_pico FROM billing_precision WHERE user_id=:u", u=run["user_id"])
+        exact = Fraction(precision["total_credit_pico"]) if precision else Fraction(0)
+        remaining = max(Fraction(0), account["balance"] * PICO_USD - exact % PICO_USD)
+        outstanding = Fraction(run["original_credit_pico"]) - Fraction(run["credit_pico"])
+        return account["balance"] == 0 or (outstanding > 0 and outstanding >= remaining)
+
     def delivery_state(self, run_id):
         """Actual receipt certainty, settlement and delivery are separate facts."""
         with self.engine.connect() as conn:
@@ -196,22 +212,21 @@ class DurableBilling:
                 return {"usage_status": "pending", "settlement_status": "pending",
                         "quota_exhausted": False}
             attempts = conn.execute(text(
-                "SELECT usage_state FROM billing_attempts WHERE run_id=:run"
+                "SELECT usage_state,outcome FROM billing_attempts WHERE run_id=:run"
             ), {"run": str(run_id)}).mappings().all()
-            pending = any(a["usage_state"] not in {"known", "not_sent"} for a in attempts)
+            pending = any(a["usage_state"] not in {"known", "unpriced", "not_sent"}
+                          for a in attempts)
+            settlement_pending = any(a["usage_state"] not in {"known", "not_sent"}
+                                     or a["outcome"] == "model_mismatch" for a in attempts)
             outstanding = (
                 max(Fraction(0), Fraction(run["original_credit_pico"])
                     - Fraction(run["credit_pico"])) if self._independent_delivery(run) else 0
             )
-            epoch = run.get("quota_period_epoch")
-            account = get_quota_period(conn, run["user_id"], epoch) if epoch is not None else None
-            account = account or self._one(conn,
-                "SELECT balance FROM credit_accounts WHERE user_id=:user", user=run["user_id"])
             return {"usage_status": "pending" if pending else "known",
-                    "settlement_status": "pending" if pending or outstanding else "settled",
+                    "settlement_status": ("pending" if settlement_pending or outstanding
+                                          else "settled"),
                     "pending_credit_numerator": str(outstanding),
-                    "quota_exhausted": bool(not run["exempt"] and (outstanding or
-                        (account is not None and account["balance"] == 0)))}
+                    "quota_exhausted": self._confirmed_quota_exhausted(conn, run)}
 
     def uses_independent_delivery(self, run_id):
         with self.engine.connect() as conn:
@@ -385,11 +400,7 @@ class DurableBilling:
             independent = self._independent_delivery(run)
             if not independent and requested_service_tier not in {None, "default", "standard"}:
                 raise UnknownPrice("requested service tier has no configured tariff")
-            if independent and not run["exempt"] and (
-                Fraction(run["original_credit_pico"]) > Fraction(run["credit_pico"])
-                or conn.scalar(text("SELECT balance FROM credit_accounts WHERE user_id=:u"),
-                               {"u": run["user_id"]}) == 0
-            ):
+            if independent and self._confirmed_quota_exhausted(conn, run):
                 raise BillingBudgetExceeded("confirmed quota is exhausted",
                                             reason="credits_depleted")
             book = self._book(run["price_json"])
@@ -811,6 +822,7 @@ class DurableBilling:
         finish_reason=None,
         returned_service_tier=None,
         reconciliation_receipt=None,
+        defer_settlement=False,
     ):
         exceeded = False
         mismatch = False
@@ -889,10 +901,14 @@ class DurableBilling:
             if self._actual_usage(operation):
                 billable = int(cost is not None and not mismatch and not exceeded
                                and operation["status"] == "active")
+            if self._independent_delivery(operation):
+                billable = int(cost is not None and not mismatch)
             if reconciliation_receipt is not None:
                 # Authoritative provider cost repairs operator risk only. A later
                 # receipt cannot turn failed delivery into success or a charge.
-                outcome, billable = row["outcome"], 0
+                outcome = row["outcome"]
+                if not self._independent_delivery(operation):
+                    billable = 0
                 failure_code = row["failure_code"]
                 provider_response_id = row["provider_response_id"]
                 reasoning_tokens = row["reasoning_tokens"]
@@ -936,7 +952,17 @@ class DurableBilling:
                     "id": attempt_id,
                 },
             )
-            if reconciliation_receipt is None:
+            if self._independent_delivery(operation) and (
+                operation["status"] != "active" or defer_settlement
+            ):
+                confirmed = conn.execute(text(
+                    "SELECT * FROM billing_attempts WHERE run_id=:run AND billable=1"
+                ), {"run": row["run_id"]}).mappings().all()
+                gross = sum(self._attempt_credit(a) for a in confirmed)
+                conn.execute(text(
+                    "UPDATE billing_operations SET original_credit_pico=:gross WHERE run_id=:run"
+                ), {"gross": str(gross), "run": row["run_id"]})
+            elif reconciliation_receipt is None:
                 self._settle_actual(conn, row["run_id"], receipt_attempt_id=attempt_id)
         if price_error and not self._independent_delivery(operation):
             raise price_error

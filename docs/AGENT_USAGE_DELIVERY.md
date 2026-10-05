@@ -13,6 +13,7 @@ migration, tariff, new payment route, credential or tool permission.
 - `settlement_status`: `settled` or `pending`
 - `pending_credit_numerator`: unfunded confirmed retail numerator, exact string
 - `quota_exhausted`: confirmed quota has been consumed or a known cost cannot fit
+- `receipt_persistence`: `saved` or `unsaved`; unsaved is never called durable
 
 Missing/contradictory terminal usage does not interrupt Chat/Responses content
 or stop the next tool/model step. All received content remains available for the
@@ -37,6 +38,14 @@ create negative credits, add cash billing, or authorize automatic later recovery
 Repeated callbacks/finish do not re-debit it. Once confirmed quota is exhausted,
 the next wire request fails with `BillingBudgetExceeded(reason=credits_depleted)`
 and the public message is: `额度已用尽，请等待 receipt`.
+
+If receipt settlement fails, v2 retries only the same receipt write with
+`defer_settlement=True`, retaining actual counters/cost and explicit pending
+settlement without retrying HTTP or charging again. If even that write fails,
+content still returns and the scope reports `receipt_persistence=unsaved`, with
+volatile numeric evidence only. It does not create a second file ledger or claim
+the receipt is durably saved. Operation-finalization financial errors also cannot
+replace model output. Displaying and saving output remain separate concerns.
 
 Providers that only reveal usage at their terminal event cannot provide exact
 per-token quota stopping. The application can stop subsequent dispatch at that
