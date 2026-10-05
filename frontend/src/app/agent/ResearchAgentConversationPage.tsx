@@ -62,6 +62,7 @@ import {
   type AgentCitation,
   type AgentConversation,
   type AgentConversationSummary,
+  type AgentOutputAttempt,
   type AgentEvent,
   type AgentRuntimeMode,
   type AgentToolStep,
@@ -320,6 +321,8 @@ type AgentToolEvent = Extract<AgentEvent, { type: 'tool_started' | 'tool_finishe
 type ResearchToolStep = AgentToolStep & { interrupted?: boolean }
 type StreamingTurn = {
   runId?: string | null
+  attemptId?: string | null
+  outputAttempts?: AgentOutputAttempt[]
   progressEnd?: number
   question: string
   answer: string
@@ -498,6 +501,12 @@ function readInterruptedTurn(userId: string | null): StreamingTurn | null {
       runId: typeof value.runId === 'string' ? value.runId : null,
       question: value.question,
       answer: value.answer,
+      attemptId: typeof value.attemptId === 'string' ? value.attemptId : null,
+      outputAttempts: Array.isArray(value.outputAttempts)
+        ? value.outputAttempts.filter((item): item is AgentOutputAttempt => Boolean(
+          item && typeof item === 'object' && typeof item.attempt_id === 'string'
+          && typeof item.answer === 'string' && typeof item.ordinal === 'number',
+        )) : [],
       citations: value.citations as AgentCitation[],
       toolSteps,
       canvasPatches: value.canvasPatches as ResearchCanvasStreamingTurn['canvasPatches'],
@@ -917,6 +926,8 @@ function AssistantTurn({
   streaming,
   streamingStatus,
   progressEnd = 0,
+  outputAttempts = [],
+  attemptId,
   embedded,
   showResearchHandoff,
   knowledgeReleaseId,
@@ -938,6 +949,8 @@ function AssistantTurn({
   streaming?: boolean
   streamingStatus?: AgentPageStatus
   progressEnd?: number
+  outputAttempts?: AgentOutputAttempt[]
+  attemptId?: string | null
   embedded?: boolean
   showResearchHandoff?: boolean
   knowledgeReleaseId: string | null
@@ -994,6 +1007,8 @@ function AssistantTurn({
   return <ConversationTurn
     agent={{ name: profile.data?.name.trim() || 'Everplain', avatar, color: profile.data?.color }}
     turn={{ id: turnId, question, answer, citations, knowledgeReleaseId,
+      previousOutputs: outputAttempts.filter(output => output.answer && output.attempt_id !== attemptId && output.answer !== answer)
+        .map(output => ({ id: output.attempt_id, ordinal: output.ordinal, answer: output.answer })),
       toolSteps: toolSteps.map(step => ({ ...step, label: localizedToolLabel(step.tool, locale, step.label), detail: step.detail ? localizedToolDetail(step.detail, locale) : undefined, purpose: localizedToolPurpose(step.tool, locale), resultItems: resultItemsFromOutput(step.output) })),
       streaming, statusText,
       progressEnd, interrupted, failure, provenance, handoffs,
@@ -1503,6 +1518,7 @@ export function ResearchAgentConversationPage({
       status: turn.failure ? 'failed' : 'interrupted',
       request: attempt.request,
       partial_answer: turn.answer,
+      output_attempts: turn.outputAttempts,
       tool_summary: turn.toolSteps.map((step) => ({
         tool: step.tool,
         phase: step.status === 'completed' ? 'finished' : step.status === 'failed' ? 'failed' : 'started',
@@ -1542,6 +1558,8 @@ export function ResearchAgentConversationPage({
       runId: run.run_id,
       question: run.request.message,
       answer: run.partial_answer,
+      attemptId: run.output_attempts?.at(-1)?.attempt_id,
+      outputAttempts: run.output_attempts ?? [],
       citations: [],
       toolSteps: run.status === 'running' ? persistedToolSteps(traces) : interruptedSteps(persistedToolSteps(traces), locale),
       canvasPatches: [],
@@ -2000,7 +2018,14 @@ export function ResearchAgentConversationPage({
     setStatus('thinking')
     pendingToolSteps.current = []
     redactedStreamingMaterialIds.current.clear()
-    const firstStreamingTurn: StreamingTurn = { runId: attempt.runId, question, answer: '', citations: [], toolSteps: [], canvasPatches: [], startedAt: Date.now() }
+    const previousOutputs = previousAttempt?.idempotencyKey === idempotencyKey && previousTurn
+      ? [...(previousTurn.outputAttempts ?? []).filter(output => output.attempt_id !== previousTurn.attemptId), ...(previousTurn.answer ? [{
+        attempt_id: previousTurn.attemptId ?? `local:${previousTurn.runId}:${previousTurn.startedAt}`,
+        ordinal: previousTurn.outputAttempts?.at(-1)?.ordinal ?? 1,
+        status: previousTurn.failure ? 'failed' : 'interrupted', answer: previousTurn.answer,
+        created_at: new Date(previousTurn.startedAt).toISOString(),
+      }] : [])] : []
+    const firstStreamingTurn: StreamingTurn = { runId: attempt.runId, question, answer: '', outputAttempts: previousOutputs, citations: [], toolSteps: [], canvasPatches: [], startedAt: Date.now() }
     const controller = new AbortController()
     const runGeneration = streamGeneration.current + 1
     streamGeneration.current = runGeneration
@@ -2041,7 +2066,10 @@ export function ResearchAgentConversationPage({
               storageScope.current = nextScope
               if (writingShortcut) persistDraft(nextScope, draft)
             }
-            setStreamingTurn((current) => current ? { ...current, runId: event.run_id } : current)
+            setStreamingTurn((current) => current ? { ...current, runId: event.run_id,
+              attemptId: event.attempt_id,
+              outputAttempts: event.output_attempts ?? current.outputAttempts,
+            } : current)
             persistPendingTurnAttempt(storageScope.current, startedAttempt)
             setConversations((current) => current.some((item) => item.conversation_id === event.conversation_id) ? current : [{
               conversation_id: event.conversation_id, task_id: taskId,
@@ -2715,6 +2743,7 @@ export function ResearchAgentConversationPage({
                     turnId={visualTurnKeys.current.get(turn.turn_id) ?? turn.turn_id}
                     question={turn.user.content}
                     answer={turn.assistant.content}
+                    outputAttempts={turn.output_attempts}
                     citations={turn.assistant.citations}
                   toolSteps={toolStepsByTurnId[turn.turn_id] ?? persistedToolSteps(turn.tool_traces)}
                   conversationId={activeConversation?.conversation_id ?? null}
@@ -2736,6 +2765,8 @@ export function ResearchAgentConversationPage({
                     turnId={run.run_id}
                     question={saved.question}
                     answer={saved.answer}
+                    outputAttempts={saved.outputAttempts}
+                    attemptId={saved.attemptId}
                     citations={saved.citations}
                     toolSteps={saved.toolSteps}
                     conversationId={activeConversation?.conversation_id ?? null}
@@ -2774,6 +2805,8 @@ export function ResearchAgentConversationPage({
                     userId={userId}
                     question={streamingTurn.question}
                     answer={streamingTurn.answer}
+                    outputAttempts={streamingTurn.outputAttempts}
+                    attemptId={streamingTurn.attemptId}
                     citations={streamingTurn.citations}
                     toolSteps={streamingTurn.toolSteps}
                     conversationId={activeConversation?.conversation_id ?? pendingConversationId.current}

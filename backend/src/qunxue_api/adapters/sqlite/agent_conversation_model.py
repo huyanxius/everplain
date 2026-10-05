@@ -110,3 +110,36 @@ class AgentRunRow(Base):
         DateTime(timezone=True), nullable=True
     )
     lease_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    last_event_sequence: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
+
+class AgentOutputAttemptRow(Base):
+    __tablename__ = "agent_output_attempts"
+    __table_args__ = (UniqueConstraint("run_id", "ordinal"),)
+
+    attempt_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_runs.run_id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AgentOutputEventRow(Base):
+    __tablename__ = "agent_output_events"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_runs.run_id", ondelete="CASCADE"), primary_key=True
+    )
+    sequence: Mapped[int] = mapped_column(Integer, primary_key=True)
+    attempt_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_output_attempts.attempt_id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+

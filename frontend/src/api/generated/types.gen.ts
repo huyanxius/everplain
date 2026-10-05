@@ -626,6 +626,32 @@ export type AgentModelChoiceResponse = {
 };
 
 /**
+ * AgentOutputAttemptResponse
+ */
+export type AgentOutputAttemptResponse = {
+    /**
+     * Answer
+     */
+    answer: string;
+    /**
+     * Attempt Id
+     */
+    attempt_id: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Ordinal
+     */
+    ordinal: number;
+    /**
+     * Status
+     */
+    status: string;
+};
+
+/**
  * AgentProfileResponse
  */
 export type AgentProfileResponse = {
@@ -852,6 +878,14 @@ export type AgentRunLookupResponse = {
      */
     idempotency_key: string;
     /**
+     * Last Event Sequence
+     */
+    last_event_sequence?: number;
+    /**
+     * Output Attempts
+     */
+    output_attempts?: Array<AgentOutputAttemptResponse>;
+    /**
      * Partial Answer
      */
     partial_answer: string;
@@ -886,6 +920,14 @@ export type AgentRunRecoveryResponse = {
      * Idempotency Key
      */
     idempotency_key: string;
+    /**
+     * Last Event Sequence
+     */
+    last_event_sequence?: number;
+    /**
+     * Output Attempts
+     */
+    output_attempts?: Array<AgentOutputAttemptResponse>;
     /**
      * Partial Answer
      */
@@ -1057,6 +1099,10 @@ export type AgentTurnResponse = {
      * Knowledge Release Id
      */
     knowledge_release_id?: string | null;
+    /**
+     * Output Attempts
+     */
+    output_attempts?: Array<AgentOutputAttemptResponse>;
     /**
      * Tool Traces
      */

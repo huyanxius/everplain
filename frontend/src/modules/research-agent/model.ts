@@ -69,6 +69,14 @@ export type AgentToolTrace = {
   error?: string | null
 }
 
+export type AgentOutputAttempt = {
+  attempt_id: string
+  ordinal: number
+  status: string
+  answer: string
+  created_at: string
+}
+
 export type AgentTurn = {
   turn_id: string
   user: AgentMessage
@@ -76,6 +84,7 @@ export type AgentTurn = {
   tool_traces?: AgentToolTrace[]
   knowledge_release_id?: string | null
   canvas_patches?: AgentResearchMapPatch[]
+  output_attempts?: AgentOutputAttempt[]
 }
 
 export type AgentConversationSummary = {
@@ -130,6 +139,8 @@ export type AgentRunRecovery = {
   status: AgentUnfinishedRunStatus
   request: AgentTurnRequest
   partial_answer: string
+  output_attempts?: AgentOutputAttempt[]
+  last_event_sequence?: number
   tool_summary?: Record<string, unknown>[]
   updated_at: string
   cancel_requested: boolean
@@ -162,7 +173,7 @@ export type AgentToolStep = {
 }
 
 export type AgentEvent =
-  | { type: 'turn_started'; conversation_id: string; run_id: string; replayed: boolean; runtime_mode?: AgentRuntimeMode }
+  | { type: 'turn_started'; conversation_id: string; run_id: string; replayed: boolean; runtime_mode?: AgentRuntimeMode; attempt_id?: string; output_attempts?: AgentOutputAttempt[] }
   | { type: 'agent_status'; status: 'thinking' | 'answering' }
   | {
       type: 'tool_started'

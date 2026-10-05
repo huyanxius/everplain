@@ -129,6 +129,8 @@ export function parseAgentEventStream(stream: string): AgentEvent[] {
         conversation_id: String(payload.conversation_id),
         run_id: String(payload.run_id),
         replayed: payload.replayed === true,
+        ...(typeof payload.attempt_id === 'string' ? { attempt_id: payload.attempt_id } : {}),
+        ...(Array.isArray(payload.output_attempts) ? { output_attempts: payload.output_attempts as AgentConversation['turns'][number]['output_attempts'] } : {}),
         ...(payload.runtime_mode === 'mock' || payload.runtime_mode === 'base' || payload.runtime_mode === 'sft'
           ? { runtime_mode: payload.runtime_mode }
           : {}),

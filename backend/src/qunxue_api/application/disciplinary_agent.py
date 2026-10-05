@@ -570,7 +570,6 @@ class DisciplinaryAgentApplication:
         tool_events: list[AgentToolEvent] = []
         active_tool_calls: set[str] = set()
         tool_events_lock = threading.RLock()
-        partial_answer = run.partial_answer
         received_delta = False
         last_checkpoint = 0.0
         last_cancel_check = 0.0
@@ -620,7 +619,6 @@ class DisciplinaryAgentApplication:
                 user_id=user_id,
                 run_id=run.run_id,
                 lease_token=run.lease_token,
-                partial_answer=partial_answer,
                 tool_summary=saved_summary(),
             ):
                 raise AgentInterrupted("Agent execution lease was replaced")
@@ -628,11 +626,19 @@ class DisciplinaryAgentApplication:
             last_checkpoint = now
 
         def record_delta(delta: str) -> None:
-            nonlocal partial_answer, received_delta
-            if not received_delta:
-                partial_answer = ""
+            nonlocal received_delta
+            if not delta:
+                return
+            # Original body is durable before any transport callback. An attempt's
+            # output is append-only and independent of finalization/usage success.
+            with tool_events_lock:
+                event = self._conversations.append_output_event(
+                    user_id=user_id, run_id=run.run_id, attempt_id=run.lease_token,
+                    name="assistant_delta", payload={"delta": delta},
+                )
+                if event is None:
+                    raise AgentInterrupted("Agent execution lease was replaced")
                 received_delta = True
-            partial_answer += delta
             safe_checkpoint()
             if on_delta is not None:
                 on_delta(delta)
@@ -920,6 +926,8 @@ class DisciplinaryAgentApplication:
                     conversation=conversation_history,
                     tools=tools,
                 )
+            if not received_delta and result.answer:
+                record_delta(result.answer)
             coverage = getattr(tools, "knowledge_index_coverage", None)
             if coverage is not None:
                 record_tool_event(AgentToolEvent(

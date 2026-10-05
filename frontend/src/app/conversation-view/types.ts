@@ -31,6 +31,7 @@ export type ConversationTurnView = {
   id: string
   question: string
   answer: string
+  previousOutputs?: readonly { id: string; ordinal: number; answer: string }[]
   citations: readonly AgentCitation[]
   knowledgeReleaseId?: string | null
   toolSteps?: readonly ConversationToolStep[]

@@ -84,6 +84,14 @@ class AgentResearchMapResponse(BaseModel):
     relations: list[AgentResearchMapRelationResponse]
 
 
+class AgentOutputAttemptResponse(BaseModel):
+    attempt_id: str
+    ordinal: int
+    status: str
+    answer: str
+    created_at: datetime
+
+
 class AgentTurnResponse(BaseModel):
     turn_id: UUID
     user: AgentMessageResponse
@@ -91,6 +99,7 @@ class AgentTurnResponse(BaseModel):
     tool_traces: list[AgentToolTraceResponse] = Field(default_factory=list)
     knowledge_release_id: str | None = None
     canvas_patches: list[AgentResearchMapPatchResponse] = Field(default_factory=list)
+    output_attempts: list[AgentOutputAttemptResponse] = Field(default_factory=list)
 
 
 class AgentConversationSummaryResponse(BaseModel):
@@ -233,6 +242,8 @@ class AgentRunRecoveryResponse(BaseModel):
     ]
     request: AgentTurnRequest
     partial_answer: str
+    output_attempts: list[AgentOutputAttemptResponse] = Field(default_factory=list)
+    last_event_sequence: int = 0
     tool_summary: list[dict[str, object]] = Field(default_factory=list)
     updated_at: datetime
     cancel_requested: bool
@@ -267,6 +278,8 @@ class AgentRunLookupResponse(BaseModel):
     ]
     cancel_requested: bool
     partial_answer: str
+    output_attempts: list[AgentOutputAttemptResponse] = Field(default_factory=list)
+    last_event_sequence: int = 0
     request: AgentTurnRequest | None
     updated_at: datetime
     turn_id: UUID | None

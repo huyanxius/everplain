@@ -1108,6 +1108,40 @@
         "title": "AgentModelChoiceResponse",
         "type": "object"
       },
+      "AgentOutputAttemptResponse": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "ordinal",
+          "status",
+          "answer",
+          "created_at"
+        ],
+        "title": "AgentOutputAttemptResponse",
+        "type": "object"
+      },
       "AgentProfileResponse": {
         "properties": {
           "avatar_id": {
@@ -1573,6 +1607,18 @@
             "title": "Idempotency Key",
             "type": "string"
           },
+          "last_event_sequence": {
+            "default": 0,
+            "title": "Last Event Sequence",
+            "type": "integer"
+          },
+          "output_attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AgentOutputAttemptResponse"
+            },
+            "title": "Output Attempts",
+            "type": "array"
+          },
           "partial_answer": {
             "title": "Partial Answer",
             "type": "string"
@@ -1645,6 +1691,18 @@
           "idempotency_key": {
             "title": "Idempotency Key",
             "type": "string"
+          },
+          "last_event_sequence": {
+            "default": 0,
+            "title": "Last Event Sequence",
+            "type": "integer"
+          },
+          "output_attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AgentOutputAttemptResponse"
+            },
+            "title": "Output Attempts",
+            "type": "array"
           },
           "partial_answer": {
             "title": "Partial Answer",
@@ -2045,6 +2103,13 @@
               }
             ],
             "title": "Knowledge Release Id"
+          },
+          "output_attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AgentOutputAttemptResponse"
+            },
+            "title": "Output Attempts",
+            "type": "array"
           },
           "tool_traces": {
             "items": {

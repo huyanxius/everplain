@@ -23,6 +23,16 @@ const turn: ConversationTurnView = {
 }
 
 describe('ConversationThread', () => {
+  it('keeps previous attempt bodies visible during an empty, short and failed retry', async () => {
+    const previousOutputs = [{ id: 'attempt-A', ordinal: 1, answer: '较长的已收到原文始终保留。' }]
+    const { rerender } = render(<ConversationThread turns={[{ ...turn, answer: '', streaming: true, previousOutputs }]} onSelectCitation={vi.fn()} />)
+    expect(screen.getByText('较长的已收到原文始终保留。')).toBeVisible()
+    rerender(<ConversationThread turns={[{ ...turn, answer: '短', failure: '失败', previousOutputs }]} onSelectCitation={vi.fn()} />)
+    expect(screen.getByText('较长的已收到原文始终保留。')).toBeVisible()
+    await waitFor(() => expect(screen.getByText('短')).toBeVisible())
+    expect(screen.getByText('第 1 次生成的原文')).toBeVisible()
+  })
+
   it('renders the mock-style content with no legacy layout dependency and returns turn-scoped citation context', () => {
     const select = vi.fn()
     const { container } = render(<ConversationThread turns={[turn]} agent={{ name: '澄', avatar: 'cheng' }} onSelectCitation={select} />)

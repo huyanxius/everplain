@@ -25,6 +25,7 @@ from qunxue_api.api.contracts.agent import (
     AgentMessageResponse,
     AgentModelCatalogResponse,
     AgentModelChoiceResponse,
+    AgentOutputAttemptResponse,
     AgentResearchJourneyResponse,
     AgentRunLookupResponse,
     AgentRunRecoveryResponse,
@@ -512,6 +513,9 @@ def stream_agent_turn(
             registered_lease_token = lease_token
             if not replayed:
                 _register_active_run(user_id, run_id, cancel_event)
+            with request.app.state.disciplinary_agent_scope() as app:
+                finder = getattr(app, "find_run_by_id", None)
+                started_run = finder(user_id=user_id, run_id=run_id) if callable(finder) else None
             event_queue.put(
                 (
                     "started",
@@ -519,6 +523,11 @@ def stream_agent_turn(
                         "conversation_id": str(conversation_id),
                         "run_id": str(run_id),
                         "replayed": replayed,
+                        "attempt_id": lease_token,
+                        "output_attempts": [
+                            _output_attempt(item).model_dump(mode="json")
+                            for item in (started_run.output_attempts if started_run else ())
+                        ],
                         "runtime_mode": runtime_mode,
                     },
                 )
@@ -842,6 +851,8 @@ def lookup_agent_run(
         status=run.status,
         cancel_requested=run.cancel_requested,
         partial_answer=run.partial_answer,
+        output_attempts=[_output_attempt(item) for item in run.output_attempts],
+        last_event_sequence=run.last_event_sequence,
         request=original_request,
         updated_at=run.updated_at,
         turn_id=run.turn_id,
@@ -923,6 +934,7 @@ def _conversation(
                 ],
                 knowledge_release_id=resolved_release_ids.get(turn.turn_id),
                 canvas_patches=[dict(patch) for patch in turn.canvas_patches],
+                output_attempts=[_output_attempt(item) for item in turn.output_attempts],
             )
             for turn in item.turns
         ],
@@ -938,6 +950,8 @@ def _conversation(
                     if key in AgentTurnRequest.model_fields
                 }),
                 partial_answer=run.partial_answer,
+                output_attempts=[_output_attempt(item) for item in run.output_attempts],
+                last_event_sequence=run.last_event_sequence,
                 tool_summary=list(run.tool_summary),
                 updated_at=run.updated_at,
                 cancel_requested=run.cancel_requested,
@@ -945,6 +959,13 @@ def _conversation(
             for run in item.unfinished_runs
             if run.request_snapshot
         ],
+    )
+
+
+def _output_attempt(item) -> AgentOutputAttemptResponse:
+    return AgentOutputAttemptResponse(
+        attempt_id=item.attempt_id, ordinal=item.ordinal, status=item.status,
+        answer=item.answer, created_at=item.created_at,
     )
 
 
