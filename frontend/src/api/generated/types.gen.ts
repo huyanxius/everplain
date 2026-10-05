@@ -5340,6 +5340,44 @@ export type MaterialRelationResponse = {
 export type MaterialRelationType = 'derived_from' | 'supplements' | 'translation_of' | 'version_of' | 'describes' | 'related';
 
 /**
+ * MembershipCatalogResponse
+ */
+export type MembershipCatalogResponse = {
+    /**
+     * Agent Models
+     */
+    agent_models: Array<PublicAgentModelResponse>;
+    /**
+     * Free Weekly Points
+     */
+    free_weekly_points: number;
+    /**
+     * Payments Enabled
+     */
+    payments_enabled: boolean;
+    /**
+     * Plans
+     */
+    plans: Array<SubscriptionPlanResponse>;
+    /**
+     * Reset Days
+     */
+    reset_days: number;
+    /**
+     * Runtime Mode
+     */
+    runtime_mode: string;
+    /**
+     * Top Up Points
+     */
+    top_up_points: number;
+    /**
+     * Top Up Price Cny Fen
+     */
+    top_up_price_cny_fen: number;
+};
+
+/**
  * MemoryCollection
  */
 export type MemoryCollection = {
@@ -6464,6 +6502,28 @@ export type ProjectResearchFactsResponse = {
      * Sensitivity Levels
      */
     sensitivity_levels: Array<Array<string | number>>;
+};
+
+/**
+ * PublicAgentModelResponse
+ */
+export type PublicAgentModelResponse = {
+    /**
+     * Default Reasoning Effort
+     */
+    default_reasoning_effort: string | null;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Model Id
+     */
+    model_id: string;
+    /**
+     * Reasoning Efforts
+     */
+    reasoning_efforts: Array<string>;
 };
 
 /**
@@ -8955,6 +9015,22 @@ export type SubscriptionPlanResponse = {
      * Name
      */
     name: string;
+    /**
+     * Period Days
+     */
+    period_days: number;
+    /**
+     * Period Points
+     */
+    period_points: number;
+    /**
+     * Price Cny Fen
+     */
+    price_cny_fen: number;
+    /**
+     * Weekly Points
+     */
+    weekly_points: number;
 };
 
 /**
@@ -14230,6 +14306,22 @@ export type ListPhenomenonExamplesResponses = {
 };
 
 export type ListPhenomenonExamplesResponse = ListPhenomenonExamplesResponses[keyof ListPhenomenonExamplesResponses];
+
+export type GetPublicProductCatalogData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/product-catalog';
+};
+
+export type GetPublicProductCatalogResponses = {
+    /**
+     * Successful Response
+     */
+    200: MembershipCatalogResponse;
+};
+
+export type GetPublicProductCatalogResponse = GetPublicProductCatalogResponses[keyof GetPublicProductCatalogResponses];
 
 export type ListPublicKnowledgeDirectoryData = {
     body?: never;

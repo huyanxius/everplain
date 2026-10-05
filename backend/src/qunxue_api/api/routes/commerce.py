@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
 from qunxue_api.api.contracts.commerce import (
+    MembershipCatalogResponse,
     ModelCatalogResponse,
     SubscriptionCheckoutRequest,
     SubscriptionCheckoutResponse,
@@ -17,6 +18,10 @@ from qunxue_api.api.dependencies import CurrentSessionDependency
 from qunxue_api.api.routes.stubs import IdempotencyKey
 from qunxue_api.application.subscriptions import SubscriptionApplication
 from qunxue_api.modules.subscriptions import (
+    MEMBERSHIP_PLANS,
+    MEMBERSHIP_WEEKLY_POINTS,
+    TOP_UP_POINTS,
+    TOP_UP_PRICE_CNY_FEN,
     InvalidWebhook,
     PaymentProviderError,
     SubscriptionConflict,
@@ -32,6 +37,45 @@ def application(request: Request) -> SubscriptionApplication:
 
 
 Application = Annotated[SubscriptionApplication, Depends(application)]
+
+
+def _public_plan(plan, limits):
+    weekly = limits.get(plan.id, plan.weekly_points)
+    return {
+        "id": plan.id,
+        "name": plan.name,
+        "description": plan.description,
+        "price_cny_fen": plan.price_cny_fen,
+        "weekly_points": weekly,
+        "period_days": plan.period_days,
+        "period_points": weekly * 4,
+    }
+
+
+@router.get(
+    "/product-catalog",
+    response_model=MembershipCatalogResponse,
+    operation_id="get_public_product_catalog",
+)
+def get_public_product_catalog(request: Request):
+    settings = request.app.state.settings
+    limits = {
+        **MEMBERSHIP_WEEKLY_POINTS,
+        **settings.billing_plan_weekly_points,
+    }
+    return {
+        "plans": [_public_plan(plan, limits) for plan in MEMBERSHIP_PLANS],
+        "free_weekly_points": 30,
+        "reset_days": 7,
+        "top_up_points": TOP_UP_POINTS,
+        "top_up_price_cny_fen": TOP_UP_PRICE_CNY_FEN,
+        "payments_enabled": False,
+        "agent_models": [asdict(choice) for choice in request.app.state.agent_model_choices],
+        "runtime_mode": (
+            "base" if settings.runtime_mode == "mock" and settings.has_model_api_key
+            else settings.runtime_mode
+        ),
+    }
 
 
 def _http_error(exc: Exception) -> HTTPException:
@@ -57,12 +101,15 @@ def get_model_catalog(request: Request, current: CurrentSessionDependency):
     response_model=SubscriptionOverviewResponse,
     operation_id="get_subscription",
 )
-def get_subscription(current: CurrentSessionDependency, app: Application):
+def get_subscription(request: Request, current: CurrentSessionDependency, app: Application):
     value = app.get(current.user.user_id)
     return {
         "available": app.unavailable_reason is None,
         "unavailable_reason": app.unavailable_reason,
-        "plans": [{"id": p.id, "name": p.name, "description": p.description} for p in app.plans],
+        "plans": [
+            _public_plan(p, request.app.state.settings.billing_plan_weekly_points)
+            for p in app.plans
+        ],
         "subscription": {
             "plan_id": value.plan_id,
             "status": value.status,
