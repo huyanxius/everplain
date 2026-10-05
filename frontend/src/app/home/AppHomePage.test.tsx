@@ -7,7 +7,7 @@ import { useAccount } from '../../modules/account'
 import { readAgentProfile } from '../../modules/agent-profile'
 import { readPersonalGraph, type PersonalGraph } from '../../modules/personal-graph'
 import { seedAgentDraft } from '../agent/ResearchAgentConversationPage'
-import { getAgentModelCatalog, listRecentConversationContext } from '../../modules/research-agent'
+import { getConversationContextSummary, getAgentModelCatalog, listRecentConversationContext } from '../../modules/research-agent'
 import { useAgentModelSelection } from '../model-selection'
 import { readHomeSubmission } from '../conversation-view/homeSubmission'
 import { AppHomePage } from './AppHomePage'
@@ -16,7 +16,7 @@ vi.mock('../../modules/account', () => ({ useAccount: vi.fn() }))
 vi.mock('../../modules/agent-profile', () => ({ readAgentProfile: vi.fn() }))
 vi.mock('../../modules/personal-graph', () => ({ readPersonalGraph: vi.fn() }))
 vi.mock('../agent/ResearchAgentConversationPage', () => ({ seedAgentDraft: vi.fn() }))
-vi.mock('../../modules/research-agent', () => ({ getAgentModelCatalog: vi.fn(), listRecentConversationContext: vi.fn() }))
+vi.mock('../../modules/research-agent', () => ({ getConversationContextSummary: vi.fn(), getAgentModelCatalog: vi.fn(), listRecentConversationContext: vi.fn() }))
 vi.mock('../ui/PageShell', () => ({ PageShell: ({ children }: { children: ReactNode }) => children, PageContent: ({ children }: { children: ReactNode }) => children }))
 vi.mock('../../modules/agent-avatar', () => ({ AgentAvatar: () => <span data-testid="home-agent" /> }))
 
@@ -43,6 +43,7 @@ beforeEach(() => {
   graph = { name: '小叶', avatar_id: 'cheng', color: '#5d8fe6', releaseId: 'r1', nodes: [], edges: [], sources: {}, document_count: 0, topic_count: 0, pending_count: 0, mode: 'mock' }
   vi.mocked(readPersonalGraph).mockImplementation(async () => graph)
   vi.mocked(listRecentConversationContext).mockResolvedValue([])
+  vi.mocked(getConversationContextSummary).mockResolvedValue({ status: 'empty', summary: '', cards: [], updated_at: null, scope: 'conversation_messages', omitted_messages: 0, summary_sources: [] })
   vi.mocked(getAgentModelCatalog).mockResolvedValue({ runtimeMode: 'base', models: [{ id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoningEfforts: ['low', 'medium', 'high'], defaultReasoningEffort: 'medium' }] })
 })
 

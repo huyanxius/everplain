@@ -10,7 +10,7 @@ import { ConversationLayout } from '../conversation-view/ConversationLayout'
 import { ConversationComposer } from '../conversation-view/ConversationComposer'
 import { ModelSelectionSettings, useAgentModelSelection } from '../model-selection'
 import { AgentAvatar, agentAvatarById, type AgentAvatarId } from '../../modules/agent-avatar'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { notifyAccountUsageChanged } from '../../modules/account'
 import { readAgentProfile } from '../../modules/agent-profile'
 import { AgentModeSwitch } from './AgentModeSwitch'
@@ -95,6 +95,8 @@ import {
 import { ProjectScopeMenu } from './ProjectScopeMenu'
 import { deleteResearchProject, listResearchProjects, type ResearchProject } from '../../modules/research-projects'
 import { ConversationSuggestions } from '../conversation-view/ConversationSuggestions'
+import { ConversationContextSuggestions } from '../conversation-view/ConversationContextSuggestions'
+import { conversationContextSummaryKey } from '../conversation-view/useConversationContextSummary'
 import { useConversationGreeting } from '../conversation-view/researchPrompts'
 import { readHomeSubmission, takeHomeSubmission } from '../conversation-view/homeSubmission'
 import { isModelSelectionValid, toModelSelectionRequest, type ModelSelection } from '../model-selection'
@@ -1087,6 +1089,7 @@ export function ResearchAgentConversationPage({
   researchContext = false,
 }: ResearchAgentConversationPageProps) {
   const { locale, text } = useAppLocale()
+  const queryClient = useQueryClient()
   const modelSelection = useAgentModelSelection(userId)
   const location = useLocation()
   const navigationType = useNavigationType()
@@ -1810,6 +1813,7 @@ export function ResearchAgentConversationPage({
 
   async function deleteSavedConversation(summary: AgentConversationSummary) {
     await deleteAgentConversation(summary.conversation_id)
+    void queryClient.resetQueries({ queryKey: conversationContextSummaryKey(userId), exact: true })
     setConversations((current) => current.filter((conversation) => (
       conversation.conversation_id !== summary.conversation_id
     )))
@@ -1824,6 +1828,7 @@ export function ResearchAgentConversationPage({
   async function deleteSavedProject(projectId: string) {
     if (taskId === projectId && (isBusy || materialUploading)) throw new Error(text('请先结束当前回答或材料上传，再删除项目', 'Finish the current answer or upload before deleting this project'))
     await deleteResearchProject(projectId)
+    void queryClient.resetQueries({ queryKey: conversationContextSummaryKey(userId), exact: true })
     setProjects((current) => current.filter((project) => project.task_id !== projectId))
     setConversations((current) => current.map((conversation) => conversation.task_id === projectId
       ? { ...conversation, task_id: null } : conversation))
@@ -2178,6 +2183,7 @@ export function ResearchAgentConversationPage({
                 return next
               }, { replace: true })
             }
+            void queryClient.invalidateQueries({ queryKey: conversationContextSummaryKey(userId), exact: true, refetchType: 'none' })
             onTurnCompleted?.()
           } else if (event.type === 'turn_interrupted') {
             pausePending.current = false
@@ -2874,10 +2880,10 @@ export function ResearchAgentConversationPage({
                 <button type="button" className="qx-btn qx-btn--ghost" aria-label={text('查看材料库', 'Open material library')} onClick={openResearchMaterials}><FolderOpenIcon size={16} /><span>{text('材料库', 'Materials')}</span></button>
               </div>
             </>}
-            {isLanding && <div className="cv-research-suggestions"><ConversationSuggestions
-              mode={researchToolsVisible ? 'research' : 'chat'} taskId={taskId}
+            {isLanding && <div className="cv-research-suggestions">{researchToolsVisible ? <ConversationSuggestions
+              mode="research" taskId={taskId}
               projects={projects} conversations={conversations} attachedMaterials={attachedMaterials}
-              onSelect={choosePrompt} /></div>}
+              onSelect={choosePrompt} /> : !embedded && !searchParams.get('reference_knowledge_base_id') ? <ConversationContextSuggestions userId={userId} onSelect={choosePrompt} /> : null}</div>}
 </>}
 
     source={<ConversationSourcePanel

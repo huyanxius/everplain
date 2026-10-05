@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from qunxue_api.adapters.sqlite import AgentConversationRow, AgentMessageRow, AgentRunRow
+from qunxue_api.adapters.sqlite.agent_memory_model import invalidate_conversation_summary
 from qunxue_api.adapters.sqlite.research_material_model import (
     ResearchMaterialBlockRow,
     ResearchMaterialRow,
@@ -298,6 +299,7 @@ class SqliteConversationRepository:
         if row is None:
             raise ConversationNotFound(str(conversation_id))
         row.title = title
+        invalidate_conversation_summary(self._session, user_id)
         row.updated_at = updated_at
         self._session.flush()
         return self.get(user_id=user_id, conversation_id=conversation_id)
@@ -312,6 +314,7 @@ class SqliteConversationRepository:
         if row is None:
             raise ConversationNotFound(str(conversation_id))
         self._session.delete(row)
+        invalidate_conversation_summary(self._session, user_id)
         self._session.flush()
 
     def release_ids_by_turn(self, *, conversation_id: UUID) -> dict[UUID, str]:
@@ -379,6 +382,7 @@ class SqliteConversationRepository:
         )
         row.updated_at = max(_utc(row.updated_at), turn.assistant_message.created_at)
         row.version += 1
+        invalidate_conversation_summary(self._session, conversation.user_id)
         self._session.flush()
         return turn
 

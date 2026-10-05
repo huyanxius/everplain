@@ -4,6 +4,7 @@ import { ArrowRightIcon, FileTextIcon, GlobeIcon, PlusIcon, UploadSimpleIcon } f
 import { AgentAvatar, type AgentAvatarId } from '../../modules/agent-avatar'
 import { PageContent, PageShell } from '../ui/PageShell'
 import { ConversationComposer } from '../conversation-view/ConversationComposer'
+import { ConversationContextSuggestions } from '../conversation-view/ConversationContextSuggestions'
 import { ModelSelectionSettings } from '../model-selection'
 import { useAppHome } from './useAppHome'
 import { Pile } from './Pile'
@@ -30,6 +31,7 @@ export function AppHomePage() {
             : '这里还空着。丢一份资料，或者问一个你想弄清楚的问题。'}
         </p>
         <HomeComposer home={home} />
+        <ConversationContextSuggestions userId={home.userId} onSelect={home.setQuestion} />
       </section>
       <div className="hm-table">
         <section aria-labelledby="home-research-title" className="hm-section">

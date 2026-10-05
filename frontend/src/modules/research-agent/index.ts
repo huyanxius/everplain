@@ -59,6 +59,8 @@ export type { AgentModelCatalog, AgentReasoningEffort } from './model'
 
 export { listRecentConversationContext } from './researchAgentGateway'
 export type { RecentConversationContext } from './model'
+export { getConversationContextSummary } from './researchAgentGateway'
+export type { ConversationContextSummary, ConversationContextSuggestion, ConversationContextSource } from './model'
 
 export { readKnowledgeIndexStatus, repairKnowledgeIndex } from './researchAgentGateway'
 export { isKnowledgeIndexStatus } from './knowledgeIndexReadiness'

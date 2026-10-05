@@ -2242,6 +2242,92 @@ export type ConversationExcerptResponse = {
 };
 
 /**
+ * ConversationSuggestionResponse
+ */
+export type ConversationSuggestionResponse = {
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Prompt
+     */
+    prompt: string;
+    /**
+     * Sources
+     */
+    sources: Array<ConversationSummarySourceResponse>;
+    /**
+     * Title
+     */
+    title: string;
+};
+
+/**
+ * ConversationSummaryResponse
+ */
+export type ConversationSummaryResponse = {
+    /**
+     * Cards
+     */
+    cards: Array<ConversationSuggestionResponse>;
+    /**
+     * Omitted Messages
+     */
+    omitted_messages: number;
+    /**
+     * Scope
+     */
+    scope: 'conversation_messages';
+    /**
+     * Status
+     */
+    status: 'ready' | 'pending' | 'empty' | 'disabled' | 'failed';
+    /**
+     * Summary
+     */
+    summary: string;
+    /**
+     * Summary Sources
+     */
+    summary_sources: Array<ConversationSummarySourceResponse>;
+    /**
+     * Updated At
+     */
+    updated_at: string | null;
+};
+
+/**
+ * ConversationSummarySourceResponse
+ */
+export type ConversationSummarySourceResponse = {
+    /**
+     * Conversation Id
+     */
+    conversation_id: string;
+    /**
+     * Message Id
+     */
+    message_id: string;
+    /**
+     * Quote
+     */
+    quote: string;
+    /**
+     * Role
+     */
+    role: 'user' | 'assistant';
+    /**
+     * Sequence
+     */
+    sequence: number;
+    /**
+     * Title
+     */
+    title: string;
+};
+
+/**
  * CourseKnowledgeResponse
  */
 export type CourseKnowledgeResponse = {
@@ -10707,6 +10793,39 @@ export type UpdateAgentProfileResponses = {
 };
 
 export type UpdateAgentProfileResponse = UpdateAgentProfileResponses[keyof UpdateAgentProfileResponses];
+
+export type ReadConversationSummaryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/agent/context-summary';
+};
+
+export type ReadConversationSummaryErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ReadConversationSummaryError = ReadConversationSummaryErrors[keyof ReadConversationSummaryErrors];
+
+export type ReadConversationSummaryResponses = {
+    /**
+     * Successful Response
+     */
+    200: ConversationSummaryResponse;
+};
+
+export type ReadConversationSummaryResponse = ReadConversationSummaryResponses[keyof ReadConversationSummaryResponses];
 
 export type ListAgentConversationsData = {
     body?: never;
