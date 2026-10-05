@@ -1,8 +1,9 @@
+import { act, cleanup, render } from '@testing-library/react'
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { revisionAnchor } from './WritingRevisionBubble'
+import { revisionAnchor, WritingRevisionBubble } from './WritingRevisionBubble'
 
 const editors: Editor[] = []
 function create(body: string) {
@@ -10,7 +11,7 @@ function create(body: string) {
   editors.push(editor)
   return editor
 }
-afterEach(() => { editors.splice(0).forEach(editor => editor.destroy()); vi.restoreAllMocks() })
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); editors.splice(0).forEach(editor => editor.destroy()); vi.restoreAllMocks() })
 
 describe('revision bubble source anchors', () => {
   it('distinguishes repeated paragraphs using the original source occurrence', () => {
@@ -84,4 +85,20 @@ describe('revision bubble source anchors', () => {
     expect(revisionAnchor(editor, markdown, markdown.length + 1)).toBeNull()
     expect(revisionAnchor(editor, markdown, 1)).toBeNull()
   })
+})
+
+it('repositions on container resize and preview switch without requiring window resize', () => {
+  const callbacks: (() => void)[] = [], observed: Element[] = [], disconnect = vi.fn()
+  vi.stubGlobal('ResizeObserver', class { constructor(callback: () => void) { callbacks.push(callback) } observe(target: Element) { observed.push(target) } disconnect = disconnect })
+  const markdown = '原文内容', editor = create(markdown)
+  const coords = vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({ left: 80, right: 80, top: 20, bottom: 40 })
+  const view = render(<div><WritingRevisionBubble editor={editor} markdown={markdown} offset={2} previewKey="preview"><button>同意</button></WritingRevisionBubble></div>)
+  expect(observed).toHaveLength(2)
+  const count = coords.mock.calls.length
+  act(() => callbacks[0]())
+  expect(coords.mock.calls.length).toBeGreaterThan(count)
+  const afterResize = coords.mock.calls.length
+  view.rerender(<div><WritingRevisionBubble editor={editor} markdown={markdown} offset={2} previewKey="original"><button>同意</button></WritingRevisionBubble></div>)
+  expect(coords.mock.calls.length).toBeGreaterThan(afterResize)
+  expect(disconnect).toHaveBeenCalled()
 })
