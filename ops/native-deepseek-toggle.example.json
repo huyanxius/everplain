@@ -1,0 +1,9 @@
+{
+  "model_id": "deepseek-v4.1-flash",
+  "reasoning_efforts": ["none", "enabled"],
+  "default_reasoning_effort": "enabled",
+  "effort_settings": {
+    "none": {"extra_body": {"thinking": {"type": "disabled"}}},
+    "enabled": {"extra_body": {"thinking": {"type": "enabled"}}}
+  }
+}

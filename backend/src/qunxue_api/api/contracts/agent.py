@@ -196,7 +196,9 @@ class AgentWritingContext(BaseModel):
 class AgentTurnRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model_id: str | None = Field(default=None, min_length=1, max_length=80)
-    reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] | None = None
+    reasoning_effort: (
+        Literal["none", "enabled", "minimal", "low", "medium", "high", "xhigh", "max"] | None
+    ) = None
 
     @model_validator(mode="after")
     def require_model_for_effort(self):
@@ -226,8 +228,12 @@ class AgentTurnRequest(BaseModel):
 class AgentModelChoiceResponse(BaseModel):
     model_id: str
     label: str
-    reasoning_efforts: list[Literal["none", "low", "medium", "high", "xhigh", "max"]]
-    default_reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] | None
+    reasoning_efforts: list[
+        Literal["none", "enabled", "minimal", "low", "medium", "high", "xhigh", "max"]
+    ]
+    default_reasoning_effort: (
+        Literal["none", "enabled", "minimal", "low", "medium", "high", "xhigh", "max"] | None
+    )
 
 
 class AgentModelCatalogResponse(BaseModel):

@@ -3,7 +3,9 @@
 from dataclasses import dataclass
 from typing import Literal
 
-AgentReasoningEffort = Literal["none", "low", "medium", "high", "xhigh", "max"]
+AgentReasoningEffort = Literal[
+    "none", "enabled", "minimal", "low", "medium", "high", "xhigh", "max"
+]
 LUNA_REASONING_EFFORTS: tuple[AgentReasoningEffort, ...] = (
     "none",
     "low",
