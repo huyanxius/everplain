@@ -116,7 +116,7 @@ class ConversationSummaryWorker:
                     user_id=batch.user_id,
                     run_id=batch.lease_token,
                     payload={"context_fingerprint": batch.fingerprint},
-                    phase="memory_learning",
+                    phase="conversation_summary",
                 )
                 if self.billing
                 else nullcontext()
@@ -140,9 +140,14 @@ class ConversationSummaryWorker:
                 code,
             )
             with self.scope() as repository:
+                preflight = code in {
+                    "billing_open:phase_policy_missing",
+                    "billing_open:billing_runtime_missing",
+                }
                 repository.failed(
                     batch,
                     terminal=budget_blocked,
                     code=code,
+                    **({"release_reservation": True} if preflight else {}),
                 )
         return True

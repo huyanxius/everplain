@@ -159,7 +159,7 @@ def test_summarizer_wraps_pydantic_http_error_without_an_openai_cause(monkeypatc
 @pytest.fixture
 def summary_wire_batch(plain_client):
     owner = UUID(register(plain_client))
-    configure_synthetic_billing(plain_client.app, phase="memory_learning")
+    configure_synthetic_billing(plain_client.app, phase="conversation_summary")
     return ContextSummaryBatch(
         user_id=owner,
         lease_token=str(uuid4()),
@@ -214,7 +214,7 @@ def _run_billed_summary(plain_client, batch, summarizer):
         user_id=batch.user_id,
         run_id=batch.lease_token,
         payload={"context_fingerprint": batch.fingerprint},
-        phase="memory_learning",
+        phase="conversation_summary",
     ) as operation:
         value = summarizer(batch)
         operation.finish("success")

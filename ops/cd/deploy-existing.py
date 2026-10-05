@@ -436,13 +436,23 @@ def copy_ancillary_data(source, target):
 
 
 def configure_billing_policy(current, policy, report):
-    """Apply only an explicit, checksum-bound additive writing billing policy."""
-    requested = policy.get("add_user_billing_phases", [])
-    require(requested == [] or requested == ["writing"], "unsupported billing policy update")
-    report["billing_policy_update_requested"] = bool(requested)
+    """Apply only explicit, checksum-bound additive writing/summary billing policies."""
+    user_requested = policy.get("add_user_billing_phases", [])
+    operator_requested = policy.get("add_operator_billing_phases", [])
+    require(
+        user_requested == [] or user_requested == ["writing"],
+        "unsupported billing policy update",
+    )
+    require(
+        operator_requested == [] or operator_requested == ["conversation_summary"],
+        "unsupported billing policy update",
+    )
+    report["writing_user_policy_update_requested"] = bool(user_requested)
+    report["conversation_summary_operator_policy_update_requested"] = bool(operator_requested)
+    report["billing_policy_update_requested"] = bool(user_requested or operator_requested)
     report["billing_policy_changed"] = False
     result = dict(current)
-    if not requested:
+    if not report["billing_policy_update_requested"]:
         return result
 
     def unique_mapping(pairs):
@@ -464,9 +474,20 @@ def configure_billing_policy(current, policy, report):
         all(isinstance(k, str) and v in ("user", "operator") for k, v in phases.items()),
         "existing billing policy requires review",
     )
-    require(phases.get("writing") in (None, "user"), "existing writing policy requires review")
-    if "writing" not in phases:
-        phases["writing"] = "user"
+    additions = {}
+    if user_requested:
+        require(phases.get("writing") in (None, "user"), "existing writing policy requires review")
+        if "writing" not in phases:
+            additions["writing"] = "user"
+    if operator_requested:
+        require(
+            phases.get("conversation_summary") in (None, "operator"),
+            "existing conversation summary policy requires review",
+        )
+        if "conversation_summary" not in phases:
+            additions["conversation_summary"] = "operator"
+    if additions:
+        phases.update(additions)
         result["EVERPLAIN_BILLING_PHASE_POLICIES"] = json.dumps(
             phases, sort_keys=True, separators=(",", ":")
         )
@@ -625,7 +646,10 @@ class ExistingRelease:
                 active_env.get("EVERPLAIN_BILLING_PHASE_POLICIES") == self.expected_billing_policy,
                 "activated billing policy differs from reviewed update",
             )
-            self.report["writing_user_policy_verified"] = True
+            if self.report.get("writing_user_policy_update_requested"):
+                self.report["writing_user_policy_verified"] = True
+            if self.report.get("conversation_summary_operator_policy_update_requested"):
+                self.report["conversation_summary_operator_policy_verified"] = True
         require(actual["api"] == manifest["runtime_identity"]["api"])
         require(actual["web_tree"] == manifest["runtime_identity"]["web_tree"])
         require(actual["api_image"] in {API_IMAGE, self.images["api"]})

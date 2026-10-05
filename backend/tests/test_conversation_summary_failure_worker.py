@@ -89,6 +89,10 @@ class Billing:
          None, None, "billing_open:billing_runtime_missing", False),
         (Billing(starting=failure(BillingReplayBlocked)), None, None,
          "billing_start:billing_replay_blocked", False),
+        (Billing(starting=BillingContextMissing(SECRET, reason="phase_policy_missing")),
+         None, None, "billing_start:phase_policy_missing", False),
+        (None, BillingContextMissing(SECRET, reason="billing_runtime_missing"), None,
+         "model:billing_runtime_missing", False),
         (None, wrapped_budget(), None, "model:budget_exceeded", True),
         (None, failure(BillingRouteMismatch), None, "model:billing_route_mismatch", False),
         (None, failure(UnknownTokenUsage), None, "model:usage_unknown", False),
@@ -137,12 +141,15 @@ def test_worker_persists_only_fixed_stage_reason_and_preserves_limits(
     with caplog.at_level(logging.WARNING, logger=conversation_summary.logger.name):
         assert worker.run_once()
     assert repository.claimed == [{"idle_seconds": 600, "daily_calls": 8, "daily_tokens": 64000}]
-    assert repository.failures == [{"terminal": terminal, "code": expected}]
+    extra = {"release_reservation": True} if expected in {
+        "billing_open:phase_policy_missing", "billing_open:billing_runtime_missing"
+    } else {}
+    assert repository.failures == [{"terminal": terminal, "code": expected, **extra}]
     assert len(expected) <= 64
     assert SECRET not in str(repository.failures) and SECRET not in caplog.text
     assert expected in caplog.text
     if billing:
-        assert billing.parameters["phase"] == "memory_learning"
+        assert billing.parameters["phase"] == "conversation_summary"
 
 
 def test_storage_wrapper_and_cyclic_cause_do_not_copy_exception_data(caplog):
@@ -189,11 +196,12 @@ def test_real_billing_guards_record_exact_stage_without_calling_generator(
     seed(plain_client, owner)
     if missing == "phase":
         configure_synthetic_billing(plain_client.app, phase="agent_answer")
-        plain_client.app.state.billing_operations.phase_policies.pop("memory_learning", None)
+        plain_client.app.state.billing_operations.phase_policies.pop("conversation_summary", None)
         reason = "phase_policy_missing"
     else:
         assert plain_client.app.state.billing_operations.runtime is None
-        plain_client.app.state.billing_operations.phase_policies["memory_learning"] = "operator"
+        policies = plain_client.app.state.billing_operations.phase_policies
+        policies["conversation_summary"] = "operator"
         reason = "billing_runtime_missing"
     generated = []
 
@@ -211,10 +219,10 @@ def test_real_billing_guards_record_exact_stage_without_calling_generator(
     with plain_client.app.state.database.session() as session:
         row = session.get(ConversationSummaryRow, str(owner))
         assert row.last_error == f"billing_open:{reason}"
-        assert row.attempts == 1 and row.retry_after is not None
+        assert row.attempts == 0 and row.retry_after is not None
         assert row.lease_token is None and row.lease_until is None
         usage = session.get(MemoryUsageRow, (str(owner), datetime.now(UTC).date().isoformat()))
-        assert usage.calls == 1 and usage.budget_tokens == 24000
+        assert usage.calls == 0 and usage.budget_tokens == 0
         assert session.scalar(text("SELECT count(*) FROM billing_operations")) == 0
         assert session.scalar(text("SELECT count(*) FROM billing_attempts")) == 0
     assert SECRET not in caplog.text
