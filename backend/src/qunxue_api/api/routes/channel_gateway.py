@@ -2,6 +2,7 @@
 
 import hmac
 import logging
+import threading
 from typing import Annotated
 from uuid import UUID
 
@@ -176,6 +177,8 @@ def revoke_binding(binding_id: UUID, current: CurrentSessionDependency, app: App
 @router.post(
     "/api/channel-gateway/dispatch",
     response_model=ChannelDispatchResponse,
+    responses={202: {"model": ChannelDispatchResponse,
+                     "description": "Durably admitted; read the event cursor for completion"}},
     operation_id="dispatch_channel_message",
 )
 def dispatch(
@@ -190,6 +193,26 @@ def dispatch(
     if event.gateway_id != gateway_id:
         raise HTTPException(403, "Gateway identity mismatch")
     try:
+        if request.headers.get("prefer") == "respond-async":
+            prepared = app.prepare(event, runtime_scope=request.app.state.disciplinary_agent_scope)
+            if prepared[3] is not None:
+                return ChannelDispatchResponse(event_key=event.event_key, text=prepared[3])
+            # Reservation commits before headers. The gateway's durable inbox owns
+            # replay after process loss; a GET never starts a provider operation.
+            gateway_scope = request.app.state.channel_gateway_scope
+            runtime_scope = request.app.state.disciplinary_agent_scope
+
+            def execute():
+                try:
+                    with gateway_scope() as gateway:
+                        gateway.dispatch(event, gateway_scope=gateway_scope,
+                                         runtime_scope=runtime_scope, prepared=prepared)
+                except Exception as error:
+                    logger.error("Channel execution failed: %s", type(error).__name__)
+
+            threading.Thread(target=execute, daemon=True, name="channel-agent-execution").start()
+            response.status_code = 202
+            return ChannelDispatchResponse(event_key=event.event_key, state="processing")
         answer = app.dispatch(
             event,
             gateway_scope=request.app.state.channel_gateway_scope,
@@ -217,12 +240,30 @@ def dispatch(
 
 
 @router.get(
+    "/api/channel-gateway/events/{event_key}",
+    response_model=ChannelDispatchResponse,
+    operation_id="read_channel_message_output",
+)
+def read_output(event_key: str, gateway_id: GatewayIdentity, request: Request,
+                response: Response, app: Application, after: int = Query(0, ge=0)):
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return app.output(gateway_id, event_key, after=after,
+                          runtime_scope=request.app.state.disciplinary_agent_scope)
+    except GatewayDenied as error:
+        raise HTTPException(404, "Message unavailable") from error
+
+
+@router.get(
     "/api/channel-gateway/events/{event_key}/delivery",
     response_model=ChannelDeliveryResponse,
     operation_id="authorize_channel_delivery",
 )
 def authorize_delivery(
-    event_key: str, gateway_id: GatewayIdentity, response: Response, app: Application
+    event_key: str, gateway_id: GatewayIdentity, request: Request,
+    response: Response, app: Application
 ):
     response.headers["Cache-Control"] = "no-store"
-    return ChannelDeliveryResponse(allowed=app.can_deliver(gateway_id, event_key))
+    return ChannelDeliveryResponse(allowed=app.can_deliver(
+        gateway_id, event_key, runtime_scope=request.app.state.disciplinary_agent_scope
+    ))

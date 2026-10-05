@@ -45,6 +45,11 @@ jobs:
       - name: Verify immutable release packaging without production access
         run: bash ops/cd/build.sh
 
+  channel-gateway:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.release == 'true'
+    uses: ./.github/workflows/channel-gateway.yml
+
   backend:
     needs: changes
     runs-on: ubuntu-latest
@@ -117,4 +122,3 @@ jobs:
           npm --prefix frontend run lint
           npm --prefix frontend run test -- --maxWorkers=1
           npm --prefix frontend run build
-
