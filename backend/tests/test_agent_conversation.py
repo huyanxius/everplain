@@ -644,7 +644,7 @@ def test_sqlite_failed_key_reset_does_not_bypass_a_concurrent_active_run() -> No
         started_at=datetime.now(UTC),
     )
     session = Mock()
-    session.scalar.side_effect = [failed, None, active]
+    session.scalar.side_effect = [failed, None, 0, active]
     session.flush.side_effect = IntegrityError("update", {}, RuntimeError("race"))
     repository = SqliteConversationRepository(session)
     run = AgentRun(
@@ -677,7 +677,8 @@ def test_sqlite_failed_key_retry_refreshes_pre_run_identity() -> None:
         started_at=datetime.now(UTC),
     )
     session = Mock()
-    session.scalar.side_effect = [failed, None]
+    session.scalar.side_effect = [failed, None, 0]
+    session.scalars.return_value = []
     repository = SqliteConversationRepository(session)
 
     retried = repository.start_run(
@@ -706,7 +707,8 @@ def test_sqlite_agent_run_persists_and_restores_material_attachment_snapshots() 
         parse_id=UUID("00000000-0000-0000-0000-000000000084"),
     )
     session = Mock()
-    session.scalar.side_effect = [None, None]
+    session.scalar.side_effect = [None, None, 0]
+    session.scalars.return_value = []
     repository = SqliteConversationRepository(session)
     run = AgentRun(
         run_id=UUID("00000000-0000-0000-0000-000000000085"),
@@ -720,7 +722,8 @@ def test_sqlite_agent_run_persists_and_restores_material_attachment_snapshots() 
 
     repository.start_run(run)
 
-    stored = session.add.call_args.args[0]
+    stored = next(call.args[0] for call in session.add.call_args_list
+                  if isinstance(call.args[0], AgentRunRow))
     assert stored.material_attachments == [
         {
             "material_id": str(attachment.material_id),

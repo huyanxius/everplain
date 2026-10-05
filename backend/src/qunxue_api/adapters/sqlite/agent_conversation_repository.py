@@ -634,8 +634,9 @@ class SqliteConversationRepository:
                 raise RunAlreadyActive(str(run.conversation_id)) from error
             raise error
         self._start_output_attempt(str(run.run_id), run.lease_token, run.updated_at)
-        row = self._session.get(AgentRunRow, str(run.run_id))
-        return self._run_with_output(row)
+        return replace(run, output_attempts=(AgentOutputAttempt(
+            attempt_id=run.lease_token, ordinal=1, status="running", created_at=run.updated_at,
+        ),))
 
     def _start_output_attempt(self, run_id: str, attempt_id: str, created_at: datetime) -> None:
         ordinal = self._session.scalar(select(func.max(AgentOutputAttemptRow.ordinal)).where(
@@ -648,6 +649,8 @@ class SqliteConversationRepository:
         self._session.flush()
 
     def _ensure_legacy_output(self, row: AgentRunRow, attempt_id: str) -> None:
+        if not row.partial_answer:
+            return
         count = self._session.scalar(select(func.count()).select_from(AgentOutputAttemptRow).where(
             AgentOutputAttemptRow.run_id == row.run_id,
         ))
@@ -667,7 +670,7 @@ class SqliteConversationRepository:
                 attempt_id=item.attempt_id, ordinal=item.ordinal, status=item.status,
                 answer=item.answer, created_at=_utc(item.created_at),
             ) for item in attempts
-        ), last_event_sequence=row.last_event_sequence)
+        ), last_event_sequence=row.last_event_sequence or 0)
 
     def append_output_event(
         self, *, user_id: UUID, run_id: UUID, attempt_id: str,
@@ -727,7 +730,7 @@ class SqliteConversationRepository:
         if run is None:
             raise ConversationNotFound(str(run_id))
         # Apply the same deleted-source policy to replay and archived bodies.
-        if run.request_snapshot.get("_unavailable_materials"):
+        if run.output_redacted:
             return ()
         rows = self._session.scalars(select(AgentOutputEventRow).where(
             AgentOutputEventRow.run_id == str(run_id), AgentOutputEventRow.sequence > after,
@@ -763,8 +766,7 @@ class SqliteConversationRepository:
         return replace(
             run, tool_summary=turn.tool_summary, output_attempts=turn.output_attempts,
             partial_answer=_DELETED_MATERIAL_ANSWER if unavailable else run.partial_answer,
-            request_snapshot={**run.request_snapshot, "_unavailable_materials": True}
-            if unavailable else run.request_snapshot,
+            output_redacted=unavailable,
         )
 
     def find_run_by_id(self, *, user_id: UUID, run_id: UUID) -> AgentRun | None:
@@ -787,8 +789,7 @@ class SqliteConversationRepository:
         return replace(
             run, tool_summary=turn.tool_summary, output_attempts=turn.output_attempts,
             partial_answer=_DELETED_MATERIAL_ANSWER if unavailable else run.partial_answer,
-            request_snapshot={**run.request_snapshot, "_unavailable_materials": True}
-            if unavailable else run.request_snapshot,
+            output_redacted=unavailable,
         )
 
     def finish_run(
@@ -869,6 +870,7 @@ class SqliteConversationRepository:
         return replace(
             run,
             partial_answer=_DELETED_MATERIAL_ANSWER,
+            output_redacted=True,
             output_attempts=tuple(replace(item, answer=_DELETED_MATERIAL_ANSWER)
                                   for item in run.output_attempts),
             request_snapshot={

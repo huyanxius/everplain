@@ -171,6 +171,7 @@ class AgentRun:
     partial_answer: str = ""
     output_attempts: tuple[AgentOutputAttempt, ...] = ()
     last_event_sequence: int = 0
+    output_redacted: bool = False
     updated_at: datetime = field(default_factory=_now)
     cancel_requested: bool = False
     lease_expires_at: datetime | None = field(
