@@ -71,6 +71,8 @@ class KnowledgeImportApplication:
                 converted = self.media.convert(item)
                 content = converted["content"]
                 filename, media_type = converted["filename"], converted["media_type"]
+                if item["source_type"] == "bilibili":
+                    item["details"] = item["details"] | {"metadata": converted["metadata"]}
             fetched_text = None
             if not content and item.get("source_url"):
                 text = self.fetch_text(item["source_url"])
