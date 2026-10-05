@@ -86,9 +86,31 @@
 .writing-crumb-title { min-width: 0; width: 20ch; max-width: 40vw; border: 0; background: transparent; color: inherit; font: inherit; }
 .writing-editor-canvas { position: relative; display: flex; flex: 1; min-height: 0; }
 .writing-editor-canvas > .se { flex: 1; min-width: 0; }
-.writing-revision-bubble { position: absolute; z-index: 45; width: min(360px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow: auto; padding: var(--qx-space-2); border: 1px solid var(--qx-color-rule); border-radius: var(--qx-radius-surface); background: var(--qx-color-surface); box-shadow: var(--qx-shadow-menu); }
+.writing-revision-bubble { position: absolute; z-index: 45; width: max-content; max-width: calc(100% - 24px); padding: var(--qx-space-1); border: 1px solid var(--qx-color-rule); border-radius: var(--qx-radius-surface); background: var(--qx-color-surface); box-shadow: var(--qx-shadow-menu); }
 .writing-revision-bubble .se-bubble { box-shadow: none; }
-.writing-revision-diff { margin: var(--qx-space-2) 0 0; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.writing-document .se-status { flex: none; flex-wrap: nowrap; gap: var(--qx-space-3); overflow-x: auto; white-space: nowrap; padding-inline: var(--qx-space-4); }
+.writing-document .se-status > * { flex-shrink: 0; }
+.writing-document .se-status .se-spacer { flex: 1; }
+.writing-status-genre { display: inline-flex; align-items: center; gap: var(--qx-space-1); }
+.writing-status-genre .qx-select { min-width: 0; }
+.writing-revision-prose { overflow-wrap: anywhere; }
+.writing-revision-prose .wr-p-wrap { margin-bottom: 0; }
+.writing-revision-prose .writing-revision-deleted, .writing-revision-prose .wr-p-wrap[data-phase='sweeping'] .writing-revision-deleted { display: inline-block; max-width: 100%; white-space: pre-wrap; vertical-align: bottom; overflow: hidden; animation: wr-strike 1.1s ease both, writing-delete-collapse .5s ease 1.1s both; }
+@keyframes writing-delete-collapse { to { max-width: 0; max-height: 0; opacity: 0; } }
+.writing-comparison { position: absolute; inset: 0; z-index: 50; display: flex; min-height: 0; flex-direction: column; background: var(--qx-color-canvas); }
+.writing-comparison > header { display: flex; align-items: center; justify-content: space-between; gap: var(--qx-space-2); padding: var(--qx-space-2) var(--qx-space-4); border-bottom: 1px solid var(--qx-color-rule); }
+.writing-comparison__scroll { min-height: 0; flex: 1; overflow: auto; }
+.writing-comparison__labels, .writing-comparison__row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.writing-comparison__labels { position: sticky; top: 0; z-index: 1; background: var(--qx-color-canvas); font-size: var(--qx-text-meta); }
+.writing-comparison__labels > *, .writing-comparison__row > * { min-width: 0; margin: 0; padding: var(--qx-space-3) var(--qx-space-4); overflow-wrap: anywhere; }
+.writing-comparison__labels > :last-child, .writing-comparison__row > :last-child { border-left: 1px solid var(--qx-color-rule); }
+.writing-comparison__row { border-bottom: 1px solid var(--qx-color-rule); }
+.writing-comparison__row[data-changed='true'] { background: color-mix(in srgb, var(--qx-color-highlight) 8%, var(--qx-color-canvas)); }
+.writing-compare-prose { min-height: 0; font-size: var(--qx-text-body); }
+.writing-compare-prose[data-empty='true'] { color: var(--qx-color-faint); font-family: var(--qx-font-ui); }
+.writing-compare-prose pre, .writing-compare-prose table { max-width: 100%; overflow-x: auto; }
+@media (max-width: 600px) { .writing-comparison__labels > *, .writing-comparison__row > * { padding: var(--qx-space-2); } }
+@media (prefers-reduced-motion: reduce) { .writing-revision-prose .writing-revision-deleted, .writing-revision-prose .wr-p-wrap[data-phase='sweeping'] .writing-revision-deleted { display: none; } .writing-revision-prose .wr-ins { -webkit-text-fill-color: currentColor; background: transparent; filter: none; } }
 .writing-agent .cv-turn[data-streaming] .cv-turn__prose::after { content: ''; display: inline-block; width: 2px; height: 1em; margin-left: 3px; background: currentColor; animation: writing-stream-caret 1s steps(2, start) infinite; vertical-align: text-bottom; }
 @keyframes writing-stream-caret { to { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .writing-agent .cv-turn[data-streaming] .cv-turn__prose::after { animation: none; } }

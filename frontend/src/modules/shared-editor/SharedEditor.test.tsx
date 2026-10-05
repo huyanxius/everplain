@@ -127,3 +127,26 @@ it('offers host actions only for an exact source selection and keeps bytes and r
   input.setSelectionRange(7, 7); fireEvent.select(input)
   expect(screen.queryByRole('toolbar', { name: '源码选区操作' })).not.toBeInTheDocument()
 })
+
+it('uses a reversible host preview without rewriting a selected source draft', async () => {
+  const onReady = vi.fn(), onChange = vi.fn(), selected = vi.fn()
+  const view = render(<SharedEditor markdown="😀原文 原文" onReady={onReady} onChange={onChange} onSelectionChange={selected} />)
+  fireEvent.click(await screen.findByRole('tab', { name: '源码' }))
+  const input = screen.getByRole('textbox', { name: 'Markdown 源码' }) as HTMLTextAreaElement
+  input.setSelectionRange(5, 7); fireEvent.select(input)
+  const editor = onReady.mock.calls[0][0] as Editor, state = editor.state
+  onChange.mockClear(); selected.mockClear()
+  view.rerender(<SharedEditor markdown="😀原文 原文" onReady={onReady} onChange={onChange} onSelectionChange={selected} bodyPreview={<p>建议正文</p>} />)
+  expect(screen.getByText('建议正文')).toBeVisible(); expect(input).not.toBeVisible()
+  expect(editor.state.doc.eq(state.doc)).toBe(true); expect(editor.state.selection.eq(state.selection)).toBe(true); expect(onChange).not.toHaveBeenCalled(); expect(selected).not.toHaveBeenCalled()
+  view.rerender(<SharedEditor markdown="😀原文 原文" onReady={onReady} onChange={onChange} onSelectionChange={selected} />)
+  expect(input).toBeVisible(); expect(input).toHaveValue('😀原文 原文'); expect(input.selectionStart).toBe(5); expect(input.selectionEnd).toBe(7)
+  expect(editor.state.doc.eq(state.doc)).toBe(true); expect(editor.state.selection.eq(state.selection)).toBe(true); expect(onChange).not.toHaveBeenCalled()
+})
+
+it('places host status controls in the shared single footer', () => {
+  const view = render(<SharedEditor markdown="文稿" statusContent={<><label>文体<select aria-label="测试文体"><option>随笔</option></select></label><span>版本 3</span><button>撤销最近优化</button></>} />)
+  const footer = view.container.querySelector('.se-status')!
+  expect(footer).toHaveTextContent('2 字'); expect(footer).toHaveTextContent('随笔'); expect(footer).toHaveTextContent('版本 3'); expect(footer).toHaveTextContent('已保存')
+  expect(view.container.querySelectorAll('footer')).toHaveLength(1)
+})
