@@ -1,6 +1,7 @@
 import { Select } from '../ui/Select'
 import { DocumentKnowledgeEditor } from './DocumentKnowledgeEditor'
 import { copyCourseText } from './copyCourseText'
+import { SourceAttachments } from './SourceAttachments'
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ArrowLeftIcon, ChatCircleIcon, CopyIcon, FileTextIcon, InfoIcon, ListBulletsIcon, MagnifyingGlassIcon, PencilSimpleIcon, XIcon } from '@phosphor-icons/react'
 import type { SharedSource, SharedDocument } from '../../modules/shared-knowledge'
@@ -85,6 +86,7 @@ export function ReadOnlyMaterialReader({ source, selectedSegmentId, onBack, navi
       <article className="ep-material__article" ref={scrollRef}>
         <div className="ep-material__meta"><span className="qx-tag"><FileTextIcon size={16} />原文</span><span className="qx-meta">{source.knowledgeBaseName} · {formatMaterialSize(source.document.sizeBytes)} · {segments.length} 段</span><label className="ep-material__zoom"><span>缩放</span><Select aria-label="阅读缩放" value={zoom} onChange={nextValue => setZoom(Number(nextValue))} options={[90, 100, 110, 125].map(value => ({ value: value, label: value + "%" }))} /></label></div>
         <h1 className="ep-material__title">{source.document.filename}</h1>
+        <SourceAttachments source={source} />
         {knowledge?.summary && <p className="ep-material__summary">{knowledge.summary}</p>}
         {outlineOpen && <nav className="ep-material__outline" aria-label="材料导航"><h2 className="qx-heading">章节</h2>{headings.length ? headings.map(({ segment, label }) => <button className="qx-item" type="button" key={segment.segmentId} aria-current={selected === segment.segmentId ? 'location' : undefined} onClick={() => select(segment)}>{label}</button>) : <p className="qx-meta">这份资料没有章节目录。</p>}</nav>}
         {searchOpen && <div className="ep-material__search"><label className="qx-search"><MagnifyingGlassIcon size={18} /><input autoFocus type="search" aria-label="搜索原文" placeholder="在原文中查找" value={query} onChange={event => { setQuery(event.target.value); setPage(0) }} /></label><span className="qx-meta">{visible.length} / {segments.length} 段</span><button type="button" className="qx-btn qx-btn--ghost qx-btn--icon" aria-label="关闭查找" onClick={() => { setSearchOpen(false); setQuery('') }}><XIcon size={16} /></button></div>}

@@ -1,0 +1,10 @@
+.ep-note-folder { display: grid; gap: var(--qx-space-2); }
+.ep-note-folder__actions { display: flex; flex-wrap: wrap; gap: var(--qx-space-2); }
+.ep-note-folder p { margin: 0; }
+.ep-note-folder__fallback { position: relative; cursor: pointer; }
+.ep-note-folder__fallback input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.ep-note-folder__fallback:focus-within { outline: 2px solid var(--qx-color-ink); outline-offset: 3px; }
+.ep-import-attachments { display: grid; gap: var(--qx-space-1); list-style: none; margin: var(--qx-space-2) 0 0; padding: 0; }
+.ep-import-attachments a { color: inherit; text-decoration: underline; text-underline-offset: var(--qx-space-1); }
+.ep-import-attachments small { display: block; overflow-wrap: anywhere; color: var(--qx-color-muted); }
+.ep-library-add__batch[data-current='true'] { box-shadow: var(--qx-shadow-ring); }

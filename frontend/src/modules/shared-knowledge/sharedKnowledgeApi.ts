@@ -75,7 +75,9 @@ export async function detachCourseDocument(id: string, documentId: string) { che
 export async function readCourseDocument(id: string, documentId: string, segmentId?: string, signal?: AbortSignal): Promise<SharedSource> {
   const value = data(await readWithDeadline(signal => getSharedDocumentSource({ client: apiClient, path: { kb_id: id, document_id: documentId }, query: { segment_id: segmentId }, signal }), signal))
   return { document: document(value.document), knowledgeBaseId: value.knowledge_base_id,
-    knowledgeBaseName: value.knowledge_base_name, segments: value.segments.map((item) => ({
+    knowledgeBaseName: value.knowledge_base_name,
+    attachments: (value.attachments ?? []).map(item => ({ id: item.id, filename: item.filename, relativePath: item.relative_path, mediaType: item.media_type, sizeBytes: item.size_bytes, references: item.references, url: item.url })),
+    segments: value.segments.map((item) => ({
       id: item.segment_id, parseId: item.parse_id, ordinal: item.ordinal, kind: item.kind, text: item.text,
       location: { page: item.locator.page ?? null, headingPath: item.locator.section_path ?? [],
         paragraph: item.locator.paragraph ?? null, lineStart: item.locator.line_start ?? null,
