@@ -1,45 +1,39 @@
 """Identity-only OAuth clients. Provider tokens never leave this adapter or get persisted."""
 
-from dataclasses import dataclass
+import httpx2
+from authlib.integrations.starlette_client import OAuth, OAuthError
+from joserfc.errors import JoseError
 
-from authlib.integrations.starlette_client import OAuth
-
-from qunxue_api.settings import Settings
+from qunxue_api.modules.identity import (
+    OAuthClientConfiguration,
+    OAuthIdentityInvalid,
+    OAuthProviderUnavailable,
+    VerifiedOAuthIdentity,
+)
 
 PROVIDERS = ("google", "github")
 
 
-class OAuthIdentityInvalid(ValueError):
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class VerifiedOAuthIdentity:
-    provider: str
-    subject: str
-    email: str
-
-
 class OAuthClients:
-    def __init__(self, settings: Settings) -> None:
-        self.origin = settings.oauth_public_origin
+    def __init__(self, configuration: OAuthClientConfiguration) -> None:
+        self.origin = configuration.origin
         self._registry = OAuth()
         self.enabled: list[str] = []
-        for provider in PROVIDERS:
-            client_id = getattr(settings, f"oauth_{provider}_client_id")
-            secret = getattr(settings, f"oauth_{provider}_client_secret")
-            if (
-                not self.origin
-                or not client_id
-                or not secret
-                or not secret.get_secret_value().strip()
-            ):
+        for credentials in configuration.providers:
+            provider, client_id, secret = (
+                credentials.provider,
+                credentials.client_id,
+                credentials.client_secret,
+            )
+            if provider not in PROVIDERS:
+                raise ValueError("unknown OAuth provider")
+            if not self.origin or not client_id or not secret or not secret.strip():
                 continue
-            if self.origin.startswith("https://") and not settings.session_cookie_secure:
+            if self.origin.startswith("https://") and not configuration.secure_session_cookie:
                 raise ValueError("HTTPS OAuth requires secure application session cookies")
             common = dict(
                 client_id=client_id,
-                client_secret=secret.get_secret_value(),
+                client_secret=secret,
                 client_kwargs={
                     "code_challenge_method": "S256",
                     "timeout": 15,
@@ -74,7 +68,7 @@ class OAuthClients:
         self.client(provider)
         return f"{self.origin}/api/session/oauth/{provider}/callback"
 
-    async def authorize_url(self, provider: str, *, state: str, verifier: str, nonce: str) -> str:
+    async def _authorize_url(self, provider: str, *, state: str, verifier: str, nonce: str) -> str:
         params = dict(state=state, code_verifier=verifier)
         if provider == "google":
             params.update(nonce=nonce, access_type="online", prompt="select_account")
@@ -86,7 +80,7 @@ class OAuthClients:
         )
         return result["url"]
 
-    async def identity(
+    async def _identity(
         self, provider: str, *, code: str, verifier: str, nonce: str
     ) -> VerifiedOAuthIdentity:
         client = self.client(provider)
@@ -150,3 +144,24 @@ class OAuthClients:
         ):
             raise OAuthIdentityInvalid("missing verified identity")
         return VerifiedOAuthIdentity(provider=provider, subject=subject, email=email)
+
+    async def authorize_url(self, provider: str, *, state: str, verifier: str, nonce: str) -> str:
+        try:
+            return await self._authorize_url(provider, state=state, verifier=verifier, nonce=nonce)
+        except (
+            httpx2.HTTPError,
+            OAuthError,
+            OAuthIdentityInvalid,
+            ValueError,
+            TypeError,
+            KeyError,
+        ) as error:
+            raise OAuthProviderUnavailable("OAuth provider unavailable") from error
+
+    async def identity(
+        self, provider: str, *, code: str, verifier: str, nonce: str
+    ) -> VerifiedOAuthIdentity:
+        try:
+            return await self._identity(provider, code=code, verifier=verifier, nonce=nonce)
+        except (httpx2.HTTPError, OAuthError, JoseError, ValueError, TypeError, KeyError) as error:
+            raise OAuthProviderUnavailable("OAuth provider verification failed") from error

@@ -57,3 +57,15 @@ class FederatedIdentityConflict(IdentityError):
 
     def __init__(self) -> None:
         super().__init__("请先用现有方式登录，再在账户安全设置中绑定第三方账号。")
+
+
+class OAuthIdentityInvalid(ValueError):
+    """Untrusted provider or browser flow failed verification."""
+
+
+class OAuthProviderUnavailable(Exception):
+    """Provider SDK/network failure without exposing concrete SDK details."""
+
+
+class OAuthStorageUnavailable(Exception):
+    """OAuth persistence failed; transaction ownership remains with the adapter."""

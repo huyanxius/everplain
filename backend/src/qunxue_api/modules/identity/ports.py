@@ -4,9 +4,11 @@ from uuid import UUID
 
 from qunxue_api.modules.identity.domain import (
     FederatedIdentity,
+    OAuthTransaction,
     RegistrationVerification,
     User,
     UserSession,
+    VerifiedOAuthIdentity,
 )
 
 
@@ -60,3 +62,24 @@ class IdentityRepository(Protocol):
         revoked_at: datetime,
         reason: str | None = None,
     ) -> UserSession: ...
+
+
+class OAuthProviderClient(Protocol):
+    origin: str | None
+    enabled: list[str]
+
+    async def authorize_url(
+        self, provider: str, *, state: str, verifier: str, nonce: str
+    ) -> str: ...
+
+    async def identity(
+        self, provider: str, *, code: str, verifier: str, nonce: str
+    ) -> VerifiedOAuthIdentity: ...
+
+
+class OAuthTransactionStore(Protocol):
+    def create(
+        self, *, provider: str, return_path: str, link_session_id: str | None
+    ) -> tuple[str, str, str, str]: ...
+
+    def consume(self, *, provider: str, state: str, browser: str) -> OAuthTransaction | None: ...

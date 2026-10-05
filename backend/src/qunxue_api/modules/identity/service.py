@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from math import ceil
 from secrets import randbelow, token_urlsafe
+from urllib.parse import unquote, urlsplit
 from uuid import UUID, uuid4
 
 from qunxue_api.modules.identity.domain import (
@@ -226,6 +227,10 @@ class IdentityService:
                 )
             )
 
+    def linked_federated_providers(self, credential: str | None) -> list[str]:
+        current = self.authenticate(credential)
+        return self._repository.list_federated_providers(current.user.user_id)
+
     def authenticate(self, credential: str | None) -> AuthenticatedSession:
         if not credential:
             raise Unauthenticated
@@ -289,3 +294,21 @@ class IdentityService:
     @staticmethod
     def _generate_code() -> str:
         return f"{randbelow(1_000_000):06d}"
+
+
+def safe_oauth_return_path(value: str) -> str:
+    """Only root-relative application URLs; reject browser normalization tricks."""
+    decoded = unquote(value)
+    if (
+        not value.startswith("/")
+        or value.startswith("//")
+        or decoded.startswith("//")
+        or "\\" in decoded
+        or any(ord(c) < 32 or ord(c) == 127 for c in decoded)
+        or len(value) > 2048
+    ):
+        raise ValueError("return path must be local")
+    parts = urlsplit(value)
+    if parts.scheme or parts.netloc or parts.path.startswith("/api/"):
+        raise ValueError("return path must be an application URL")
+    return value

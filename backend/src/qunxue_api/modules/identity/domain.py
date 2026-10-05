@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
@@ -72,3 +72,49 @@ class FederatedIdentity:
     subject: str
     user_id: UUID
     created_at: datetime
+
+
+OAUTH_TTL_SECONDS = 600
+
+
+@dataclass(frozen=True, slots=True)
+class OAuthProviderCredentials:
+    provider: str
+    client_id: str | None
+    client_secret: str | None = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class OAuthClientConfiguration:
+    origin: str | None
+    secure_session_cookie: bool
+    providers: tuple[OAuthProviderCredentials, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedOAuthIdentity:
+    provider: str
+    subject: str
+    email: str
+
+
+@dataclass(frozen=True, slots=True)
+class OAuthTransaction:
+    provider: str
+    code_verifier: str
+    nonce: str
+    return_path: str
+    link_session_id: str | None
+    expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class OAuthStart:
+    authorization_url: str
+    browser_credential: str
+
+
+@dataclass(frozen=True, slots=True)
+class OAuthCompletion:
+    target: str
+    grant: SessionGrant | None = None

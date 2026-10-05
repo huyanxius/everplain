@@ -23,6 +23,7 @@ from qunxue_api.adapters.sqlite import UserRow, UserSessionRow
 from qunxue_api.adapters.sqlite.billing_model import CreditLedgerRow
 from qunxue_api.adapters.sqlite.oauth_model import FederatedIdentityRow, OAuthTransactionRow
 from qunxue_api.adapters.sqlite.oauth_transactions import OAuthTransactions
+from qunxue_api.bootstrap import oauth_client_configuration
 from qunxue_api.settings import Settings
 
 ORIGIN = "http://localhost:5196"
@@ -41,13 +42,15 @@ class Provider:
         self.code_params = {}
         self.exchanges = []
         clients = OAuthClients(
-            Settings(
-                _env_file=None,
-                oauth_public_origin=ORIGIN,
-                oauth_google_client_id="synthetic-google-client",
-                oauth_google_client_secret=SecretStr("synthetic-test-only"),
-                oauth_github_client_id="synthetic-github-client",
-                oauth_github_client_secret=SecretStr("synthetic-test-only"),
+            oauth_client_configuration(
+                Settings(
+                    _env_file=None,
+                    oauth_public_origin=ORIGIN,
+                    oauth_google_client_id="synthetic-google-client",
+                    oauth_google_client_secret=SecretStr("synthetic-test-only"),
+                    oauth_github_client_id="synthetic-github-client",
+                    oauth_github_client_secret=SecretStr("synthetic-test-only"),
+                )
             )
         )
         client.app.state.oauth_clients = clients
@@ -459,22 +462,31 @@ def test_configuration_rejects_unsafe_public_origins(origin):
 def test_partial_configuration_stays_disabled_and_https_needs_secure_cookies():
     assert (
         OAuthClients(
-            Settings(
-                _env_file=None,
-                oauth_public_origin="https://example.com",
-                oauth_google_client_id="id-only",
+            oauth_client_configuration(
+                Settings(
+                    _env_file=None,
+                    oauth_public_origin="https://example.com",
+                    oauth_google_client_id="id-only",
+                )
             )
         ).enabled
         == []
     )
-    assert OAuthClients(Settings(_env_file=None, oauth_public_origin="")).enabled == []
+    assert (
+        OAuthClients(
+            oauth_client_configuration(Settings(_env_file=None, oauth_public_origin=""))
+        ).enabled
+        == []
+    )
     with pytest.raises(ValueError, match="secure"):
         OAuthClients(
-            Settings(
-                _env_file=None,
-                oauth_public_origin="https://example.com",
-                oauth_google_client_id="synthetic",
-                oauth_google_client_secret=SecretStr("synthetic"),
+            oauth_client_configuration(
+                Settings(
+                    _env_file=None,
+                    oauth_public_origin="https://example.com",
+                    oauth_google_client_id="synthetic",
+                    oauth_google_client_secret=SecretStr("synthetic"),
+                )
             )
         )
 
@@ -582,12 +594,14 @@ def test_https_oauth_cookie_is_host_bound_and_plain_cookie_cannot_satisfy_state(
     mock = Provider(plain_client)
     origin = "https://testserver"
     clients = OAuthClients(
-        Settings(
-            _env_file=None,
-            oauth_public_origin=origin,
-            session_cookie_secure=True,
-            oauth_google_client_id="synthetic-google-client",
-            oauth_google_client_secret=SecretStr("synthetic-test-only"),
+        oauth_client_configuration(
+            Settings(
+                _env_file=None,
+                oauth_public_origin=origin,
+                session_cookie_secure=True,
+                oauth_google_client_id="synthetic-google-client",
+                oauth_google_client_secret=SecretStr("synthetic-test-only"),
+            )
         )
     )
     clients.client("google").client_kwargs["transport"] = httpx.MockTransport(mock.http)

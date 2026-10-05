@@ -89,6 +89,7 @@ from qunxue_api.adapters.sqlite.identity_repository import SqliteIdentityReposit
 from qunxue_api.adapters.sqlite.knowledge_import import SqliteImportRepository
 from qunxue_api.adapters.sqlite.material_vector_cache import SqliteMaterialVectorCache
 from qunxue_api.adapters.sqlite.memory_learning_repository import SqliteMemoryLearningRepository
+from qunxue_api.adapters.sqlite.oauth_transactions import OAuthTransactions
 from qunxue_api.adapters.sqlite.personal_graph import SqlitePersonalGraphRepository
 from qunxue_api.adapters.sqlite.phenomenon_repository import SqlitePhenomenonRepository
 from qunxue_api.adapters.sqlite.professional_material_repository import (
@@ -189,6 +190,7 @@ from qunxue_api.application.external_agents import ExternalAgentApplication
 from qunxue_api.application.knowledge_import import KnowledgeImportApplication
 from qunxue_api.application.memory_learning import MemoryLearningWorker
 from qunxue_api.application.memory_overview import MemoryOverview
+from qunxue_api.application.oauth_login import OAuthLoginApplication
 from qunxue_api.application.personal_graph import PersonalGraphApplication
 from qunxue_api.application.shared_knowledge import SharedKnowledgeApplication
 from qunxue_api.application.subscriptions import SubscriptionApplication
@@ -204,6 +206,8 @@ from qunxue_api.modules.identity import (
     IdentityService,
     InvalidEmail,
     InvalidVerificationCode,
+    OAuthClientConfiguration,
+    OAuthProviderCredentials,
     Unauthenticated,
     VerificationCodeRateLimited,
 )
@@ -267,6 +271,22 @@ def _build_transcription_provider(settings: Settings) -> TranscriptionProvider:
         model=settings.transcription_model or "",
         processing_location=ProcessingLocation(settings.transcription_processing_location),
         timeout_seconds=settings.transcription_timeout_seconds,
+    )
+
+
+def oauth_client_configuration(settings: Settings) -> OAuthClientConfiguration:
+    return OAuthClientConfiguration(
+        origin=settings.oauth_public_origin,
+        secure_session_cookie=settings.session_cookie_secure,
+        providers=tuple(
+            OAuthProviderCredentials(
+                provider=provider,
+                client_id=getattr(settings, f"oauth_{provider}_client_id"),
+                client_secret=(secret.get_secret_value() if secret else None),
+            )
+            for provider in ("google", "github")
+            for secret in (getattr(settings, f"oauth_{provider}_client_secret"),)
+        ),
     )
 
 
@@ -559,7 +579,17 @@ def create_app(
             yield build_identity_service(session)
 
     app.state.build_identity_service = build_identity_service
-    app.state.oauth_clients = OAuthClients(resolved_settings)
+    app.state.oauth_clients = OAuthClients(oauth_client_configuration(resolved_settings))
+    oauth_transactions = OAuthTransactions(
+        resolved_database,
+        identity_factory=lambda session: app.state.build_identity_service(session),
+    )
+    app.state.oauth_application = OAuthLoginApplication(
+        clients=lambda: app.state.oauth_clients,
+        transactions=oauth_transactions,
+        identities=oauth_transactions.identities,
+        atomic_identities=oauth_transactions.atomic_identities,
+    )
 
     @contextmanager
     def research_task_service_scope() -> Iterator[ResearchTaskService]:
