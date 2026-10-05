@@ -64,6 +64,13 @@ def install_account_management(
         setting = app.state.settings.account_initial_admin_password
         if setting is not None:
             configured_admin_password = setting.get_secret_value()
+    # Existing administrators can issue codes without rerunning provisioning or
+    # changing an account password. Legacy deployments retain their existing key
+    # unless they explicitly configure the independent signing secret.
+    credit_secret = app.state.settings.credit_code_signing_secret
+    code_signing_secret = (
+        credit_secret.get_secret_value() if credit_secret else configured_admin_password
+    )
     credit_exempt_user_ids: frozenset[UUID] = frozenset()
     # Account settings are available to every registered member. Administrator
     # provisioning and signing capabilities are optional deployment features.
@@ -100,7 +107,7 @@ def install_account_management(
                 SqliteCreditRepository(session,
                     plan_limits=app.state.settings.billing_plan_weekly_points),
                 exempt_user_ids=credit_exempt_user_ids,
-                code_signing_secret=configured_admin_password,
+                code_signing_secret=code_signing_secret,
             )
 
     app.state.account_management_service_scope = service_scope
