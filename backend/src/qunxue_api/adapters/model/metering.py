@@ -428,13 +428,20 @@ async def _wire_hook(request):
     state = _wire_request.get()
     if state is None:
         return
-    payload = json.loads(request.content)
-    state["attempt"] = state["scope"].before_attempt_payload(
-        payload,
-        state["route"],
-        request.url.host,
-        api_type=state.get("api_type", "chat_completions"),
-    )
+    try:
+        payload = json.loads(request.content)
+        state["attempt"] = state["scope"].before_attempt_payload(
+            payload,
+            state["route"],
+            request.url.host,
+            api_type=state.get("api_type", "chat_completions"),
+        )
+    except Exception as error:
+        # OpenAI wraps HTTP client hook exceptions as APIConnectionError. This
+        # guard ran locally before the network; preserve its actual failure so
+        # budget, configuration and lease errors keep their existing contracts.
+        state["local_error"] = error
+        raise
 
 
 class MeteredOpenAIChatModel(UsageSafeOpenAIChatModel):
@@ -463,6 +470,8 @@ class MeteredOpenAIChatModel(UsageSafeOpenAIChatModel):
                 messages, stream, model_settings, model_request_parameters
             )
         except BaseException as error:
+            if state.get("local_error") is not None:
+                raise state["local_error"] from None
             if state["attempt"] is not None:
                 scope.complete(
                     state["attempt"],
@@ -526,6 +535,8 @@ class MeteredOpenAIResponsesModel(UsageSafeOpenAIResponsesModel):
                 messages, stream, model_settings, model_request_parameters
             )
         except BaseException as error:
+            if state.get("local_error") is not None:
+                raise state["local_error"] from None
             if state["attempt"] is not None:
                 scope.complete(
                     state["attempt"],

@@ -27,6 +27,8 @@ from qunxue_api.settings import Settings
             "credits_depleted",
         ),
         (BillingBudgetExceeded("synthetic-secret"), 429, "billing_budget_exceeded"),
+        (BillingBudgetExceeded("synthetic-secret", reason="service_budget_exceeded"),
+         429, "billing_budget_exceeded"),
         (BillingContextMissing("synthetic-secret"), 503, "billing_not_configured"),
         (BillingReplayBlocked("synthetic-secret"), 409, "billing_replay_blocked"),
     ],
@@ -44,6 +46,9 @@ def test_new_billing_failures_use_safe_json_error_contract(error, status, code):
     assert response.status_code == status
     assert response.json()["error"]["code"] == code
     assert "synthetic-secret" not in response.text
+    if error.reason == "service_budget_exceeded":
+        assert "模型服务的安全额度" in response.json()["error"]["message"]
+        assert "积分不足" not in response.json()["error"]["message"]
 
 
 @pytest.mark.parametrize(
@@ -51,6 +56,8 @@ def test_new_billing_failures_use_safe_json_error_contract(error, status, code):
     [
         (BillingBudgetExceeded("synthetic-secret", reason="credits_depleted"), "credits_depleted"),
         (BillingBudgetExceeded("synthetic-secret"), "billing_budget_exceeded"),
+        (BillingBudgetExceeded("synthetic-secret", reason="service_budget_exceeded"),
+         "billing_budget_exceeded"),
         (BillingContextMissing("synthetic-secret"), "billing_not_configured"),
         (BillingReplayBlocked("synthetic-secret"), "billing_replay_blocked"),
     ],
@@ -88,3 +95,6 @@ def test_stream_terminal_billing_error_preserves_event_contract(error, code):
     assert code in events
     assert "event: turn_completed" not in events
     assert "synthetic-secret" not in events
+    if error.reason == "service_budget_exceeded":
+        assert "模型服务的安全额度" in events
+        assert "积分不足" not in events
