@@ -312,6 +312,7 @@ class Settings(BaseSettings):
     session_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     account_initial_admin_email: str = ""
     account_initial_admin_password: SecretStr | None = None
+    credit_code_signing_secret: SecretStr | None = Field(default=None, min_length=32)
     resend_api_key: SecretStr | None = None
     email_from: str = "Everplain <onboarding@resend.dev>"
     cors_allowed_origins: tuple[str, ...] = (
