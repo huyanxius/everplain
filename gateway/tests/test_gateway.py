@@ -521,3 +521,78 @@ def test_async_cursor_survives_gateway_restart_without_second_post(settings):
         await worker.close()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("failure", ["503", "429", "timeout"])
+def test_lost_async_admission_recovers_get_without_exhausting_execution_budget(
+    settings, monkeypatch, failure
+):
+    async def scenario():
+        settings.max_attempts = 1
+        store = Store(settings.database_path)
+        store.enqueue(event())
+        calls = []
+        reads = [0]
+
+        def backend(request):
+            calls.append(request.method)
+            if request.method == "POST":
+                if failure == "timeout":
+                    raise httpx.ReadTimeout("synthetic admitted response loss", request=request)
+                return httpx.Response(int(failure))
+            reads[0] += 1
+            complete = reads[0] >= 4
+            return httpx.Response(200, json={"event_key": event_key(event()),
+                "state": "complete" if complete else "processing", "cursor": reads[0],
+                "text": "single paid run answer" if complete else None})
+
+        async def no_wait(_):
+            pass
+
+        monkeypatch.setattr("everplain_gateway.worker.asyncio.sleep", no_wait)
+        worker = Worker(settings, store, FakeTransport(), client=httpx.AsyncClient(
+            base_url="http://test", transport=httpx.MockTransport(backend)))
+        for _ in range(5):
+            await worker.process_inbox()
+            if store.counts()["inbox"].get("complete"):
+                break
+        assert calls.count("POST") == 1 and reads[0] == 4
+        assert store.counts()["inbox"] == {"complete": 1}
+        await worker.close()
+
+    asyncio.run(scenario())
+
+
+def test_uncertain_admission_survives_failed_probes_and_restart(settings):
+    async def scenario():
+        settings.max_attempts = 1
+        store = Store(settings.database_path)
+        store.enqueue(event())
+        calls = []
+        probes = [0]
+
+        def backend(request):
+            calls.append(request.method)
+            if request.method == "POST":
+                raise httpx.ReadTimeout("synthetic accepted response lost", request=request)
+            probes[0] += 1
+            if probes[0] <= 2:
+                return httpx.Response(503)
+            return httpx.Response(200, json={"event_key": event_key(event()), "state": "complete",
+                                           "text": "recovered paid answer", "cursor": 3})
+
+        for _ in range(4):
+            reopened = Store(settings.database_path)
+            with reopened.connect() as db:
+                db.execute("UPDATE inbox SET available=0")
+            worker = Worker(settings, reopened, FakeTransport(), client=httpx.AsyncClient(
+                base_url="http://test", transport=httpx.MockTransport(backend)))
+            await worker.process_inbox()
+            await worker.close()
+            if reopened.counts()["inbox"].get("complete"):
+                break
+            assert reopened.counts()["inbox"] == {"pending": 1}
+        assert calls.count("POST") == 1
+        assert reopened.counts()["inbox"] == {"complete": 1}
+
+    asyncio.run(scenario())

@@ -1028,6 +1028,7 @@ class ExistingRelease:
         self.record()
         if (
             self.old_revision == REVISION
+            and channel_values is None
             and not self.report.get("billing_policy_changed")
             and api.get("Image") == self.images["api"]
             and web.get("Image") == self.images["web"]

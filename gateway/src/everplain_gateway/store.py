@@ -76,7 +76,7 @@ class Store:
                 );
             """)
             columns = {row[1] for row in db.execute("PRAGMA table_info(inbox)")}
-            for name in ("accepted", "cursor", "control"):
+            for name in ("accepted", "cursor", "control", "dispatch_attempts", "uncertain"):
                 if name not in columns:
                     db.execute(f"ALTER TABLE inbox ADD COLUMN {name} INTEGER NOT NULL DEFAULT 0")
 
@@ -182,12 +182,13 @@ class Store:
             )
             return {**dict(row), "attempts": row["attempts"] + 1, "event": json.loads(row["event"])}
 
-    def checkpoint_inbox(self, row, *, cursor=None, accepted=None):
+    def checkpoint_inbox(self, row, *, cursor=None, accepted=None, uncertain=None):
         with self.connect() as db:
             changed = db.execute(
                 "UPDATE inbox SET lease=?,cursor=MAX(cursor,COALESCE(?,cursor)),"
-                "accepted=COALESCE(?,accepted) WHERE key=? AND state='running' AND attempts=?",
-                (self.clock() + 15, cursor, accepted, row["key"], row["attempts"]),
+                "accepted=COALESCE(?,accepted),uncertain=COALESCE(?,uncertain) "
+                "WHERE key=? AND state='running' AND attempts=?",
+                (self.clock() + 15, cursor, accepted, uncertain, row["key"], row["attempts"]),
             ).rowcount
             if changed != 1:
                 raise LeaseLost()
@@ -195,6 +196,22 @@ class Store:
             row["cursor"] = max(row["cursor"], cursor)
         if accepted is not None:
             row["accepted"] = accepted
+        if uncertain is not None:
+            row["uncertain"] = uncertain
+
+    def begin_dispatch(self, row):
+        with self.connect() as db:
+            changed = db.execute(
+                "UPDATE inbox SET dispatch_attempts=dispatch_attempts+1,uncertain=1,lease=? "
+                "WHERE key=? AND state='running' AND attempts=?",
+                (self.clock() + 15, row["key"], row["attempts"]),
+            ).rowcount
+            if changed != 1:
+                raise LeaseLost()
+            count = db.execute("SELECT dispatch_attempts FROM inbox WHERE key=?",
+                               (row["key"],)).fetchone()[0]
+        row["dispatch_attempts"] = count
+        row["uncertain"] = True
 
     def complete_inbox(self, row, text, *, require_auth=True):
         with self.connect() as db:

@@ -6,7 +6,7 @@ import threading
 import time
 from uuid import UUID
 
-from qunxue_api.modules.agent_conversation import AgentInterrupted
+from qunxue_api.modules.agent_conversation import AgentInterrupted, ConversationNotFound
 from qunxue_api.modules.channel_gateway import GatewayDenied
 from qunxue_api.modules.identity import AccountStatus
 
@@ -48,14 +48,20 @@ class ChannelGatewayApplication:
         self.active_user(user_id)
         self.repository.revoke(user_id, str(binding_id), int(self.clock()))
 
-    def can_deliver(self, gateway_id, event_key):
+    def can_deliver(self, gateway_id, event_key, *, runtime_scope):
         row = self.repository.event(event_key)
         if row is None or row.gateway_id != gateway_id or row.state != "complete":
             return False
         if row.binding_id is not None:
             try:
-                self.require_binding(row.binding_id)
-            except GatewayDenied:
+                binding = self.require_binding(row.binding_id)
+                if row.scope_key is not None:
+                    with runtime_scope() as runtime:
+                        run = runtime.find_run(user_id=UUID(binding.user_id),
+                                               idempotency_key=f"channel:{event_key}")
+                    if run is None or run.output_redacted:
+                        return False
+            except (GatewayDenied, ConversationNotFound):
                 return False
         return True
 
@@ -79,7 +85,7 @@ class ChannelGatewayApplication:
         control = event.text.strip() == "/cancel"
         row, conversation_id = self.repository.reserve(event, binding, now, control=control)
         if row.state == "complete":
-            if not self.can_deliver(event.gateway_id, event.event_key):
+            if not self.can_deliver(event.gateway_id, event.event_key, runtime_scope=runtime_scope):
                 raise GatewayDenied("绑定已撤销。")
             return row, conversation_id, binding, row.answer
         token = row.lease_token
@@ -187,7 +193,10 @@ class ChannelGatewayApplication:
             if getattr(result, "incomplete_reason", None) == "length":
                 answer += "\n\n本轮达到模型输出长度限制，已生成内容已保留，请在 Everplain 继续。"
             # The reply and its replay receipt commit before the gateway sees success.
-            return self.repository.finish(event.event_key, token, answer).answer
+            receipt = self.repository.finish(event.event_key, token, answer)
+            if not self.can_deliver(event.gateway_id, event.event_key, runtime_scope=runtime_scope):
+                raise GatewayDenied("本轮来源当前不可用，请在 Everplain 查看。")
+            return receipt.answer
         except AgentInterrupted:
             self.require_binding(binding_id)
             with runtime_scope() as runtime:
@@ -199,7 +208,8 @@ class ChannelGatewayApplication:
             )
             return self.repository.finish(event.event_key, token, answer).answer
         except Exception:
-            self.repository.finish(event.event_key, token, None)
+            if self.repository.event(event.event_key).state != "complete":
+                self.repository.finish(event.event_key, token, None)
             raise
         finally:
             stopped.set()
@@ -216,11 +226,21 @@ class ChannelGatewayApplication:
         if binding is None:
             raise GatewayDenied("绑定不存在。")
         with runtime_scope() as runtime:
-            run = runtime.find_run(user_id=UUID(binding.user_id),
-                                   idempotency_key=f"channel:{event_key}")
+            try:
+                run = runtime.find_run(user_id=UUID(binding.user_id),
+                                       idempotency_key=f"channel:{event_key}")
+            except ConversationNotFound:
+                run = None
             events = runtime.read_output_events(user_id=UUID(binding.user_id), run_id=run.run_id,
                                                 after=after) if run else ()
         cursor = max((item.sequence for item in events), default=after)
+        if row.scope_key is not None and (
+            (run is None and row.state == "complete") or (run is not None and run.output_redacted)
+        ):
+            return {"event_key": event_key, "state": "complete",
+                    "cursor": run.last_event_sequence if run else 0,
+                    "text": run.partial_answer if run and run.output_redacted
+                    else "本轮来源或会话当前不可用，请在 Everplain 查看。"}
         if row.state == "complete":
             return {"event_key": event_key, "state": "complete",
                     "cursor": run.last_event_sequence if run else 0, "text": row.answer}

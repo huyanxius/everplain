@@ -126,6 +126,9 @@ class ChannelReleaseTests(unittest.TestCase):
         # The released optional role remains restricted to the same repository.
         self.assertNotIn("docker compose down", build)
         self.assertEqual(artifact.FORMAT, 1)
+        updater = (ROOT / "ops/cd/deploy-existing.py").read_text()
+        self.assertIn("self.old_revision == REVISION\n            and channel_values is None",
+                      updater)
 
 
 if __name__ == "__main__":

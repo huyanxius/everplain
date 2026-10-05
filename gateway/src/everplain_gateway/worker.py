@@ -33,15 +33,25 @@ class Worker:
             headers = {**self.settings.backend_headers(row["event"]["platform"]),
                        "Prefer": "respond-async"}
             while True:
-                if row["accepted"]:
+                if row["accepted"] or row["uncertain"]:
                     response = await self.client.get(
                         f"/api/channel-gateway/events/{row['key']}",
                         params={"after": row["cursor"]}, headers=headers,
                     )
+                    if response.status_code == 404 and row["uncertain"] and not row["accepted"]:
+                        self.store.checkpoint_inbox(row, uncertain=False)
+                        self._retry_inbox(row)
+                        return True
                 else:
+                    self.store.begin_dispatch(row)
                     response = await self.client.post(
                         "/api/channel-gateway/dispatch", json=row["event"], headers=headers,
                     )
+                if not row["accepted"] and (response.status_code in {429, 503}
+                                            or response.status_code >= 500):
+                    recovered = await self._probe_admission(row, headers)
+                    if recovered is not None:
+                        response = recovered
                 if response.status_code not in {200, 202}:
                     break
                 result = response.json()
@@ -49,14 +59,15 @@ class Worker:
                     raise ValueError("Invalid backend identity")
                 state = result.get("state", "complete")
                 if state == "retryable":
-                    self.store.checkpoint_inbox(row, accepted=False)
+                    self.store.checkpoint_inbox(row, accepted=False, uncertain=False)
                     self._retry_inbox(row)
                     return True
                 if state == "complete":
                     break
                 if state != "processing" or not isinstance(result.get("cursor", 0), int):
                     raise ValueError("Invalid backend output state")
-                self.store.checkpoint_inbox(row, cursor=result.get("cursor", 0), accepted=True)
+                self.store.checkpoint_inbox(row, cursor=result.get("cursor", 0),
+                                            accepted=True, uncertain=False)
                 await asyncio.sleep(1)
             if response.status_code == 200:
                 result = response.json()
@@ -77,8 +88,37 @@ class Worker:
             raise
         except Exception as exc:
             logger.warning("Inbox attempt failed: %s", type(exc).__name__)
+            if not row["accepted"] and isinstance(exc, (httpx.HTTPError, ValueError)):
+                try:
+                    recovered = await self._probe_admission(row, headers)
+                    if recovered is not None:
+                        result = recovered.json()
+                        if result["state"] == "complete" and isinstance(result.get("text"), str):
+                            self.store.complete_inbox(row, result["text"])
+                        else:
+                            self.store.checkpoint_inbox(
+                                row, cursor=result.get("cursor", 0), accepted=True, uncertain=False
+                            )
+                            self.store.retry_inbox(row["key"], attempt=row["attempts"], delay=0)
+                        return True
+                except Exception as recovery_error:
+                    logger.warning("Admission recovery failed: %s", type(recovery_error).__name__)
             self._retry_inbox(row)
         return True
+
+    async def _probe_admission(self, row, headers):
+        response = await self.client.get(f"/api/channel-gateway/events/{row['key']}",
+                                         params={"after": row["cursor"]}, headers=headers)
+        if response.status_code == 404:
+            self.store.checkpoint_inbox(row, uncertain=False)
+        if response.status_code != 200:
+            return None
+        result = response.json()
+        if (result.get("event_key") != row["key"]
+                or result.get("state") not in {"processing", "complete"}
+                or not isinstance(result.get("cursor", 0), int)):
+            return None
+        return response
 
     def _retry_inbox(self, row, retry_after=None):
         try:
@@ -89,7 +129,9 @@ class Worker:
             )
         except ValueError:
             delay = 60
-        dead = row["attempts"] >= self.settings.max_attempts or time.time() - row["created"] > 86400
+        dead = ((not row["accepted"] and not row["uncertain"]
+                 and row.get("dispatch_attempts", row["attempts"]) >= self.settings.max_attempts)
+                or time.time() - row["created"] > 86400)
         if dead:
             self.store.fail_inbox(row)
         else:

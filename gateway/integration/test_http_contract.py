@@ -347,7 +347,7 @@ def test_committed_runtime_response_loss_replays_without_second_charge(stack, fa
         item["body"].get("text") == "private fixture answer: lost backend result"
         for item in value["deliveries"]
     ))
-    assert state["dispatch_requests"] == requests_before + 2
+    assert state["dispatch_requests"] == requests_before + 1
     assert state["calls"] == ["lost backend result"]
     assert state["runs"] == state["charges"] == 1
     assert sum(

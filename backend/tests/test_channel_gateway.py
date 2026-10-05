@@ -713,6 +713,12 @@ def test_cancel_after_admission_before_model_start_is_durable(channels):
     typed = ChannelEvent(**payload)
     with channels.client.app.state.channel_gateway_scope() as gateway:
         prepared = gateway.prepare(typed, runtime_scope=channels.runtime)
+        pending = channels.client.get(
+            f"/api/channel-gateway/events/{typed.event_key}", headers=HEADERS
+        )
+        assert pending.status_code == 200
+        assert pending.json()["state"] == "processing" and pending.json()["text"] is None
+        assert channels.calls == []
         cancellation = dispatch(channels, event(text="/cancel"))
         assert cancellation.status_code == 200
         assert "请求停止" in cancellation.json()["text"]
@@ -721,3 +727,46 @@ def test_cancel_after_admission_before_model_start_is_durable(channels):
             runtime_scope=channels.runtime, prepared=prepared)
     assert "已停止" in answer
     assert channels.calls == []
+
+
+def test_cached_private_reply_rechecks_runtime_redaction_and_missing_run(channels):
+    from dataclasses import replace
+
+    _, bound = bind(channels)
+    payload = event(text="cached private source answer")
+    reply = dispatch(channels, payload)
+    assert reply.status_code == 200
+    key = reply.json()["event_key"]
+    original = channels.client.app.state.disciplinary_agent_scope
+    unavailable = ["redacted"]
+
+    @contextmanager
+    def runtime():
+        with original() as app:
+            find = app.find_run
+
+            def protected(**kwargs):
+                run = find(**kwargs)
+                if kwargs.get("idempotency_key") == f"channel:{key}" and run is not None:
+                    return (
+                        replace(run, output_redacted=True, partial_answer="safe redacted answer")
+                        if unavailable[0] == "redacted" else None
+                    )
+                return run
+
+            app.find_run = protected
+            yield app
+
+    channels.client.app.state.disciplinary_agent_scope = runtime
+    path = f"/api/channel-gateway/events/{key}"
+    for state in ("redacted", "missing"):
+        unavailable[0] = state
+        output = channels.client.get(path, headers=HEADERS)
+        assert output.status_code == 200
+        assert "cached private source answer" not in output.json()["text"]
+        allowed = channels.client.get(path + "/delivery", headers=HEADERS)
+        assert allowed.json() == {"allowed": False}
+        assert dispatch(channels, payload).status_code == 403
+    binding_key = ChannelEvent(**bound).event_key
+    assert channels.client.get(f"/api/channel-gateway/events/{binding_key}/delivery",
+                               headers=HEADERS).json() == {"allowed": True}

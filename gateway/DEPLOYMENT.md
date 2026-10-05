@@ -10,7 +10,7 @@
 - 只有操作员在 `/etc/everplain/channel-gateway.env` 安全配置后才启用机器人。文件须 root 所有、0600、不可为符号链接；父目录须 root 所有且不可被组/其他用户写入。没有该文件时正常 Web/API 发布继续，结果明确包含 `channel_configured=false`。
 - 网关有独立持久目录 `/srv/everplain-updates/channel-gateway/data`，容器仅挂载此目录到 `/data`；不与网站数据库混用，不把数据加入发布包。升级保留原数据与旧容器；不能清空卷。
 - 服务仅绑定宿主 `127.0.0.1:8298`。Web 生成两个精确 POST 路由 `/webhooks/telegram`、`/webhooks/feishu`，拒绝其他 HTTP 方法，128KiB 请求上限。网关健康和队列统计不通过公网 webhook 转发。
-- 配置完整性先在禁网容器验证，然后才进入既有停写/迁移/切换路径。网关在 API 停写前停止，在新 API 健康后启动并检验精确版本，再验证 Web 的 Nginx 配置。
+- 配置完整性先在禁网容器验证，然后才进入既有停写/迁移/切换路径。同提交补接或轮换已批准配置时也必须应用新的后台身份和网关，不能走仅API/Web镜像相同的no-op捷径。网关在 API 停写前停止，在新 API 健康后启动并检验精确版本，再验证 Web 的 Nginx 配置。
 - 外部平台和网关到后台均走 HTTPS。后台鉴权仅加入与此机器人对应的服务身份，保留其他设置和已配置的服务身份。
 - `channel_local_health_verified=true` 仅表示进程/版本正常，不能替代平台或模型验收。实号验证仍需逐项记录，不能把平台设置缺失当成已经部署成功。
 
@@ -43,11 +43,11 @@ Telegram：
 
 1. 用户在 Everplain 设置中明确同意私聊资料/用量接入并生成一次性绑定码，然后自己向已批准的机器人私聊发送绑定命令。绑定码不进入运维日志。
 2. 验证平台签名/secret与app/tenant；durable inbox先提交再ACK。错签名、他人ID、群聊、转发和错租户均不可进入个人 Agent。
-3. 网关 `POST /api/channel-gateway/dispatch` 使用 `Prefer: respond-async`；持久预约提交后返回202，GET `/api/channel-gateway/events/{event_key}?after=<cursor>` 只读取同一 Agent durable journal，GET不启动模型/工具。最终答案分片发送，仍不宣称逐 token 平台流式。
+3. 网关 `POST /api/channel-gateway/dispatch` 使用 `Prefer: respond-async`；持久预约提交后返回202，GET `/api/channel-gateway/events/{event_key}?after=<cursor>` 只读取同一 Agent durable journal，GET不启动模型/工具。最终答案分片发送，仍不宣称逐 token 平台流式。POST回包与首次GET同时丢失时先持久保存uncertain状态，仅重试读取同一事件；明确404后才回到有限POST重试，不把无法判断的已付费运行当成失败重开。
 4. 在真实模型允许的试点预算内，比较平台最终答案与网站同一 run；核对只产生一次逻辑操作、真实用量按原账务策略记录。取消/失败不意味着免费或自动退款。
 5. 在运行中重启网关，确认通过已存 cursor继续GET而非再次POST。正常退出立即归还自身队列lease，异常退出在15秒订阅lease过期后恢复，保持后台 run不重复执行。后台进程丢失后只能按相同事件/原 runtime 恢复规则重试。
 6. 用户在同一私聊发送 `/cancel`。独立控制队列可越过长任务；取消仅定位该绑定与私聊作用域。取消申请持久保存，包括后台模型尚未开始的窗口；已生成正文仍保留，结尾明确本轮已停止。
-7. 对长于30秒的任务、重复回调、运行中/投递前解绑与禁用账号核对账本和owner隔离。每个分片发送前重新授权，撤销后不得发私人答案。
+7. 对长于30秒的任务、重复回调、运行中/投递前解绑与禁用账号核对账本和owner隔离。每个分片发送前重新授权，撤销后不得发私人答案。重复事件、GET最终答案和待投递缓存还须复核同一owner的Agent run；资料删除/撤权后的redaction不能被机器人缓存绕过。
 8. 合成测试完成429/截断响应/重试和稳定飞书UUID；实号测试不得故意大量打平台制造限流。Telegram模糊投递不盲重发；飞书固定UUID重试在平台去重窗口内结束。dead/ambiguous必须告警并人工核对，不伪称exactly-once。
 
 官方依据：[Telegram Bot API](https://core.telegram.org/bots/api)、[飞书消息发送](https://open.feishu.cn/document/server-docs/im-v1/message/create)、[飞书订阅方式与回调](https://open.feishu.cn/document/server-docs/event-subscription-guide/event-subscription-configure-/request-url-configuration-case)。核验日期：2026-10-05。

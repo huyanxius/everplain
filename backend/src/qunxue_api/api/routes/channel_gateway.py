@@ -260,7 +260,10 @@ def read_output(event_key: str, gateway_id: GatewayIdentity, request: Request,
     operation_id="authorize_channel_delivery",
 )
 def authorize_delivery(
-    event_key: str, gateway_id: GatewayIdentity, response: Response, app: Application
+    event_key: str, gateway_id: GatewayIdentity, request: Request,
+    response: Response, app: Application
 ):
     response.headers["Cache-Control"] = "no-store"
-    return ChannelDeliveryResponse(allowed=app.can_deliver(gateway_id, event_key))
+    return ChannelDeliveryResponse(allowed=app.can_deliver(
+        gateway_id, event_key, runtime_scope=request.app.state.disciplinary_agent_scope
+    ))
