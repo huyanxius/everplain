@@ -2529,3 +2529,46 @@ it.each([true, false])('executes a writing shortcut without a second send and pr
   await act(async () => {})
   expect(requests).toHaveLength(1)
 })
+
+it('streams writing deltas before completion and hides only the automatic action echo', async () => {
+  const message = '优化当前选区', first = '实际收到的第一段。'.repeat(12), second = '实际收到的第二段。'
+  const completed = conversationFixture({ id: 'writing-live', prompt: message, answer: first + second })
+  let controller!: ReadableStreamDefaultController<Uint8Array>
+  const stream = new ReadableStream<Uint8Array>({ start(value) { controller = value } })
+  const encoder = new TextEncoder(), finished = vi.fn()
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const path = urlFor(input).pathname
+    if (path === '/api/agent/models') return json({ runtime_mode: 'base', items: [{ model_id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoning_efforts: ['none'], default_reasoning_effort: 'none' }] })
+    if (path === '/api/agent/turns') return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } })
+    return json({ items: [], tasks: [] })
+  }))
+  const action = { id: 'writing-ui:rewrite:live', text: message }
+  const { container } = render(<MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" writingDocumentId="writing-doc" prepareWritingContext={async () => ({ document_id: 'writing-doc', document_version: 1 })} writingAction={action} onWritingActionFinished={finished} /></MemoryRouter>)
+  await screen.findByRole('textbox', { name: '问 Everplain' })
+  await act(async () => { controller.enqueue(encoder.encode(eventStream([
+    ['turn_started', { conversation_id: 'writing-live', run_id: 'writing-live-run', replayed: false }],
+    ['assistant_delta', { delta: first }],
+  ]))) })
+  await waitFor(() => expect(container.querySelector('.cv-turn__prose')).toHaveTextContent(first))
+  expect(finished).not.toHaveBeenCalled()
+  expect(container.querySelector('[data-role="user-message"]')).not.toBeInTheDocument()
+  await act(async () => { controller.enqueue(encoder.encode(eventStream([['assistant_delta', { delta: second }]]))) })
+  await waitFor(() => expect(container.querySelector('.cv-turn__prose')).toHaveTextContent(first + second))
+  expect(finished).not.toHaveBeenCalled()
+  await act(async () => { controller.enqueue(encoder.encode(eventStream([['turn_completed', { conversation: completed, knowledge_release_id: 'release-test' }]]))); controller.close() })
+  await waitFor(() => expect(finished).toHaveBeenCalledWith(action.id))
+  expect(container.querySelector('[data-role="user-message"]')).not.toBeInTheDocument()
+})
+
+it('keeps an identical natural writing message visible after restoring automatic action origin', async () => {
+  const completed = conversationFixture({ id: 'writing-origins', prompt: '优化当前选区', answer: '已提出修订。' })
+  const automatic = { ...completed.turns[0], turn_id: 'automatic', tool_traces: [{ tool: 'writing_ui_action', phase: 'finished' as const, call_id: 'origin', input: { origin: 'selection_toolbar' } }] }
+  completed.turns = [automatic, { ...completed.turns[0], turn_id: 'natural' }]
+  completed.turn_count = 2
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => urlFor(input).pathname === '/api/agent/conversations/writing-origins' ? json(completed) : json({ items: [], tasks: [] })))
+  const { container } = render(<MemoryRouter><ResearchAgentConversationPage embedded userId="writing-owner" writingDocumentId="writing-doc" conversationId="writing-origins" /></MemoryRouter>)
+  await waitFor(() => expect(container.querySelectorAll('[data-role="user-message"]')).toHaveLength(1))
+  expect(container.querySelector('[data-role="user-message"]')).toHaveTextContent('优化当前选区')
+  expect(container.querySelector('[data-turn-id="automatic"] [data-role="user-message"]')).not.toBeInTheDocument()
+})

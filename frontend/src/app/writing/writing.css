@@ -82,3 +82,13 @@
   .writing-agent .conversation-composer__send { grid-column: 3; grid-row: 2; }
   .writing-agent .model-selection-settings__summary { max-width: 100%; padding-inline: var(--qx-space-2); }
 }
+
+.writing-crumb-title { min-width: 0; width: 20ch; max-width: 40vw; border: 0; background: transparent; color: inherit; font: inherit; }
+.writing-editor-canvas { position: relative; display: flex; flex: 1; min-height: 0; }
+.writing-editor-canvas > .se { flex: 1; min-width: 0; }
+.writing-revision-bubble { position: absolute; z-index: 45; width: min(360px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow: auto; padding: var(--qx-space-2); border: 1px solid var(--qx-color-rule); border-radius: var(--qx-radius-surface); background: var(--qx-color-surface); box-shadow: var(--qx-shadow-menu); }
+.writing-revision-bubble .se-bubble { box-shadow: none; }
+.writing-revision-diff { margin: var(--qx-space-2) 0 0; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.writing-agent .cv-turn[data-streaming] .cv-turn__prose::after { content: ''; display: inline-block; width: 2px; height: 1em; margin-left: 3px; background: currentColor; animation: writing-stream-caret 1s steps(2, start) infinite; vertical-align: text-bottom; }
+@keyframes writing-stream-caret { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .writing-agent .cv-turn[data-streaming] .cv-turn__prose::after { animation: none; } }

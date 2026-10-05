@@ -42,7 +42,8 @@ export function ConversationTurn({ turn, agent, renderAvatar, onSelectCitation, 
   const bubble = useRef<HTMLDivElement>(null)
   const launchedWhileStreaming = useRef(turn.streaming)
   const cancelFlight = useRef<(() => void) | undefined>(undefined)
-  const pacer = useStreamPacer(turn.answer, Boolean(turn.streaming))
+  const paced = useStreamPacer(turn.liveText ? '' : turn.answer, Boolean(turn.streaming))
+  const pacer = turn.liveText ? { visible: turn.answer, revealedAt: [], now: performance.now() } : paced
   useLayoutEffect(() => {
     const node = bubble.current
     if (!node || !launchedWhileStreaming.current) return
@@ -65,7 +66,7 @@ export function ConversationTurn({ turn, agent, renderAvatar, onSelectCitation, 
     ['web', text('公开网页', 'Public web')],
   ].flatMap(([group, label]) => { const count = turn.citations.filter(citation => !citation.deleted && citationGroup(citation) === group).length; return count ? [`${label} ${count}`] : [] })
   return <article style={{ '--agent-color': agent?.color ?? agentAvatarById[agent?.avatar ?? 'cheng'].color } as CSSProperties} className="cv-turn" data-turn-id={turn.id} data-streaming={turn.streaming || undefined}>
-    <div className="cv-turn__question" data-role="user-message"><div ref={bubble} className="qx-bubble">{turn.question}</div></div>
+    {turn.question && <div className="cv-turn__question" data-role="user-message"><div ref={bubble} className="qx-bubble">{turn.question}</div></div>}
     <div className="cv-turn__answer" data-role="assistant-response">
       <div className="cv-turn__avatar">{renderAvatar ? renderAvatar(avatarState, turn.id) : <AgentAvatar avatar={agent?.avatar ?? 'cheng'} color={agent?.color} size={32} state={avatarState} label={agent?.name ?? 'Everplain'} />}</div>
       <div className="cv-turn__body">
