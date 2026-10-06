@@ -77,6 +77,8 @@ tests/test_agent_profile.py
 tests/test_user_avatar_migration.py
 tests/test_import_sources.py
 tests/test_bookmark_fetch.py
+tests/test_bookmark_public_transport.py
+tests/test_bookmark_tls_boundary.py
 tests/test_imported_knowledge_availability.py
 tests/test_knowledge_import.py
 tests/test_import_upload_limits.py
