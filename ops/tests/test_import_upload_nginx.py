@@ -18,6 +18,9 @@ class ImportUploadNginxTests(unittest.TestCase):
         self.assertEqual(upload_lines, general_lines)
         self.assertIn("client_max_body_size 21m;", config[:upload.start()])
         self.assertEqual(config.count("client_max_body_size"), 2)
+        self.assertIn("upstream everplain_api_backend {\n    server api:8297;\n}", config)
+        self.assertEqual(config.count("api:8297"), 1)
+        self.assertEqual(config.count("proxy_pass http://everplain_api_backend;"), 2)
 
 
 if __name__ == "__main__":

@@ -65,7 +65,8 @@ class ChannelReleaseTests(unittest.TestCase):
         self.assertEqual(result.count("limit_except POST { deny all; }"), 2)
         self.assertNotIn("location /webhooks/", result)
         self.assertNotIn("location = /health {", result)
-        self.assertIn("proxy_pass http://api:8297;", result)
+        self.assertEqual(result.count("server api:8297;"), 1)
+        self.assertEqual(result.count("proxy_pass http://everplain_api_backend;"), 2)
         for address in ("gateway:8298", "127.0.0.1; injected", "http://evil"):
             with self.assertRaises(RuntimeError):
                 channel.nginx_routes(config, address)

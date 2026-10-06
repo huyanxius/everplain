@@ -309,9 +309,17 @@ def inspect_upstream():
                 and path.stat().st_size < 1024**2
                 and any("everplain" in part for part in path.parts)
             ):
-                targets = re.findall(r"proxy_pass\s+http://([0-9.]+):8297\s*;", path.read_text())
-                report["web_api_upstream_found"] = len(targets) == 1
-                report["web_api_upstream_matches"] = len(targets) == 1 and (
+                config = path.read_text()
+                targets = re.findall(r"proxy_pass\s+http://([0-9.]+):8297\s*;", config)
+                targets += re.findall(
+                    r"upstream\s+everplain_api_backend\s*\{\s*server\s+"
+                    r"([0-9.]+):8297\s*;\s*\}", config,
+                )
+                unique = len(targets) == 1 and len(re.findall(
+                    r"(?:proxy_pass\s+http://|server\s+)[^\s;{}]+:8297\s*;", config,
+                )) == 1
+                report["web_api_upstream_found"] = unique
+                report["web_api_upstream_matches"] = unique and (
                     targets[0] == next(iter(networks.values())).get("IPAddress")
                 )
     except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError):
