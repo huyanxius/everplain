@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useCallback, useState } from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
@@ -78,6 +78,7 @@ const childConnection = {
 
 const cores: Array<{
   fit: ReturnType<typeof vi.fn>
+  getElementById: ReturnType<typeof vi.fn>
   layout: ReturnType<typeof vi.fn>
   on: ReturnType<typeof vi.fn>
 }> = []
@@ -113,28 +114,37 @@ beforeEach(() => {
   cores.length = 0
   cytoscapeMock.mockReset()
   cytoscapeMock.mockImplementation(() => {
+    const classesById = new Map<string, Set<string>>()
     const elements = {
       boundingBox: vi.fn(() => ({ x1: 0, x2: 100, y1: 0, y2: 100 })),
       removeClass: vi.fn(),
     }
     const core = {
+      batch: vi.fn((update: () => void) => update()),
       container: vi.fn(() => ({ clientWidth: 1000, clientHeight: 700 })),
       center: vi.fn(),
       destroy: vi.fn(),
       elements: vi.fn(() => elements),
       fit: vi.fn(),
-      getElementById: vi.fn(() => ({
-        closedNeighborhood: vi.fn(() => ({ kind: 'neighborhood' })),
-        empty: vi.fn(() => false),
-        nonempty: vi.fn(() => true),
-        position: vi.fn(() => ({ x: 50, y: 50 })),
-      })),
+      getElementById: vi.fn((id: string) => {
+        const classes = classesById.get(id) ?? new Set<string>()
+        classesById.set(id, classes)
+        return {
+          addClass: vi.fn((names: string) => names.split(' ').forEach(name => classes.add(name))),
+          removeClass: vi.fn((names: string) => names.split(' ').forEach(name => classes.delete(name))),
+          hasClass: vi.fn((name: string) => classes.has(name)),
+          closedNeighborhood: vi.fn(() => ({ kind: 'neighborhood' })),
+          empty: vi.fn(() => false),
+          nonempty: vi.fn(() => true),
+          position: vi.fn(() => ({ x: 50, y: 50 })),
+        }
+      }),
       layout: vi.fn(() => ({ run: vi.fn() })),
       maxZoom: vi.fn(() => 3.2),
       minZoom: vi.fn(() => 0.16),
-      nodes: vi.fn(() => ({ addClass: vi.fn(), removeClass: vi.fn() })),
+      nodes: vi.fn(() => ({ addClass: vi.fn(), removeClass: vi.fn(), unselect: vi.fn() })),
       one: vi.fn(),
-      edges: vi.fn(() => ({ addClass: vi.fn(), removeClass: vi.fn() })),
+      edges: vi.fn(() => ({ addClass: vi.fn(), removeClass: vi.fn(), unselect: vi.fn() })),
       on: vi.fn(),
       resize: vi.fn(),
       viewport: vi.fn(),
@@ -379,17 +389,31 @@ it('loads each local layer without exposing review workflow language', async () 
 })
 
 it('ignores an older center response after the user selects another result', async () => {
-  let releaseOldPath: ((value: { connections: (typeof pathConnection)[] }) => void) | undefined
-  const oldPath = new Promise<{ connections: (typeof pathConnection)[] }>((resolve) => {
-    releaseOldPath = resolve
+  const staleChild = {
+    ...childConnection,
+    connection_id: 'structure:stale-response-child',
+    target_node_id: 'D1:C001:E001:stale-only',
+    target_title: '仅旧响应中的节点',
+  }
+  const currentChild = {
+    ...childConnection,
+    connection_id: 'structure:current-response-child',
+    source_node_id: entries.second.knowledgeId,
+    source_title: entries.second.title,
+    target_node_id: 'D1:C001:E002:current-only',
+    target_title: '仅当前响应中的节点',
+  }
+  let releaseOldChildren: ((value: { connections: (typeof childConnection)[] }) => void) | undefined
+  const oldChildren = new Promise<{ connections: (typeof childConnection)[] }>((resolve) => {
+    releaseOldChildren = resolve
   })
-  let firstDimensionRead = true
+  let oldRequestWaiting = false
   readStructuralConnectionPage.mockImplementation(async ({ sourceNodeId }) => {
-    if (sourceNodeId === 'D1' && firstDimensionRead) {
-      firstDimensionRead = false
-      return oldPath
+    if (sourceNodeId === entries.center.knowledgeId) {
+      oldRequestWaiting = true
+      return oldChildren
     }
-    if (sourceNodeId === 'D1') return { connections: [pathConnection] }
+    if (sourceNodeId === entries.second.knowledgeId) return { connections: [currentChild] }
     if (sourceNodeId === 'D1:C001') return { connections: [centerConnection, siblingConnection] }
     return { connections: [] }
   })
@@ -400,14 +424,54 @@ it('ignores an older center response after the user selects another result', asy
   })
   fireEvent.click(screen.getByRole('button', { name: '搜索' }))
   fireEvent.click(await screen.findByRole('button', { name: /社会资本/ }))
+  await waitFor(() => expect(oldRequestWaiting).toBe(true))
+  expect(readStructuralConnectionPage).toHaveBeenCalledWith({
+    releaseId: 'release-a', sourceNodeId: entries.center.knowledgeId,
+  })
   fireEvent.click(screen.getByRole('button', { name: /关系资源/ }))
 
   expect(await screen.findByRole('heading', { name: '关系资源' })).toBeVisible()
-  releaseOldPath?.({ connections: [pathConnection] })
-  await waitFor(() => {
-    const focused = cytoscapeMock.mock.calls.at(-1)?.[0].elements.find(
-      (element: { data: { focus?: boolean } }) => element.data.focus,
-    )
-    expect(focused?.data.id).toBe(entries.second.knowledgeId)
+  expect(cytoscapeMock.mock.calls.at(-1)?.[0].elements.map(
+    (element: { data: { id: string } }) => element.data.id,
+  )).toContain(currentChild.target_node_id)
+  await act(async () => {
+    releaseOldChildren?.({ connections: [staleChild] })
+    await oldChildren
   })
+  const currentElements = cytoscapeMock.mock.calls.at(-1)?.[0].elements
+  const focused = currentElements.find(
+    (element: { data: { id: string } }) => cores.at(-1)?.getElementById(element.data.id).hasClass('node--focus'),
+  )
+  expect(focused?.data.id).toBe(entries.second.knowledgeId)
+  expect(screen.getByRole('heading', { name: '关系资源' })).toBeVisible()
+  const currentIds = currentElements.map((element: { data: { id: string } }) => element.data.id)
+  expect(currentIds).toContain(currentChild.target_node_id)
+  expect(currentIds).not.toContain(staleChild.target_node_id)
+})
+
+it('observes current and stale focus classes like the real headless collection API', async () => {
+  const { default: actualCytoscape } = await vi.importActual<typeof import('cytoscape')>('cytoscape')
+  const ids = ['previous', 'current']
+  const actual = actualCytoscape({ headless: true, elements: ids.map(id => ({ data: { id } })) })
+  const fixture = cytoscapeMock()
+  const focusedId = (graph: { getElementById: (id: string) => { hasClass: (name: string) => boolean } }) => (
+    ids.find(id => graph.getElementById(id).hasClass('node--focus'))
+  )
+  try {
+    for (const selectedId of ['current', 'previous']) {
+      for (const graph of [actual, fixture]) {
+        graph.batch(() => {
+          ids.forEach(id => graph.getElementById(id).removeClass('node--focus'))
+          graph.getElementById(selectedId).addClass('node--focus')
+        })
+      }
+      expect(focusedId(fixture)).toBe(focusedId(actual))
+      expect(focusedId(fixture)).toBe(selectedId)
+    }
+    // An overwritten focus must fail the race test's "current" expectation.
+    expect(focusedId(actual)).not.toBe('current')
+    expect(focusedId(fixture)).not.toBe('current')
+  } finally {
+    actual.destroy()
+  }
 })
