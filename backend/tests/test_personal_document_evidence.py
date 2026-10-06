@@ -203,21 +203,20 @@ def test_private_segment_search_uses_first_matching_segment():
 
 
 @pytest.mark.parametrize("display_name", ["Interview attachment", ""])
-def test_project_evidence_preserves_owner_task_lookup_order_and_original_locator(display_name):
+def test_project_evidence_preserves_owner_task_lookup_order_and_serializes_locator(display_name):
     material, segment = _material(display_name=display_name), _block()
     validator, lookups = _validator(material=material, segment=segment)
-    # Preserve the original comparison and return object; do not normalize locators here.
     evidence = _evidence(
         ResearchDocumentEvidenceSourceKind.RESEARCH_MATERIAL,
         source_id="project-source",
-        locator=segment.locator,
+        locator=segment.locator.as_dict(),
     )
     result = validator(user_id=USER_ID, evidence=evidence)
     assert result == {
         "title": display_name or "attachment.txt",
-        "locator": segment.locator,
+        "locator": segment.locator.as_dict(),
     }
-    assert result["locator"] is segment.locator
+    assert isinstance(result["locator"], dict)
     assert lookups.mock_calls == [
         call.get_owned_material(MATERIAL_ID, user_id=USER_ID),
         call.get_segment(MATERIAL_ID, PARSE_ID, "segment-1", user_id=USER_ID, task_id=TASK_ID),
@@ -255,8 +254,8 @@ def test_project_passes_exact_parse_and_segment_to_owned_task_lookup(parse_id, s
     ]
 
 
-@pytest.mark.parametrize("locator", [MaterialLocator(page=2), MaterialLocator(page=1).as_dict()])
-def test_project_keeps_existing_locator_equality_behavior(locator):
+@pytest.mark.parametrize("locator", [MaterialLocator(page=1), {"page": 2}])
+def test_project_rejects_non_wire_locator_or_different_position(locator):
     validator, _ = _validator(material=_material(), segment=_block())
     with pytest.raises(ValueError, match="^项目附件引用与原文位置不一致。$"):
         validator(
