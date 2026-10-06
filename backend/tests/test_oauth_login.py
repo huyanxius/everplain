@@ -794,15 +794,15 @@ def test_callback_reports_missing_browser_binder_without_leaking_flow(
 
 
 @pytest.mark.parametrize(
-    ("provider", "failed_path", "error_type"),
+    ("provider", "failed_path", "error_type", "endpoint"),
     [
-        ("github", "/login/oauth/access_token", httpx.ReadTimeout),
-        ("google", "/token", httpx.ConnectTimeout),
-        ("google", "/oauth2/v3/certs", httpx.ConnectTimeout),
+        ("github", "/login/oauth/access_token", httpx.ReadTimeout, "github_token"),
+        ("google", "/token", httpx.ConnectTimeout, "google_token"),
+        ("google", "/oauth2/v3/certs", httpx.ConnectTimeout, "google_jwks"),
     ],
 )
 def test_callback_provider_failure_is_distinct_from_state_validation(
-    plain_client, caplog, operational_loggers, provider, failed_path, error_type
+    plain_client, caplog, operational_loggers, provider, failed_path, error_type, endpoint
 ):
     mock = Provider(plain_client)
     remote = plain_client.app.state.oauth_clients.client(provider)
@@ -819,9 +819,8 @@ def test_callback_provider_failure_is_distinct_from_state_validation(
     with caplog.at_level("WARNING"):
         response = mock.finish(plain_client, state, code, provider)
     assert "invalid_flow" in response.headers["location"]
-    assert (
-        f"provider={provider} operation=identity category={error_type.__name__}" in caplog.text
-    )
+    assert f"provider={provider} operation=identity category={error_type.__name__}" in caplog.text
+    assert f"endpoint={endpoint}" in caplog.text
     assert f"provider={provider} stage=provider_identity" in caplog.text
     assert "browser_cookie_present=True" in caplog.text
     assert all(value not in caplog.text for value in (state, code, binder, marker))
@@ -829,3 +828,24 @@ def test_callback_provider_failure_is_distinct_from_state_validation(
     assert plain_client.cookies.get("everplain_session") is None
     with plain_client.app.state.database.session() as db:
         assert db.scalar(select(func.count()).select_from(OAuthTransactionRow)) == 0
+
+
+@pytest.mark.parametrize("url", [None, "https://untrusted.example/private?code=secret-code"])
+def test_oauth_failure_endpoint_never_logs_unknown_urls(caplog, operational_loggers, url):
+    error = httpx.ConnectTimeout("secret-error-detail")
+    if url is not None:
+        error.request = httpx.Request("GET", url, headers={"Authorization": "Bearer secret-token"})
+    with caplog.at_level("WARNING"):
+        OAuthClients._record_failure("google", "identity", error)
+    assert "category=ConnectTimeout" in caplog.text
+    assert "endpoint=unknown" in caplog.text
+    assert all(
+        value not in caplog.text
+        for value in (
+            "untrusted.example",
+            "/private",
+            "secret-code",
+            "secret-error-detail",
+            "secret-token",
+        )
+    )
