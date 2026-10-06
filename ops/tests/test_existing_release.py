@@ -593,6 +593,9 @@ class ExistingReleaseTests(unittest.TestCase):
     def command(self, args, **_kwargs):
         self.calls.append(args)
         self.assertNotIn("synthetic-private-value", " ".join(map(str, args)))
+        if "/app/ops/preflight.py" in args and self.failure == "bookmark-proxy":
+            self.updater.report["bookmark_proxy_compatibility_verified"] = False
+            raise RuntimeError("synthetic incompatible bookmark proxy")
         if args[:2] == ["docker", "stop"] and getattr(self, "write_before_stop", False):
             self.write_before_stop = False
             with sqlite3.connect(self.source / "everplain.db") as db:
@@ -732,6 +735,17 @@ class ExistingReleaseTests(unittest.TestCase):
             self.execute()
         self.assertFalse(any(call[:2] == ["docker", "stop"] for call in self.calls))
         self.assertFalse(self.updater.started)
+
+    def test_bookmark_proxy_preflight_failure_never_stops_or_replaces_current_services(self):
+        self.failure = "bookmark-proxy"
+        with self.assertRaisesRegex(RuntimeError, "incompatible bookmark proxy"):
+            self.execute()
+        self.assertFalse(any(call[:2] in (["docker", "stop"], ["docker", "rename"])
+                             or call[:3] == ["docker", "run", "-d"] for call in self.calls))
+        self.assertFalse(self.updater.started)
+        self.assertFalse(self.updater.report["configuration_verified"])
+        self.assertFalse(self.updater.report["bookmark_proxy_compatibility_verified"])
+        self.assertEqual(self.snapshot(self.source / "everplain.db", "schema_marker"), [("old",)])
 
     def test_cutover_uses_final_backup_not_earlier_online_snapshot(self):
         self.write_before_stop = True
@@ -1124,6 +1138,27 @@ class ExistingReleaseTests(unittest.TestCase):
         self.assertTrue(report["invalid_session_cookie_secure"])
         self.assertTrue(report["invalid_other_configuration"])
         self.assertNotIn("private", json.dumps(report))
+
+    def test_preflight_success_requires_boolean_proxy_proof_and_never_exposes_values(self):
+        for configured, compatible, accepted in (
+            (False, True, True), (True, True, True), (True, False, False),
+            (None, True, False), (False, None, False), (False, "true", False),
+        ):
+            with self.subTest(configured=configured, compatible=compatible):
+                value = {"invalid_fields": [], "bookmark_proxy_configured": configured,
+                         "bookmark_proxy_compatible": compatible,
+                         "ignored_proxy_url": "http://private-user:private-token@private-host"}
+                result = subprocess.CompletedProcess([], 0, json.dumps(value), "")
+                report = {}
+                with patch.object(release.subprocess, "run", return_value=result):
+                    if accepted:
+                        release.run(["fixture"], report=report, prefix="configuration_")
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "proxy compatibility"):
+                            release.run(["fixture"], report=report, prefix="configuration_")
+                self.assertIs(report["bookmark_proxy_compatibility_verified"], accepted)
+                self.assertTrue(all(type(item) is bool for item in report.values()))
+                self.assertNotIn("private", json.dumps(report))
 
     def test_obsolete_fixed_candidate_workflow_is_retired(self):
         self.assertFalse((ROOT / ".github/workflows/publish-checked-candidate.yml").exists())

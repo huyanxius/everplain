@@ -63,6 +63,16 @@ this candidate until a separate constrained-proxy solution has been designed and
 verified. Do not remove a required proxy or change network settings to make this
 candidate pass. No production configuration is changed by this patch.
 
+The existing production preflight now checks the candidate process environment
+before service stop. It emits only `bookmark_proxy_configured` and
+`bookmark_proxy_compatible` booleans, never proxy addresses or credentials. The
+gate accepts no effective HTTP(S)/ALL proxy, or global NO_PROXY exemptions that
+cover every configured web scheme. Per-host exemptions cannot establish direct
+routing for arbitrary future bookmarks and therefore do not pass this release
+gate. An incompatible or missing boolean proof stops the release before cutover,
+preserving the running version; proxy settings are never modified. This verifies
+routing configuration, not successful access to any real site or paid provider.
+
 ## Benefits, costs and verification
 
 - Eliminates the demonstrated hostname check/dial race in this import path.
