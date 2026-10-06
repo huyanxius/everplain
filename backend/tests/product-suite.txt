@@ -170,3 +170,13 @@ tests/test_agent_execution_architecture.py
 tests/test_agent_theory_confirmation_boundary.py
 tests/test_agent_tool_transaction_boundary.py
 tests/billing/test_billing_api_errors.py
+
+# Current output/transport/usage regressions restored to the selected product suite.
+tests/test_agent_visible_output_endings.py
+tests/test_agent_model_capacity.py
+tests/test_agent_responses_routing.py
+tests/billing/test_raw_usage.py
+tests/billing/test_metering_bridge.py
+tests/test_agent_event_reconnect.py
+tests/test_agent_output_journal.py
+tests/test_agent_delivery_output_state.py

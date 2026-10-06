@@ -25,9 +25,12 @@ check-contract: contract
 
 check-frontend:
 	cd frontend && npm run check:boundaries
+	cd frontend && npm run check:styles
 	cd frontend && npm run lint
 	cd frontend && npm run test
 	cd frontend && npm run build
+	cd extensions/clipper && npm test
+	python3 extensions/clipper/test/setup.test.py
 
 dev-api:
 	cd backend && uv --cache-dir $(UV_CACHE_DIR) run alembic upgrade head

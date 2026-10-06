@@ -98,7 +98,11 @@ export const defaultBoundaryPolicy = Object.freeze({
   httpRuntimeAdapters: Object.freeze(['api/client.ts', 'modules/research-agent/researchAgentApi.ts']),
 })
 
-const sourceExtension = /\.tsx?$/
+const sourceExtension = /\.(?:[cm]?[jt]sx?)$/
+const sourceBuckets = new Set(['app', 'api', 'modules', 'ui', 'styles', 'i18n', 'design-system', 'test'])
+const sourceEntries = new Set(['main.tsx', 'citeproc.d.ts'])
+const sharedBuckets = new Set(['ui', 'styles', 'i18n', 'design-system'])
+const isTestSource = (relative) => /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(relative) || relative.startsWith('test/')
 const httpPackages = ['axios', 'got', 'ky', 'ofetch', 'superagent', 'undici']
 const modelPackages = [
   '@ai-sdk', '@anthropic-ai/sdk', '@aws-sdk/client-bedrock-runtime',
@@ -192,6 +196,7 @@ function syntaxFacts(sourceFile, checker) {
   const calls = new Set()
   const references = new Set()
   let usesBrowserRouting = false
+  let unresolvedDynamicImport = false
 
   const visit = (node) => {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
@@ -199,6 +204,11 @@ function syntaxFacts(sourceFile, checker) {
           ts.isStringLiteralLike(node.moduleSpecifier)) {
         references.add(node.moduleSpecifier.text)
       }
+    } else if (ts.isImportEqualsDeclaration(node) &&
+               ts.isExternalModuleReference(node.moduleReference)) {
+      const reference = node.moduleReference.expression
+      if (reference && ts.isStringLiteralLike(reference)) references.add(reference.text)
+      else unresolvedDynamicImport = true
     } else if (
       ts.isImportTypeNode(node) &&
       ts.isLiteralTypeNode(node.argument) &&
@@ -208,10 +218,12 @@ function syntaxFacts(sourceFile, checker) {
     } else if (ts.isCallExpression(node)) {
       const called = memberPath(node.expression)
       if (called) calls.add(called)
-      if (node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      if ((node.expression.kind === ts.SyntaxKind.ImportKeyword || called === 'require') &&
           node.arguments[0] &&
           ts.isStringLiteralLike(node.arguments[0])) {
         references.add(node.arguments[0].text)
+      } else if (node.expression.kind === ts.SyntaxKind.ImportKeyword || called === 'require') {
+        unresolvedDynamicImport = true
       }
     } else if (ts.isNewExpression(node)) {
       const called = memberPath(node.expression)
@@ -225,11 +237,20 @@ function syntaxFacts(sourceFile, checker) {
     ts.forEachChild(node, visit)
   }
   visit(sourceFile)
-  return { calls, references, usesBrowserRouting }
+  return { calls, references, usesBrowserRouting, unresolvedDynamicImport }
 }
 
 function compilerContext(files, sourceRoot) {
+  const configPath = path.resolve(sourceRoot, '../tsconfig.app.json')
+  const configuration = ts.sys.fileExists(configPath)
+    ? ts.readConfigFile(configPath, ts.sys.readFile).config
+    : {}
+  const configured = ts.parseJsonConfigFileContent(
+    configuration, ts.sys, path.dirname(configPath),
+  ).options
   const options = {
+    ...configured,
+    allowJs: true,
     jsx: ts.JsxEmit.ReactJSX,
     module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Bundler,
@@ -340,9 +361,39 @@ function addExportLeaks(
   }
 }
 
+/** Static strongly connected components, not a runtime execution proof. */
+export function dependencyCycles(graph) {
+  const indices = new Map(), low = new Map(), stack = [], active = new Set(), result = []
+  const visit = (node) => {
+    indices.set(node, indices.size)
+    low.set(node, indices.get(node))
+    stack.push(node)
+    active.add(node)
+    for (const target of [...(graph.get(node) ?? [])].sort()) {
+      if (!indices.has(target)) {
+        visit(target)
+        low.set(node, Math.min(low.get(node), low.get(target)))
+      } else if (active.has(target)) low.set(node, Math.min(low.get(node), indices.get(target)))
+    }
+    if (low.get(node) === indices.get(node)) {
+      const component = []
+      let target
+      do {
+        target = stack.pop()
+        active.delete(target)
+        component.push(target)
+      } while (target !== node)
+      if (component.length > 1 || graph.get(node)?.has(node)) result.push(component.sort())
+    }
+  }
+  for (const node of [...graph.keys()].sort()) if (!indices.has(node)) visit(node)
+  return result.sort((a, b) => a.join().localeCompare(b.join()))
+}
+
 export async function findBoundaryViolations({
   sourceRoot = defaultSourceRoot,
   policy = defaultBoundaryPolicy,
+  reportGraph,
 } = {}) {
   const appRoot = path.join(sourceRoot, 'app')
   const modulesRoot = path.join(sourceRoot, 'modules')
@@ -369,8 +420,18 @@ export async function findBoundaryViolations({
   const httpAdapters = exactPaths(sourceRoot, policy.httpRuntimeAdapters)
   const { checker, program, resolve } = compilerContext(files, sourceRoot)
   const violations = new Set()
+  const fileGraph = new Map()
+  const moduleGraph = new Map(discovered.map((name) => [name, new Set()]))
+  const unresolved = []
   const report = (condition, message) =>
     condition && violations.add(message)
+
+  for (const key of ['generatedApiAdapters', 'moduleApiAdapters', 'appApiAdapters', 'httpRuntimeAdapters']) {
+    for (const entry of policy[key]) {
+      report(!program.getSourceFile(path.resolve(sourceRoot, entry)),
+        `${entry} is registered in ${key} but does not exist`)
+    }
+  }
 
   for (const name of discovered) {
     report(
@@ -399,6 +460,15 @@ export async function findBoundaryViolations({
     const facts = syntaxFacts(sourceFile, checker)
     const relative = path.relative(sourceRoot, sourcePath).split(path.sep).join('/')
     const sourceModule = moduleNameFor(sourcePath, modulesRoot, moduleNames)
+    const bucket = relative.split('/')[0]
+    const production = !isTestSource(relative)
+    if (production) fileGraph.set(relative, new Set())
+    report(!sourceBuckets.has(bucket) && !sourceEntries.has(relative),
+      `${relative} is not in a registered source bucket`)
+    report(bucket === 'modules' && !sourceModule,
+      `${relative} is not inside a declared product module`)
+    report(facts.unresolvedDynamicImport, `${relative} has an unresolved dynamic import`)
+    if (facts.unresolvedDynamicImport) unresolved.push({ source: relative, specifier: '<dynamic>' })
     const inApp = isWithin(appRoot, sourcePath)
     const inApi = isWithin(apiRoot, sourcePath)
     const inGenerated = isWithin(generatedRoot, sourcePath)
@@ -432,7 +502,20 @@ export async function findBoundaryViolations({
       )
 
       const target = resolve(sourceFile, specifier)
-      if (!target) continue
+      if (!target) {
+        if (specifier.startsWith('.') && !/\.(?:css|svg|png|jpe?g|webp|gif|woff2?|csl|xml)(?:\?.*)?$/.test(specifier)) {
+          unresolved.push({ source: relative, specifier })
+          report(true, `${relative} has an unresolved local import ${specifier}`)
+        }
+        continue
+      }
+      const targetRelative = path.relative(sourceRoot, target).split(path.sep).join('/')
+      report(!isWithin(sourceRoot, target) && sourceExtension.test(target) &&
+        !target.split(path.sep).includes('node_modules'),
+        `${relative} imports local source outside the registered source root`)
+      if (production && isWithin(sourceRoot, target) && !isTestSource(targetRelative)) {
+        fileGraph.get(relative).add(targetRelative)
+      }
       const targetModule = moduleNameFor(target, modulesRoot, moduleNames)
       const targetApp = isWithin(appRoot, target)
       const targetApi = isWithin(apiRoot, target)
@@ -441,6 +524,17 @@ export async function findBoundaryViolations({
       report(isPublicIndex && moduleAdapters.has(path.resolve(target)),
         `${relative} imports module adapter from its public index`)
       report(sourceModule && targetApp, `${relative} imports app code`)
+      report(production && targetRelative === 'main.tsx',
+        `${relative} imports the application composition entry`)
+      report(production && sharedBuckets.has(bucket) && targetApp,
+        `${relative} imports app code through a shared source bucket`)
+      report(production && sharedBuckets.has(bucket) && targetApi,
+        `${relative} imports API code through a shared source bucket`)
+      report(production && sharedBuckets.has(bucket) && targetModule &&
+        !(targetModule === 'agent-avatar' && ['ui', 'design-system'].includes(bucket)),
+        `${relative} imports product code through a shared source bucket`)
+      report(production && isWithin(sourceRoot, target) && isTestSource(targetRelative),
+        `${relative} imports test-only source`)
       report(
         inApi && !inGenerated && targetApp,
         `${relative} imports app code from the API layer`,
@@ -470,6 +564,7 @@ export async function findBoundaryViolations({
         `${relative} imports product module code from the API layer`)
 
       if (!targetModule || sourceModule === targetModule) continue
+      if (sourceModule && production) moduleGraph.get(sourceModule).add(targetModule)
       report(
         sourceModule && !dependencies.get(sourceModule)?.has(targetModule),
         `${sourceModule} cannot depend on ${targetModule}`,
@@ -513,6 +608,17 @@ export async function findBoundaryViolations({
       )
     }
   }
+  for (const component of dependencyCycles(moduleGraph)) {
+    violations.add(`product module dependency cycle (SCC): ${component.join(', ')}`)
+  }
+  if (reportGraph) reportGraph({
+    scope: 'All local JS/TS production imports including type-only and literal dynamic imports; excludes test sources and external packages.',
+    nodes: [...fileGraph.keys()].sort(),
+    edges: [...fileGraph].flatMap(([source, targets]) => [...targets].sort().map((target) => ({ source, target }))),
+    cycles: dependencyCycles(fileGraph),
+    moduleCycles: dependencyCycles(moduleGraph),
+    unresolved,
+  })
   return [...violations].sort()
 }
 
