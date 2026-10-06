@@ -32,10 +32,25 @@ export function starterSuggestionPool(locale: AppLocale): StarterSuggestion[] {
   ]
 }
 
-export function getStarterSuggestions(locale: AppLocale, userId: string): StarterSuggestion[] {
+export function getStarterSuggestions(locale: AppLocale, userId: string, {
+  count = 3, excludedTitles = [],
+}: { count?: number; excludedTitles?: readonly string[] } = {}): StarterSuggestion[] {
   const pool = starterSuggestionPool(locale)
   // Stable across Home/Chat and re-renders. Each set offers a conversation,
   // a knowledge action and a research/writing action without an extra request.
   const seed = [...userId].reduce((value, character) => (value * 31 + character.charCodeAt(0)) >>> 0, 0)
-  return [pool[seed % 10], pool[10 + seed % 6], pool[16 + seed % 4]]
+  const preferred = [pool[seed % 10], pool[10 + seed % 6], pool[16 + seed % 4]]
+  const normalize = (title: string) => title.trim().replace(/\s+/g, ' ').toLowerCase()
+  const titles = new Set(excludedTitles.map(normalize))
+  const ids = new Set<string>()
+  // If a real card already uses a generic title, continue through the same
+  // twenty-card pool in deterministic order rather than repeating its copy.
+  return [...preferred, ...pool.slice(seed % pool.length), ...pool.slice(0, seed % pool.length)]
+    .filter(card => {
+      const title = normalize(card.title)
+      if (ids.has(card.id) || titles.has(title)) return false
+      ids.add(card.id)
+      titles.add(title)
+      return true
+    }).slice(0, Math.max(0, Math.min(3, count)))
 }
