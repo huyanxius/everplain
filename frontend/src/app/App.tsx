@@ -1,5 +1,4 @@
 import { WritingHomePage } from './writing/WritingHomePage'
-import { WritingDocumentPage } from './writing/WritingDocumentPage'
 import { CoursesPage } from './courses/CoursesPage'
 import { ImportsRedirect } from './imports/ImportsRedirect'
 import {
@@ -12,7 +11,7 @@ import {
   useNavigationType,
   useParams,
 } from 'react-router'
-import { type ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 
 import {
   AccountSettingsPage,
@@ -43,6 +42,11 @@ import { PageContent, PageShell, RailStateProvider } from './ui/PageShell'
 import { ErrorState, LoadingState, SessionRecoveryState } from './ui/States'
 import { RouteMotionSurface } from './route-motion'
 import { SettingsModal } from './ui/SettingsModal'
+import { PageLoading } from '../ui/PageLoading'
+
+const WritingDocumentPage = lazy(() => import('./writing/WritingDocumentPage').then(module => ({
+  default: module.WritingDocumentPage,
+})))
 
 export type SessionState =
   | { status: 'loading' }
@@ -304,7 +308,7 @@ export function AppRoutes({
       <Route path="/app" element={protectedRoute(<AppHomePage />)} />
       <Route path="/agent" element={protectedRoute(<ResearchAgentPage userId={authenticatedUserId} introSessionId={authenticatedSessionId} entryNavigationType={entryNavigationType} />)} />
       <Route path="/writing" element={protectedRoute(<WritingHomePage userId={authenticatedUserId} />)} />
-      <Route path="/writing/:documentId" element={protectedRoute(<WritingDocumentPage userId={authenticatedUserId} />)} />
+      <Route path="/writing/:documentId" element={protectedRoute(<Suspense fallback={<PageLoading message="正在打开文稿…" />}><WritingDocumentPage userId={authenticatedUserId} /></Suspense>)} />
       <Route path="/library" element={protectedRoute(<CoursesPage />)} />
       <Route path="/library/knowledge" element={protectedRoute(<LegacyLibraryKnowledgeRoute />)} />
       <Route path="/knowledge/*" element={<Navigate replace to="/library" />} />
