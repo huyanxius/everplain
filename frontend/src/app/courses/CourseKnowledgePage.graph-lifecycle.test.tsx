@@ -3,10 +3,10 @@ import cytoscape, { type Core, type CytoscapeOptions } from 'cytoscape'
 import { useState, type PropsWithChildren } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { CourseKnowledgePage } from '../../app/courses/CourseKnowledgePage'
-import { getCourse, listCourses, type SharedCourse } from '../shared-knowledge'
-import { ObsidianKnowledgeGraph } from './ObsidianKnowledgeGraph'
-import type { KnowledgeGraphProjection } from './types'
+import { CourseKnowledgePage } from './CourseKnowledgePage'
+import { getCourse, listCourses, type SharedCourse } from '../../modules/shared-knowledge'
+import { ObsidianKnowledgeGraph } from '../../modules/knowledge-graph'
+import type { KnowledgeGraphProjection } from '../../modules/knowledge-graph'
 
 // Exercise the actual React component, graph elements, styles, layouts and events.
 // Only the DOM canvas renderer is replaced with Cytoscape's real headless engine.
@@ -21,11 +21,11 @@ vi.mock('cytoscape', async (importOriginal) => {
     return graph
   }) }
 })
-vi.mock('../../app/ui/PageShell', () => ({
+vi.mock('../ui/PageShell', () => ({
   PageShell: ({ children }: PropsWithChildren) => children,
   PageContent: ({ children }: PropsWithChildren) => children,
 }))
-vi.mock('../shared-knowledge', () => ({ getCourse: vi.fn(), listCourses: vi.fn() }))
+vi.mock('../../modules/shared-knowledge', () => ({ getCourse: vi.fn(), listCourses: vi.fn() }))
 
 const projection: KnowledgeGraphProjection = {
   releaseId: 'library-lifecycle',
