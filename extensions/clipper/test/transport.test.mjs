@@ -148,3 +148,26 @@ test('tab navigation aborts before any session or payload fetch', async t => {
   globalThis.location.origin = 'https://other.example.org'
   assert.match((await submitImport(origin, payload, 'same-key')).error, /目标页面已切换/)
 })
+
+for (const [label, response, expected] of [
+  ['standard error envelope', { error: { code: 'invalid_import', message: '文件类型不支持' } }, '文件类型不支持'],
+  ['legacy detail', { detail: 'validation failed' }, 'validation failed'],
+  ['standard before legacy', { error: { message: '标准错误' }, detail: '旧错误' }, '标准错误'],
+  ['malformed message', { error: { message: { unsafe: true } } }, '未能提交，请在 Everplain 查看状态后重试'],
+  ['null response', null, '未能提交，请在 Everplain 查看状态后重试'],
+]) {
+  test(`serialized submitImport displays ${label} and preserves same-key retry`, async t => {
+    let rejected = true
+    const keys = []
+    fixture(t, async (path, options) => {
+      if (path === '/api/session') return json({ user: { user_id: 'owner-1' } })
+      keys.push(options.headers['Idempotency-Key'])
+      return rejected ? json(response, 422) : json(batch, 202)
+    })
+    const serialized = (0, eval)(`(${submitImport.toString()})`)
+    assert.deepEqual(await serialized(origin, payload, 'same-key'), { error: expected })
+    rejected = false
+    assert.deepEqual(await serialized(origin, payload, 'same-key'), { batch })
+    assert.deepEqual(keys, ['same-key', 'same-key'])
+  })
+}

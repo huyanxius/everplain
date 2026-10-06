@@ -49,7 +49,8 @@ export async function submitImport(origin, data, requestKey) {
         }
         requests.delete(receiptKey)
         if (response.status === 401) return { error: '请先在同一浏览器的 Everplain 页面登录，再回来提交', login: true }
-        return { error: typeof result.detail === 'string' ? result.detail : '未能提交，请在 Everplain 查看状态后重试' }
+        const message = result?.error?.message
+        return { error: typeof message === 'string' ? message : typeof result?.detail === 'string' ? result.detail : '未能提交，请在 Everplain 查看状态后重试' }
       }
       if (!result.id) {
         record.uncertain = true
