@@ -192,6 +192,7 @@ from qunxue_api.application.knowledge_import import KnowledgeImportApplication
 from qunxue_api.application.memory_learning import MemoryLearningWorker
 from qunxue_api.application.memory_overview import MemoryOverview
 from qunxue_api.application.oauth_login import OAuthLoginApplication
+from qunxue_api.application.personal_document_evidence import PersonalDocumentEvidenceValidator
 from qunxue_api.application.personal_graph import PersonalGraphApplication
 from qunxue_api.application.shared_knowledge import SharedKnowledgeApplication
 from qunxue_api.application.subscriptions import SubscriptionApplication
@@ -964,61 +965,13 @@ def create_app(
 
     app.state.research_start_application_scope = research_start_application_scope
 
-    def personal_document_evidence_validator(session):
-        def validate(*, user_id, evidence):
-            from qunxue_api.modules.research_framework import ResearchDocumentEvidenceSourceKind
-
-            if evidence.source_kind is ResearchDocumentEvidenceSourceKind.WEB:
-                from urllib.parse import urlparse
-
-                url = urlparse(evidence.source_id)
-                if url.scheme not in {"https", "http"} or not url.hostname:
-                    raise ValueError("网页引用地址无效。")
-                return {"title": evidence.source_id, "url": evidence.source_id}
-            if evidence.source_kind is ResearchDocumentEvidenceSourceKind.PERSONAL_KNOWLEDGE:
-                owned = SqliteSharedKnowledgeRepository(session).owned_document(
-                    user_id, evidence.material_id
-                )
-                if owned is None:
-                    raise ValueError("引用的知识库资料已删除或不可访问。")
-                _, document = owned
-                segment = next(
-                    (
-                        item
-                        for item in document.segments
-                        if item["segment_id"] == evidence.segment_id
-                    ),
-                    None,
-                )
-                if (
-                    segment is None
-                    or document.parse_id != evidence.parse_id
-                    or segment["locator"] != evidence.locator
-                    or evidence.source_id != f"material:{document.id}:{evidence.segment_id}"
-                ):
-                    raise ValueError("知识库引用与原文位置不一致。")
-                return {"title": document.filename, "locator": segment["locator"]}
-            if evidence.source_kind is ResearchDocumentEvidenceSourceKind.RESEARCH_MATERIAL:
-                repository = SqliteResearchMaterialRepository(session)
-                material = repository.get_owned(evidence.material_id, user_id=user_id)
-                if material is None:
-                    raise ValueError("引用的项目附件已删除或不可访问。")
-                segment = repository.get_segment(
-                    evidence.material_id,
-                    evidence.parse_id,
-                    evidence.segment_id,
-                    user_id=user_id,
-                    task_id=material.task_id,
-                )
-                if segment is None or segment.locator != evidence.locator:
-                    raise ValueError("项目附件引用与原文位置不一致。")
-                return {
-                    "title": material.display_name or material.original_filename,
-                    "locator": segment.locator,
-                }
-            raise ValueError("个人文稿不能引用学科公共库。")
-
-        return validate
+    def personal_document_evidence_validator(session) -> PersonalDocumentEvidenceValidator:
+        materials = SqliteResearchMaterialRepository(session)
+        return PersonalDocumentEvidenceValidator(
+            owned_document=SqliteSharedKnowledgeRepository(session).owned_document,
+            get_owned_material=materials.get_owned,
+            get_segment=materials.get_segment,
+        )
 
     @contextmanager
     def research_document_application_scope() -> Iterator[ResearchDocumentApplication]:
@@ -1123,9 +1076,14 @@ def create_app(
             matching_requests = SqliteMatchingRequestRepository(session)
             proposal_repository = SqliteResearchDocumentProposalRepository(session)
             material_repository = SqliteResearchMaterialRepository(session)
-            analysis_application = build_research_analysis_application(
-                session,
-                task_repository=task_repository,
+            # The registry's explicit command-completion boundary commits only
+            # after domain work and result serialization succeed. This applies
+            # with or without a streaming subscriber; reads remain read-only.
+            analysis_application = ResearchAnalysisApplication(
+                analysis=ResearchAnalysisService(SqliteResearchAnalysisRepository(session)),
+                materials=material_repository,
+                research_tasks=task_repository,
+                commit=session.flush,
             )
             descriptor = app.state.model_gateway.descriptor
             matching_service = TheoryMatchingService(
@@ -1349,6 +1307,7 @@ def create_app(
                         require_material_vectors=resolved_settings.runtime_mode != "mock",
                         analysis=analysis_application,
                         writing=WritingApplication(SqliteWritingRepository(session)),
+                        rollback_tool=session.rollback,
                     ),
                 )
             except Exception:

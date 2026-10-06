@@ -5,12 +5,12 @@ import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
 import { mapMarkdownSelection, type MarkdownSelection, type SelectionAction } from '../../modules/shared-editor'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WritingHomePage } from './WritingHomePage'
-import { WritingDocumentEditor } from './WritingDocumentPage'
+import { WritingDocumentEditor, WritingDocumentPage } from './WritingDocumentPage'
 import { writingApi } from '../../modules/writing'
-import { draftKey } from './writingState'
+import { draftKey, readDraft, saveDraft } from './writingState'
 import { stopAgentRun, type WritingPreviewEvent } from '../../modules/research-agent'
 vi.mock('../../modules/research-agent', async importOriginal => ({ ...await importOriginal<typeof import('../../modules/research-agent')>(), stopAgentRun: vi.fn() }))
 vi.mock('../../modules/writing', async importOriginal => ({ ...await importOriginal<typeof import('../../modules/writing')>(), writingApi: { summary: vi.fn(), samples: vi.fn(), document: vi.fn(), revisions: vi.fn(), create: vi.fn(), update: vi.fn(), propose: vi.fn(), resolve: vi.fn(), upload: vi.fn(), previewSamples: vi.fn(), createSample: vi.fn(), deleteSample: vi.fn() } }))
@@ -388,4 +388,169 @@ it('blocks consent if the final revision differs from the verified stream bindin
   await screen.findByText('生成草稿与最终修订不一致，已保留原文，请核对最终修订。')
   expect(screen.getByRole('button', { name: '同意' })).toBeDisabled()
   expect(writingApi.resolve).not.toHaveBeenCalled()
+})
+
+
+describe('writing read retry recovery', () => {
+  const localDraft = { title: '合成本地标题', genre: 'report' as const, markdown: '合成本地未保存正文', version: 1 }
+  const localKey = draftKey('u1', 'doc-1')
+  const liveKey = 'everplain.writing.preview:u1:doc-1'
+  const live = { ...previewEvent, original_markdown: doc.markdown, revealedAt: [] }
+  const retry = async () => fireEvent.click(await screen.findByRole('button', { name: '重新读取文稿' }))
+
+  it.each([1, 2])('restores a real same-owner draft after retry at server version %i', async version => {
+    saveDraft(localKey, localDraft)
+    expect(readDraft(localKey)).toEqual(localDraft)
+    vi.mocked(writingApi.document).mockRejectedValueOnce(new Error('首次读取失败')).mockResolvedValue({ ...doc, version })
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+    await screen.findByRole('alert')
+    expect(readDraft(localKey)).toEqual(localDraft)
+    await retry()
+    expect(await screen.findByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(localDraft.markdown)
+    expect(screen.getByRole('textbox', { name: '文稿标题' })).toHaveValue(localDraft.title)
+    expect(screen.getByRole('combobox', { name: '文稿文体' })).toHaveValue(localDraft.genre)
+    expect(readDraft(localKey)).toEqual({ ...localDraft, version })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    if (version !== localDraft.version) expect(screen.getByText('已恢复此浏览器中的修改。服务器也有新版本，请核对后再保存。')).toBeVisible()
+    expect(writingApi.update).not.toHaveBeenCalled()
+    expect(writingApi.resolve).not.toHaveBeenCalled()
+  })
+
+  it('reloads pending revisions with the document after a partial initial failure', async () => {
+    vi.mocked(writingApi.revisions).mockRejectedValueOnce(new Error('修订读取失败')).mockResolvedValue({ items: [revision] })
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+    await retry()
+    expect(await screen.findByRole('region', { name: '待定修订预览' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '同意' })).toBeEnabled()
+    expect(writingApi.document).toHaveBeenCalledTimes(2)
+    expect(writingApi.revisions).toHaveBeenCalledTimes(2)
+    expect(writingApi.resolve).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it.each([['u2', 'doc-1'], ['u1', 'doc-2']])('does not restore or clear another scope %s/%s on retry', async (owner, documentId) => {
+    const otherKey = draftKey(owner, documentId)
+    saveDraft(otherKey, localDraft)
+    vi.mocked(writingApi.document).mockRejectedValueOnce(new Error('首次读取失败')).mockResolvedValue(doc)
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+    await retry()
+    expect(await screen.findByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(doc.markdown)
+    expect(readDraft(otherKey)).toEqual(localDraft)
+    expect(readDraft(localKey)).toBeNull()
+  })
+
+  it('does not fetch or mutate stored drafts when retrying without an owner', async () => {
+    saveDraft(localKey, localDraft)
+    wrap(<WritingDocumentEditor userId={null} documentId="doc-1" />)
+    await retry()
+    expect(writingApi.document).not.toHaveBeenCalled()
+    expect(writingApi.revisions).not.toHaveBeenCalled()
+    expect(readDraft(localKey)).toEqual(localDraft)
+  })
+
+  it.each([false, true])('restores live preview and its dismissal fence on retry (dismissed: %s)', async dismissed => {
+    sessionStorage.setItem(liveKey, JSON.stringify(live))
+    const dismissedKey = JSON.stringify([live.run_id, live.attempt_id ?? '', live.call_id])
+    if (dismissed) sessionStorage.setItem(`${liveKey}:dismissed`, JSON.stringify([dismissedKey]))
+    vi.mocked(writingApi.document).mockRejectedValueOnce(new Error('首次读取失败')).mockResolvedValue(doc)
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+    await retry()
+    expect(await screen.findByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(doc.markdown)
+    if (dismissed) {
+      expect(screen.queryByLabelText('正在生成的正文草稿')).not.toBeInTheDocument()
+      act(() => agent.props!.onWritingPreview!({ ...previewEvent, sequence: 2, replacement_text: '不应恢复的迟到内容' }))
+      expect(screen.queryByLabelText('正在生成的正文草稿')).not.toBeInTheDocument()
+    } else {
+      expect(screen.getByLabelText('正在生成的正文草稿')).toHaveTextContent(live.replacement_text)
+      expect(screen.getByText('生成已中断，以下仅为未完成草稿，原文未保存。')).toBeVisible()
+    }
+    expect(JSON.parse(sessionStorage.getItem(liveKey)!)).toMatchObject({ ...live, incomplete: true })
+    expect(writingApi.update).not.toHaveBeenCalled()
+    expect(writingApi.resolve).not.toHaveBeenCalled()
+  })
+
+  it.each([{ base_version: 2 }, { document_id: 'doc-2' }])('does not restore a live preview with a mismatched binding %j', async mismatch => {
+    sessionStorage.setItem(liveKey, JSON.stringify({ ...live, ...mismatch }))
+    vi.mocked(writingApi.document).mockRejectedValueOnce(new Error('首次读取失败')).mockResolvedValue(doc)
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+    await retry()
+    expect(await screen.findByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(doc.markdown)
+    expect(screen.queryByLabelText('正在生成的正文草稿')).not.toBeInTheDocument()
+    expect(sessionStorage.getItem(liveKey)).toBeNull()
+  })
+
+  it('keeps both stashes through repeated partial failures and aborts each superseded attempt', async () => {
+    const lateDocument = deferred<typeof doc>()
+    saveDraft(localKey, localDraft)
+    sessionStorage.setItem(liveKey, JSON.stringify(live))
+    vi.mocked(writingApi.document).mockRejectedValueOnce(new Error('首次文稿失败')).mockReturnValueOnce(lateDocument.promise).mockResolvedValue(doc)
+    vi.mocked(writingApi.revisions).mockResolvedValueOnce({ items: [] }).mockRejectedValueOnce(new Error('再次修订失败')).mockResolvedValue({ items: [revision] })
+    wrap(<WritingDocumentEditor userId="u1" documentId="doc-1" />)
+    await retry()
+    expect(await screen.findByRole('alert')).toHaveTextContent('再次修订失败')
+    expect(readDraft(localKey)).toEqual(localDraft)
+    expect(JSON.parse(sessionStorage.getItem(liveKey)!)).toEqual(live)
+    await retry()
+    expect(await screen.findByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(localDraft.markdown)
+    expect(await screen.findByRole('region', { name: '待定修订预览' })).toBeVisible()
+    expect(screen.getByRole('button', { name: '同意' })).toBeDisabled()
+    await act(async () => lateDocument.resolve({ ...doc, markdown: '已过期请求的正文' }))
+    expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(localDraft.markdown)
+    expect(readDraft(localKey)).toEqual(localDraft)
+    for (const calls of [vi.mocked(writingApi.document).mock.calls, vi.mocked(writingApi.revisions).mock.calls]) {
+      expect(calls).toHaveLength(3)
+      expect(calls[0][1]?.aborted).toBe(true)
+      expect(calls[1][1]?.aborted).toBe(true)
+      expect(calls[2][1]?.aborted).toBe(false)
+    }
+    expect(writingApi.update).not.toHaveBeenCalled()
+    expect(writingApi.resolve).not.toHaveBeenCalled()
+  })
+
+  it.each(['resolve', 'reject'] as const)('aborts a retry on route change and ignores its late %s without clearing either draft', async outcome => {
+    const late = deferred<typeof doc>()
+    const otherDraft = { ...localDraft, title: '第二篇标题', markdown: '第二篇未保存正文' }
+    saveDraft(localKey, localDraft)
+    saveDraft(draftKey('u1', 'doc-2'), otherDraft)
+    vi.mocked(writingApi.document).mockRejectedValueOnce(new Error('首次读取失败')).mockReturnValueOnce(late.promise).mockResolvedValue({ ...doc, document_id: 'doc-2' })
+    const client = new QueryClient()
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/writing/doc-1']}><Link to="/writing/doc-2">下一篇</Link><Routes><Route path="/writing/:documentId" element={<WritingDocumentPage userId="u1" />} /></Routes></MemoryRouter></QueryClientProvider>)
+    await retry()
+    expect(screen.getByRole('status')).toHaveTextContent('正在读取文稿')
+    const retrySignal = vi.mocked(writingApi.document).mock.calls[1][1]
+    fireEvent.click(screen.getByRole('link', { name: '下一篇' }))
+    expect(await screen.findByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(otherDraft.markdown)
+    await act(async () => { if (outcome === 'resolve') late.resolve(doc); else late.reject(new Error('旧文稿迟到失败')) })
+    expect(retrySignal?.aborted).toBe(true)
+    expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(otherDraft.markdown)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(readDraft(localKey)).toEqual(localDraft)
+    expect(readDraft(draftKey('u1', 'doc-2'))).toEqual(otherDraft)
+    expect(writingApi.update).not.toHaveBeenCalled()
+    expect(writingApi.resolve).not.toHaveBeenCalled()
+  })
+
+  it('isolates an owner switch while the previous owner retry is still pending', async () => {
+    const late = deferred<typeof doc>()
+    const otherKey = draftKey('u2', 'doc-1')
+    const otherDraft = { ...localDraft, title: '另一用户标题', markdown: '另一用户未保存正文' }
+    saveDraft(localKey, localDraft); saveDraft(otherKey, otherDraft)
+    vi.mocked(writingApi.document).mockRejectedValueOnce(new Error('首次读取失败')).mockReturnValueOnce(late.promise).mockResolvedValue(doc)
+    function OwnerRoute() {
+      const [owner, setOwner] = useState('u1')
+      return <><button onClick={() => setOwner('u2')}>切换测试用户</button><WritingDocumentPage userId={owner} /></>
+    }
+    render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={['/writing/doc-1']}><Routes><Route path="/writing/:documentId" element={<OwnerRoute />} /></Routes></MemoryRouter></QueryClientProvider>)
+    await retry()
+    fireEvent.click(screen.getByRole('button', { name: '切换测试用户' }))
+    expect(await screen.findByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(otherDraft.markdown)
+    await act(async () => late.resolve(doc))
+    expect(screen.getByRole('textbox', { name: 'Markdown 源码' })).toHaveValue(otherDraft.markdown)
+    expect(readDraft(localKey)).toEqual(localDraft)
+    expect(readDraft(otherKey)).toEqual(otherDraft)
+    expect(vi.mocked(writingApi.document).mock.calls[1][1]?.aborted).toBe(true)
+    expect(writingApi.update).not.toHaveBeenCalled()
+    expect(writingApi.resolve).not.toHaveBeenCalled()
+  })
+
 })

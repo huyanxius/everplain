@@ -1,5 +1,5 @@
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol
@@ -22,6 +22,17 @@ from qunxue_api.modules.knowledge_catalog import (
 from .retrieval import fuzzy_match_score
 
 KnowledgeEvidence = AgentEvidence
+
+# These commands produce a durable business result in the run's Session.
+# Writing and memory already own their commit/compensation scopes; map and
+# research-start proposals remain in-memory until the existing turn finalizer.
+DURABLE_AGENT_COMMANDS = frozenset({
+    "propose_analysis_memo",
+    "propose_case_comparison",
+    "propose_document_revision",
+    "propose_document_creation",
+    "start_theory_matching",
+})
 
 if TYPE_CHECKING:
     from qunxue_api.adapters.retrieval.hybrid import HybridRetrievalResult
@@ -54,10 +65,14 @@ class KnowledgeToolRegistry:
         *,
         retriever: KnowledgeRetriever | None = None,
         web_research: WebResearchClient | None = None,
+        rollback_tool: Callable[[], None] | None = None,
+        commit_tool: Callable[[], None] | None = None,
     ) -> None:
         self._catalog = catalog
         self._retriever = retriever
         self._web_research = web_research
+        self._rollback_tool = rollback_tool
+        self._commit_tool = commit_tool
         self.private_knowledge = None
         self.catalog_available = True
         # An empty personal workspace still has a stable provenance identifier;
@@ -96,6 +111,35 @@ class KnowledgeToolRegistry:
         self.web_read_enabled = web_research is not None
         self._web_queries: set[str] = set()
         self.research_map: dict[str, object] = empty_research_map()
+
+    def rollback_failed_tool(self) -> None:
+        """Clear an incomplete command before its terminal event can checkpoint.
+
+        Completed business commands are already durable, even without a stream
+        subscriber. This callback owns only the current run's Session, never the
+        output journal or an independent billing/memory transaction.
+        """
+        if self._rollback_tool is not None:
+            self._rollback_tool()
+
+    def commit_completed_tool(self, tool_name: str, result: object) -> None:
+        """Own durable command completion independently of transport callbacks.
+
+        The runtime calls this only after the registry has returned its final
+        serialized result without an error. A command cannot be acknowledged to
+        the model, replayed or erased by the next command before this succeeds.
+        Reads do not introduce commits; existing independently owned writes keep
+        their own transaction policy.
+        """
+        if tool_name in DURABLE_AGENT_COMMANDS:
+            if not isinstance(result, Mapping):
+                raise TypeError("a durable Agent command must return its serialized result")
+            if self._commit_tool is not None:
+                self._commit_tool()
+
+    def bind_tool_command_completion(self, complete: Callable[[], None]) -> None:
+        """Accept the application's owner/lease-fenced transaction completion."""
+        self._commit_tool = complete
 
     @property
     def research_map_prompt_context(self) -> dict[str, object]:

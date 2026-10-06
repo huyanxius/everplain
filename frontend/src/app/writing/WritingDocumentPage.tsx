@@ -26,6 +26,7 @@ export function WritingDocumentPage({ userId }: { userId: string | null }) {
 export function WritingDocumentEditor({ userId, documentId }: { userId: string | null; documentId: string }) {
   const location = useLocation(), cache = useQueryClient(), keyFor = useRequestKeys()
   const [document, setDocument] = useState<WritingDocument | null>(null), [revisions, setRevisions] = useState<WritingRevision[]>([]), [markdown, setMarkdown] = useState(''), [title, setTitle] = useState(''), [genre, setGenre] = useState<Genre>('essay')
+  const [readAttempt, setReadAttempt] = useState(0)
   const [error, setError] = useState<string>(location.state?.writingError ?? ''), [loading, setLoading] = useState(true), [busy, setBusy] = useState(false)
   const [refreshNotice, setRefreshNotice] = useState(''), [agentPrompt] = useState<{ text: string; key: number } | null>(() => location.state?.writingInstruction ? { text: location.state.writingInstruction, key: 1 } : null)
   const panel = useWritingPanelWidth(userId, !loading)
@@ -112,21 +113,27 @@ export function WritingDocumentEditor({ userId, documentId }: { userId: string |
   }, [acceptedAnimation, markdown])
   const updateBase = useCallback((value: WritingDocument, reset: boolean) => { setDocument(value); documentRef.current = value; if (reset) { draftRef.current = { title: value.title, genre: value.genre, markdown: value.markdown }; setTitle(value.title); setGenre(value.genre); setMarkdown(value.markdown); if (draftStorage) saveDraft(draftStorage, null) } }, [draftStorage])
   useEffect(() => {
-    alive.current = true; const controller = new AbortController()
+    alive.current = true; draftReady.current = false; const controller = new AbortController()
+    setLoading(true)
+    if (readAttempt > 0) setError('')
     if (!userId) { setLoading(false); return }
     Promise.all([writingApi.document(documentId, controller.signal), writingApi.revisions(documentId, controller.signal)]).then(([value, revisionList]) => {
-      if (!alive.current) return
+      if (!alive.current || controller.signal.aborted) return
       const draft = draftStorage ? readDraft(draftStorage) : null
-      updateBase(value, true); setRevisions(revisionList.items)
+      // Reading is not a discard action: only persist after restoring this scope's draft.
+      updateBase(value, false); setRevisions(revisionList.items)
+      const restored = draft ?? value
+      draftRef.current = { title: restored.title, genre: restored.genre, markdown: restored.markdown }
+      setTitle(restored.title); setGenre(restored.genre); setMarkdown(restored.markdown)
       if (liveStorage) {
         setLiveDraft(readLiveWritingDraft(liveStorage, value))
         try { const discarded = JSON.parse(sessionStorage.getItem(`${liveStorage}:dismissed`) ?? '[]'); if (Array.isArray(discarded)) dismissedCalls.current = new Set(discarded.filter((key): key is string => typeof key === 'string').slice(-32)) } catch { /* No discarded preview is restored. */ }
       }
-      if (draft) { setTitle(draft.title); setGenre(draft.genre); setMarkdown(draft.markdown); if (draft.version !== value.version) setRefreshNotice('已恢复此浏览器中的修改。服务器也有新版本，请核对后再保存。') }
+      setRefreshNotice(draft && draft.version !== value.version ? '已恢复此浏览器中的修改。服务器也有新版本，请核对后再保存。' : '')
       draftReady.current = true
-    }).catch(failure => { if (alive.current && !controller.signal.aborted) setError(message(failure)) }).finally(() => { if (alive.current) setLoading(false) })
+    }).catch(failure => { if (alive.current && !controller.signal.aborted) setError(message(failure)) }).finally(() => { if (alive.current && !controller.signal.aborted) setLoading(false) })
     return () => { alive.current = false; controller.abort() }
-  }, [documentId, draftStorage, updateBase, userId, liveStorage])
+  }, [documentId, draftStorage, updateBase, userId, liveStorage, readAttempt])
   useEffect(() => { if (draftStorage && draftReady.current && document) saveDraft(draftStorage, dirty ? { title, genre, markdown, version: document.version } : null) }, [document, draftStorage, title, genre, markdown, dirty])
   useEffect(() => { const warn = (event: BeforeUnloadEvent) => { if (dirty || busy) { event.preventDefault(); event.returnValue = '' } }; window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn) }, [dirty, busy])
   async function saveCurrent() {
@@ -223,7 +230,7 @@ export function WritingDocumentEditor({ userId, documentId }: { userId: string |
   const quickBusy = checkingAction || Boolean(writingAction) || busy || agentBusy
   const selectionActions: SelectionAction[] = [{ id: 'rewrite', label: '优化选区', disabled: quickBusy, run: (_editor, _text, selected) => optimizeSelection('rewrite', selected) }, { id: 'personalize', label: '更像我', icon: <SparkleIcon />, disabled: quickBusy, run: (_editor, _text, selected) => optimizeSelection('personalize', selected) }, { id: 'continue', label: '接着写', disabled: quickBusy, run: (_editor, _text, selected) => optimizeSelection('continue', selected) }]
   if (loading) return <div className="writing-load" role="status">正在读取文稿…</div>
-  if (!document) return <div className="writing-load"><p role="alert">{error || '文稿不可用。'}</p><Link className="qx-btn qx-btn--secondary" to="/writing">返回写作</Link><button className="qx-btn qx-btn--secondary" onClick={() => { setLoading(true); void writingApi.document(documentId).then(value => { updateBase(value, true); draftReady.current = true }).catch(failure => setError(message(failure))).finally(() => setLoading(false)) }}>重新读取文稿</button></div>
+  if (!document) return <div className="writing-load"><p role="alert">{error || '文稿不可用。'}</p><Link className="qx-btn qx-btn--secondary" to="/writing">返回写作</Link><button className="qx-btn qx-btn--secondary" onClick={() => setReadAttempt(attempt => attempt + 1)}>重新读取文稿</button></div>
   return <div className="wr-page writing-document"><div className="wr-workbench">
     <header className="wr-top"><div className="wr-crumbs"><Link className="qx-btn qx-btn--ghost" to="/writing">写作</Link><span>/</span><input className="writing-crumb-title" aria-label="文稿标题" value={title} maxLength={200} onChange={event => setTitle(event.target.value)} /></div><span className="qx-meta" role="status">{busy ? '正在处理…' : dirty ? '尚未保存' : '已保存'}</span><div className="wr-top__right"><button className="qx-btn qx-btn--secondary" disabled={busy || !dirty} onClick={() => void save()}>保存</button><button className="qx-btn qx-btn--ghost" onClick={download}><DownloadSimpleIcon />导出 Markdown</button></div></header>
     {error && <div className="qx-notice qx-notice--danger writing-notice" role="alert"><p>{error}</p><button className="qx-btn qx-btn--ghost" disabled={busy} onClick={() => void refresh()}>刷新版本并保留修改</button></div>}

@@ -9,6 +9,8 @@ tests/test_knowledge_tool_serialization.py
 tests/test_knowledge_index_readiness.py
 tests/test_shared_knowledge_agent.py
 tests/test_everplain_documents.py
+tests/test_personal_document_evidence.py
+tests/test_project_document_evidence.py
 tests/test_personal_knowledge_api.py
 tests/test_shared_knowledge_api.py
 tests/test_shared_knowledge_pptx.py
@@ -163,3 +165,8 @@ tests/billing/test_membership_vouchers.py
 tests/test_membership_voucher_migration.py
 tests/test_context_suggestion_privacy.py
 tests/test_context_card_export.py
+tests/test_agent_execution_boundaries.py
+tests/test_agent_execution_architecture.py
+tests/test_agent_theory_confirmation_boundary.py
+tests/test_agent_tool_transaction_boundary.py
+tests/billing/test_billing_api_errors.py
