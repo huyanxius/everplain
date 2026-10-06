@@ -9,12 +9,20 @@ from joserfc.errors import JoseError
 from qunxue_api.modules.identity import (
     OAuthClientConfiguration,
     OAuthIdentityInvalid,
+    OAuthProviderNetworkUnavailable,
     OAuthProviderUnavailable,
     VerifiedOAuthIdentity,
 )
 
 PROVIDERS = ("google", "github")
 logger = logging.getLogger(__name__)
+_FAILURE_ENDPOINTS = {
+    ("google", "oauth2.googleapis.com", "/token"): "google_token",
+    ("google", "www.googleapis.com", "/oauth2/v3/certs"): "google_jwks",
+    ("github", "github.com", "/login/oauth/access_token"): "github_token",
+    ("github", "api.github.com", "/user"): "github_user",
+    ("github", "api.github.com", "/user/emails"): "github_emails",
+}
 
 
 class OAuthClients:
@@ -182,9 +190,24 @@ class OAuthClients:
     ) -> VerifiedOAuthIdentity:
         try:
             return await self._identity(provider, code=code, verifier=verifier, nonce=nonce)
+        except httpx2.TransportError as error:
+            self._record_failure(provider, "identity", error)
+            raise OAuthProviderNetworkUnavailable("OAuth provider network unavailable") from error
         except (httpx2.HTTPError, OAuthError, JoseError, ValueError, TypeError, KeyError) as error:
             self._record_failure(provider, "identity", error)
             raise OAuthProviderUnavailable("OAuth provider verification failed") from error
+
+    @staticmethod
+    def _failure_endpoint(provider: str, error: Exception) -> str:
+        if not isinstance(error, httpx2.HTTPError):
+            return "unknown"
+        try:
+            url = error.request.url
+        except RuntimeError:  # HTTP errors need not have an attached request.
+            return "unknown"
+        if url.scheme != "https" or url.port not in {None, 443}:
+            return "unknown"
+        return _FAILURE_ENDPOINTS.get((provider, url.host, url.path), "unknown")
 
     @staticmethod
     def _record_failure(provider: str, operation: str, error: Exception) -> None:
@@ -202,10 +225,11 @@ class OAuthClients:
         }
         logger.warning(
             "OAuth provider request failed provider=%s operation=%s category=%s code=%s "
-            "cause_category=%s",
+            "cause_category=%s endpoint=%s",
             provider,
             operation,
             type(error).__name__,
             code if isinstance(code, str) and code in known_codes else "unspecified",
             type(error.__cause__).__name__ if error.__cause__ else "unspecified",
+            OAuthClients._failure_endpoint(provider, error),
         )
