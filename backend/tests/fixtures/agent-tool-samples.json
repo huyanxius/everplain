@@ -1,0 +1,921 @@
+{
+  "search_conversations": {
+    "result": {
+      "items": []
+    },
+    "events": [
+      {
+        "tool": "search_conversations",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "offset": 0
+        },
+        "output": null,
+        "detail": "正在查找过去对话",
+        "error": null
+      },
+      {
+        "tool": "search_conversations",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": null,
+        "output": {
+          "count": 0,
+          "error": null
+        },
+        "detail": null,
+        "error": null
+      }
+    ]
+  },
+  "read_conversation": {
+    "result": {
+      "messages": []
+    },
+    "events": [
+      {
+        "tool": "read_conversation",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "conversation_id": "owned-conversation",
+          "sequence": 0,
+          "offset": 0
+        },
+        "output": null,
+        "detail": "正在回读原对话",
+        "error": null
+      },
+      {
+        "tool": "read_conversation",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": null,
+        "output": {
+          "count": 0,
+          "next_cursor": null,
+          "error": null
+        },
+        "detail": null,
+        "error": null
+      }
+    ]
+  },
+  "search_memory": {
+    "result": {
+      "items": []
+    },
+    "events": []
+  },
+  "change_memory": {
+    "result": {
+      "saved": true
+    },
+    "events": [
+      {
+        "tool": "change_memory",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "action": "remember",
+          "scope": "user",
+          "key": "tone"
+        },
+        "output": null,
+        "detail": null,
+        "error": null
+      },
+      {
+        "tool": "change_memory",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": null,
+        "output": {
+          "saved": true
+        },
+        "detail": null,
+        "error": null
+      }
+    ]
+  },
+  "search_knowledge": {
+    "result": [],
+    "events": [
+      {
+        "tool": "search_knowledge",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "query": "合成来源"
+        },
+        "output": null,
+        "detail": "正在检索知识库",
+        "error": null
+      },
+      {
+        "tool": "search_knowledge",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "query": "合成来源"
+        },
+        "output": {
+          "result_count": 0,
+          "items": [],
+          "knowledge_index_coverage": null
+        },
+        "detail": "没有找到可展示的知识条目",
+        "error": null
+      }
+    ]
+  },
+  "search_web": {
+    "result": [],
+    "events": [
+      {
+        "tool": "search_web",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "query": "synthetic evidence",
+          "limit": 5
+        },
+        "output": null,
+        "detail": "正在搜索公开网页",
+        "error": null
+      },
+      {
+        "tool": "search_web",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "query": "synthetic evidence",
+          "limit": 5
+        },
+        "output": {
+          "result_count": 0,
+          "items": []
+        },
+        "detail": "找到 0 个网页结果",
+        "error": null
+      }
+    ]
+  },
+  "read_web_page": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "read_web_page",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "url": "https://example.com/synthetic"
+        },
+        "output": null,
+        "detail": "正在读取网页正文",
+        "error": null
+      },
+      {
+        "tool": "read_web_page",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "url": "https://example.com/synthetic"
+        },
+        "output": {
+          "result_count": 1,
+          "items": []
+        },
+        "detail": "已读取网页：https://example.com/synthetic",
+        "error": null
+      }
+    ]
+  },
+  "search_research_materials": {
+    "result": [],
+    "events": [
+      {
+        "tool": "search_research_materials",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "query": "合成材料",
+          "limit": 5
+        },
+        "output": null,
+        "detail": "正在检索个人研究材料",
+        "error": null
+      },
+      {
+        "tool": "search_research_materials",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "query": "合成材料",
+          "limit": 5
+        },
+        "output": {
+          "result_count": 0,
+          "items": []
+        },
+        "detail": "没有找到可展示的个人材料片段",
+        "error": null
+      }
+    ]
+  },
+  "read_research_material_context": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "read_research_material_context",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "material_id": "owned-material",
+          "segment_id": null,
+          "parse_id": null,
+          "before": 2,
+          "after": 2
+        },
+        "output": null,
+        "detail": "正在读取个人材料原文上下文",
+        "error": null
+      },
+      {
+        "tool": "read_research_material_context",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "material_id": "owned-material",
+          "segment_id": null,
+          "parse_id": null,
+          "before": 2,
+          "after": 2
+        },
+        "output": {
+          "found": true,
+          "material_id": "owned-material",
+          "segment_id": null,
+          "locator": null,
+          "context_count": 0
+        },
+        "detail": "已读取个人材料原文上下文",
+        "error": null
+      }
+    ]
+  },
+  "get_research_analysis": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "get_research_analysis",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {},
+        "output": null,
+        "detail": "正在读取研究分析",
+        "error": null
+      },
+      {
+        "tool": "get_research_analysis",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {},
+        "output": {
+          "status": "candidate"
+        },
+        "detail": "已读取质性分析",
+        "error": null
+      }
+    ]
+  },
+  "propose_analysis_memo": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "propose_analysis_memo",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "title": "候选",
+          "content": "合成内容",
+          "memo_kind": "analytic",
+          "annotation_ids": []
+        },
+        "output": null,
+        "detail": "正在生成分析备忘候选",
+        "error": null
+      },
+      {
+        "tool": "propose_analysis_memo",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "title": "候选",
+          "content": "合成内容",
+          "memo_kind": "analytic",
+          "annotation_ids": []
+        },
+        "output": {
+          "status": "candidate"
+        },
+        "detail": "已生成待用户确认的分析候选",
+        "error": null
+      }
+    ]
+  },
+  "get_research_comparison_context": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "get_research_comparison_context",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "case_labels": [
+            "A",
+            "B"
+          ],
+          "time_labels": []
+        },
+        "output": null,
+        "detail": "正在读取案例比较上下文",
+        "error": null
+      },
+      {
+        "tool": "get_research_comparison_context",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "case_labels": [
+            "A",
+            "B"
+          ],
+          "time_labels": []
+        },
+        "output": {
+          "status": "candidate"
+        },
+        "detail": "已读取质性分析",
+        "error": null
+      }
+    ]
+  },
+  "propose_case_comparison": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "propose_case_comparison",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "title": "比较",
+          "question": "差异",
+          "case_labels": [
+            "A",
+            "B"
+          ],
+          "time_labels": [],
+          "findings": [],
+          "competing_explanations": [],
+          "evidence_gaps": [],
+          "next_steps": [],
+          "theory_implication": "待核验"
+        },
+        "output": null,
+        "detail": "正在生成案例比较候选",
+        "error": null
+      },
+      {
+        "tool": "propose_case_comparison",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "title": "比较",
+          "question": "差异",
+          "case_labels": [
+            "A",
+            "B"
+          ],
+          "time_labels": [],
+          "findings": [],
+          "competing_explanations": [],
+          "evidence_gaps": [],
+          "next_steps": [],
+          "theory_implication": "待核验"
+        },
+        "output": {
+          "status": "candidate"
+        },
+        "detail": "已生成待用户确认的分析候选",
+        "error": null
+      }
+    ]
+  },
+  "read_knowledge_entry": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "read_knowledge_entry",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "knowledge_id": "owned-knowledge"
+        },
+        "output": null,
+        "detail": "正在读取知识条目",
+        "error": null
+      },
+      {
+        "tool": "read_knowledge_entry",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "knowledge_id": "owned-knowledge"
+        },
+        "output": {
+          "found": true,
+          "knowledge_id": "owned-knowledge",
+          "title": null,
+          "excerpt": null,
+          "knowledge_index_coverage": null
+        },
+        "detail": "已读取知识条目：owned-knowledge",
+        "error": null
+      }
+    ]
+  },
+  "read_sources": {
+    "result": [],
+    "events": [
+      {
+        "tool": "read_sources",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "source_ids": []
+        },
+        "output": null,
+        "detail": "正在读取来源",
+        "error": null
+      },
+      {
+        "tool": "read_sources",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "source_ids": []
+        },
+        "output": {
+          "result_count": 0,
+          "items": []
+        },
+        "detail": "找到 0 个来源",
+        "error": null
+      }
+    ]
+  },
+  "browse_knowledge_directory": {
+    "result": [],
+    "events": [
+      {
+        "tool": "browse_knowledge_directory",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "limit": 24
+        },
+        "output": null,
+        "detail": "正在浏览知识目录",
+        "error": null
+      },
+      {
+        "tool": "browse_knowledge_directory",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "limit": 24
+        },
+        "output": {
+          "result_count": 0,
+          "items": []
+        },
+        "detail": "找到 0 个目录节点",
+        "error": null
+      }
+    ]
+  },
+  "propose_start_research": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "propose_start_research",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "phenomenon": "合成研究对象",
+          "research_intent": null,
+          "context": null
+        },
+        "output": null,
+        "detail": "正在整理待确认的研究起点",
+        "error": null
+      },
+      {
+        "tool": "propose_start_research",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "phenomenon": "合成研究对象",
+          "research_intent": null,
+          "context": null
+        },
+        "output": {
+          "status": "candidate"
+        },
+        "detail": "研究流程状态已更新",
+        "error": null
+      }
+    ]
+  },
+  "get_research_workflow_state": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "get_research_workflow_state",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {},
+        "output": null,
+        "detail": "正在读取研究流程状态",
+        "error": null
+      },
+      {
+        "tool": "get_research_workflow_state",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {},
+        "output": {
+          "status": "candidate"
+        },
+        "detail": "研究流程状态已更新",
+        "error": null
+      }
+    ]
+  },
+  "start_theory_matching": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "start_theory_matching",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {},
+        "output": null,
+        "detail": "正在执行理论匹配",
+        "error": null
+      },
+      {
+        "tool": "start_theory_matching",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {},
+        "output": {
+          "status": "candidate"
+        },
+        "detail": "研究流程状态已更新",
+        "error": null
+      }
+    ]
+  },
+  "save_confirmed_theory_plan": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "save_confirmed_theory_plan",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "decisions": [],
+          "use_assignments": [],
+          "relations": [],
+          "user_confirmed": true
+        },
+        "output": null,
+        "detail": "正在保存理论决定",
+        "error": null
+      },
+      {
+        "tool": "save_confirmed_theory_plan",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "decisions": [],
+          "use_assignments": [],
+          "relations": [],
+          "user_confirmed": true
+        },
+        "output": {
+          "status": "candidate"
+        },
+        "detail": "研究流程状态已更新",
+        "error": null
+      }
+    ]
+  },
+  "read_writing_document": {
+    "result": {
+      "document_id": "owned-document",
+      "version": 1
+    },
+    "events": [
+      {
+        "tool": "read_writing_document",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {},
+        "output": null,
+        "detail": "正在读取写作文稿",
+        "error": null
+      },
+      {
+        "tool": "read_writing_document",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {},
+        "output": {
+          "document_id": "owned-document",
+          "version": 1,
+          "context_stale": null,
+          "pending_revision_ids": null
+        },
+        "detail": "已读取写作文稿",
+        "error": null
+      }
+    ]
+  },
+  "propose_writing_edit": {
+    "result": {
+      "revision_id": "revision-1",
+      "status": "pending"
+    },
+    "events": [
+      {
+        "tool": "propose_writing_edit",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "expected_version": 1,
+          "selection_start": null,
+          "selection_end": null,
+          "original_characters": 1,
+          "replacement_characters": 1
+        },
+        "output": null,
+        "detail": "正在提议精确修改",
+        "error": null
+      },
+      {
+        "tool": "propose_writing_edit",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "expected_version": 1,
+          "selection_start": null,
+          "selection_end": null,
+          "original_characters": 1,
+          "replacement_characters": 1
+        },
+        "output": {
+          "revision_id": "revision-1",
+          "document_id": null,
+          "base_version": null,
+          "action": null,
+          "status": "pending",
+          "selection_start": null,
+          "selection_end": null,
+          "before_characters": 0,
+          "after_characters": 0
+        },
+        "detail": "已生成待接受或撤回的修订，正文尚未修改",
+        "error": null
+      }
+    ]
+  },
+  "read_research_document": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "read_research_document",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "document_id": "owned-document"
+        },
+        "output": null,
+        "detail": "正在读取研究文档",
+        "error": null
+      },
+      {
+        "tool": "read_research_document",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "document_id": "owned-document"
+        },
+        "output": {
+          "document_id": null,
+          "version": null,
+          "knowledge_release_id": null,
+          "section_count": 0,
+          "error": null
+        },
+        "detail": "已读取研究文档 vNone",
+        "error": null
+      }
+    ]
+  },
+  "propose_document_revision": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "propose_document_revision",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "document_id": null,
+          "expected_version": null,
+          "section_id": null,
+          "replacement_content": "新段落",
+          "rationale": "合成理由"
+        },
+        "output": null,
+        "detail": "正在生成文档修改建议",
+        "error": null
+      },
+      {
+        "tool": "propose_document_revision",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "document_id": null,
+          "expected_version": null,
+          "section_id": null,
+          "replacement_content": "新段落",
+          "rationale": "合成理由"
+        },
+        "output": {
+          "status": "candidate"
+        },
+        "detail": "已生成待用户接受或拒绝的修改建议；文档尚未修改",
+        "error": null
+      }
+    ]
+  },
+  "propose_document_creation": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "propose_document_creation",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "title": "合成文稿",
+          "sections": [],
+          "rationale": "合成理由"
+        },
+        "output": null,
+        "detail": "正在生成研究文稿建议",
+        "error": null
+      },
+      {
+        "tool": "propose_document_creation",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "title": "合成文稿",
+          "sections": [],
+          "rationale": "合成理由"
+        },
+        "output": {
+          "status": "candidate"
+        },
+        "detail": "已生成待用户审批的研究文稿",
+        "error": null
+      }
+    ]
+  },
+  "ask_research_question": {
+    "result": {
+      "question": "请选择范围",
+      "options": [
+        "A",
+        "B"
+      ]
+    },
+    "events": [
+      {
+        "tool": "ask_research_question",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "question": "请选择范围",
+          "options": [
+            "A",
+            "B"
+          ]
+        },
+        "output": null,
+        "detail": "请你决定研究的下一步",
+        "error": null
+      },
+      {
+        "tool": "ask_research_question",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "question": "请选择范围",
+          "options": [
+            "A",
+            "B"
+          ]
+        },
+        "output": {
+          "question": "请选择范围",
+          "options": [
+            "A",
+            "B"
+          ]
+        },
+        "detail": "请你决定研究的下一步",
+        "error": null
+      }
+    ]
+  },
+  "update_research_map": {
+    "result": {
+      "status": "candidate"
+    },
+    "events": [
+      {
+        "tool": "update_research_map",
+        "phase": "started",
+        "call_id": "frozen-call",
+        "input": {
+          "nodes": [],
+          "relations": [],
+          "remove_node_ids": [],
+          "remove_relation_ids": []
+        },
+        "output": null,
+        "detail": "正在组织研究地图",
+        "error": null
+      },
+      {
+        "tool": "update_research_map",
+        "phase": "finished",
+        "call_id": "frozen-call",
+        "input": {
+          "nodes": [],
+          "relations": [],
+          "remove_node_ids": [],
+          "remove_relation_ids": []
+        },
+        "output": {
+          "status": "candidate"
+        },
+        "detail": "已更新 0 个研究节点与 0 条关系",
+        "error": null
+      }
+    ]
+  }
+}

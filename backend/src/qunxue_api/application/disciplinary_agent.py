@@ -737,6 +737,21 @@ class DisciplinaryAgentApplication:
                 "partial_answer": run.partial_answer,
                 "tool_summary": list(prior_summary),
             }
+
+            def complete_tool_command() -> None:
+                # Business durability is independent of a stream subscriber.
+                # Fence the pending write and lease in this same transaction;
+                # never acknowledge a stale/stopped worker's command result.
+                if not self._conversations.checkpoint_run(
+                    user_id=user_id, run_id=run.run_id, lease_token=run.lease_token,
+                    require_not_cancelled=True,
+                ):
+                    raise AgentInterrupted("Agent execution lease was replaced or stopped")
+                self._conversations.commit()
+
+            bind_completion = getattr(tools, "bind_tool_command_completion", None)
+            if callable(bind_completion):
+                bind_completion(complete_tool_command)
             bind_agent_context = getattr(tools, "bind_agent_context", None)
             if callable(bind_agent_context):
                 bind_agent_context(

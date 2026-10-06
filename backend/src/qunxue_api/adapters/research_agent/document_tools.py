@@ -197,8 +197,13 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
         require_material_vectors: bool = False,
         analysis: ResearchAnalysisAgentFacade | None = None,
         writing=None,
+        rollback_tool=None,
+        commit_tool=None,
     ) -> None:
-        super().__init__(catalog, retriever=retriever, web_research=web_research)
+        super().__init__(
+            catalog, retriever=retriever, web_research=web_research, rollback_tool=rollback_tool,
+            commit_tool=commit_tool,
+        )
         self._documents = documents
         self._proposals = proposals
         self._workflow = workflow
@@ -1250,11 +1255,6 @@ class ResearchDocumentToolRegistry(KnowledgeToolRegistry):
         user_confirmed: bool,
     ) -> dict[str, object]:
         user_id, conversation_id, _ = self._context()
-        if not user_confirmed:
-            return {
-                "error": "user_confirmation_required",
-                "message": "保存理论决定会正式写入，必须先获得用户明确确认。",
-            }
         if self._workflow is None:
             return {"error": "research_workflow_unavailable"}
         result = self._workflow.save_theory_plan(
