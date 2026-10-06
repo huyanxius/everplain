@@ -201,3 +201,17 @@ tests/billing/test_durable_billing.py
 
 # Historical delivery_v1 usage projection, including the repaired migrated RESET fixture.
 tests/billing/test_usage_stability.py
+
+# Remaining billing review: current/shared boundaries and explicit delivery_v1 compatibility.
+tests/billing/test_course_billing.py
+tests/billing/test_course_responses.py
+tests/billing/test_cross_run_refunds.py
+tests/billing/test_financial_faults.py
+tests/billing/test_graph_naming_billing.py
+tests/billing/test_legacy_research_api.py
+tests/billing/test_phase_billing_p0.py
+tests/billing/test_responses_metering.py
+tests/billing/test_standalone_billing.py
+# Historical theory-matching billing only: synthetic internal calls, disabled default product.
+# This registration does not mount matching routes, a public catalog, or model-visible tools.
+tests/billing/test_legacy_research_billing.py

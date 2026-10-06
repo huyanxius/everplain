@@ -7,46 +7,6 @@
       "reason": "Existing file was not selected by the frozen 9ccab4c product suite. This is an unresolved review/execution backlog, NOT a historical-only classification or a passing result. Promote after current compatibility review and relevant execution; changing a file invalidates this baseline exclusion.",
       "files": [
         {
-          "path": "backend/tests/billing/test_course_billing.py",
-          "sha256": "326e6e7871938da4926248834e36e60f052b2193a3c31017ecb06309748a0265"
-        },
-        {
-          "path": "backend/tests/billing/test_course_responses.py",
-          "sha256": "513753de81a5042c39df076c7878a852487bd4867fb40d279d8286feb921a699"
-        },
-        {
-          "path": "backend/tests/billing/test_cross_run_refunds.py",
-          "sha256": "34a944100d800f17d8f9f225e5b1822cf34e4c50a1ea757b3d6b2bdc6a43714d"
-        },
-        {
-          "path": "backend/tests/billing/test_financial_faults.py",
-          "sha256": "28ccc2fce0080e801e99caeb85ab668d62de6385bf12d6206d790d87c83ee482"
-        },
-        {
-          "path": "backend/tests/billing/test_graph_naming_billing.py",
-          "sha256": "793275e6425b0aa993e0f23fd8432e80e86b652987b2c818dc8eebb8787b1be7"
-        },
-        {
-          "path": "backend/tests/billing/test_legacy_research_api.py",
-          "sha256": "bf3648398b69cdb304fd145fa8118cab88e00944a2feddf9b2973c1d01696863"
-        },
-        {
-          "path": "backend/tests/billing/test_legacy_research_billing.py",
-          "sha256": "3b4ccd241099d5317dd64e930b51fa974669320c982e3e90da09daaad71d43a2"
-        },
-        {
-          "path": "backend/tests/billing/test_phase_billing_p0.py",
-          "sha256": "80550b4dccc9e1df5896f5801167e44d97d4ed9fdd7a8723da231916f7efdf52"
-        },
-        {
-          "path": "backend/tests/billing/test_responses_metering.py",
-          "sha256": "618d0a9045aa06ba66ecb8dea85ed8b3b31a59e89799b6e5c7881622336dda6a"
-        },
-        {
-          "path": "backend/tests/billing/test_standalone_billing.py",
-          "sha256": "375cb59c3a9a7e82446912f5c76ef1697879bef06f8f0a6b2ad11beb4880f40e"
-        },
-        {
           "path": "backend/tests/test_agent_coding_tools.py",
           "sha256": "e64d1a77c98baf5843744250ce8b17cf0c83c77d2e3af919ff719f7b0550689f"
         },

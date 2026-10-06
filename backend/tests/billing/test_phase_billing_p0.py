@@ -4,6 +4,7 @@ import subprocess
 import sys
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
@@ -258,8 +259,12 @@ def test_process_exit_cannot_save_success_without_financial_settlement(plain_cli
         [
             sys.executable,
             "-c",
-            "from test_phase_billing_p0 import crash_delivery; "
-            "import sys; crash_delivery(*sys.argv[1:])",
+            "import runpy, sys\n"
+            "from pathlib import Path\n"
+            "test_file = Path(sys.argv[1])\n"
+            "sys.path[:0] = [str(test_file.parent), str(test_file.parent.parent)]\n"
+            "runpy.run_path(str(test_file))['crash_delivery'](*sys.argv[2:])",
+            str(Path(__file__).resolve()),
             database.engine.url.render_as_string(),
             user,
             stage,
