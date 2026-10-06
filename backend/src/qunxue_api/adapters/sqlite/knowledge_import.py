@@ -496,8 +496,15 @@ class SqliteImportRepository:
 
     def fail(self, item, reason):
         self.session.rollback()
-        row = self.session.get(ImportItemRow, item["id"], populate_existing=True)
-        if row is None or row.status != "running" or row.attempts != item["attempts"]:
-            return
-        row.status, row.error = "failed", reason[:300]
+        # Fence the write itself: another worker may reclaim or complete the
+        # item between an ORM read and its later flush.
+        self.session.execute(
+            update(ImportItemRow)
+            .where(
+                ImportItemRow.id == item["id"],
+                ImportItemRow.status == "running",
+                ImportItemRow.attempts == item["attempts"],
+            )
+            .values(status="failed", error=reason[:300])
+        )
         self.session.commit()
