@@ -9,6 +9,7 @@ tests/test_knowledge_tool_serialization.py
 tests/test_knowledge_index_readiness.py
 tests/test_shared_knowledge_agent.py
 tests/test_everplain_documents.py
+tests/test_personal_document_evidence.py
 tests/test_personal_knowledge_api.py
 tests/test_shared_knowledge_api.py
 tests/test_shared_knowledge_pptx.py
