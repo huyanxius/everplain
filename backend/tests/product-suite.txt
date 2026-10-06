@@ -184,3 +184,17 @@ tests/test_agent_delivery_output_state.py
 # Current migration schema, supported offline range, and explicit full-head offline refusal.
 tests/test_migrations.py
 
+# Current/shared quota and billing contracts; not blanket Agent-v2 policy coverage.
+tests/billing/test_actual_usage_policy.py
+tests/billing/test_bank_reset_codes.py
+tests/billing/test_billing_migration.py
+tests/billing/test_prices.py
+tests/billing/test_quota_settlement_epoch.py
+tests/billing/test_retail_projection.py
+tests/billing/test_signup_allowance.py
+tests/billing/test_weekly_quota.py
+
+# Explicit historical delivery_v1 snapshot compatibility; not current Agent-v2 policy.
+tests/billing/test_application_metering.py
+tests/billing/test_durable_billing.py
+
