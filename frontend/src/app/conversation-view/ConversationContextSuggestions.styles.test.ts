@@ -5,19 +5,27 @@ import { describe, expect, it } from 'vitest'
 const css = readFileSync(resolve('src/app/conversation-view/conversation-composer.css'), 'utf8')
 const declarations = (selector: string) => css.split(`${selector} {`)[1]?.split('}')[0] ?? ''
 
-describe('conversation context layout CSS contracts (not browser layout verification)', () => {
-  it('lets a single card fill the row and wraps extra cards based on the available width', () => {
-    expect(declarations('.cv-context-suggestions .cv-suggestions__cards')).toContain('repeat(auto-fit, minmax(min(100%, 260px), 1fr))')
+describe('suggestion layout CSS contracts (not browser layout verification)', () => {
+  it('keeps three equal desktop columns even when only one or two real cards exist', () => {
+    expect(declarations('.cv-suggestions__cards')).toContain('repeat(3, minmax(0, 1fr))')
+    expect(css).not.toContain('repeat(auto-fit')
     expect(declarations('.cv-context-suggestions__item .cv-suggestions__card')).toContain('width: 100%')
-    expect(declarations('.cv-context-suggestions__header')).toContain('flex-wrap: wrap')
   })
-  it('constrains the disclosure focus box to its label and preserves a visible focus ring', () => {
-    expect(declarations('.cv-context-suggestions__source-toggle')).toContain('width: fit-content')
-    expect(declarations('.cv-context-suggestions__source-toggle')).toContain('max-width: 100%')
+  it('uses a single column in narrow containers without a more specific override', () => {
+    expect(css).toContain('@container conversation-suggestions (max-width: 560px) { .cv-suggestions__cards { grid-template-columns: minmax(0, 1fr); } }')
+    expect(css).not.toContain('.cv-context-suggestions .cv-suggestions__cards')
+    expect(declarations('.cv-suggestions__card')).toContain('min-width: 0')
+    expect(declarations('.cv-suggestions__card')).toContain('overflow-wrap: anywhere')
+  })
+  it('keeps source controls compact, focusable and panels within the card width', () => {
+    expect(declarations('.cv-context-suggestions__source-toggle')).toContain('position: absolute')
     expect(declarations('.cv-context-suggestions__source-toggle:focus-visible')).toContain('outline: 2px solid var(--qx-color-accent)')
-  })
-  it('wraps long source text and preserves original quote line breaks', () => {
+    expect(declarations('.cv-context-suggestions__sources')).toContain('inset-inline: 0')
+    expect(declarations('.cv-context-suggestions__sources')).toContain('overflow-y: auto')
     expect(declarations('.cv-context-suggestions__sources li')).toContain('overflow-wrap: anywhere')
-    expect(declarations('.cv-context-suggestions__quote')).toContain('white-space: pre-wrap')
+  })
+  it('keeps card summaries compact without truncating the accessible text', () => {
+    expect(declarations('.cv-context-suggestions__item .cv-suggestions__card > span')).toContain('-webkit-line-clamp: 2')
+    expect(declarations('.cv-context-suggestions__item .cv-suggestions__card > span')).toContain('overflow: hidden')
   })
 })
