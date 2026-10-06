@@ -34,3 +34,25 @@ describe('generic starter suggestions', () => {
     expect(seen.size).toBe(20)
   })
 })
+
+
+it.each(['zh-CN', 'en-US'] as const)('fills only missing slots with distinct stable generic choices in %s', locale => {
+  const originals = getStarterSuggestions(locale, 'reader-1')
+  for (const count of [0, 1, 2, 3]) {
+    const excludedTitles = originals.map(card => card.title)
+    const cards = getStarterSuggestions(locale, 'reader-1', { count, excludedTitles })
+    expect(cards).toHaveLength(count)
+    expect(new Set(cards.map(card => card.id)).size).toBe(count)
+    expect(cards.every(card => !excludedTitles.includes(card.title))).toBe(true)
+    expect(cards).toEqual(getStarterSuggestions(locale, 'reader-1', { count, excludedTitles }))
+  }
+  expect(getStarterSuggestions(locale, 'reader-1', { count: 2 })).toEqual(originals.slice(0, 2))
+})
+
+it('keeps fallback identity locale-independent and excludes whitespace/case-equivalent titles', () => {
+  const first = getStarterSuggestions('en-US', 'reader-1')[0]
+  const cards = getStarterSuggestions('en-US', 'reader-1', { count: 3, excludedTitles: [`  ${first.title.toUpperCase().replaceAll(' ', '  ')}  `] })
+  expect(cards).toHaveLength(3)
+  expect(cards.some(card => card.id === first.id)).toBe(false)
+  expect(getStarterSuggestions('en-US', 'reader-1').map(card => card.id)).toEqual(getStarterSuggestions('zh-CN', 'reader-1').map(card => card.id))
+})
