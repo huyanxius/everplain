@@ -1100,8 +1100,20 @@ class PydanticAIKnowledgeRunner:
         writing_preview = WritingPreviewStream(
             tools, on_writing_preview, "\n".join(self._writing_instruction_rules),
         )
-        bridge = AgentEventBridge(visible_stream=visible_stream,
-                                  writing_preview=writing_preview, is_cancelled=is_cancelled)
+        def safely_cancelled():
+            # A terminal event is not the end of a synchronous resource owner:
+            # its checkpoint/callback or exception cleanup may still use deps.
+            return (is_cancelled is not None
+                    and self._tool_runtime.when_idle(is_cancelled, default=False))
+
+        def safe_checkpoint():
+            if on_checkpoint is not None:
+                self._tool_runtime.when_idle(on_checkpoint)
+
+        bridge = AgentEventBridge(
+            visible_stream=visible_stream, writing_preview=writing_preview,
+            is_cancelled=safely_cancelled if is_cancelled is not None else None,
+        )
 
 
         with self._tool_runtime.activate(
@@ -1167,8 +1179,8 @@ class PydanticAIKnowledgeRunner:
                             usage_limits=self._usage_limits_for(tools),
                             event_stream_handler=bridge.handle,
                         ),
-                        is_cancelled,
-                        on_checkpoint=on_checkpoint,
+                        safely_cancelled,
+                        on_checkpoint=safe_checkpoint if on_checkpoint is not None else None,
                         can_cancel=can_cancel,
                     )
                 visible_stream.finish()

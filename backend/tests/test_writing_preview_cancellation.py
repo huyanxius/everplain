@@ -1,7 +1,10 @@
 """Controlled real commit/cancel windows never orphan an accept-able suggestion."""
 
+import asyncio
 import json
+import threading
 from dataclasses import asdict
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -465,3 +468,229 @@ def test_old_cleanup_cannot_reject_same_revision_recovered_by_a_healthy_new_atte
     path = f"/api/writing/documents/{document['document_id']}"
     revisions = c.get(path + "/revisions").json()["items"]
     assert revisions[0]["status"] == "pending"
+
+
+async def cancellation_checkpoint():
+    """Run the already queued cancellation before examining task ownership."""
+    reached = asyncio.Event()
+    asyncio.get_running_loop().call_soon(reached.set)
+    await reached.wait()
+
+
+@pytest.mark.parametrize("accepted", [False, True])
+def test_cancelled_sdk_call_owns_session_until_real_cleanup_commit_returns(
+    plain_client, monkeypatch, accepted,
+):
+    from sqlalchemy import event
+
+    c = plain_client
+    owner, document, run = seed(c)
+    agent = runner()
+    path = f"/api/writing/documents/{document['document_id']}"
+    release_commit = threading.Event()
+    worker_done = threading.Event()
+    cancelled = threading.Event()
+    trace = []
+    revisions = []
+
+    with c.app.state.disciplinary_agent_scope() as app:
+        tools = bind_run(app, owner, document, run)
+        tools.read_writing_document()
+        session = tools._writing.application.repository.session
+        original = tools.propose_writing_edit
+        original_close = session.close
+
+        def close():
+            assert worker_done.is_set(), "scope closed before the SDK worker finished"
+            trace.append("scope_close")
+            original_close()
+
+        monkeypatch.setattr(session, "close", close)
+
+        def propose(**payload):
+            result = original(**payload)
+            revisions.append(result)
+            if accepted:
+                response = c.post(
+                    path + f"/revisions/{result['revision_id']}/resolve",
+                    json={"expected_version": 1, "decision": "accept"},
+                    headers={"Idempotency-Key": str(uuid4())},
+                )
+                assert response.status_code == 200
+            with c.app.state.database.session() as other:
+                repo = SqliteConversationRepository(other)
+                repo.request_cancel(user_id=owner, run_id=run.run_id)
+                repo.commit()
+            cancelled.set()
+            return result
+
+        tools.propose_writing_edit = propose
+
+        async def scenario():
+            loop = asyncio.get_running_loop()
+            commit_entered = asyncio.Event()
+
+            def hold_commit(_session):
+                if cancelled.is_set() and not release_commit.is_set():
+                    # SessionTransaction.commit is still on the worker's stack.
+                    trace.append("cleanup_commit_entered")
+                    loop.call_soon_threadsafe(commit_entered.set)
+                    assert release_commit.wait(5), "test did not release the commit barrier"
+                    trace.append("cleanup_commit_released")
+
+            event.listen(session, "after_commit", hold_commit)
+            original_discard = tools.discard_writing_proposal
+
+            def discard(revision):
+                try:
+                    return original_discard(revision)
+                finally:
+                    trace.append("worker_cleanup_returned")
+                    worker_done.set()
+
+            tools.discard_writing_proposal = discard
+            tool = agent._agent._function_toolset.tools["propose_writing_edit"]
+            with agent._tool_runtime.activate(
+                on_tool_event=None, is_cancelled=cancelled.is_set, writing_preview=None,
+            ):
+                task = asyncio.create_task(tool.function_schema.call({
+                    "expected_version": 1, "original_text": "重复。",
+                    "replacement_text": "确定性建议", "selection_start": 5, "selection_end": 8,
+                }, SimpleNamespace(deps=tools, tool_call_id="commit-barrier")))
+                try:
+                    await asyncio.wait_for(commit_entered.wait(), 5)
+                    for _ in range(2):
+                        task.cancel()
+                        await cancellation_checkpoint()
+                        assert not task.done(), "cancel abandoned an in-flight Session commit"
+                    assert not worker_done.is_set()
+                finally:
+                    release_commit.set()
+                    assert await asyncio.to_thread(worker_done.wait, 5)
+                    # A real worker error (including AgentInterrupted) retains its
+                    # meaning after draining; it is not replaced by cancellation.
+                    with pytest.raises((AgentInterrupted, asyncio.CancelledError)):
+                        await task
+                    event.remove(session, "after_commit", hold_commit)
+                trace.append("sdk_call_returned")
+
+        asyncio.run(scenario())
+    assert trace == [
+        "cleanup_commit_entered", "cleanup_commit_released", "worker_cleanup_returned",
+        "sdk_call_returned", "scope_close",
+    ]
+    current = c.get(path).json()
+    assert current["markdown"] == ("😀重复。确定性建议结尾" if accepted else document["markdown"])
+    assert current["version"] == (2 if accepted else 1)
+    saved = c.get(path + "/revisions").json()["items"]
+    assert len(saved) == 1
+    assert saved[0]["revision_id"] == revisions[0]["revision_id"]
+    assert saved[0]["status"] == ("accepted" if accepted else "rejected")
+
+
+def test_runner_monitor_cannot_reenter_session_during_post_terminal_cleanup(
+    plain_client, monkeypatch,
+):
+    from qunxue_api.adapters.research_agent import pydantic_runner
+
+    c = plain_client
+    owner, document, run = seed(c)
+    agent = runner()
+    release_cleanup, worker_done = threading.Event(), threading.Event()
+    cleanup_active = threading.Event()
+    loop_owner = threading.get_ident()
+    calls = ticks = 0
+    body = []
+    trace = []
+    barrier = None
+
+    async def transport(messages, info):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            yield "已收到的正文。"
+            yield {0: DeltaToolCall(
+                name="read_writing_document", json_args="{}", tool_call_id="read",
+            )}
+        elif calls == 2:
+            yield {0: DeltaToolCall(
+                name="propose_writing_edit", tool_call_id="write",
+                json_args=json.dumps({
+                    "expected_version": 1, "original_text": "重复。",
+                    "replacement_text": "不该遗留的建议", "selection_start": 5, "selection_end": 8,
+                }),
+            )}
+        else:
+            raise AssertionError("failed tool must not start another model request")
+
+    async def monitor_tick(_delay):
+        nonlocal ticks, barrier
+        ticks += 1
+        if ticks == 1:
+            barrier = asyncio.Event()
+            await asyncio.wait_for(barrier.wait(), 5)
+        else:
+            # The previous monitor iteration ran while cleanup owned the Session.
+            trace.append("monitor_skipped_shared_session")
+            release_cleanup.set()
+            assert await asyncio.to_thread(worker_done.wait, 5)
+            await cancellation_checkpoint()
+
+    def safe_callback():
+        assert not (cleanup_active.is_set() and threading.get_ident() == loop_owner), (
+            "runner callback reentered the shared Session while worker cleanup was active"
+        )
+        return False
+
+    def terminal(event):
+        if event.tool == "propose_writing_edit" and event.phase == "finished":
+            raise RuntimeError("synthetic terminal receipt error")
+
+    with c.app.state.disciplinary_agent_scope() as app:
+        tools = bind_run(app, owner, document, run)
+        discard = tools.discard_writing_proposal
+        held = False
+
+        # Thread-local runner loop cannot be looked up from its SDK thread.
+        loop = pydantic_runner._worker_event_loop.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        def signal_cleanup(revision):
+            nonlocal held
+            if held:
+                return discard(revision)
+            held = True
+            cleanup_active.set()
+            loop.call_soon_threadsafe(barrier.set)
+            try:
+                assert release_cleanup.wait(5), "test did not release cleanup"
+                return discard(revision)
+            finally:
+                cleanup_active.clear()
+                trace.append("worker_cleanup_returned")
+                worker_done.set()
+
+        tools.discard_writing_proposal = signal_cleanup
+        monkeypatch.setattr(pydantic_runner, "async_sleep", monitor_tick)
+        try:
+            with (
+                agent._agent.override(model=FunctionModel(stream_function=transport)),
+                pytest.raises(RuntimeError, match="synthetic terminal receipt error"),
+            ):
+                agent.run_stream(
+                    prompt="修改", conversation=(), tools=tools, on_delta=body.append,
+                    on_tool_event=terminal,
+                    is_cancelled=safe_callback, on_checkpoint=safe_callback,
+                    can_cancel=lambda: True,
+                )
+        finally:
+            release_cleanup.set()
+            loop.run_until_complete(loop.shutdown_default_executor())
+            loop.close()
+            asyncio.set_event_loop(None)
+    assert calls == 2
+    assert "".join(body) == "已收到的正文。"
+    assert trace.index("monitor_skipped_shared_session") < trace.index("worker_cleanup_returned")
+    path = f"/api/writing/documents/{document['document_id']}"
+    assert c.get(path).json()["markdown"] == document["markdown"]
+    assert c.get(path + "/revisions").json()["items"][0]["status"] == "rejected"

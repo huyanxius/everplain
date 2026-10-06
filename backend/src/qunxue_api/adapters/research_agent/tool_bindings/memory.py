@@ -23,7 +23,7 @@ def register_memory_tools(agent, runtime: AgentToolRuntime) -> None:
         history = getattr(getattr(ctx.deps, "memory", None), "conversations", None)
         return definition if history is not None and history.enabled else None
 
-    @agent.tool(prepare=prepare_conversation_read, sequential=True)
+    @runtime.tool(agent, prepare=prepare_conversation_read, sequential=True)
     def search_conversations(
         ctx: RunContext[KnowledgeToolRegistry], query: str, offset: int = 0,
     ) -> dict:
@@ -45,7 +45,7 @@ def register_memory_tools(agent, runtime: AgentToolRuntime) -> None:
         ))
         return result
 
-    @agent.tool(prepare=prepare_conversation_read, sequential=True)
+    @runtime.tool(agent, prepare=prepare_conversation_read, sequential=True)
     def read_conversation(ctx: RunContext[KnowledgeToolRegistry], conversation_id: str,
                           sequence: int = 0, offset: int = 0) -> dict:
         """Read original user/assistant history, following next_cursor for more text.
@@ -76,12 +76,12 @@ def register_memory_tools(agent, runtime: AgentToolRuntime) -> None:
         memory = getattr(ctx.deps, "memory", None)
         return definition if memory is not None and memory.can_write else None
 
-    @agent.tool(prepare=prepare_memory_read, sequential=True)
+    @runtime.tool(agent, prepare=prepare_memory_read, sequential=True)
     def search_memory(ctx: RunContext[KnowledgeToolRegistry], query: str) -> dict:
         """回顾用户偏好或本项目旧决定时检索记忆；每轮最多一次。记忆不是研究证据。"""
         return ctx.deps.memory.search(query)
 
-    @agent.tool(prepare=prepare_memory_write, sequential=True)
+    @runtime.tool(agent, prepare=prepare_memory_write, sequential=True)
     def change_memory(
         ctx: RunContext[KnowledgeToolRegistry],
         action: Literal["remember", "forget"],
