@@ -7,9 +7,10 @@ export function creditRedemptionMessage(redemption: CreditRedemption, locale = '
     : (english ? 'Pending confirmation' : '待确认')
   if (redemption.action !== 'membership') {
     const expiry = redemption.quotaPeriodExpiresAt
-      ? (english ? ` Allowance expires ${format(redemption.quotaPeriodExpiresAt)}.` : `额度截止时间：${format(redemption.quotaPeriodExpiresAt)}。`)
+      ? (english ? ` Allowance expiry recorded for this code: ${format(redemption.quotaPeriodExpiresAt)}.` : `该兑换记录的额度截止时间：${format(redemption.quotaPeriodExpiresAt)}。`)
       : ''
-    return (english ? 'Code redeemed. Your current plan allowance is back to 100%.' : '兑换成功。当前套餐用量已恢复至 100%。') + expiry
+    // A replay returns the current balance with the original receipt's deadline.
+    return (english ? `Code redemption confirmed. Current balance: ${redemption.balance} points.` : `兑换已确认。当前余额：${redemption.balance} 积分。`) + expiry
   }
   const name = ({ plus: 'Plus', pro: 'PRO', max: 'Max' } as Record<string, string>)[redemption.planId ?? ''] ?? redemption.planId ?? ''
   const scheduled = Boolean(redemption.membershipStartsAt && Date.parse(redemption.membershipStartsAt) > Date.now())

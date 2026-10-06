@@ -163,3 +163,7 @@ tests/billing/test_membership_vouchers.py
 tests/test_membership_voucher_migration.py
 tests/test_context_suggestion_privacy.py
 tests/test_context_card_export.py
+tests/test_agent_execution_boundaries.py
+tests/test_agent_execution_architecture.py
+tests/test_agent_theory_confirmation_boundary.py
+tests/test_agent_tool_transaction_boundary.py
