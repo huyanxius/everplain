@@ -92,6 +92,83 @@ def test_renewal_queues_without_erasing_remaining_allowance_and_is_idempotent(ac
     assert summary(db, user, now + timedelta(days=56)).quota_plan_id == "free"
 
 
+@pytest.mark.parametrize("plan,weekly", [("plus", 200), ("pro", 400), ("max", 1000)])
+def test_bank_reset_preserves_new_weekly_anchor_until_membership_expiry(
+    account_client, plan, weekly
+):
+    user = UUID(register(account_client, f"reset-anchor-{plan}@example.com")["user"]["user_id"])
+    db = account_client.app.state.database
+    now = datetime(2026, 10, 1, 8, tzinfo=UTC)
+    redeem(db, user, generate(db, user, now, plan), now)
+    with db.session() as session:
+        session.execute(
+            text("UPDATE credit_accounts SET balance=11 WHERE user_id=:u"), {"u": str(user)}
+        )
+    reset_at = now + timedelta(days=2)
+    receipt = redeem(db, user, generate(db, user, now, None), reset_at)
+    assert receipt.balance == weekly and receipt.delta_points == weekly - 11
+    assert receipt.quota_period_started_at == reset_at
+    assert receipt.quota_period_expires_at == reset_at + timedelta(days=7)
+
+    for week in range(1, 4):
+        starts_at = reset_at + timedelta(days=7 * week)
+        with db.session() as session:
+            session.execute(
+                text("UPDATE credit_accounts SET balance=11 WHERE user_id=:u"), {"u": str(user)}
+            )
+        before = summary(db, user, starts_at - timedelta(microseconds=1))
+        assert before.balance == 11 and before.quota_period_expires_at == starts_at
+        value = summary(db, user, starts_at)
+        assert value.balance == weekly and value.quota_plan_id == plan
+        assert value.quota_period_started_at == starts_at
+        assert value.quota_period_expires_at == min(
+            starts_at + timedelta(days=7), now + timedelta(days=28)
+        )
+    assert summary(db, user, now + timedelta(days=28)).quota_plan_id == "free"
+
+
+@pytest.mark.parametrize("next_plan,weekly", [("plus", 200), ("max", 1000)])
+@pytest.mark.parametrize("read_day,period_day", [(28, 28), (40, 35)])
+def test_reset_anchor_yields_to_queued_membership_even_after_missed_renewals(
+    account_client, next_plan, weekly, read_day, period_day
+):
+    user = UUID(register(account_client, "reset-queue@example.com")["user"]["user_id"])
+    db = account_client.app.state.database
+    now = datetime(2026, 10, 1, 8, tzinfo=UTC)
+    redeem(db, user, generate(db, user, now), now)
+    redeem(db, user, generate(db, user, now, None), now + timedelta(days=2))
+    queued = redeem(db, user, generate(db, user, now, next_plan), now + timedelta(days=3))
+    assert queued.membership_starts_at == now + timedelta(days=28)
+    assert queued.membership_expires_at == now + timedelta(days=56)
+    with db.session() as session:
+        session.execute(
+            text("UPDATE credit_accounts SET balance=11 WHERE user_id=:u"), {"u": str(user)}
+        )
+    value = summary(db, user, now + timedelta(days=read_day))
+    assert value.balance == weekly and value.quota_plan_id == next_plan
+    assert value.quota_period_started_at == now + timedelta(days=period_day)
+    assert value.quota_period_expires_at == now + timedelta(days=period_day + 7)
+    assert summary(db, user, now + timedelta(days=56)).quota_plan_id == "free"
+
+
+def test_latest_reset_anchor_survives_missed_renewals_without_stacking_grants(account_client):
+    user = UUID(register(account_client, "reset-missed@example.com")["user"]["user_id"])
+    db = account_client.app.state.database
+    now = datetime(2026, 10, 1, 8, tzinfo=UTC)
+    redeem(db, user, generate(db, user, now), now)
+    for day in (2, 5):
+        redeem(db, user, generate(db, user, now, None), now + timedelta(days=day))
+    value = summary(db, user, now + timedelta(days=22))
+    assert value.balance == 200 and value.quota_plan_id == "plus"
+    assert value.quota_period_started_at == now + timedelta(days=19)
+    assert value.quota_period_expires_at == now + timedelta(days=26)
+    with db.session() as session:
+        assert session.scalar(
+            text("SELECT count(*) FROM credit_ledger WHERE user_id=:u AND kind='redemption'"),
+            {"u": str(user)},
+        ) == 4
+
+
 def test_same_batch_cannot_change_plan(account_client):
     user = UUID(register(account_client, "batch@example.com")["user"]["user_id"])
     db = account_client.app.state.database

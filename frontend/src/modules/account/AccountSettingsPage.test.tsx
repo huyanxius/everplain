@@ -525,7 +525,7 @@ describe('AccountSettingsPage', () => {
       idempotencyKey: expect.any(String),
     }))
     await waitFor(() => expect(screen.getByRole('progressbar', { name: '额外购买额度' })).toHaveAttribute('aria-valuenow', '50'))
-    expect(screen.getByRole('status')).toHaveTextContent('兑换成功')
+    expect(screen.getByRole('status')).toHaveTextContent('兑换已确认。当前余额：3000 积分。')
     await waitFor(() => expect(getCreditSummary).toHaveBeenCalledTimes(3))
     expect(screen.getByText(/3,000.*6,000.*3,000/)).toBeInTheDocument()
   })
@@ -538,8 +538,36 @@ describe('AccountSettingsPage', () => {
     expect(screen.getByText(/支持 Plus、PRO、Max 会员码和 bank RESET 码/)).toHaveTextContent('通常开启 7 天周期；剩余会员期不足 7 天时，以会员到期时间为准，不延长会员有效期')
     fireEvent.change(screen.getByLabelText('兑换码'), { target: { value: 'QX-RESET-TWO-DAYS' } })
     fireEvent.click(screen.getByRole('button', { name: '兑换' }))
-    expect(await screen.findByRole('status')).toHaveTextContent('额度截止时间：2026/01/03')
+    expect(await screen.findByRole('status')).toHaveTextContent('该兑换记录的额度截止时间：2026/01/03')
     expect(screen.getByRole('status')).not.toHaveTextContent('7 天')
+  })
+
+  it.each([11, 0])('shows the returned %i-point balance after submitting the same RESET code again', async balance => {
+    const initial = await createApi().getCreditSummary()
+    let currentBalance = 30
+    const getCreditSummary = vi.fn(async () => ({ ...initial, balance: currentBalance }))
+    const receipt = { action: 'bank_reset' as const, redeemedPoints: 30, balance: 30, quotaPeriodExpiresAt: '2026-01-03T12:00:00Z' }
+    const redeemCredits = vi.fn().mockResolvedValueOnce(receipt).mockResolvedValue({ ...receipt, balance })
+    render(<AccountSettingsPage api={createApi({ getCreditSummary, redeemCredits })} />)
+    await screen.findByRole('heading', { name: '账户设置' })
+    openPartition('使用情况')
+    fireEvent.change(screen.getByLabelText('兑换码'), { target: { value: 'QX-RESET-REPLAY' } })
+    fireEvent.click(screen.getByRole('button', { name: '兑换' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('当前余额：30 积分')
+    await waitFor(() => expect(screen.getByLabelText('兑换码')).toHaveValue(''))
+
+    currentBalance = balance
+    fireEvent.change(screen.getByLabelText('兑换码'), { target: { value: 'QX-RESET-REPLAY' } })
+    fireEvent.click(screen.getByRole('button', { name: '兑换' }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(`兑换已确认。当前余额：${balance} 积分。`))
+    expect(screen.getByRole('status')).toHaveTextContent('该兑换记录的额度截止时间：2026/01/03')
+    expect(screen.getByRole('status')).not.toHaveTextContent('100%')
+    expect(redeemCredits).toHaveBeenCalledTimes(2)
+    for (const [request] of redeemCredits.mock.calls) {
+      expect(request).toEqual({ code: 'QX-RESET-REPLAY', idempotencyKey: expect.any(String) })
+    }
+    expect(screen.getByLabelText('兑换码')).toHaveValue('')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('explains membership and RESET codes and reports scheduled membership without changing the current plan', async () => {
@@ -589,7 +617,7 @@ describe('AccountSettingsPage', () => {
     openPartition('使用情况')
     fireEvent.change(screen.getByLabelText('兑换码'), { target: { value: 'QX-ONE-CODE' } })
     fireEvent.click(screen.getByRole('button', { name: '兑换' }))
-    expect(await screen.findByRole('status')).toHaveTextContent('兑换成功')
+    expect(await screen.findByRole('status')).toHaveTextContent('兑换已确认。当前余额：4200 积分。')
     expect(screen.getByText('额度信息暂不可用')).toBeVisible()
     expect(screen.getByLabelText('兑换码')).toHaveValue('')
     expect(redeemCredits).toHaveBeenCalledOnce()

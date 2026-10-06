@@ -171,13 +171,36 @@ describe('integration surfaces', () => {
     expect(screen.getByLabelText('兑换码')).toHaveFocus()
     fireEvent.change(screen.getByLabelText('兑换码'), { target: { value: 'QX-INTEGRATION-RESET' } })
     fireEvent.click(screen.getByRole('button', { name: '兑换' }))
-    expect(await screen.findByRole('status')).toHaveTextContent('兑换成功')
+    expect(await screen.findByRole('status')).toHaveTextContent(`兑换已确认。当前余额：${activeMembership ? 200 : 30} 积分。`)
     expect(redeemAccountCode).toHaveBeenCalledWith({ code: 'QX-INTEGRATION-RESET', idempotencyKey: expect.any(String) })
     expect(screen.getByLabelText('兑换码')).toHaveValue('')
     expect(api.checkout).not.toHaveBeenCalled()
     expect(api.portal).not.toHaveBeenCalled()
     expect(openWindow).not.toHaveBeenCalled()
     expect(window.location.href).toBe(originalLocation)
+  })
+  it.each([11, 0])('shows the returned %i-point balance after redeeming the same RESET code again on subscriptions', async balance => {
+    const receipt = { action: 'bank_reset' as const, redeemedPoints: 30, balance: 30, quotaPeriodExpiresAt: '2026-01-03T12:00:00Z' }
+    vi.mocked(redeemAccountCode).mockResolvedValueOnce(receipt).mockResolvedValue({ ...receipt, balance })
+    setup(<SubscriptionPage />, '/subscription')
+    await screen.findByRole('heading', { name: '会员套餐' })
+    fireEvent.change(screen.getByLabelText('兑换码'), { target: { value: 'QX-RESET-REPLAY' } })
+    fireEvent.click(screen.getByRole('button', { name: '兑换' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('当前余额：30 积分')
+    expect(screen.getByLabelText('兑换码')).toHaveValue('')
+
+    fireEvent.change(screen.getByLabelText('兑换码'), { target: { value: 'QX-RESET-REPLAY' } })
+    fireEvent.click(screen.getByRole('button', { name: '兑换' }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(`兑换已确认。当前余额：${balance} 积分。`))
+    expect(screen.getByRole('status')).toHaveTextContent('该兑换记录的额度截止时间：2026/01/03')
+    expect(screen.getByRole('status')).not.toHaveTextContent('100%')
+    expect(redeemAccountCode).toHaveBeenCalledTimes(2)
+    for (const [request] of vi.mocked(redeemAccountCode).mock.calls) {
+      expect(request).toEqual({ code: 'QX-RESET-REPLAY', idempotencyKey: expect.any(String) })
+    }
+    expect(screen.getByLabelText('兑换码')).toHaveValue('')
+    expect(api.checkout).not.toHaveBeenCalled()
+    expect(api.portal).not.toHaveBeenCalled()
   })
   it('renders server catalog prices and keeps redemption available when payments are unconfigured', async () => {
     setup(<SubscriptionPage />, '/subscription')
