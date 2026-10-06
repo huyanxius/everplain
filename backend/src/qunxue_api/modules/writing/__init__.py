@@ -15,6 +15,10 @@ from .grounding import quantities, redact_style_contacts, sample_contact_leaks
 
 __all__ = [
     "MAX_DOCUMENT_CHARACTERS",
+    "EditTarget",
+    "EditTargetConflict",
+    "resolve_edit_target",
+    "require_edit_scope",
     "Genre",
     "StyleSample",
     "WritingConflict",
@@ -313,3 +317,65 @@ def preview_safe_prefix(original, candidate, samples, *, runtime_instructions=""
         if not candidate[end].isspace():
             remaining -= 1
     return candidate[:end]
+
+
+class EditTargetConflict(WritingConflict):
+    """A target rule failure, independent of Agent or preview transport wording."""
+
+    def __init__(self, reason: str, message: str):
+        super().__init__(message)
+        self.reason = reason
+
+
+@dataclass(frozen=True)
+class EditTarget:
+    """An exact UTF-16 edit anchored in a specific document snapshot."""
+
+    prefix: str
+    original: str
+    suffix: str
+    start: int
+    end: int
+    scope_start: int
+    scope_end: int
+
+    def replace(self, replacement: str) -> str:
+        return self.prefix + replacement + self.suffix
+
+
+def require_edit_scope(start, end, scope):
+    """Check the user's fixed edit boundary, including before an idempotent replay."""
+    if (not isinstance(start, int) or isinstance(start, bool)
+            or not isinstance(end, int) or isinstance(end, bool)
+            or not scope["start"] <= start <= end <= scope["end"]):
+        raise EditTargetConflict("outside_scope", "修改超出本轮用户选区，请仅修改所选文字")
+
+
+def resolve_edit_target(markdown, original, start=None, end=None, *, scope=None):
+    """One anchor/scope rule for streaming proof and the final proposal.
+
+    Missing offsets resolve uniquely *inside* the user's selection. Supplied
+    offsets always address the full document, never Python codepoint indexes.
+    This proves a snapshot only; callers must still recheck owner/version and
+    transaction/execution eligibility at the persistence boundary.
+    """
+    if not isinstance(original, str):
+        raise EditTargetConflict("invalid_original", "原文内容无效")
+    if scope is None:
+        scope = {"start": 0, "end": len(markdown.encode("utf-16-le")) // 2}
+    _, scoped, _ = utf16_slice(markdown, scope["start"], scope["end"], allow_empty=True)
+    if start is None and end is None:
+        position = scoped.find(original)
+        if (not original or position < 0 or scoped.find(original, position + 1) >= 0):
+            raise EditTargetConflict(
+                "ambiguous_anchor", "原文片段必须在选区内唯一匹配，请重新读取并提供准确选区",
+            )
+        start = scope["start"] + len(scoped[:position].encode("utf-16-le")) // 2
+        end = start + len(original.encode("utf-16-le")) // 2
+    prefix, selected, suffix = utf16_slice(markdown, start, end, allow_empty=True)
+    if selected != original:
+        raise EditTargetConflict(
+            "original_mismatch", "选区原文不匹配，修改没有保存；请重新读取文稿",
+        )
+    require_edit_scope(start, end, scope)
+    return EditTarget(prefix, original, suffix, start, end, scope["start"], scope["end"])
