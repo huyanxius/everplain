@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ModelSelectionSettings } from './ModelSelectionSettings'
 import type { AgentModelSelectionState } from './useAgentModelSelection'
+import { AppLocaleProvider } from '../../i18n/AppLocaleProvider'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals() })
 const state = (): AgentModelSelectionState => ({
@@ -9,6 +10,38 @@ const state = (): AgentModelSelectionState => ({
   catalog: [{ id: 'gpt-6-luna', label: 'GPT 6 Luna', reasoningEfforts: ['low', 'medium', 'high'], defaultReasoningEffort: 'medium' }],
   selection: { modelId: 'gpt-6-luna', reasoningEffort: 'medium' },
   onChange: vi.fn(), retry: vi.fn(), requestFields: () => ({}),
+})
+
+it.each([
+  ['enabled', '开启', 'On'],
+  ['minimal', '极低', 'Minimal'],
+] as const)('renders the legal %s effort consistently in both summary and control', (effort, zh, en) => {
+  const selection: AgentModelSelectionState = {
+    ...state(),
+    catalog: [{ id: 'native', label: 'Native', reasoningEfforts: ['none', effort], defaultReasoningEffort: effort }],
+    selection: { modelId: 'native', reasoningEffort: effort },
+  }
+  const oldLocale = window.localStorage.getItem('qunxue.interface-locale')
+  try {
+    for (const [locale, label, prefix, sliderName] of [
+      ['zh-CN', zh, '模型与思考强度', '思考强度'],
+      ['en-US', en, 'Model and reasoning effort', 'Reasoning effort'],
+    ]) {
+      window.localStorage.setItem('qunxue.interface-locale', locale)
+      const view = render(<AppLocaleProvider><ModelSelectionSettings state={selection} disabled={false} /></AppLocaleProvider>)
+      const summary = screen.getByRole('button', { name: `${prefix}：Native · ${label}` })
+      expect(summary).toBeVisible()
+      fireEvent.click(summary)
+      expect(screen.getByRole('slider', { name: sliderName })).toHaveAttribute('aria-valuetext', label)
+      view.rerender(<AppLocaleProvider><ModelSelectionSettings state={selection} disabled activeRequest={{ message: 'synthetic', model_id: 'native', reasoning_effort: effort }} /></AppLocaleProvider>)
+      expect(summary).toHaveAccessibleName(`${prefix}：Native · ${label}`)
+      expect(screen.getByRole('slider', { name: sliderName })).toHaveAttribute('aria-disabled', 'true')
+      view.unmount()
+    }
+  } finally {
+    if (oldLocale === null) window.localStorage.removeItem('qunxue.interface-locale')
+    else window.localStorage.setItem('qunxue.interface-locale', oldLocale)
+  }
 })
 
 it('shows the real model and effort summary and opens the reference radio list and legal stops only on demand', () => {
