@@ -807,9 +807,11 @@ def test_callback_provider_failure_is_distinct_from_state_validation(
     mock = Provider(plain_client)
     remote = plain_client.app.state.oauth_clients.client(provider)
     marker = "synthetic-code-client-secret-redacted"
+    failed_requests = []
 
     def unavailable(request):
         if request.url.path == failed_path:
+            failed_requests.append(request.url.path)
             raise error_type(marker, request=request)
         return mock.http(request)
 
@@ -818,7 +820,9 @@ def test_callback_provider_failure_is_distinct_from_state_validation(
     binder = plain_client.cookies.get(f"everplain_oauth_{provider}")
     with caplog.at_level("WARNING"):
         response = mock.finish(plain_client, state, code, provider)
-    assert "invalid_flow" in response.headers["location"]
+    assert parse_qs(urlsplit(response.headers["location"]).query)["oauth_error"] == [
+        "service_unavailable"
+    ]
     assert f"provider={provider} operation=identity category={error_type.__name__}" in caplog.text
     assert f"endpoint={endpoint}" in caplog.text
     assert f"provider={provider} stage=provider_identity" in caplog.text
@@ -828,6 +832,29 @@ def test_callback_provider_failure_is_distinct_from_state_validation(
     assert plain_client.cookies.get("everplain_session") is None
     with plain_client.app.state.database.session() as db:
         assert db.scalar(select(func.count()).select_from(OAuthTransactionRow)) == 0
+    assert failed_requests == [failed_path]
+    assert len(mock.exchanges) == (1 if endpoint == "google_jwks" else 0)
+    assert "invalid_flow" in mock.finish(plain_client, state, code, provider).headers["location"]
+    assert failed_requests == [failed_path]
+
+
+@pytest.mark.parametrize("provider", ["google", "github"])
+def test_provider_invalid_grant_remains_an_invalid_flow(plain_client, provider):
+    mock = Provider(plain_client)
+    remote = plain_client.app.state.oauth_clients.client(provider)
+    requests = []
+
+    def invalid_grant(request):
+        requests.append(request.url.path)
+        return httpx.Response(400, json={"error": "invalid_grant"})
+
+    remote.client_kwargs["transport"] = httpx.MockTransport(invalid_grant)
+    state, code = mock.start(plain_client, provider)
+    response = mock.finish(plain_client, state, code, provider)
+    assert parse_qs(urlsplit(response.headers["location"]).query)["oauth_error"] == ["invalid_flow"]
+    assert len(requests) == 1
+    assert counts(plain_client) == (0, 0, 0)
+    assert plain_client.cookies.get("everplain_session") is None
 
 
 @pytest.mark.parametrize("url", [None, "https://untrusted.example/private?code=secret-code"])

@@ -12,6 +12,7 @@ from qunxue_api.modules.identity import (
     OAuthCompletion,
     OAuthIdentityInvalid,
     OAuthProviderClient,
+    OAuthProviderNetworkUnavailable,
     OAuthProviderUnavailable,
     OAuthStart,
     OAuthStorageUnavailable,
@@ -152,6 +153,9 @@ class OAuthLoginApplication:
             return OAuthCompletion(target=transaction.return_path, grant=grant)
         except FederatedIdentityConflict as error:
             failure = "account_link_required"
+            self._record_failure(provider, stage, error, browser, credential)
+        except OAuthProviderNetworkUnavailable as error:
+            failure = "service_unavailable"
             self._record_failure(provider, stage, error, browser, credential)
         except (OAuthProviderUnavailable, OAuthIdentityInvalid, IdentityError) as error:
             self._record_failure(provider, stage, error, browser, credential)

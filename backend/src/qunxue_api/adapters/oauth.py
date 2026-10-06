@@ -9,6 +9,7 @@ from joserfc.errors import JoseError
 from qunxue_api.modules.identity import (
     OAuthClientConfiguration,
     OAuthIdentityInvalid,
+    OAuthProviderNetworkUnavailable,
     OAuthProviderUnavailable,
     VerifiedOAuthIdentity,
 )
@@ -189,6 +190,9 @@ class OAuthClients:
     ) -> VerifiedOAuthIdentity:
         try:
             return await self._identity(provider, code=code, verifier=verifier, nonce=nonce)
+        except httpx2.TransportError as error:
+            self._record_failure(provider, "identity", error)
+            raise OAuthProviderNetworkUnavailable("OAuth provider network unavailable") from error
         except (httpx2.HTTPError, OAuthError, JoseError, ValueError, TypeError, KeyError) as error:
             self._record_failure(provider, "identity", error)
             raise OAuthProviderUnavailable("OAuth provider verification failed") from error

@@ -67,5 +67,9 @@ class OAuthProviderUnavailable(Exception):
     """Provider SDK/network failure without exposing concrete SDK details."""
 
 
+class OAuthProviderNetworkUnavailable(OAuthProviderUnavailable):
+    """Provider transport failed; a fresh login may be attempted without replaying its code."""
+
+
 class OAuthStorageUnavailable(Exception):
     """OAuth persistence failed; transaction ownership remains with the adapter."""
