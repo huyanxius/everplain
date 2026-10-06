@@ -245,3 +245,32 @@ it('does not retain an unsent Home card across a refresh-like remount or page hi
   expect(screen.queryByRole('region', { name: '已选对话卡片' })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: '发送给 Everplain' })).toBeDisabled()
 })
+
+it('offers three new-user starters and prefills only the visible sentence without sending', async () => {
+  show()
+  const region = await screen.findByRole('region', { name: '起步建议' })
+  const starters = within(region).getAllByRole('button')
+  expect(starters).toHaveLength(3)
+  fireEvent.click(starters[0])
+  expect(screen.getByRole('textbox', { name: '问小叶' })).toHaveValue(starters[0].textContent)
+  expect(seedAgentDraft).not.toHaveBeenCalled()
+  expect(screen.queryByRole('region', { name: '已选对话卡片' })).not.toBeInTheDocument()
+  expect(screen.getByTestId('location')).toHaveTextContent('/app')
+  starters.forEach(button => expect(button).toBeDisabled())
+})
+
+it('protects a home draft from both generic text and feature-navigation cards', async () => {
+  show()
+  const region = await screen.findByRole('region', { name: '起步建议' })
+  const input = screen.getByRole('textbox', { name: '问小叶' })
+  fireEvent.change(input, { target: { value: '保留我的问题和补充。' } })
+  for (const button of within(region).getAllByRole('button')) {
+    expect(button).toBeDisabled()
+    fireEvent.click(button)
+  }
+  expect(input).toHaveValue('保留我的问题和补充。')
+  expect(screen.getByTestId('location')).toHaveTextContent('/app')
+  expect(seedAgentDraft).not.toHaveBeenCalled()
+  fireEvent.change(input, { target: { value: '' } })
+  within(region).getAllByRole('button').forEach(button => expect(button).toBeEnabled())
+})

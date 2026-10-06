@@ -4,7 +4,9 @@ import argparse
 import json
 import os
 from urllib.parse import urlsplit
+from urllib.request import getproxies
 
+import httpx
 from dotenv import load_dotenv
 from pydantic import ValidationError
 from pydantic_settings import SettingsError
@@ -38,9 +40,38 @@ def https_url(value):
         return False
 
 
+def bookmark_proxy_state():
+    """Prove direct routing for arbitrary bookmarks, without dialing or exposing values."""
+    proxies = getproxies()
+    remaining = {scheme for scheme in ("http", "https")
+                 if proxies.get(scheme) or proxies.get("all")}
+    configured = bool(remaining)
+    for entry in proxies.get("no", "").split(","):
+        entry = entry.strip()
+        if entry == "*":
+            return configured, True
+        if not entry:
+            continue
+        # Only universal host/port bypasses establish deployment compatibility.
+        # Per-host NO_PROXY entries still work at runtime but cannot prove every
+        # future user bookmark avoids an unsupported proxy.
+        try:
+            pattern = httpx.URL(entry if "://" in entry else f"all://*{entry}")
+        except (httpx.InvalidURL, ValueError):
+            continue
+        if pattern.host not in ("", "*") or pattern.port is not None:
+            continue
+        remaining = {scheme for scheme in remaining
+                     if pattern.scheme not in ("", "all", scheme)}
+    return configured, not remaining
+
+
 def check_configuration():
     invalid = set()
     env = os.environ
+    proxy_configured, proxy_compatible = bookmark_proxy_state()
+    if not proxy_compatible:
+        invalid.add("EVERPLAIN_BOOKMARK_PROXY_COMPATIBILITY")
     fallback = env.get("EVERPLAIN_ALLOW_MODEL_FALLBACK", "").lower() in {"true", "1", "yes", "on"}
     required = (
         "MODEL_BASE_URL",
@@ -203,6 +234,8 @@ def check_configuration():
         "invalid_fields": sorted(invalid),
         "optional_services": optional,
         "provider_connectivity": "not_checked",
+        "bookmark_proxy_configured": proxy_configured,
+        "bookmark_proxy_compatible": proxy_compatible,
     }
 
 

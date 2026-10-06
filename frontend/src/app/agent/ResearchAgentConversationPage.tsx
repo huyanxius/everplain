@@ -2645,6 +2645,11 @@ export function ResearchAgentConversationPage({
     globalThis.requestAnimationFrame?.(() => composerInputRef.current?.focus())
   }
 
+  function chooseStarter(question: string) {
+    if (draft.trim() || selectedCard) return
+    choosePrompt(question)
+  }
+
   function chooseContextCard(card: SelectedContextCard) {
     setSelectedCard(card)
     globalThis.requestAnimationFrame?.(() => composerInputRef.current?.focus())
@@ -3089,7 +3094,7 @@ export function ResearchAgentConversationPage({
             {isLanding && <div className="cv-research-suggestions">{researchToolsVisible ? <ConversationSuggestions
               mode="research" taskId={taskId}
               projects={projects} conversations={conversations} attachedMaterials={attachedMaterials}
-              onSelect={choosePrompt} /> : !embedded && !searchParams.get('reference_knowledge_base_id') ? <ConversationContextSuggestions userId={userId} onSelect={chooseContextCard} /> : null}</div>}
+              onSelect={choosePrompt} /> : !embedded && !searchParams.get('reference_knowledge_base_id') ? <ConversationContextSuggestions userId={userId} onSelect={chooseContextCard} onStart={chooseStarter} hasDraft={Boolean(draft.trim() || selectedCard)} /> : null}</div>}
 </>}
 
     source={<ConversationSourcePanel
