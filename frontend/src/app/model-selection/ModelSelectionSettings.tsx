@@ -6,9 +6,8 @@ import type { AgentTurnRequest } from '../../modules/research-agent'
 import { ModelSelectionControl } from './ModelSelectionControl'
 import { isModelSelectionValid, type ModelSelection } from './modelSelection'
 import type { AgentModelSelectionState } from './useAgentModelSelection'
+import { effortLabels } from './reasoningEffortLabels'
 import './model-selection.css'
-
-const effortLabels = { none: ['无', 'None'], low: ['低', 'Low'], medium: ['中', 'Medium'], high: ['高', 'High'], xhigh: ['很高', 'XHigh'], max: ['最高', 'Max'] } as const
 
 export function ModelSelectionSettings({ state, disabled, activeRequest }: {
   state: AgentModelSelectionState

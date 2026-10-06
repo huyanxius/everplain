@@ -212,7 +212,13 @@ def ensure_quota_period(
     if period and not reset:
         expiry = _utc(period["expires_at"])
         anchor = expiry + ((now - expiry) // PERIOD_LENGTH) * PERIOD_LENGTH
-    if membership_start is not None and not reset:
+    if (
+        membership_start is not None
+        and not reset
+        and (period is None or membership_start > _utc(period["started_at"]))
+    ):
+        # A new membership starts its own cadence; within it, retain the current
+        # epoch's cadence, including a new anchor established by bank RESET.
         anchor = membership_start + ((now - membership_start) // PERIOD_LENGTH) * PERIOD_LENGTH
     expires_at = anchor + PERIOD_LENGTH
     if membership_end is not None:
