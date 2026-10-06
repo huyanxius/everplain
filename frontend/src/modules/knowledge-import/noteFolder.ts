@@ -13,7 +13,7 @@ export type NoteDirectory = {
 }
 type NoteFile = { kind: 'file'; name: string; getFile(): Promise<File> }
 export type NoteFolderFiles = { files: File[]; notes: number; attachments: number; skipped: number; bytes: number }
-export type NoteFolderProgress = { read: number; skipped: number }
+export type NoteFolderProgress = { stage: 'scanning' | 'reading'; discovered: number; read: number; skipped: number; total?: number; bytes: number }
 
 export function isNoteFolderPath(path: string): boolean {
   const parts = path.replaceAll('\\', '/').split('/')
@@ -39,30 +39,39 @@ export function prepareNoteFolderFiles(files: File[]): NoteFolderFiles {
 }
 
 export async function readNoteDirectory(directory: NoteDirectory, options: { signal?: AbortSignal; progress?(value: NoteFolderProgress): void } = {}): Promise<NoteFolderFiles> {
+  const pending: { path: string; entry: NoteFile }[] = []
   const files: File[] = []
   let skipped = 0
   let bytes = 0
-  async function walk(folder: NoteDirectory, parent: string) {
+  const update = (stage: NoteFolderProgress['stage']) => options.progress?.({ stage, discovered: pending.length, read: files.length, skipped, bytes, ...(stage === 'reading' ? { total: pending.length } : {}) })
+  async function scan(folder: NoteDirectory, parent: string) {
     options.signal?.throwIfAborted()
     for await (const [name, entry] of folder.entries()) {
       options.signal?.throwIfAborted()
       const path = `${parent}/${name}`
-      if (!isNoteFolderPath(path)) { skipped += 1; continue }
-      if (entry.kind === 'directory') await walk(entry, path)
+      if (!isNoteFolderPath(path)) skipped += 1
+      else if (entry.kind === 'directory') await scan(entry, path)
       else if (notes.test(name) || attachments.test(name)) {
-        const file = await entry.getFile()
-        options.signal?.throwIfAborted()
-        bytes += file.size
-        if (file.size > MAX_FILE_BYTES) throw new Error('单个笔记或附件最多 16 MB，请缩小文件后重试。')
-        if (files.length >= MAX_FILES || bytes > MAX_TOTAL_BYTES) throw new Error('文件夹超过 2000 个文件或 64 MB，请选择更小的文件夹。')
-        files.push(new File([file], path, { type: file.type, lastModified: file.lastModified }))
+        pending.push({ path, entry })
+        if (pending.length > MAX_FILES) throw new Error('每批最多 2000 个笔记和附件，请选择更小的文件夹。')
       } else skipped += 1
-      options.progress?.({ read: files.length, skipped })
+      update('scanning')
     }
   }
-  await walk(directory, directory.name)
-  const result = prepareNoteFolderFiles(files)
-  return { ...result, skipped }
+  update('scanning')
+  await scan(directory, directory.name)
+  update('reading')
+  for (const { path, entry } of pending) {
+    options.signal?.throwIfAborted()
+    const file = await entry.getFile()
+    options.signal?.throwIfAborted()
+    if (file.size > MAX_FILE_BYTES) throw new Error('单个笔记或附件最多 16 MB，请缩小文件后重试。')
+    if (bytes + file.size > MAX_TOTAL_BYTES) throw new Error('每批笔记和附件最多 64 MB，请选择更小的文件夹。')
+    bytes += file.size
+    files.push(new File([file], path, { type: file.type, lastModified: file.lastModified }))
+    update('reading')
+  }
+  return { ...prepareNoteFolderFiles(files), skipped }
 }
 
 export function noteDirectoryPicker(): ((options: { mode: 'read'; id: string }) => Promise<NoteDirectory>) | undefined {

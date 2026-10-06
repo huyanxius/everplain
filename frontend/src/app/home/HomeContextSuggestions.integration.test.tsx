@@ -19,7 +19,7 @@ const clients: QueryClient[] = []
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.unstubAllGlobals(); localStorage.clear(); sessionStorage.clear() })
 const summary = {
   status: 'ready', scope: 'conversation_messages', omitted_messages: 0, summary_sources: [], updated_at: '2026-10-05T00:00:00Z', summary: '你在两次对话里讨论了读书会展示的案例与时长。',
-  cards: [{ title: '把对照案例放进五分钟展示', description: '保留你选的案例，先核对展示的重点。', prompt: '继续讨论读书会的五分钟展示，核对对照案例能否说明核心观点。', sources: [
+  cards: [{ card_id: 'presentation-card', version: 'summary-version-1', title: '把对照案例放进五分钟展示', description: '保留你选的案例，先核对展示的重点。', sources: [
     { role: 'user', sequence: 0, conversation_id: 'case-discussion', message_id: 'case-1', title: '对照案例', quote: '我想保留那个对照案例。' },
     { role: 'user', sequence: 0, conversation_id: 'presentation', message_id: 'presentation-1', title: '展示准备', quote: '读书会展示只有五分钟。' },
   ] }],
@@ -50,8 +50,12 @@ it('uses one server-cached, content-specific result on Home and a new standard C
   expect(await screen.findByRole('region', { name: '接着聊' })).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '展开对话' }))
   expect(screen.getByRole('link', { name: '继续对话：旧对话' })).toHaveAttribute('href', '/agent?conversation_id=history')
+  fireEvent.change(screen.getByRole('textbox', { name: '问小叶' }), { target: { value: '保留首页补充。' } })
   fireEvent.click(within(homeCards).getByRole('button', { name: /把对照案例放进五分钟展示/ }))
-  expect(await screen.findByRole('textbox', { name: '问小叶' })).toHaveValue(summary.cards[0].prompt)
+  expect(await screen.findByRole('textbox', { name: '问小叶' })).toHaveValue('保留首页补充。')
+  const homeSelection = screen.getByRole('region', { name: '已选对话卡片' })
+  expect(homeSelection).toHaveTextContent(summary.cards[0].title)
+  expect(homeSelection).toHaveTextContent(summary.cards[0].description)
   expect(screen.getByTestId('location')).toHaveTextContent('/app')
   expect(reads).not.toContain('/api/agent/turns')
   fireEvent.click(screen.getByRole('link', { name: '全部对话' }))
@@ -59,8 +63,13 @@ it('uses one server-cached, content-specific result on Home and a new standard C
   const chatCards = await screen.findByRole('region', { name: '根据你最近的对话' })
   expect(chatCards.textContent).toBe(content)
   expect(reads.filter(path => path === '/api/agent/context-summary')).toHaveLength(1)
+  expect(screen.queryByRole('region', { name: '已选对话卡片' })).not.toBeInTheDocument()
+  fireEvent.change(screen.getByRole('textbox', { name: '问 Everplain' }), { target: { value: '保留新对话补充。' } })
   fireEvent.click(within(chatCards).getByRole('button', { name: /把对照案例放进五分钟展示/ }))
-  expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue(summary.cards[0].prompt)
+  expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('保留新对话补充。')
+  const chatSelection = screen.getByRole('region', { name: '已选对话卡片' })
+  expect(chatSelection).toHaveTextContent(summary.cards[0].title)
+  expect(chatSelection).toHaveTextContent(summary.cards[0].description)
   expect(reads).not.toContain('/api/agent/turns')
   expect(reads.filter(path => path === '/api/agent/context-summary')).toHaveLength(1)
 })

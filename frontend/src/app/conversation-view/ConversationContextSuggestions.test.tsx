@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getConversationContextSummary, type ConversationContextSummary } from '../../modules/research-agent'
+import { selectContextCard } from './contextCard'
 import { ConversationContextSuggestions } from './ConversationContextSuggestions'
 import { conversationContextSummaryKey } from './useConversationContextSummary'
 import { AppLocaleProvider } from '../i18n/AppLocaleProvider'
@@ -13,13 +14,13 @@ const empty: ConversationContextSummary = { status: 'empty', summary: '', cards:
 const ready: ConversationContextSummary = {
   status: 'ready', summary: '你最近在准备周五迁移，也聊到了读书会展示。', scope: 'conversation_messages', omitted_messages: 0, summary_sources: [], updated_at: '2026-10-05T00:00:00Z',
   cards: [{
-    title: '核对周五迁移的回退入口', description: '两次对话里提到分批上线和保留旧入口，可以一起核对。', prompt: '一起核对周五分批上线和旧入口的回退方案，先确认目前的安排。',
+    title: '核对周五迁移的回退入口', description: '两次对话里提到分批上线和保留旧入口，可以一起核对。', card_id: 'migration-card', version: 'v1',
     sources: [
       { role: 'user', sequence: 0, conversation_id: 'migration one', message_id: 'message-1', quote: '我希望周五分批上线。', title: '迁移安排' },
       { role: 'user', sequence: 0, conversation_id: 'migration/two', message_id: 'message-2', quote: '还想保留旧入口方便回退。', title: '回退讨论' },
     ],
   }, {
-    title: '把读书会例子放进展示', description: '你聊到展示篇幅有限，希望保留那个对照案例。', prompt: '帮我把读书会的对照案例放进五分钟展示，先核对原始信息。',
+    title: '把读书会例子放进展示', description: '你聊到展示篇幅有限，希望保留那个对照案例。', card_id: 'reading-card', version: 'v1',
     sources: [{ role: 'user', sequence: 0, conversation_id: 'reading', message_id: 'message-3', quote: '五分钟展示里保留那个对照案例。', title: '读书会展示' }],
   }],
 }
@@ -36,22 +37,22 @@ beforeEach(() => { vi.resetAllMocks(); vi.mocked(getConversationContextSummary).
 afterEach(() => { cleanup(); clients.splice(0).forEach(value => value.clear()); vi.useRealTimers(); localStorage.clear() })
 
 describe('shared cached conversation suggestions', () => {
-  it('shows content-specific cross-session evidence and only fills the selected draft', async () => {
+  it('shows content-specific cross-session evidence and only selects a visible card', async () => {
     const onSelect = vi.fn()
     const onSubmit = vi.fn()
     render(<form onSubmit={onSubmit}>{surface(client(), 'reader-1', onSelect)}</form>)
     const card = await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })
     expect(screen.getAllByRole('button')).toHaveLength(2)
     expect(screen.getByText(ready.summary)).toBeVisible()
-    expect(screen.getByText('可继续讨论的建议 · 点击填入草稿')).toBeVisible()
-    expect(screen.getByRole('link', { name: '来源：迁移安排' })).toHaveAttribute('href', '/agent?conversation_id=migration%20one')
-    expect(screen.getByRole('link', { name: '来源：回退讨论' })).toHaveAttribute('href', '/agent?conversation_id=migration%2Ftwo')
-    expect(screen.getByText('你的消息：还想保留旧入口方便回退。')).not.toBeVisible()
-    fireEvent.click(card.closest('article')!.querySelector('summary')!)
-    expect(screen.getByText('你的消息：还想保留旧入口方便回退。')).toBeVisible()
+    expect(screen.getByText('接着聊 · 选卡后发送')).toBeVisible()
+    expect(screen.getByText('还想保留旧入口方便回退。')).not.toBeVisible()
+    fireEvent.click(screen.getByLabelText('查看依据原文'))
+    expect(screen.getByRole('link', { name: '迁移安排' })).toHaveAttribute('href', '/agent?conversation_id=migration%20one')
+    expect(screen.getByRole('link', { name: '回退讨论' })).toHaveAttribute('href', '/agent?conversation_id=migration%2Ftwo')
+    expect(screen.getByText('还想保留旧入口方便回退。')).toBeVisible()
     expect(onSelect).not.toHaveBeenCalled()
     fireEvent.click(card)
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith(ready.cards[0].prompt)
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(selectContextCard(ready.cards[0]))
     expect(onSubmit).not.toHaveBeenCalled()
     expect(getConversationContextSummary).toHaveBeenCalledTimes(1)
   })
@@ -107,7 +108,7 @@ describe('shared cached conversation suggestions', () => {
     expect(view.container.querySelector('time')).toHaveTextContent(timestamp!)
     expect(screen.getByRole('status')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: /核对周五迁移的回退入口/ }))
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith(ready.cards[0].prompt)
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(selectContextCard(ready.cards[0]))
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
@@ -156,7 +157,7 @@ describe('shared cached conversation suggestions', () => {
     expect(await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })).toBeVisible()
     expect(screen.getByText(ready.summary)).toBeVisible()
     expect(screen.getByText('Usage is still being confirmed.')).toBeVisible()
-    expect(screen.getByText(/Data updated:/)).toBeVisible()
+    expect(screen.getByText(/^Updated$/)).toBeVisible()
     expect(document.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
     expect(screen.queryByText(/Showing the last prepared suggestions/)).not.toBeInTheDocument()
   })
@@ -165,14 +166,45 @@ describe('shared cached conversation suggestions', () => {
     const assistant = { sequence: 1, role: 'assistant' as const, conversation_id: 'assistant-history', message_id: 'assistant-1', title: '迁移助手答复', quote: '可以考虑保留一个旧入口。' }
     vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, omitted_messages: 2, summary_sources: [assistant], cards: [{ ...ready.cards[0], sources: [assistant] }] })
     render(surface(client(), 'reader-1'))
-    const summarySources = await screen.findByRole('list', { name: '近况依据' })
-    expect(within(summarySources).getByText('助手回答（需核实）')).toBeVisible()
-    expect(screen.getByRole('list', { name: '建议依据' })).toHaveTextContent('助手回答（需核实）')
-    const summaryEvidence = summarySources.closest('.cv-context-suggestions__evidence')!
-    fireEvent.click(summaryEvidence.querySelector('summary')!)
-    expect(within(summaryEvidence as HTMLElement).getByText('助手回答（需核实）：可以考虑保留一个旧入口。')).toBeVisible()
-    expect(screen.queryByText('你的消息：可以考虑保留一个旧入口。')).not.toBeInTheDocument()
+    const disclosure = await screen.findByLabelText('查看依据原文')
+    expect(document.querySelectorAll('details')).toHaveLength(1)
+    expect(disclosure).toHaveTextContent('1')
+    expect(screen.getByText(assistant.quote)).not.toBeVisible()
+    fireEvent.click(disclosure)
+    const sources = screen.getByRole('list', { name: '对话依据' })
+    expect(within(sources).getByText('助手回答（需核实）')).toBeVisible()
+    expect(within(sources).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(sources).getByText(assistant.quote)).toBeVisible()
+    expect(within(sources).getByText(`用于：近况摘要 · 建议：${ready.cards[0].title}`)).toBeVisible()
+    expect(within(sources).queryByText('你的消息')).not.toBeInTheDocument()
     expect(screen.getByText('这里只依据部分近期消息整理，另有 2 条消息未纳入。')).toBeVisible()
+  })
+
+  it('retains distinct source excerpts and uses one native keyboard-operable disclosure', async () => {
+    const original = ready.cards[0].sources[0]
+    vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, summary_sources: [original, { ...original, quote: '先确认回退时间。' }], cards: [ready.cards[0]] })
+    const onSelect = vi.fn()
+    render(surface(client(), 'reader-1', onSelect))
+    const disclosure = await screen.findByLabelText('查看依据原文')
+    expect(disclosure.tagName).toBe('SUMMARY')
+    expect(disclosure.parentElement?.tagName).toBe('DETAILS')
+    expect(disclosure).not.toHaveAttribute('tabindex', '-1')
+    expect(disclosure).toHaveTextContent('3')
+    expect(screen.getByText('先确认回退时间。')).not.toBeVisible()
+    fireEvent.click(disclosure)
+    expect(screen.getByText('先确认回退时间。')).toBeVisible()
+    expect(screen.getByText(original.quote)).toBeVisible()
+    fireEvent.click(disclosure)
+    expect(screen.getByText('先确认回退时间。')).not.toBeVisible()
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(document.querySelectorAll('.cv-context-suggestions__item')).toHaveLength(1)
+  })
+
+  it('does not show a source control when there is no evidence', async () => {
+    vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards: ready.cards.map(card => ({ ...card, sources: [] })) })
+    render(surface(client(), 'reader-1'))
+    await screen.findByText(ready.summary)
+    expect(screen.queryByLabelText('查看依据原文')).not.toBeInTheDocument()
   })
 
   it('shares identical cards between two surfaces and a remount for 60 seconds', async () => {
@@ -198,7 +230,7 @@ describe('shared cached conversation suggestions', () => {
     await screen.findByText(ready.summary)
     view.rerender(surface(queryClient, 'reader-2'))
     expect(screen.queryByText(ready.summary)).not.toBeInTheDocument()
-    expect(screen.queryByText('你的消息：我希望周五分批上线。')).not.toBeInTheDocument()
+    expect(screen.queryByText('我希望周五分批上线。')).not.toBeInTheDocument()
     await act(async () => { resolveSecond(empty) })
     await screen.findByText('最近的对话还没有足够内容形成建议。')
     view.rerender(surface(queryClient, null))
@@ -350,4 +382,18 @@ describe('shared cached conversation suggestions', () => {
     expect(getConversationContextSummary).toHaveBeenCalledTimes(3)
     expect(screen.queryByText(/保留上次整理的建议/)).not.toBeInTheDocument()
   })
+})
+
+it('fails closed on a legacy cached card without opaque selection metadata', async () => {
+  const { card_id: _id, version: _version, ...oldCard } = ready.cards[0]
+  vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards: [{ ...oldCard, prompt: 'INTERNAL_PROMPT sequence=42 message-id' }] } as never)
+  const onSelect = vi.fn()
+  render(surface(client(), 'reader-1', onSelect))
+  const card = await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })
+  expect(card).toBeDisabled()
+  fireEvent.click(card)
+  expect(onSelect).not.toHaveBeenCalled()
+  expect(screen.getByText('这些建议需要刷新后才能发送。')).toBeVisible()
+  expect(screen.getByRole('button', { name: '刷新建议' })).toBeEnabled()
+  expect(document.body.textContent).not.toMatch(/INTERNAL_PROMPT|sequence=42|message-id/)
 })

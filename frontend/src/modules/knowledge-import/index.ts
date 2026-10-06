@@ -2,3 +2,4 @@ export { readImportBatches, importFiles, retryImport, importBilibili } from './k
 export type { ImportBatch, ImportSourceType } from './knowledgeImport'
 export { isNoteFolderPath, isNoteFolderFile, prepareNoteFolderFiles, readNoteDirectory, noteDirectoryPicker } from './noteFolder'
 export type { NoteDirectory, NoteFolderFiles, NoteFolderProgress } from './noteFolder'
+export type { ImportUploadOptions } from './importOptions'

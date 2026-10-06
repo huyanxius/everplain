@@ -1,13 +1,15 @@
 import { Link } from 'react-router'
-import type { ConversationContextSource } from '../../modules/research-agent'
+import { selectContextCard, type SelectedContextCard } from './contextCard'
+import type { ConversationContextSource, ConversationContextSummary } from '../../modules/research-agent'
 import { useAppLocale } from '../i18n/AppLocaleProvider'
 import { useConversationContextSummary } from './useConversationContextSummary'
 
-export function ConversationContextSuggestions({ userId, onSelect }: { userId: string | null; onSelect: (prompt: string) => void }) {
+export function ConversationContextSuggestions({ userId, onSelect }: { userId: string | null; onSelect: (card: SelectedContextCard) => void }) {
   const query = useConversationContextSummary(userId)
   const { text, locale } = useAppLocale()
   if (!userId) return null
   const data = query.data
+  const needsRefresh = Boolean(data?.cards.some(card => !selectContextCard(card)))
   const failed = query.isError || data?.status === 'failed'
   const pending = query.isPending || data?.status === 'pending'
   const hasContent = Boolean(data?.summary.trim() || data?.cards.length)
@@ -33,44 +35,59 @@ export function ConversationContextSuggestions({ userId, onSelect }: { userId: s
     : !hasContent && data?.status === 'empty' ? text('最近的对话还没有足够内容形成建议。', 'There is not enough recent conversation content for suggestions yet.')
     : !data?.cards.length ? text('暂时没有可继续讨论的建议。', 'There are no suggested continuations right now.') : null
   return <section className="cv-suggestions cv-context-suggestions" aria-label={label}>
-    <p className="cv-suggestions__label qx-meta">{label}</p>
-    {hasContent && (updatedTime || stale) && <p className="cv-context-suggestions__hint qx-meta">
-      {updatedTime && <>{text('数据更新时间：', 'Data updated: ')}<time dateTime={data!.updated_at!} title={data!.updated_at!}>{updatedTime}</time></>}
-      {stale && <span>{updatedTime && ' · '}{text('保留上次整理的建议', 'Showing the last prepared suggestions')}</span>}
-    </p>}
-    {data?.summary && <div className="cv-context-suggestions__summary">
-      <p className="qx-meta">{data.summary}</p>
-      {data.summary_sources.length > 0 && <ContextSources sources={data.summary_sources} label={text('近况依据', 'Summary sources')} />}
-    </div>}
-    {Boolean(data?.omitted_messages) && <p className="cv-context-suggestions__hint qx-meta">{text(`这里只依据部分近期消息整理，另有 ${data!.omitted_messages} 条消息未纳入。`, `This uses part of your recent conversations; ${data!.omitted_messages} messages were omitted.`)}</p>}
-    {Boolean(data?.cards.length) && <>
-      <p className="cv-context-suggestions__hint qx-meta">{text('可继续讨论的建议 · 点击填入草稿', 'Suggested continuations · Click to fill your draft')}</p>
+    <header className="cv-context-suggestions__header">
+      <h2 className="cv-context-suggestions__label">{label}</h2>
+      {hasContent && updatedTime && <p className="cv-context-suggestions__updated qx-meta">
+        {text('更新于 ', 'Updated ')}<time dateTime={data!.updated_at!} title={data!.updated_at!}>{updatedTime}</time>
+      </p>}
+    </header>
+    {data?.summary && <p className="cv-context-suggestions__summary">{data.summary}</p>}
+    {Boolean(data?.cards.length) && <div className="cv-context-suggestions__continuations">
+      <p className="cv-context-suggestions__hint qx-meta">{text('接着聊 · 选卡后发送', 'Continue the conversation · Select a card, then send')}</p>
       <div className="cv-suggestions__cards">{data?.cards.map((card, index) => <article className="cv-context-suggestions__item" key={`${index}:${card.title}`}>
-        <button className="qx-btn qx-btn--ghost cv-suggestions__card" type="button" onClick={() => onSelect(card.prompt)}><strong>{card.title}</strong><span>{card.description}</span></button>
-        <ContextSources sources={card.sources} label={text('建议依据', 'Suggestion sources')} />
+        <button className="qx-btn qx-btn--ghost cv-suggestions__card" type="button" disabled={!selectContextCard(card)} onClick={() => { const selection = selectContextCard(card); if (selection) onSelect(selection) }}><strong>{card.title}</strong><span>{card.description}</span></button>
       </article>)}</div>
-    </>}
-    {data?.usage_status === 'pending' && <p className="cv-context-suggestions__hint qx-meta">{text('用量尚待确认。', 'Usage is still being confirmed.')}</p>}
-    {message && <div className="cv-context-suggestions__state" role={failed && !hasContent ? 'alert' : 'status'}>
-      <p className="qx-meta">{message}</p>
-      {failed && <button className="qx-btn qx-btn--ghost" type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>{text('重新读取建议', 'Reload suggestions')}</button>}
+    </div>}
+    {needsRefresh && <div role="status" className="cv-context-suggestions__state"><p className="qx-meta">{text('这些建议需要刷新后才能发送。', 'Reload these suggestions before sending.')}</p><button type="button" className="qx-btn qx-btn--ghost" disabled={query.isFetching} onClick={() => void query.refetch()}>{text('刷新建议', 'Reload suggestions')}</button></div>}
+    {data && <ContextSources data={data} />}
+    {(stale || Boolean(data?.omitted_messages) || data?.usage_status === 'pending' || message) && <div className="cv-context-suggestions__status">
+      {stale && <p className="cv-context-suggestions__hint qx-meta">{text('保留上次整理的建议', 'Showing the last prepared suggestions')}</p>}
+      {Boolean(data?.omitted_messages) && <p className="cv-context-suggestions__hint qx-meta">{text(`这里只依据部分近期消息整理，另有 ${data!.omitted_messages} 条消息未纳入。`, `This uses part of your recent conversations; ${data!.omitted_messages} messages were omitted.`)}</p>}
+      {data?.usage_status === 'pending' && <p className="cv-context-suggestions__hint qx-meta">{text('用量尚待确认。', 'Usage is still being confirmed.')}</p>}
+      {message && <div className="cv-context-suggestions__state" role={failed && !hasContent ? 'alert' : 'status'}>
+        <p className="qx-meta">{message}</p>
+        {failed && <button className="qx-btn qx-btn--ghost" type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>{text('重新读取建议', 'Reload suggestions')}</button>}
+      </div>}
     </div>}
   </section>
 }
 
-function ContextSources({ sources, label }: { sources: ConversationContextSource[]; label: string }) {
+function ContextSources({ data }: { data: ConversationContextSummary }) {
   const { text } = useAppLocale()
+  // Share identical excerpts once, without losing which summary/card they support.
+  // Different excerpts from the same message are intentionally retained.
+  const evidence = new Map<string, { source: ConversationContextSource; supports: Set<string> }>()
+  const add = (sources: ConversationContextSource[], support: string) => sources.forEach(source => {
+    const key = JSON.stringify([source.conversation_id, source.message_id, source.role, source.quote])
+    const existing = evidence.get(key)
+    if (existing) existing.supports.add(support)
+    else evidence.set(key, { source, supports: new Set([support]) })
+  })
+  add(data.summary_sources, text('近况摘要', 'Recent context'))
+  data.cards.forEach(card => add(card.sources, text(`建议：${card.title}`, `Suggestion: ${card.title}`)))
+  if (!evidence.size) return null
   const roleLabel = (source: ConversationContextSource) => source.role === 'assistant' ? text('助手回答（需核实）', 'Assistant response (unverified)') : text('你的消息', 'Your message')
-  return <div className="cv-context-suggestions__evidence">
-    <ul className="cv-context-suggestions__sources" aria-label={label}>{sources.map(source => <li key={`${source.conversation_id}:${source.message_id}`} data-source-role={source.role}>
-      <Link to={`/agent?conversation_id=${encodeURIComponent(source.conversation_id)}`}>{text('来源：', 'Source: ')}{source.title}</Link>
-      <span>{roleLabel(source)}</span>
+  return <details className="cv-context-suggestions__evidence">
+    <summary className="cv-context-suggestions__source-toggle" aria-label={text('查看依据原文', 'View source quotes')}>
+      {text('查看依据原文', 'View source quotes')}<span className="cv-context-suggestions__source-count">{evidence.size}</span>
+    </summary>
+    <ul className="cv-context-suggestions__sources" aria-label={text('对话依据', 'Conversation sources')}>{[...evidence].map(([key, { source, supports }]) => <li key={key} data-source-role={source.role}>
+      <div className="cv-context-suggestions__source-meta">
+        <Link to={`/agent?conversation_id=${encodeURIComponent(source.conversation_id)}`}>{source.title}</Link>
+        <span>{roleLabel(source)}</span>
+      </div>
+      <p className="cv-context-suggestions__quote">{source.quote}</p>
+      <p className="cv-context-suggestions__supports">{text('用于：', 'Supports: ')}{[...supports].join(' · ')}</p>
     </li>)}</ul>
-    <details className="cv-context-suggestions__quotes">
-      <summary aria-label={`${label}：${text('查看依据原文', 'View source quotes')}`}>{text('查看依据原文', 'View source quotes')}</summary>
-      <ul aria-label={`${label}${text('原文', ' quotes')}`}>{sources.map(source => <li key={`${source.conversation_id}:${source.message_id}`}>
-        <span>{roleLabel(source)}{text('：', ': ')}{source.quote}</span>
-      </li>)}</ul>
-    </details>
-  </div>
+  </details>
 }

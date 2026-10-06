@@ -58,10 +58,12 @@ from qunxue_api.modules.agent_conversation import (
     AgentToolEvent,
     AgentWritingPreviewEvent,
     CanvasEditConflict,
+    ContextSuggestionUnavailable,
     ConversationNotFound,
     ConversationTaskBindingConflict,
     ResearchMaterialCitationUnavailable,
     RunAlreadyActive,
+    display_card,
     resolve_agent_model_selection,
 )
 from qunxue_api.modules.billing import BillingFailure, CreditRunInProgress, CreditsDepleted
@@ -468,6 +470,7 @@ def repair_agent_knowledge_index(
     operation_id="stream_agent_turn",
     response_class=StreamingResponse,
     responses={
+        409: {"model": ErrorResponse},
         200: {
             "description": "Server-sent Agent events",
             "content": {"text/event-stream": {"schema": {"type": "string"}}},
@@ -479,7 +482,7 @@ def stream_agent_turn(
     request: Request,
     current: CurrentSessionDependency,
     idempotency_key: IdempotencyKey,
-) -> StreamingResponse:
+) -> Response:
     try:
         resolve_agent_model_selection(
             payload.model_id, payload.reasoning_effort,
@@ -508,6 +511,24 @@ def stream_agent_turn(
             replay_completed=existing.status == "completed", snapshot_first=True,
         )
 
+    if payload.context_suggestion is not None or (
+        existing is not None and existing.request_snapshot.get("context_suggestion")
+    ):
+        with request.app.state.disciplinary_agent_scope() as app:
+            try:
+                app.resolve_context_suggestion(
+                    user_id=user_id,
+                    selection=(payload.context_suggestion.model_dump()
+                               if payload.context_suggestion else None),
+                    existing_run=existing,
+                )
+            except ContextSuggestionUnavailable:
+                body = ErrorResponse(error=ErrorDetail(
+                    code=ErrorCode.CONFLICT,
+                    message="这张背景卡已更新或来源不可访问，请重新选择。",
+                    trace_id=str(uuid4()),
+                ))
+                return JSONResponse(status_code=409, content=body.model_dump(mode="json"))
     after = existing.last_event_sequence if existing is not None else 0
     ready = threading.Event()
     finished = threading.Event()
@@ -599,6 +620,8 @@ def stream_agent_turn(
                 execution = app.run_turn(
                     user_id=user_id, conversation_id=payload.conversation_id,
                     prompt=payload.message, idempotency_key=idempotency_key,
+                    context_suggestion=(payload.context_suggestion.model_dump()
+                                        if payload.context_suggestion else None),
                     workspace=payload.workspace, model_id=payload.model_id,
                     reasoning_effort=payload.reasoning_effort, web_search=payload.web_search,
                     task_id=payload.task_id, document_id=payload.document_id,
@@ -705,6 +728,9 @@ _TERMINAL_EVENT_NAMES = frozenset({"turn_completed", "turn_failed", "turn_interr
 
 
 def _agent_failure(error: Exception) -> tuple[str, dict[str, object]]:
+    if isinstance(error, ContextSuggestionUnavailable):
+        return "turn_failed", {"code": error.code,
+                               "message": "这张背景卡已更新或来源不可访问，请重新选择。"}
     if isinstance(error, AgentOutputStorageFailure):
         return "turn_failed", {
             "code": error.code,
@@ -910,6 +936,7 @@ def _run_snapshot(run) -> dict[str, object]:
         "run_id": str(run.run_id), "conversation_id": str(run.conversation_id),
         "attempt_id": run.lease_token, "status": run.status,
         "partial_answer": run.partial_answer, "last_event_sequence": run.last_event_sequence,
+        "context_card": display_card(run.request_snapshot.get("_display_card")),
         "delivery_state": run.delivery_state,
         "writing_previews": list(run.writing_previews),
         "output_attempts": [_output_attempt(item).model_dump(mode="json")
@@ -989,6 +1016,7 @@ def lookup_agent_run(
         last_event_sequence=run.last_event_sequence,
         writing_previews=list(run.writing_previews),
         request=original_request,
+        context_card=display_card(run.request_snapshot.get("_display_card")),
         updated_at=run.updated_at,
         turn_id=run.turn_id,
     )
@@ -1086,6 +1114,7 @@ def _conversation(
                     key: value for key, value in run.request_snapshot.items()
                     if key in AgentTurnRequest.model_fields
                 }),
+                context_card=display_card(run.request_snapshot.get("_display_card")),
                 partial_answer=run.partial_answer,
                 output_attempts=[_output_attempt(item) for item in run.output_attempts],
                 delivery_state=run.delivery_state,
@@ -1112,6 +1141,7 @@ def _message(item) -> AgentMessageResponse:
         message_id=item.message_id,
         role=item.role,
         content=item.content,
+        context_card=item.context_card,
         sequence=item.sequence,
         created_at=item.created_at,
         citations=[

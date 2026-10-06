@@ -107,7 +107,6 @@ def test_current_48000_old_reservation_still_allows_actual_sdk_three_cards(
             "summary_sources": refs,
             "cards": [{"title": s["content"],
                        "description": f"你具体提到：{s['content']}，可以一起继续讨论。",
-                       "prompt": f"请先回读原对话，再讨论{s['content']}。",
                        "sources": [ref]} for s, ref in zip(sources, refs, strict=True)],
         }
         wire["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"] = json.dumps(

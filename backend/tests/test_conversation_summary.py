@@ -36,7 +36,6 @@ def output(batch):
                 {
                     "title": "杭州两日行程的交通取舍",
                     "description": "你希望周末去杭州，交通预算上限为五百元。",
-                    "prompt": "按五百元交通预算比较杭州两日行程的交通安排。",
                     "sources": refs,
                 }
             ],
@@ -73,7 +72,8 @@ def test_multiple_conversation_source_snapshot_cached_once_and_injected(plain_cl
     assert body["cards"][0]["sources"][0]["quote"] in next(
         s["content"] for s in calls[0].sources if s["role"] == "user"
     )
-    assert body["cards"][0]["prompt"].count("参考原对话") == 1
+    assert "prompt" not in body["cards"][0]
+    assert body["cards"][0]["card_id"] and body["cards"][0]["version"]
     assert "Model-generated recent conversation activity" in tools(plain_client, owner).context
     assert body["summary"] in tools(plain_client, owner).context
     assert not worker(plain_client).run_once(generate=generate)
@@ -428,7 +428,7 @@ def test_late_assistant_source_preserves_exact_read_sequence(plain_client):
     body = plain_client.get("/api/agent/context-summary").json()
     source = body["cards"][0]["sources"][0]
     assert source["sequence"] == 59 and source["role"] == "assistant"
-    assert "sequence=59" in body["cards"][0]["prompt"]
+    assert "prompt" not in body["cards"][0]
     recall = tools(plain_client, owner)
     assert '"sequence": 59' in recall.context
     page = recall.read(str(conversation.conversation_id), sequence=source["sequence"])

@@ -362,6 +362,7 @@ async function startAgentTurn(
       ...(payload.reasoning_effort === undefined ? {} : { reasoning_effort: payload.reasoning_effort }),
       conversation_id: payload.conversation_id,
       message: payload.message,
+      ...(payload.context_suggestion ? { context_suggestion: { card_id: payload.context_suggestion.card_id, version: payload.context_suggestion.version } } : {}),
       mode: payload.mode ?? 'standard',
       workspace: payload.workspace ?? 'agent',
       web_search: payload.web_search ?? false,
@@ -414,6 +415,14 @@ function deliverEvent(event: AgentEvent, state: StreamState, onEvent: (event: Ag
 async function consumeAgentResponse(response: Response, state: StreamState, onEvent: (event: AgentEvent) => void) {
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) throw new Error('登录状态已失效，请重新登录后继续研究。')
+    if (response.status === 409) {
+      const failure = await response.json().catch(() => null) as { error?: { message?: unknown }; detail?: unknown } | null
+      const message = typeof failure?.error?.message === 'string' ? failure.error.message
+        : typeof failure?.detail === 'string' ? failure.detail : '当前请求已失效，请刷新后重试。'
+      // A definite rejection is not an uncertain transport failure. Never look
+      // up/reconnect a run that the server has explicitly refused to start.
+      throw Object.assign(new Error(message), { status: 409 })
+    }
     if (response.status === 422) {
       const failure = await response.json().catch(() => null) as { detail?: unknown } | null
       throw new Error(typeof failure?.detail === 'string' ? failure.detail : '问题长度或格式不符合要求，请修改后重试。')
@@ -566,7 +575,7 @@ function isConversationContextSummary(value: unknown): value is ConversationCont
     && Array.isArray(data.cards) && data.cards.length <= 3
     && data.cards.every(card => {
       if (!card || typeof card !== 'object') return false
-      return [card.title, card.description, card.prompt].every(text => typeof text === 'string' && Boolean(text.trim()))
+      return [card.card_id, card.version, card.title, card.description].every(text => typeof text === 'string' && Boolean(text.trim()))
         && validSources(card.sources) && card.sources.length > 0
     })
 }

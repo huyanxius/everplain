@@ -50,7 +50,10 @@ export type AgentResearchMap = {
   relations: AgentResearchMapRelation[]
 }
 
+export type AgentContextCard = { title: string; description: string }
+
 export type AgentMessage = {
+  context_card?: AgentContextCard | null
   message_id: string
   role: 'user' | 'assistant'
   content: string
@@ -119,6 +122,7 @@ export type AgentModelCatalog = {
 }
 
 export type AgentTurnRequest = {
+  context_suggestion?: { card_id: string; version: string } | null
   knowledge_index_action?: 'skip_missing' | null
   model_id?: string | null
   reasoning_effort?: AgentReasoningEffort | null
@@ -143,6 +147,7 @@ export type AgentTurnRequest = {
 type AgentUnfinishedRunStatus = 'running' | 'failed' | 'interrupted' | 'awaiting_clarification' | 'awaiting_plan_confirmation'
 
 export type AgentRunRecovery = {
+  context_card?: AgentContextCard | null
   run_id: string
   idempotency_key: string
   status: AgentUnfinishedRunStatus
@@ -185,6 +190,7 @@ export type AgentToolStep = {
 export type AgentStreamResume = { runId: string; after: number }
 
 export type AgentRunLookup = AgentRunStopResult & {
+  context_card?: AgentContextCard | null
   output_persistence_failed?: boolean
   writing_previews?: import('./writingPreview').WritingPreviewEvent[]
   conversation_id: string
@@ -259,9 +265,10 @@ export type ConversationContextSource = {
   title: string
 }
 export type ConversationContextSuggestion = {
+  card_id: string
+  version: string
   title: string
   description: string
-  prompt: string
   sources: ConversationContextSource[]
 }
 export type ConversationContextSummary = {

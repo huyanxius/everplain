@@ -20,7 +20,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks() })
 it('immediately clears mounted ready cards after a successful memory disable, before the next server response', async () => {
   const empty = { summary: '', cards: [], summary_sources: [], updated_at: null, scope: 'conversation_messages' as const, omitted_messages: 0 }
   let finishRead!: (value: typeof empty & { status: 'disabled' }) => void
-  vi.mocked(getConversationContextSummary).mockResolvedValueOnce({ ...empty, status: 'ready', cards: [{ title: '核对杭州交通预算', description: '你在两次对话提到交通预算和行程。', prompt: '按五百元比较杭州交通。', sources: [{ role: 'user', sequence: 0, conversation_id: 'source', message_id: 'message', title: '杭州安排', quote: '预算五百元。' }] }] })
+  vi.mocked(getConversationContextSummary).mockResolvedValueOnce({ ...empty, status: 'ready', cards: [{ title: '核对杭州交通预算', description: '你在两次对话提到交通预算和行程。', card_id: 'transport-card', version: 'v1', sources: [{ role: 'user', sequence: 0, conversation_id: 'source', message_id: 'message', title: '杭州安排', quote: '预算五百元。' }] }] })
     .mockImplementationOnce(() => new Promise(resolve => { finishRead = resolve }))
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const onSelect = vi.fn()

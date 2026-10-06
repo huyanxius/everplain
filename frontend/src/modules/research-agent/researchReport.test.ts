@@ -206,3 +206,19 @@ describe('research report print page', () => {
     expect(html).toContain('&lt;script&gt;')
   })
 })
+
+
+it('exports a card turn from its public message and preserves authored text without selection metadata', () => {
+  const card = { title: '核对迁移安排', description: '整理停机窗口与回退方案。' }
+  const authored = '我手写的 sequence=42 和 UUID 应原样保留。'
+  const message = `${card.title}\n${card.description}\n\n${authored}`
+  const source = { ...conversation, title: card.title, turns: [{ ...conversation.turns[0], user: { ...conversation.turns[0].user, content: message, context_card: card }, assistant: { ...conversation.turns[0].assistant, citations: [] } }] }
+  const report = buildResearchReport({ conversation: source })
+  expect(report.title).toBe(card.title)
+  expect(report.sections[0].question).toBe(message)
+  expect(JSON.stringify(report)).not.toMatch(/context_suggestion|card_id|version|prompt/)
+  const html = buildResearchReportHtml(report)
+  expect(html).toContain(card.title)
+  expect(html).toContain(card.description)
+  expect(html).toContain(authored)
+})

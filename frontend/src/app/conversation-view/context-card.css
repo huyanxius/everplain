@@ -1,0 +1,5 @@
+.cv-context-card { display: flex; align-items: start; gap: var(--qx-space-3); min-width: 0; max-width: 100%; padding: var(--qx-space-4); border-radius: var(--qx-radius-card); background: var(--qx-color-surface); box-shadow: var(--qx-shadow-ring); text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cv-context-card__content { display: grid; gap: var(--qx-space-2); min-width: 0; flex: 1; }
+.cv-context-card strong { color: var(--qx-color-ink); font-size: var(--qx-text-body); font-weight: 500; line-height: var(--qx-text-body--line-height); }
+.cv-context-card p { margin: 0; color: var(--qx-color-muted); font-size: var(--qx-text-meta); line-height: var(--qx-text-meta--line-height); }
+.cv-turn__question-content { display: grid; min-width: 0; max-width: 100%; justify-items: end; gap: var(--qx-space-3); }

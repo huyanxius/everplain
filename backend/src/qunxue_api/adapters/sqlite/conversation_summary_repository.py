@@ -11,7 +11,11 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import aliased
 
-from qunxue_api.modules.agent_conversation import ContextSummaryBatch
+from qunxue_api.modules.agent_conversation import (
+    ContextSuggestionUnavailable,
+    ContextSummaryBatch,
+    display_card,
+)
 from qunxue_api.modules.agent_memory import redact_sensitive
 
 from .agent_conversation_model import AgentConversationRow, AgentMessageRow, AgentRunRow
@@ -41,6 +45,12 @@ _GENERIC_TITLES = {
     "Compare options",
     "Put an idea into words",
 }
+
+
+def _digest(value):
+    return hashlib.sha256(json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode()).hexdigest()
 
 
 class SqliteConversationSummaryRepository:
@@ -400,24 +410,51 @@ class SqliteConversationSummaryRepository:
             refs = references(card.get("sources", []))
             title = text(card.get("title"), 80)
             description = text(card.get("description"), 240)
-            prompt = text(card.get("prompt", "").split("\n参考原对话 ")[0], 1050)
+            visible = display_card({"title": title, "description": description})
             if (
                 refs
                 and title
                 and title not in _GENERIC_TITLES
                 and len(description) >= 12
-                and prompt
+                and visible
                 and all(c["title"] != title for c in cards)
             ):
-                # Retrieval pointers are added server-side, never trusted to model compliance.
-                pointer = "; ".join(
-                    sorted({f"{r['conversation_id']} sequence={r['sequence']}" for r in refs})
-                )
-                prompt += f"\n参考原对话 {pointer}；先回读原文确认背景，再继续。"
-                cards.append(
-                    {"title": title, "description": description, "prompt": prompt, "sources": refs}
-                )
+                # The identifier is only an owner-scoped lookup key, never authority.
+                # Bind the version to the complete current source text, not just quotes.
+                identity = [title, sorted({(r["conversation_id"], r["message_id"]) for r in refs})]
+                public = {"title": title, "description": description, "sources": refs}
+                hashes = sorted({
+                    (r["conversation_id"], r["message_id"], hashlib.sha256(
+                        lookup[r["conversation_id"], r["message_id"]]["content"].encode()
+                    ).hexdigest()) for r in refs
+                })
+                cards.append({
+                    "card_id": _digest(identity), "version": _digest([public, hashes]), **public,
+                })
         return {"summary": summary, "summary_sources": citations if summary else [], "cards": cards}
+
+    def resolve_suggestion(self, *, user_id, selection, verified_snapshot=None):
+        """Re-read owner-scoped sources; retries do not depend on the latest cache."""
+        if not self.enabled or not isinstance(selection, dict):
+            raise ContextSuggestionUnavailable()
+        if verified_snapshot is None:
+            candidates = self.read(user_id)["cards"]
+        else:
+            candidates = self.validate(
+                {"cards": [verified_snapshot]},
+                self._cached_sources(user_id, {"cards": [verified_snapshot]}),
+            )["cards"]
+        card = next((item for item in candidates
+                     if item["card_id"] == selection.get("card_id")
+                     and item["version"] == selection.get("version")), None)
+        if card is None:
+            raise ContextSuggestionUnavailable()
+        sources = self._cached_sources(user_id, {"cards": [card]})
+        # Revalidation also closes a change between the cache read and source load.
+        checked = self.validate({"cards": [card]}, sources)["cards"]
+        if len(checked) != 1 or checked[0]["version"] != card["version"]:
+            raise ContextSuggestionUnavailable()
+        return card, {"card": display_card(card), "sources": list(sources)}
 
     def claim(self, *, idle_seconds, daily_calls, daily_tokens, reservation_estimator=None):
         if not self.enabled:

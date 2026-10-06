@@ -1283,6 +1283,9 @@ def create_app(
                         app.state.knowledge_retriever,
                     ),
                     persona_factory=current_persona,
+                    context_suggestions=SqliteConversationSummaryRepository(
+                        session, enabled=resolved_settings.conversation_summary_enabled,
+                    ),
                     memory_tools_factory=lambda **scope: AgentMemoryTools(
                         memory_service_scope, conversation_scope=conversation_context_scope, **scope
                     ),

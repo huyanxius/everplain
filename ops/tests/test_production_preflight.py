@@ -214,6 +214,38 @@ class UploadInspectionTests(unittest.TestCase):
                 self.assertTrue(all(type(value) is bool for value in result.values()))
                 self.assertNotIn("192.0.2", json.dumps(result))
 
+    def test_named_upstream_comparison_rejects_duplicate_unknown_or_mixed_targets(self):
+        named = "upstream everplain_api_backend { server 192.0.2.2:8297; }"
+        cases = (
+            (named, True),
+            (named * 2, False),
+            (named.replace("everplain_api_backend", "other_backend"), False),
+            (named + "proxy_pass http://192.0.2.2:8297;", False),
+            (named + "upstream other { server 192.0.2.3:8297; }", False),
+        )
+        with tempfile.TemporaryDirectory() as d:
+            config = Path(d) / "everplain-nginx.conf"
+            for content, found in cases:
+                config.write_text(content)
+                for address in ("192.0.2.2", "192.0.2.3"):
+                    values = [json.dumps({"bridge": {"IPAddress": address}}), json.dumps([
+                        {"Destination": "/etc/nginx/conf.d/default.conf", "Source": str(config)},
+                    ])]
+                    with (
+                        patch.object(inspection, "read_command", side_effect=values),
+                        patch.object(inspection.urllib.request, "build_opener") as opener,
+                    ):
+                        response = opener.return_value.open.return_value.__enter__.return_value
+                        response.status = 200
+                        response.read.return_value = b'{"status":"ok"}'
+                        result = inspection.inspect_upstream()
+                    self.assertEqual(result["web_api_upstream_found"], found)
+                    self.assertEqual(result["web_api_upstream_matches"],
+                                     found and address == "192.0.2.2")
+                    self.assertTrue(all(type(value) is bool for value in result.values()))
+                    self.assertNotIn("192.0.2", json.dumps(result))
+                    self.assertEqual(config.read_text(), content)
+
     def test_release_diagnostic_checks_budget_images_and_file_without_reading_env(self):
         with tempfile.TemporaryDirectory() as d:
             base = Path(d)

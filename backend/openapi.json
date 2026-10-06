@@ -793,6 +793,47 @@
         "title": "AgentCitationResponse",
         "type": "object"
       },
+      "AgentContextCardResponse": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "description"
+        ],
+        "title": "AgentContextCardResponse",
+        "type": "object"
+      },
+      "AgentContextSuggestionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "card_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Card Id",
+            "type": "string"
+          },
+          "version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "card_id",
+          "version"
+        ],
+        "title": "AgentContextSuggestionRequest",
+        "type": "object"
+      },
       "AgentConversationListResponse": {
         "properties": {
           "items": {
@@ -1028,6 +1069,16 @@
           "content": {
             "title": "Content",
             "type": "string"
+          },
+          "context_card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentContextCardResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "format": "date-time",
@@ -1632,6 +1683,16 @@
             "title": "Cancel Requested",
             "type": "boolean"
           },
+          "context_card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentContextCardResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "conversation_id": {
             "format": "uuid",
             "title": "Conversation Id",
@@ -1734,6 +1795,16 @@
           "cancel_requested": {
             "title": "Cancel Requested",
             "type": "boolean"
+          },
+          "context_card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentContextCardResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "delivery_state": {
             "additionalProperties": true,
@@ -1911,6 +1982,16 @@
       "AgentTurnRequest": {
         "additionalProperties": false,
         "properties": {
+          "context_suggestion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentContextSuggestionRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "conversation_id": {
             "anyOf": [
               {
@@ -4742,12 +4823,12 @@
       },
       "ConversationSuggestionResponse": {
         "properties": {
-          "description": {
-            "title": "Description",
+          "card_id": {
+            "title": "Card Id",
             "type": "string"
           },
-          "prompt": {
-            "title": "Prompt",
+          "description": {
+            "title": "Description",
             "type": "string"
           },
           "sources": {
@@ -4760,12 +4841,17 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
           }
         },
         "required": [
+          "card_id",
+          "version",
           "title",
           "description",
-          "prompt",
           "sources"
         ],
         "title": "ConversationSuggestionResponse",
@@ -22095,6 +22181,16 @@
               }
             },
             "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
           },
           "422": {
             "content": {

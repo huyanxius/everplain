@@ -16,6 +16,9 @@ from qunxue_api.adapters.sqlite.account_management_model import (
     PersonalDataExportRow,
     UserPreferenceRow,
 )
+from qunxue_api.adapters.sqlite.conversation_summary_repository import (
+    SqliteConversationSummaryRepository,
+)
 from qunxue_api.adapters.sqlite.identity_model import UserRow, UserSessionRow
 from qunxue_api.adapters.sqlite.model_invocation_model import ModelInvocationRow
 from qunxue_api.adapters.sqlite.research_intake_model import ResearchTaskRow
@@ -849,7 +852,20 @@ class SqliteAccountRepository:
 
         records: dict[str, object] = {}
         for table_name, rows in sorted(selected.items()):
-            records[table_name] = [self._sanitize_export_row(row) for row in rows]
+            if table_name == "agent_conversation_summaries":
+                # The derived cache contains worker instructions/audit state, not
+                # user-authored messages. Export its owner-validated public view,
+                # including last-good handling, never raw (including legacy) prompts.
+                display = SqliteConversationSummaryRepository(self._db).read(user_id)
+                rows = [{
+                    "user_id": str(user_id), "updated_at": display["updated_at"],
+                    "summary": {key: display[key] for key in (
+                        "summary", "summary_sources", "cards",
+                    )},
+                }]
+            records[table_name] = [
+                self._sanitize_export_row(row, table_name=table_name) for row in rows
+            ]
         return _json_safe(
             {
                 "format_version": "2026-09-everplain-export-v1",
@@ -869,14 +885,32 @@ class SqliteAccountRepository:
         return tuple(sorted(row.items()))
 
     @staticmethod
-    def _sanitize_export_row(row: dict[str, Any]) -> dict[str, object]:
+    def _sanitize_export_row(
+        row: dict[str, Any], *, table_name: str | None = None,
+    ) -> dict[str, object]:
         forbidden = {
             "credential_hash",
             "password_hash",
             "token_digest",
             "payload",
         }
-        return {key: _json_safe(value) for key, value in row.items() if key not in forbidden}
+        output = {key: _json_safe(value) for key, value in row.items() if key not in forbidden}
+        if table_name == "agent_runs" and isinstance(row.get("request_snapshot"), dict):
+            snapshot = row["request_snapshot"]
+            # The visible request remains portable. Server-only execution context
+            # is not a user message and must not reappear through account export.
+            output["request_snapshot"] = {
+                key: _json_safe(value) for key, value in snapshot.items()
+                if not key.startswith("_")
+            }
+            card = snapshot.get("_display_card")
+            if isinstance(card, dict) and all(
+                isinstance(card.get(key), str) for key in ("title", "description")
+            ):
+                output["context_card"] = {
+                    key: card[key] for key in ("title", "description")
+                }
+        return output
 
     @staticmethod
     def _account(user: UserRow, preference: UserPreferenceRow) -> dict[str, object]:

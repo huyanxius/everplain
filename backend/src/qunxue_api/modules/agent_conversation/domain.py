@@ -1,9 +1,30 @@
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import UUID, uuid4
 
 from qunxue_api.modules.agent_conversation.research_map import empty_research_map
+
+_TECHNICAL_POINTER = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    r"|\b(?:conversation_id|message_id|sequence)\s*[=:]|参考原对话",
+    re.IGNORECASE,
+)
+
+
+def display_card(value):
+    """Never project private cache/request fields onto a message."""
+    if not isinstance(value, dict):
+        return None
+    title, description = value.get("title"), value.get("description")
+    if not isinstance(title, str) or not isinstance(description, str):
+        return None
+    if not title.strip() or len(title) > 80 or not 12 <= len(description) <= 240:
+        return None
+    if _TECHNICAL_POINTER.search(title + "\n" + description):
+        return None
+    return {"title": title, "description": description}
 
 
 def _now() -> datetime:
@@ -43,6 +64,7 @@ class AgentMessage:
     message_id: UUID
     role: Literal["user", "assistant"]
     content: str
+    context_card: dict[str, str] | None = None
     citations: tuple[AgentCitation, ...] = ()
     sequence: int = 0
     created_at: datetime = field(default_factory=_now)

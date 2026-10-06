@@ -32,7 +32,7 @@ def real_cards(batch):
         "summary_sources": refs,
         "cards": [{"title": s["content"],
                    "description": f"你具体提到{s['content']}，可以一起继续核对相关安排。",
-                   "prompt": f"先回读原文，再讨论{s['content']}。", "sources": [ref]}
+                   "sources": [ref]}
                   for s, ref in zip(sources, refs, strict=True)],
     }
 
@@ -102,8 +102,17 @@ def test_failed_model_refresh_keeps_last_good_cards(plain_client):
     assert body["status"] == "failed" and body["is_stale"]
     assert len(body["cards"]) == 3 and body["updated_at"] == old["updated_at"]
     for before, after in zip(old["cards"], body["cards"], strict=True):
-        assert all(before[key] == after[key] for key in ("title", "description", "prompt"))
-        assert before["sources"][0]["quote"] == after["sources"][0]["quote"]
+        assert all(before[key] == after[key] for key in ("card_id", "title", "description"))
+        assert set(after) == {"card_id", "version", "title", "description", "sources"}
+        source_changed = False
+        for old_source, new_source in zip(before["sources"], after["sources"], strict=True):
+            expected = dict(old_source)
+            if old_source["conversation_id"] == str(conversations[0].conversation_id):
+                expected["title"] = "新来源"
+                source_changed = True
+            assert new_source == expected
+        # Cached prose stays intact, but the selectable version binds current sources.
+        assert (before["version"] != after["version"]) == source_changed
 
 
 @pytest.mark.parametrize("counts", [(None, None), (-1, 20), (True, 20), (80, None)])

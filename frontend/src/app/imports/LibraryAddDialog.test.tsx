@@ -22,7 +22,7 @@ beforeEach(() => {
   vi.mocked(readImportBatches).mockResolvedValue([])
   vi.mocked(getCourse).mockResolvedValue(library)
   vi.mocked(uploadCourseDocument).mockResolvedValue(document)
-  vi.mocked(importFiles).mockResolvedValue({ total: 1 } as never)
+  vi.mocked(importFiles).mockResolvedValue({ id: 'batch', total: 1, finished: 0, imported: 0, updated: 0, duplicates: 0, failed: 0, status: 'processing', items: [] } as never)
   vi.mocked(importBilibili).mockResolvedValue({} as never)
 })
 afterEach(() => {
@@ -115,7 +115,7 @@ it('imports image and folder files without forwarding the file library target', 
   const input = screen.getByLabelText('选择整个文件夹'); expect(input).toHaveAttribute('webkitdirectory')
   const note = new File(['note'], 'notes.md'); Object.defineProperty(note, 'webkitRelativePath', { value: 'vault/notes.md' })
   fireEvent.change(input, { target: { files: [note] } })
-  await waitFor(() => expect(importFiles).toHaveBeenCalledWith('obsidian', [note]))
+  await waitFor(() => expect(importFiles).toHaveBeenCalledWith('obsidian', [note], undefined, expect.objectContaining({ requestKey: expect.any(String), onProgress: expect.any(Function) })))
 })
 
 it('enforces actual import limits before submitting oversized files', async () => {
@@ -205,7 +205,7 @@ it('reads dropped Obsidian folders in batches, keeps paths and attachments, and 
   fireEvent.drop(ferry, { dataTransfer: { files: [], items: [{ webkitGetAsEntry: () => directory }] } })
   expect(screen.getByRole('button', { name: '关闭添加资料' })).toBeDisabled()
   await act(async () => first.resolve([{ isFile: true, name: 'note.md', file: (resolve: (file: File) => void) => resolve(file) }, { isFile: true, name: 'scan.png', file: (resolve: (file: File) => void) => resolve(attachment) }] as unknown as FileSystemEntry[]))
-  await waitFor(() => expect(importFiles).toHaveBeenCalledWith('obsidian', [file, attachment]))
+  await waitFor(() => expect(importFiles).toHaveBeenCalledWith('obsidian', [file, attachment], undefined, expect.objectContaining({ requestKey: expect.any(String), onProgress: expect.any(Function) })))
   expect(file.webkitRelativePath).toBe('vault/note.md'); expect(attachment.webkitRelativePath).toBe('vault/scan.png')
 })
 
@@ -245,4 +245,85 @@ it('restores focus to the stable scope switcher when the empty-state trigger dis
   fireEvent.change(await filesInput(), { target: { files: [new File(['note'], 'note.md')] } })
   await screen.findByText('资料已上传，正在后台建立语义索引并整理知识。')
   trigger.remove(); unmount(); expect(scopeButton).toHaveFocus(); scope.remove()
+})
+
+it('shows real upload bytes, names the failure stage and retries the same idempotent batch', async () => {
+  let reject!: (reason: Error) => void
+  vi.mocked(importFiles).mockImplementationOnce(async (_source, _files, _library, options) => {
+    options?.onProgress?.({ stage: 'uploading', loaded: 256, total: 1024 })
+    return new Promise((_resolve, fail) => { reject = fail })
+  })
+  mount({ initialSource: 'obsidian' })
+  const files = [new File(['# A'], 'A.md'), new File(['# B'], 'B.md'), new File(['# C'], 'C.md')]
+  fireEvent.change(await filesInput(), { target: { files } })
+  await screen.findByText('上传中：256 B / 1 KB')
+  expect(screen.getByRole('progressbar', { name: '上传字节进度' })).toHaveAttribute('value', '256')
+  const firstOptions = vi.mocked(importFiles).mock.calls[0][3]
+  await act(async () => reject(new Error('服务器未能完成导入请求（HTTP 500）。')))
+  expect(await screen.findByRole('alert')).toHaveTextContent('上传阶段失败')
+  expect(screen.getByText(/3 项接收结果待确认/)).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: '重试本批上传' }))
+  await waitFor(() => expect(importFiles).toHaveBeenCalledTimes(2))
+  expect(vi.mocked(importFiles).mock.calls[1][3]?.requestKey).toBe(firstOptions?.requestKey)
+  expect(vi.mocked(importFiles).mock.calls[1][1]).toEqual(files)
+})
+
+it('shows server success and failure counts and retries only failed items', async () => {
+  const batch = { id: 'tracked', total: 3, finished: 3, imported: 1, updated: 0, duplicates: 1, failed: 1, status: 'partial', items: [{ id: 'good', title: 'A', status: 'imported' }, { id: 'old', title: 'B', status: 'duplicate' }, { id: 'bad', title: 'C', status: 'failed', error: '合成解析错误' }] } as never
+  vi.mocked(importFiles).mockResolvedValue(batch)
+  vi.mocked(readImportBatches).mockResolvedValue([batch])
+  vi.mocked(retryImport).mockResolvedValue({ ...batch as object, status: 'processing', failed: 0, finished: 2 } as never)
+  mount({ initialSource: 'obsidian' })
+  fireEvent.change(await filesInput(), { target: { files: [new File(['# A'], 'A.md')] } })
+  const region = await screen.findByRole('region', { name: '本次导入处理进度' })
+  expect(within(region).getByText(/成功 2 篇/)).toHaveTextContent('失败 1 篇')
+  expect(within(region).getByText('C：合成解析错误')).toBeVisible()
+  fireEvent.click(within(region).getByRole('button', { name: '仅重试失败的 1 篇' }))
+  await waitFor(() => expect(retryImport).toHaveBeenCalledWith('tracked', 'bad'))
+  expect(retryImport).toHaveBeenCalledOnce(); expect(importFiles).toHaveBeenCalledOnce()
+})
+
+it('aborts an in-flight Vault upload on account change and drops its retained files', async () => {
+  let signal: AbortSignal | undefined
+  vi.mocked(importFiles).mockImplementationOnce(async (_source, _files, _library, options) => {
+    signal = options?.signal
+    return new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError'))))
+  })
+  const { rerenderDialog } = mount({ initialSource: 'obsidian' })
+  fireEvent.change(await filesInput(), { target: { files: [new File(['# A'], 'private-local-name.md')] } })
+  await waitFor(() => expect(importFiles).toHaveBeenCalledOnce())
+  await act(async () => rerenderDialog({ userId: 'another-owner' }))
+  expect(signal?.aborted).toBe(true)
+  expect(screen.queryByRole('button', { name: '重试本批上传' })).not.toBeInTheDocument()
+  expect(screen.queryByText(/private-local-name/)).not.toBeInTheDocument()
+})
+
+it('keeps the confirmed requeued progress when the following status refresh fails', async () => {
+  const batch = { id: 'requeued', total: 3, finished: 3, imported: 2, updated: 0, duplicates: 0, failed: 1, status: 'partial', items: [{ id: 'bad', title: 'C', status: 'failed', error: 'temporary' }] } as never
+  vi.mocked(importFiles).mockResolvedValue(batch)
+  vi.mocked(readImportBatches).mockResolvedValue([batch])
+  vi.mocked(retryImport).mockImplementation(async () => {
+    vi.mocked(readImportBatches).mockRejectedValue(new Error('synthetic refresh unavailable'))
+    return { ...batch as object, finished: 2, failed: 0, status: 'processing', items: [{ id: 'bad', title: 'C', status: 'queued' }] } as never
+  })
+  mount({ initialSource: 'obsidian' })
+  fireEvent.change(await filesInput(), { target: { files: [new File(['# C'], 'C.md')] } })
+  fireEvent.click(await screen.findByRole('button', { name: '仅重试失败的 1 篇' }))
+  await screen.findByText('服务器处理：2 / 3 篇')
+  expect(await screen.findByText(/暂时无法读取最新处理状态/)).toBeVisible()
+  expect(screen.queryByRole('button', { name: '仅重试失败的 1 篇' })).not.toBeInTheDocument()
+  expect(screen.getByRole('progressbar', { name: '服务器处理进度' })).toHaveAttribute('value', '2')
+})
+
+it('replays a previously uncertain batch even when its accepted contents may have filled storage', async () => {
+  vi.mocked(importFiles).mockRejectedValueOnce(new Error('synthetic response lost'))
+  mount({ initialSource: 'obsidian' })
+  const files = [new File(['# A'], 'A.md')]
+  fireEvent.change(await filesInput(), { target: { files } })
+  const retry = await screen.findByRole('button', { name: '重试本批上传' })
+  const key = vi.mocked(importFiles).mock.calls[0][3]?.requestKey
+  vi.mocked(readKnowledgeStorage).mockResolvedValue({ ...quota, used_bytes: quota.max_bytes })
+  fireEvent.click(retry)
+  await waitFor(() => expect(importFiles).toHaveBeenCalledTimes(2))
+  expect(vi.mocked(importFiles).mock.calls[1][3]?.requestKey).toBe(key)
 })

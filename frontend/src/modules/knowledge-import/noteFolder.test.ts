@@ -14,7 +14,8 @@ describe('direct note folder reading', () => {
     const result = await readNoteDirectory(source, { progress })
     expect(result.files.map(item => item.name)).toEqual(['Vault/first.md', 'Vault/nested/same.md', 'Vault/nested/photo.png'])
     expect(result.notes).toBe(2); expect(result.attachments).toBe(1)
-    expect(progress).toHaveBeenLastCalledWith({ read: 3, skipped: 0 })
+    expect(progress).toHaveBeenLastCalledWith(expect.objectContaining({ stage: 'reading', read: 3, total: 3, skipped: 0 }))
+    expect(progress.mock.calls.filter(([value]) => value.stage === 'scanning').every(([value]) => value.total === undefined)).toBe(true)
   })
   it('does not read configuration, hidden files, plugin trees or unrecognized files', async () => {
     const secret = entry('token.md'); const plugin = entry('plugin.md'); const executable = entry('run.js')
@@ -46,4 +47,18 @@ describe('direct note folder reading', () => {
     note.getFile.mockRejectedValue(new Error('file moved'))
     await expect(readNoteDirectory(folder('Vault', { 'note.md': note }))).rejects.toThrow('file moved')
   })
+})
+
+it('counts discovered entries without a fabricated total, then reads against the known total', async () => {
+  let continueScan!: () => void
+  const gate = new Promise<void>(done => { continueScan = done })
+  const first = entry('first.md'); const second = entry('second.md'); const progress = vi.fn()
+  const source: NoteDirectory = { name: 'Vault', kind: 'directory', async *entries() { yield ['first.md', first]; await gate; yield ['second.md', second] } }
+  const result = readNoteDirectory(source, { progress })
+  await vi.waitFor(() => expect(progress).toHaveBeenCalledWith(expect.objectContaining({ stage: 'scanning', discovered: 1 })))
+  expect(first.getFile).not.toHaveBeenCalled()
+  expect(progress.mock.calls.every(([value]) => value.total === undefined)).toBe(true)
+  continueScan(); await result
+  expect(progress).toHaveBeenCalledWith(expect.objectContaining({ stage: 'reading', read: 0, total: 2 }))
+  expect(progress).toHaveBeenLastCalledWith(expect.objectContaining({ stage: 'reading', read: 2, total: 2 }))
 })

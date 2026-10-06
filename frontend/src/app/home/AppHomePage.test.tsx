@@ -186,3 +186,62 @@ it('shows loading placeholders rather than new-user invitations while reads are 
   expect(screen.getByText('正在读取资料')).toBeVisible()
   expect(screen.queryByText('还没有最近对话')).not.toBeInTheDocument()
 })
+
+const privacyCard = { card_id: 'card-private-id', version: 'summary-private-version', title: '继续核对迁移方案', description: '先整理停机窗口和回退安排。', sources: [{ role: 'user' as const, sequence: 42, conversation_id: 'private-conversation-id', message_id: 'private-message-id', title: '迁移讨论', quote: '周五安排迁移。' }] }
+function offerPrivacyCard() {
+  // Unknown legacy fields must not be propagated into a selection or message.
+  vi.mocked(getConversationContextSummary).mockResolvedValue({ status: 'ready', summary: '最近聊到迁移。', summary_sources: [], updated_at: null, scope: 'conversation_messages', omitted_messages: 0, cards: [{ ...privacyCard, prompt: 'INTERNAL execute sequence=42 private-message-id' }] } as never)
+}
+
+it('selects a card independently from editable text and hands off only an explicit Send', async () => {
+  offerPrivacyCard()
+  show()
+  fireEvent.click(await screen.findByRole('button', { name: /继续核对迁移方案/ }))
+  expect(screen.getByRole('region', { name: '已选对话卡片' })).toHaveTextContent(privacyCard.description)
+  const input = screen.getByRole('textbox', { name: '问小叶' })
+  expect(input).toHaveValue('')
+  expect(seedAgentDraft).not.toHaveBeenCalled()
+  expect(Object.keys(localStorage).map(key => localStorage.getItem(key)).join(' ')).not.toMatch(/card-private-id|summary-private-version|INTERNAL/)
+  expect(document.body.textContent).not.toMatch(/INTERNAL|private-message-id|sequence=42/)
+  fireEvent.change(input, { target: { value: '请保留我自己写的补充。' } })
+  fireEvent.click(screen.getByRole('button', { name: '发送给 Everplain' }))
+  const message = `${privacyCard.title}\n${privacyCard.description}\n\n请保留我自己写的补充。`
+  expect(seedAgentDraft).toHaveBeenCalledExactlyOnceWith('reader-1', message)
+  const intent = JSON.parse((await screen.findByTestId('submit-intent')).textContent!)
+  expect(intent.question).toBe(message)
+  expect(intent.contextCard).toEqual({ card_id: privacyCard.card_id, version: privacyCard.version, title: privacyCard.title, description: privacyCard.description })
+  expect(JSON.stringify(intent)).not.toMatch(/INTERNAL|private-message-id|sequence|sources|prompt/)
+})
+
+it('supports card-only Send, repeated selection, and removing a card without changing text', async () => {
+  offerPrivacyCard()
+  show()
+  const card = await screen.findByRole('button', { name: /继续核对迁移方案/ })
+  fireEvent.click(card); fireEvent.click(card)
+  expect(screen.getAllByRole('region', { name: '已选对话卡片' })).toHaveLength(1)
+  expect(screen.getByRole('button', { name: '发送给 Everplain' })).toBeEnabled()
+  const input = screen.getByRole('textbox', { name: '问小叶' })
+  fireEvent.change(input, { target: { value: '独立的新问题' } })
+  fireEvent.click(screen.getByRole('button', { name: '移除对话卡片' }))
+  expect(input).toHaveValue('独立的新问题')
+  expect(screen.queryByRole('region', { name: '已选对话卡片' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '发送给 Everplain' }))
+  expect(seedAgentDraft).toHaveBeenCalledExactlyOnceWith('reader-1', '独立的新问题')
+  expect(JSON.parse((await screen.findByTestId('submit-intent')).textContent!).contextCard).toBeUndefined()
+})
+
+it('does not retain an unsent Home card across a refresh-like remount or page hide', async () => {
+  offerPrivacyCard()
+  const first = show()
+  fireEvent.click(await screen.findByRole('button', { name: /继续核对迁移方案/ }))
+  first.unmount()
+  show()
+  await screen.findByRole('button', { name: /继续核对迁移方案/ })
+  expect(screen.queryByRole('region', { name: '已选对话卡片' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '发送给 Everplain' })).toBeDisabled()
+  expect(seedAgentDraft).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: /继续核对迁移方案/ }))
+  fireEvent(window, new Event('pagehide'))
+  expect(screen.queryByRole('region', { name: '已选对话卡片' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '发送给 Everplain' })).toBeDisabled()
+})

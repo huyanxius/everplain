@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { StrictMode, useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router'
@@ -28,22 +28,28 @@ function setup({ delay = false, incompatible = false } = {}) {
   }))
   return { requests, release }
 }
-function Entry() {
+const homeCard = { card_id: 'home-card', version: 'v1', title: '继续核对迁移安排', description: '整理停机窗口和回退方案。' }
+function Entry({ withCard = false }: { withCard?: boolean }) {
   const navigate = useNavigate()
   return <button onClick={() => {
-    seedAgentDraft('owner', question)
-    intentId = createHomeSubmission('owner', question, { modelId: 'gpt-6-luna', reasoningEffort: 'high' })
+    const message = withCard ? `${homeCard.title}\n${homeCard.description}\n\n${question}` : question
+    seedAgentDraft('owner', message)
+    intentId = createHomeSubmission('owner', message, { modelId: 'gpt-6-luna', reasoningEffort: 'high' }, undefined, withCard ? homeCard : undefined)
     navigate('/agent', { state: { homeSubmitId: intentId } })
   }}>首页发送</button>
+}
+function OwnerSession({ owner }: { owner: string }) {
+  const [currentOwner, setOwner] = useState(owner)
+  return <><button onClick={() => setOwner('other-owner')}>切换到另一账号</button><button onClick={() => setOwner(owner)}>切换回原账号</button><ResearchAgentConversationPage userId={currentOwner} /></>
 }
 function Navigation() {
   const navigate = useNavigate(), location = useLocation()
   return <><button onClick={() => navigate(-1)}>返回</button><button onClick={() => navigate(1)}>前进</button><output data-testid="route">{location.pathname}</output></>
 }
-function mount({ owner = 'owner', entry = '/' as string | { pathname: string; state: unknown } } = {}) {
+function mount({ owner = 'owner', entry = '/' as string | { pathname: string; state: unknown }, withCard = false } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(<StrictMode><QueryClientProvider client={client}><MemoryRouter initialEntries={[entry]}><Navigation /><Routes>
-    <Route path="/" element={<Entry />} /><Route path="/agent" element={<ResearchAgentConversationPage userId={owner} />} />
+    <Route path="/" element={<Entry withCard={withCard} />} /><Route path="/agent" element={<OwnerSession owner={owner} />} />
   </Routes></MemoryRouter></QueryClientProvider></StrictMode>)
 }
 
@@ -109,6 +115,7 @@ it('does not auto-send when Back and Forward restore an unconsumed route', async
   await screen.findByRole('button', { name: /GPT 6 Luna/ })
   expect(screen.getByRole('textbox')).toHaveValue(question)
   expect(requests).toHaveLength(0)
+  expect(readHomeSubmission(intentId, 'owner')).toBeNull()
 })
 
 it('preserves the question if the chosen effort disappeared from the catalog', async () => {
@@ -142,4 +149,52 @@ it('keeps the explicit question in memory when browser draft storage is unavaila
   await act(async () => release())
   await waitFor(() => expect(requests).toHaveLength(1))
   await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(question))
+})
+
+
+it('preserves the Home card and authored text when the chosen model is no longer available', async () => {
+  const { requests } = setup({ incompatible: true })
+  mount({ withCard: true })
+  fireEvent.click(screen.getByText('首页发送'))
+  await screen.findByText('所选模型暂时不可用。问题已保留，请选择模型后重试。')
+  expect(screen.getByRole('textbox')).toHaveValue(question)
+  expect(screen.getByRole('region', { name: '已选对话卡片' })).toHaveTextContent(homeCard.title)
+  expect(requests).toHaveLength(0)
+  expect(readHomeSubmission(intentId, 'owner')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '发送给 Everplain' }))
+  await waitFor(() => expect(requests).toHaveLength(1))
+  expect(requests[0].body).toMatchObject({ message: `${homeCard.title}\n${homeCard.description}\n\n${question}`, context_suggestion: { card_id: homeCard.card_id, version: homeCard.version }, reasoning_effort: 'medium' })
+  await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(question))
+  expect(screen.getByRole('region', { name: '对话卡片' })).toHaveTextContent(homeCard.description)
+})
+
+
+it('shows a Home card while waiting for the catalog and never stores selection in a draft', async () => {
+  const { requests, release } = setup({ delay: true })
+  mount({ withCard: true })
+  fireEvent.click(screen.getByText('首页发送'))
+  expect(await screen.findByRole('textbox')).toHaveValue(question)
+  expect(screen.getByRole('region', { name: '已选对话卡片' })).toHaveTextContent(homeCard.description)
+  expect(requests).toHaveLength(0)
+  expect(localStorage.getItem('everplain.agent.composer-draft.v2.owner.draft.agent.independent')).not.toContain(homeCard.card_id)
+  await act(async () => release())
+  await waitFor(() => expect(requests).toHaveLength(1))
+  expect(requests[0].body).toMatchObject({ context_suggestion: { card_id: homeCard.card_id, version: homeCard.version } })
+  await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(question))
+})
+
+
+it('cancels a pending Home card send across an account switch even after the original owner returns', async () => {
+  const { requests, release } = setup({ delay: true })
+  mount({ withCard: true })
+  fireEvent.click(screen.getByText('首页发送'))
+  await screen.findByRole('region', { name: '已选对话卡片' })
+  fireEvent.click(screen.getByText('切换到另一账号'))
+  expect(screen.queryByRole('region', { name: '已选对话卡片' })).not.toBeInTheDocument()
+  expect(readHomeSubmission(intentId, 'owner')).toBeNull()
+  fireEvent.click(screen.getByText('切换回原账号'))
+  await act(async () => release())
+  await screen.findByRole('button', { name: /GPT 6 Luna/ })
+  expect(screen.queryByRole('region', { name: '已选对话卡片' })).not.toBeInTheDocument()
+  expect(requests).toHaveLength(0)
 })

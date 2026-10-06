@@ -1143,10 +1143,12 @@ class ExistingRelease:
             config = nginx.read_text()
             if self.gateway is not None:
                 config = nginx_routes(config, self.gateway.start())
-            require(config.count("proxy_pass http://api:8297;") == 1)
+            require(config.count("upstream everplain_api_backend {\n    server api:8297;\n}") == 1)
+            require(config.count("api:8297") == 1)
+            require(config.count("proxy_pass http://everplain_api_backend;") == 2)
             atomic_bytes(
                 self.stage / "nginx.conf",
-                config.replace("http://api:8297", f"http://{address}:8297").encode(),
+                config.replace("server api:8297;", f"server {address}:8297;").encode(),
             )
             nginx_mount = (
                 f"type=bind,src={self.stage / 'nginx.conf'},"

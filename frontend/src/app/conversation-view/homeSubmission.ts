@@ -1,3 +1,4 @@
+import type { SelectedContextCard } from './contextCard'
 import type { ModelSelection } from '../model-selection'
 
 export type ComposerOrigin = { left: number; top: number; width: number; height: number }
@@ -5,6 +6,7 @@ export type HomeSubmission = {
   id: string
   owner: string
   question: string
+  contextCard?: SelectedContextCard
   selection: ModelSelection
   origin?: ComposerOrigin
 }
@@ -12,8 +14,8 @@ export type HomeSubmission = {
 // An in-memory capability created only by an explicit Send. History/storage carry
 // its opaque ID, never permission to replay a draft after reload or Back.
 let pending: HomeSubmission | null = null
-export function createHomeSubmission(owner: string, question: string, selection: ModelSelection, origin?: ComposerOrigin) {
-  pending = { id: crypto.randomUUID(), owner, question, selection: { ...selection }, origin }
+export function createHomeSubmission(owner: string, question: string, selection: ModelSelection, origin?: ComposerOrigin, contextCard?: SelectedContextCard) {
+  pending = { id: crypto.randomUUID(), owner, question, selection: { ...selection }, origin, ...(contextCard ? { contextCard: { card_id: contextCard.card_id, version: contextCard.version, title: contextCard.title, description: contextCard.description } } : {}) }
   return pending.id
 }
 export function readHomeSubmission(id: unknown, owner: string | null) {

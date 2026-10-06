@@ -56,9 +56,21 @@ def healthy(url):
 def replacement(original, address):
     parsed = ipaddress.ip_address(address)
     require(parsed.version == 4 and parsed.is_private)
-    pattern = rb"(proxy_pass\s+http://)([0-9.]+)(:8297\s*;)"
+    # Old releases have one direct proxy; current releases share one named backend.
+    # Refuse mixed, duplicate, unknown or multi-server API targets before writing.
+    pattern = (
+        rb"(proxy_pass\s+http://)([0-9.]+)(:8297\s*;)"
+        rb"|(upstream\s+everplain_api_backend\s*\{\s*server\s+)"
+        rb"([0-9.]+)(:8297\s*;\s*\})"
+    )
     require(len(re.findall(pattern, original)) == 1)
-    return re.sub(pattern, lambda match: match[1] + address.encode() + match[3], original)
+    targets = re.findall(rb"(?:proxy_pass\s+http://|server\s+)[^\s;{}]+:8297\s*;", original)
+    require(len(targets) == 1)
+    return re.sub(
+        pattern,
+        lambda match: (match[1] or match[4]) + address.encode() + (match[3] or match[6]),
+        original,
+    )
 
 
 def write_same_inode(stream, data):

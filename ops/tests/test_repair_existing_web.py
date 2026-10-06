@@ -44,6 +44,26 @@ class WebRepairTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 repair.replacement(original, address)
 
+    def test_named_backend_changes_one_address_for_both_api_routes(self):
+        original = (ROOT / "ops/nginx.conf").read_bytes().replace(b"api:8297", b"172.17.0.5:8297")
+        changed = repair.replacement(original, "172.17.0.4")
+        self.assertEqual(changed, original.replace(b"172.17.0.5", b"172.17.0.4"))
+        self.assertEqual(changed.count(b"proxy_pass http://everplain_api_backend;"), 2)
+        self.assertEqual(repair.replacement(changed, "172.17.0.4"), changed)
+
+    def test_named_backend_rejects_unknown_duplicate_mixed_or_extra_targets(self):
+        named = b"upstream everplain_api_backend { server 172.17.0.5:8297; }"
+        for original in (
+            named.replace(b"everplain_api_backend", b"other_backend"),
+            named * 2,
+            named + b"proxy_pass http://172.17.0.5:8297;",
+            named.replace(b"; }", b"; server 172.17.0.6:8297; }"),
+            named + b"upstream other { server 172.17.0.6:8297; }",
+            named + b"proxy_pass http://unknown:8297;",
+        ):
+            with self.subTest(original=original), self.assertRaises(RuntimeError):
+                repair.replacement(original, "172.17.0.4")
+
     def test_only_explicit_repair_workflow_can_invoke_repair_mode(self):
         workflow = (ROOT / ".github/workflows/repair-existing-web.yml").read_text()
         self.assertIn("preflight-ssh.sh repair-web", workflow)
