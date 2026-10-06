@@ -122,3 +122,19 @@ jobs:
           npm --prefix frontend run lint
           npm --prefix frontend run test -- --maxWorkers=1
           npm --prefix frontend run build
+
+  required-checks:
+    name: Required checks
+    if: ${{ always() }}
+    needs: [changes, release-build, channel-gateway, backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - name: Require successful applicable checks
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+          CI_EVENT_NAME: ${{ github.event_name }}
+        run: python3 ops/cd/ci_gate.py
