@@ -45,10 +45,18 @@ class OAuthClients:
             )
             if provider == "google":
                 common["client_kwargs"]["scope"] = "openid email profile"
+                # Fixed Google OIDC endpoints, verified against its discovery document:
+                # https://accounts.google.com/.well-known/openid-configuration
+                # Building the browser redirect must not wait for server-side discovery.
+                # Token exchange and rotating JWKS still use HTTPS and Authlib verification.
                 self._registry.register(
                     provider,
                     **common,
-                    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+                    authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
+                    access_token_url="https://oauth2.googleapis.com/token",
+                    jwks_uri="https://www.googleapis.com/oauth2/v3/certs",
+                    issuer="https://accounts.google.com",
+                    id_token_signing_alg_values_supported=["RS256"],
                 )
             else:
                 common["client_kwargs"]["scope"] = "user:email"
