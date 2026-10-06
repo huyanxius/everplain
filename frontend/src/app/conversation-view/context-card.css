@@ -2,4 +2,5 @@
 .cv-context-card__content { display: grid; gap: var(--qx-space-2); min-width: 0; flex: 1; }
 .cv-context-card strong { color: var(--qx-color-ink); font-size: var(--qx-text-body); font-weight: 500; line-height: var(--qx-text-body--line-height); }
 .cv-context-card p { margin: 0; color: var(--qx-color-muted); font-size: var(--qx-text-meta); line-height: var(--qx-text-meta--line-height); }
-.cv-turn__question-content { display: grid; min-width: 0; max-width: 100%; justify-items: end; gap: var(--qx-space-3); }
+/* Keep the bubble's percentage limit relative to the message row, not a shrink-to-fit wrapper. */
+.cv-turn__question-content { display: grid; width: 100%; min-width: 0; max-width: 100%; justify-items: end; gap: var(--qx-space-3); }
