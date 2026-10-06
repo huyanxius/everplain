@@ -13,7 +13,7 @@
 
 ## O02/G05 局部晋升
 
-在 Guard 清单后再晋升 12 个完整文件，产品清单从 159 个增至 171 个，只移除这 12 个对应的排除记录，其余 90 个排除记录及原哈希不变。
+在 Guard 清单及 #248 新增的 1 个工具生命周期测试文件后，再晋升 12 个完整文件，产品清单从 160 个增至 172 个，只移除这 12 个对应的排除记录，其余 90 个排除记录及原哈希不变。
 
 - O02：`test_migrations.py` 的 16 项，修正默认数据库名为 `everplain.db`，验证离线迁移截至 0430 成功、全 head 明确拒绝；在线 schema 检查及既有 0630/0640 离线拒绝断言保留，未修改历史迁移。
 - G05 当前/共享账务契约：weekly quota、quota settlement epoch、Bank RESET、signup allowance、prices、actual usage policy、retail projection、billing migration 共 8 文件、77 项。这不是当前 Agent-v2 全策略覆盖。

@@ -18,7 +18,7 @@ from ..tool_support import (
 
 
 def register_analysis_tools(agent, runtime: AgentToolRuntime) -> None:
-    @agent.tool(prepare=_prepare_analysis_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_analysis_tool, sequential=True)
     def get_research_analysis(
         ctx: RunContext[KnowledgeToolRegistry],
     ) -> dict[str, object]:
@@ -32,7 +32,7 @@ def register_analysis_tools(agent, runtime: AgentToolRuntime) -> None:
             candidate=False,
         )
 
-    @agent.tool(prepare=_prepare_analysis_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_analysis_tool, sequential=True)
     def propose_analysis_memo(
         ctx: RunContext[KnowledgeToolRegistry],
         title: str,
@@ -55,7 +55,7 @@ def register_analysis_tools(agent, runtime: AgentToolRuntime) -> None:
             candidate=True,
         )
 
-    @agent.tool(prepare=_prepare_analysis_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_analysis_tool, sequential=True)
     def get_research_comparison_context(
         ctx: RunContext[KnowledgeToolRegistry],
         case_labels: list[str],
@@ -74,7 +74,7 @@ def register_analysis_tools(agent, runtime: AgentToolRuntime) -> None:
             candidate=False,
         )
 
-    @agent.tool(prepare=_prepare_analysis_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_analysis_tool, sequential=True)
     def propose_case_comparison(
         ctx: RunContext[KnowledgeToolRegistry],
         title: str,
@@ -110,7 +110,7 @@ def register_analysis_tools(agent, runtime: AgentToolRuntime) -> None:
 
 
 def register_workflow_tools(agent, runtime: AgentToolRuntime) -> None:
-    @agent.tool(prepare=_prepare_research_handoff_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_research_handoff_tool, sequential=True)
     def propose_start_research(
         ctx: RunContext[KnowledgeToolRegistry],
         phenomenon: str,
@@ -127,7 +127,7 @@ def register_workflow_tools(agent, runtime: AgentToolRuntime) -> None:
             ctx, "propose_start_research", payload, "正在整理待确认的研究起点"
         )
 
-    @agent.tool(prepare=_prepare_document_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_document_tool, sequential=True)
     def get_research_workflow_state(
         ctx: RunContext[KnowledgeToolRegistry],
     ) -> dict[str, object]:
@@ -136,7 +136,7 @@ def register_workflow_tools(agent, runtime: AgentToolRuntime) -> None:
             ctx, "get_research_workflow_state", {}, "正在读取研究流程状态"
         )
 
-    @agent.tool(prepare=_prepare_document_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_document_tool, sequential=True)
     def start_theory_matching(
         ctx: RunContext[KnowledgeToolRegistry],
     ) -> dict[str, object]:
@@ -145,7 +145,7 @@ def register_workflow_tools(agent, runtime: AgentToolRuntime) -> None:
             ctx, "start_theory_matching", {}, "正在执行理论匹配"
         )
 
-    @agent.tool(prepare=_prepare_document_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_document_tool, sequential=True)
     def save_confirmed_theory_plan(
         ctx: RunContext[KnowledgeToolRegistry],
         decisions: list[dict[str, object]],
@@ -167,7 +167,7 @@ def register_workflow_tools(agent, runtime: AgentToolRuntime) -> None:
 
 
 def register_document_tools(agent, runtime: AgentToolRuntime) -> None:
-    @agent.tool(prepare=_prepare_document_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_document_tool, sequential=True)
     def read_research_document(
         ctx: RunContext[KnowledgeToolRegistry],
         document_id: str,
@@ -226,7 +226,7 @@ def register_document_tools(agent, runtime: AgentToolRuntime) -> None:
         )
         return result
 
-    @agent.tool(prepare=_prepare_document_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_document_tool, sequential=True)
     def propose_document_revision(
         ctx: RunContext[KnowledgeToolRegistry],
         replacement_content: str,
@@ -300,7 +300,7 @@ def register_document_tools(agent, runtime: AgentToolRuntime) -> None:
         )
         return result
 
-    @agent.tool(prepare=_prepare_document_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_document_tool, sequential=True)
     def propose_document_creation(
         ctx: RunContext[KnowledgeToolRegistry],
         title: str,
@@ -361,7 +361,7 @@ def register_document_tools(agent, runtime: AgentToolRuntime) -> None:
 
 
 def register_research_map_tools(agent, runtime: AgentToolRuntime) -> None:
-    @agent.tool(prepare=_prepare_research_map_tool, retries=1, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_research_map_tool, retries=1, sequential=True)
     def ask_research_question(
         ctx: RunContext[KnowledgeToolRegistry],
         question: str,
@@ -392,7 +392,7 @@ def register_research_map_tools(agent, runtime: AgentToolRuntime) -> None:
             )
         return payload
 
-    @agent.tool(prepare=_prepare_research_map_tool, retries=1, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_research_map_tool, retries=1, sequential=True)
     def update_research_map(
         ctx: RunContext[KnowledgeToolRegistry],
         nodes: list[ResearchMapNodeInput] | None = None,
