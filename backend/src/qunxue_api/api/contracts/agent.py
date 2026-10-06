@@ -33,10 +33,22 @@ class AgentCitationResponse(BaseModel):
     knowledge_base_id: str | None = None
 
 
+class AgentContextCardResponse(BaseModel):
+    title: str
+    description: str
+
+
+class AgentContextSuggestionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    card_id: str = Field(min_length=1, max_length=128)
+    version: str = Field(min_length=1, max_length=128)
+
+
 class AgentMessageResponse(BaseModel):
     message_id: UUID
     role: str
     content: str
+    context_card: AgentContextCardResponse | None = None
     citations: list[AgentCitationResponse] = Field(default_factory=list)
     sequence: int
     created_at: datetime
@@ -210,6 +222,7 @@ class AgentTurnRequest(BaseModel):
     knowledge_index_action: Literal["skip_missing"] | None = None
     conversation_id: UUID | None = None
     message: str = Field(min_length=1, max_length=12000)
+    context_suggestion: AgentContextSuggestionRequest | None = None
     workspace: Literal["agent", "research"] = "agent"
     web_search: bool = False
     task_id: UUID | None = None
@@ -248,6 +261,7 @@ class AgentRunRecoveryResponse(BaseModel):
         "running", "failed", "interrupted", "awaiting_clarification", "awaiting_plan_confirmation"
     ]
     request: AgentTurnRequest
+    context_card: AgentContextCardResponse | None = None
     partial_answer: str
     output_attempts: list[AgentOutputAttemptResponse] = Field(default_factory=list)
     delivery_state: dict[str, object] = Field(default_factory=dict)
@@ -291,6 +305,7 @@ class AgentRunLookupResponse(BaseModel):
     last_event_sequence: int = 0
     writing_previews: list[dict[str, object]] = Field(default_factory=list)
     request: AgentTurnRequest | None
+    context_card: AgentContextCardResponse | None = None
     updated_at: datetime
     turn_id: UUID | None
 
@@ -393,9 +408,10 @@ class ConversationSummarySourceResponse(BaseModel):
 
 
 class ConversationSuggestionResponse(BaseModel):
+    card_id: str
+    version: str
     title: str
     description: str
-    prompt: str
     sources: list[ConversationSummarySourceResponse]
 
 

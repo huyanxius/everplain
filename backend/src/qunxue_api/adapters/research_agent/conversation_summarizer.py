@@ -59,7 +59,6 @@ class SummaryCard(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(min_length=1, max_length=80)
     description: str = Field(min_length=1, max_length=240)
-    prompt: str = Field(min_length=1, max_length=1200)
     sources: list[SummarySource] = Field(min_length=1, max_length=4)
 
 

@@ -4,6 +4,7 @@ import { ArrowRightIcon, FileTextIcon, GlobeIcon, PlusIcon, UploadSimpleIcon } f
 import { AgentAvatar, type AgentAvatarId } from '../../modules/agent-avatar'
 import { PageContent, PageShell } from '../ui/PageShell'
 import { ConversationComposer } from '../conversation-view/ConversationComposer'
+import { ConversationContextCard } from '../conversation-view/ConversationContextCard'
 import { ConversationContextSuggestions } from '../conversation-view/ConversationContextSuggestions'
 import { ModelSelectionSettings } from '../model-selection'
 import { useAppHome } from './useAppHome'
@@ -31,7 +32,7 @@ export function AppHomePage() {
             : '这里还空着。丢一份资料，或者问一个你想弄清楚的问题。'}
         </p>
         <HomeComposer home={home} />
-        <ConversationContextSuggestions userId={home.userId} onSelect={home.setQuestion} />
+        <ConversationContextSuggestions userId={home.userId} onSelect={home.selectCard} />
       </section>
       <div className="hm-table">
         <section aria-labelledby="home-research-title" className="hm-section">
@@ -75,7 +76,8 @@ function HomeComposer({ home }: { home: Home }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [toolsOpen, setToolsOpen] = useState(false)
   return <ConversationComposer mode="standard" value={home.question} label={`问${home.profile.data?.name ?? 'Agent'}`} placeholder={`问${home.profile.data?.name ?? 'Agent'}，或者丢一个链接进来`}
-    maxLength={12000} busy={false} canSend={Boolean(home.question.trim()) && home.modelSelection.status === 'ready'} canStop={false} uploading={false} toolsOpen={toolsOpen}
+    maxLength={12000} busy={false} canSend={Boolean(home.question.trim() || home.selectedCard) && home.modelSelection.status === 'ready'} canStop={false} uploading={false} toolsOpen={toolsOpen}
+    context={home.selectedCard ? <ConversationContextCard card={home.selectedCard} onRemove={home.removeCard} /> : null}
     inputRef={inputRef} toolsRef={toolsRef} toolsButtonRef={toolsButtonRef} fileRef={fileRef} accept="" attachments={[]}
     tools={<Link className="qx-item" role="menuitem" to="/imports">导入资料</Link>} modelSelector={<ModelSelectionSettings state={home.modelSelection} disabled={false} />}
     onChange={home.setQuestion} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {event.preventDefault(); home.ask(event.currentTarget.closest('form')?.getBoundingClientRect())} }}

@@ -39,7 +39,7 @@ afterEach(() => {
 })
 
 describe('server-owned conversation context adapter', () => {
-  const summary = { status: 'ready', scope: 'conversation_messages', omitted_messages: 0, summary_sources: [], summary: '跨对话里你提到周五迁移与旧入口回退。', updated_at: '2026-10-05T00:00:00Z', cards: [{ title: '核对迁移回退入口', description: '根据两次迁移讨论整理。', prompt: '核对周五迁移与旧入口回退的安排。', sources: [{ role: 'user', sequence: 0, conversation_id: 'one', message_id: 'one-user-1', quote: '周五迁移', title: '迁移讨论' }] }] }
+  const summary = { status: 'ready', scope: 'conversation_messages', omitted_messages: 0, summary_sources: [], summary: '跨对话里你提到周五迁移与旧入口回退。', updated_at: '2026-10-05T00:00:00Z', cards: [{ title: '核对迁移回退入口', description: '根据两次迁移讨论整理。', card_id: 'migration-card', version: 'v1', sources: [{ role: 'user', sequence: 0, conversation_id: 'one', message_id: 'one-user-1', quote: '周五迁移', title: '迁移讨论' }] }] }
   it('reads the authenticated server cache without generating a turn', async () => {
     get.mockResolvedValue({ data: summary })
     const controller = new AbortController()
@@ -56,7 +56,7 @@ describe('server-owned conversation context adapter', () => {
     get.mockResolvedValue({ data: payload })
     expect(await getConversationContextSummary()).toEqual(payload)
   })
-  it.each([{ items: [] }, { ...summary, scope: 'assistant_messages' }, { ...summary, cards: [{ ...summary.cards[0], sources: [] }] }])('does not invent cards for an invalid cached response', async payload => {
+  it.each([{ items: [] }, { ...summary, scope: 'assistant_messages' }, { ...summary, cards: [{ ...summary.cards[0], sources: [] }] }, { ...summary, cards: [{ ...summary.cards[0], card_id: undefined, version: undefined, prompt: 'INTERNAL_PROMPT must never become a draft' }] }])('does not invent cards for an invalid cached response', async payload => {
     get.mockResolvedValue({ data: payload })
     await expect(getConversationContextSummary()).rejects.toThrow('最近对话建议暂时不可用')
   })
@@ -590,4 +590,13 @@ describe('dedicated document draft event recovery', () => {
     await streamAgentTurn({ message: 'write', idempotencyKey: 'key' }, events)
     expect(events.mock.calls.filter(([event]) => event.type === 'writing_preview')).toHaveLength(0)
   })
+})
+
+
+it('treats a stale or revoked context card as a definite rejection without run lookups', async () => {
+  const message = '这张背景卡已更新或来源不可访问，请重新选择。'
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ error: { code: 'conflict', message, trace_id: 'private-trace-id' } }), { status: 409, headers: { 'Content-Type': 'application/json' } }))
+  vi.stubGlobal('fetch', fetch)
+  await expect(streamAgentTurn({ message: '继续讨论\n整理下一步。', context_suggestion: { card_id: 'expired-card', version: 'old-version' }, idempotencyKey: 'stale-card-key' }, () => undefined)).rejects.toMatchObject({ message, status: 409 })
+  expect(fetch).toHaveBeenCalledExactlyOnceWith('https://api.qunxue.test/api/agent/turns', expect.objectContaining({ method: 'POST' }))
 })

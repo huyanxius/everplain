@@ -1,6 +1,6 @@
 import type { ReactNode, Ref } from 'react'
 import type { AgentAvatarId, AgentAvatarState } from '../../modules/agent-avatar'
-import type { AgentCitation, AgentToolStep } from '../../modules/research-agent'
+import type { AgentCitation, AgentToolStep, AgentContextCard } from '../../modules/research-agent'
 
 export type ConversationAgent = { name: string; avatar: AgentAvatarId; color?: string }
 export type ConversationAction = {
@@ -28,6 +28,7 @@ export type ConversationHandoff = {
   actions?: readonly ConversationAction[]
 }
 export type ConversationTurnView = {
+  contextCard?: AgentContextCard | null
   id: string
   question: string
   answer: string

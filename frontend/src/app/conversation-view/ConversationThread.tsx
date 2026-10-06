@@ -6,6 +6,8 @@ import { useAppLocale } from '../../i18n/AppLocaleProvider'
 import { AgentAnswerMarkdown } from '../agent/AgentAnswerMarkdown'
 import { useStreamPacer } from '../agent/useStreamPacer'
 import { CitationSiteIcon } from './CitationSiteIcon'
+import { ConversationContextCard } from './ConversationContextCard'
+import { contextCardAdditionalText } from './contextCard'
 import { ConversationThinking } from './ConversationThinking'
 import { flyBubble, takeLaunch } from './sendFlight'
 import { ConversationActivity } from './ConversationActivity'
@@ -55,6 +57,7 @@ export function ConversationTurn({ turn, agent, renderAvatar, onSelectCitation, 
     return () => { cancelAnimationFrame(raf); cancel?.(); node.removeAttribute('data-awaiting-flight') }
   }, [turn.question, turn.id])
   useLayoutEffect(() => { if (turn.interrupted || turn.failure) cancelFlight.current?.() }, [turn.interrupted, turn.failure])
+  const additionalQuestion = turn.contextCard ? contextCardAdditionalText(turn.question, turn.contextCard) : turn.question
   const steps = turn.toolSteps ?? []
   const avatarState = !turn.streaming ? 'idle' : turn.answer || steps.some(step => step.status === 'running') ? 'work' : 'think'
   const progressEnd = Math.max(0, Math.min(turn.progressEnd ?? 0, pacer.visible.length))
@@ -66,7 +69,7 @@ export function ConversationTurn({ turn, agent, renderAvatar, onSelectCitation, 
     ['web', text('公开网页', 'Public web')],
   ].flatMap(([group, label]) => { const count = turn.citations.filter(citation => !citation.deleted && citationGroup(citation) === group).length; return count ? [`${label} ${count}`] : [] })
   return <article style={{ '--agent-color': agent?.color ?? agentAvatarById[agent?.avatar ?? 'cheng'].color } as CSSProperties} className="cv-turn" data-turn-id={turn.id} data-streaming={turn.streaming || undefined}>
-    {turn.question && <div className="cv-turn__question" data-role="user-message"><div ref={bubble} className="qx-bubble">{turn.question}</div></div>}
+    {(turn.question || turn.contextCard) && <div className="cv-turn__question" data-role="user-message"><div className="cv-turn__question-content">{turn.contextCard && <ConversationContextCard card={turn.contextCard} />}{additionalQuestion && <div ref={bubble} className="qx-bubble">{additionalQuestion}</div>}</div></div>}
     <div className="cv-turn__answer" data-role="assistant-response">
       <div className="cv-turn__avatar">{renderAvatar ? renderAvatar(avatarState, turn.id) : <AgentAvatar avatar={agent?.avatar ?? 'cheng'} color={agent?.color} size={32} state={avatarState} label={agent?.name ?? 'Everplain'} />}</div>
       <div className="cv-turn__body">

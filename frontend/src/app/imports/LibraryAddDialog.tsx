@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { ArrowClockwiseIcon, ArrowRightIcon, BooksIcon, CheckCircleIcon, FileTextIcon, PuzzlePieceIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
-import { importBilibili, importFiles, readImportBatches, retryImport, prepareNoteFolderFiles, isNoteFolderFile, isNoteFolderPath, type ImportSourceType } from '../../modules/knowledge-import'
+import { importBilibili, importFiles, readImportBatches, retryImport, prepareNoteFolderFiles, isNoteFolderFile, isNoteFolderPath, type ImportSourceType, type ImportBatch } from '../../modules/knowledge-import'
 import { createCourse, getCourse, readKnowledgeStorage, uploadCourseDocument, type SharedCourse, type SharedDocument } from '../../modules/shared-knowledge'
 import { useAnimatedDismiss } from '../../ui/usePresence'
 import { AgentLoading } from '../ui/AgentLoading'
@@ -10,6 +10,7 @@ import { ExtensionInstallGuide } from './ExtensionInstallGuide'
 import { ExtensionDownloadDialog } from './ExtensionDownloadDialog'
 import { NoteFolderPicker } from './NoteFolderPicker'
 import { ImportAttachments } from './ImportAttachments'
+import { ImportBatchProgress } from './ImportBatchProgress'
 import chromeLogo from '../../assets/brand/chrome.svg'
 import { libraryImportSources as sources, type ImportSourceDescriptor as Source } from './importSources'
 import './library-add-dialog.css'
@@ -17,6 +18,7 @@ import './library-add-dialog.css'
 const importFileLimit = 16 * 1024 * 1024
 const importBatchLimit = 64 * 1024 * 1024
 const itemStatus = { imported: '已入库', updated: '已更新', duplicate: '已存在', queued: '等待处理', running: '正在处理', failed: '失败' }
+type VaultUpload = { files: File[]; fileCount: number; requestKey: string; stage: 'preparing' | 'uploading' | 'accepting' | 'processing' | 'failed'; loaded: number; total?: number; batch?: ImportBatch; error?: string }
 type QueueEntry = { id: string; file: File; libraryId: string; state: 'queued' | 'uploading' | 'done' | 'failed'; error?: string; document?: SharedDocument }
 export type LibraryAddDialogProps = { userId: string | null; libraries: SharedCourse[]; initialLibraryId?: string; initialSource?: string; initialBatchId?: string; onClose(): void; onChanged(): void }
 function size(bytes: number) {
@@ -33,6 +35,7 @@ function accepts(source: Source, file: File) {
 export function LibraryAddDialog(props: LibraryAddDialogProps) { return <LibraryAddDialogContent key={props.userId ?? 'signed-out'} {...props} /> }
 
 function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialSource = 'extension', initialBatchId, onClose, onChanged }: LibraryAddDialogProps) {
+  const queryClient = useQueryClient()
   const [selected, setSelected] = useState(sources.some(source => source.id === initialSource) || initialSource === 'records' ? initialSource : 'extension')
   const [created, setCreated] = useState<SharedCourse | null>(null)
   const owned = libraries.filter(library => library.access === 'owner')
@@ -47,6 +50,8 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
   const [notice, setNotice] = useState('')
   const [over, setOver] = useState(false)
   const [queue, setQueue] = useState<QueueEntry[]>([])
+  const [vaultUpload, setVaultUpload] = useState<VaultUpload | null>(null)
+  const uploadAbort = useRef<AbortController | null>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [showExtensionDownload, setShowExtensionDownload] = useState(false)
   const extensionDownloadButton = useRef<HTMLButtonElement>(null)
@@ -59,7 +64,7 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
   const motion = useAnimatedDismiss(boundary, onClose)
   const storage = useQuery({ queryKey: ['knowledge-storage', userId], queryFn: readKnowledgeStorage, enabled: !!userId })
   const batches = useQuery({ queryKey: ['import-batches', userId], queryFn: readImportBatches, enabled: !!userId,
-    refetchInterval: query => query.state.data?.some(batch => batch.status === 'processing') ? 1500 : false })
+    refetchInterval: query => { const tracked = vaultUpload?.batch; const latest = tracked ? query.state.data?.find(batch => batch.id === tracked.id) ?? tracked : undefined; return query.state.data?.some(batch => batch.status === 'processing') || latest?.status === 'processing' ? 1500 : false } })
   const batchVersion = batches.data?.map(batch => `${batch.id}:${batch.status}:${batch.finished}:${batch.failed}`).join('|')
   const previousVersion = useRef<string | undefined>(undefined)
   const focusedReceipt = useRef<string | undefined>(undefined)
@@ -80,7 +85,7 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
     const overflow = document.body.style.overflow
     dialog?.showModal(); dialog?.focus({ preventScroll: true }); document.body.style.overflow = 'hidden'
     return () => {
-      alive.current = false; dialog?.close(); document.body.style.overflow = overflow
+      alive.current = false; uploadAbort.current?.abort(); dialog?.close(); document.body.style.overflow = overflow
       const focusTarget = trigger?.isConnected ? trigger : document.querySelector<HTMLButtonElement>('.ep-library-scope > button[aria-controls="library-scope-menu"]')
       focusTarget?.focus()
     }
@@ -147,18 +152,60 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
       await storage.refetch()
     })
   }
+  function rememberBatch(batch: ImportBatch) {
+    if (alive.current) queryClient.setQueryData<ImportBatch[]>(['import-batches', userId], previous => previous?.some(item => item.id === batch.id) ? previous.map(item => item.id === batch.id ? batch : item) : [batch, ...(previous ?? [])])
+  }
+  const activeBatch = vaultUpload?.batch ? batches.data?.find(batch => batch.id === vaultUpload.batch?.id) ?? vaultUpload.batch : undefined
+  async function uploadVault(files: File[], previous?: VaultUpload) {
+    const attempt: VaultUpload = { files, fileCount: files.length, requestKey: previous?.requestKey ?? crypto.randomUUID(), stage: 'preparing', loaded: 0 }
+    await run(async () => {
+      setVaultUpload(attempt)
+      let stage = '准备阶段'
+      try {
+        const limits = previous ? undefined : await currentQuota()
+        if (limits && limits.used_bytes >= limits.max_bytes) throw new Error('存储空间已满，请先整理资料。')
+        uploadAbort.current = new AbortController()
+        const batch = await importFiles('obsidian', files, undefined, { requestKey: attempt.requestKey, signal: uploadAbort.current.signal, onProgress: progress => {
+          stage = progress.stage === 'uploading' ? '上传阶段' : '服务器接收阶段'
+          if (alive.current) setVaultUpload(current => current?.requestKey === attempt.requestKey ? { ...current, ...progress } : current)
+        } })
+        if (!alive.current) return
+        rememberBatch(batch); setVaultUpload({ ...attempt, files: [], stage: 'processing', batch })
+        changed.current(); await refresh()
+      } catch (failure) {
+        if (alive.current) setVaultUpload(current => current?.requestKey === attempt.requestKey ? { ...current, stage: 'failed', error: `${stage}失败：${errorMessage(failure)}` } : current)
+      }
+    })
+  }
+  async function retryFailedBatch(batch: ImportBatch) {
+    await run(async () => {
+      try {
+        for (const item of batch.items.filter(item => item.status === 'failed')) {
+          if (!alive.current) return
+          const updated = await retryImport(batch.id, item.id)
+          if (alive.current) { rememberBatch(updated); setVaultUpload(current => current ? { ...current, batch: updated } : current) }
+        }
+      } catch (failure) { throw new Error(`提交失败项重试时出错：${errorMessage(failure)}`) }
+      finally { if (alive.current) { changed.current(); await refresh() } }
+    })
+  }
   async function upload(files: File[]) {
     if (!files.length || busyRef.current || !source || source.id === 'bilibili') return
     if (source.id === 'file') { await uploadDocuments(files); return }
     const selectedSource = source
+    if (selectedSource.id === 'obsidian') setVaultUpload(null)
     if (selectedSource.id === 'obsidian' && files.some(file => file.webkitRelativePath || file.name.includes('/'))) {
       try { files = prepareNoteFolderFiles(files).files } catch (failure) { setError(errorMessage(failure)); return }
     }
-    const isFolder = selectedSource.id === 'obsidian' && files.some(file => file.webkitRelativePath || file.name.includes('/'))
+    if (selectedSource.id === 'obsidian') {
+      if (files.some(file => file.size > importFileLimit) || files.reduce((total, file) => total + file.size, 0) > importBatchLimit) { setError('单个导入文件最多 16 MB，每批最多 64 MB。'); return }
+      if (files.some(file => !file.webkitRelativePath && !file.name.includes('/') && !accepts(selectedSource, file))) { setError(`请选择${selectedSource.formats}文件。`); return }
+      await uploadVault(files); return
+    }
     await run(async () => {
       const limits = await currentQuota()
       if (limits.used_bytes >= limits.max_bytes) throw new Error('存储空间已满，请先整理资料。')
-      if (files.some(file => !isFolder && !accepts(selectedSource, file))) throw new Error(`请选择${selectedSource.formats}文件。`)
+      if (files.some(file => !accepts(selectedSource, file))) throw new Error(`请选择${selectedSource.formats}文件。`)
       if (files.some(file => file.size > importFileLimit)) throw new Error('单个导入文件最多 16 MB，请缩小文件后重试。')
       if (files.reduce((total, file) => total + file.size, 0) > importBatchLimit) throw new Error('每批导入文件最多 64 MB，请分批导入。')
       // Do not forward the file destination. knowledge_import owns its default 我的资料 library.
@@ -189,12 +236,13 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
     if (!entries.some(entry => entry.isDirectory)) { await upload(files); return }
     busyRef.current = true; setBusy(true); setReadingFolder(true); setError(''); setNotice('正在读取文件夹…')
     let dropped: File[] | undefined
+    const budget = { files: 0, bytes: 0, scanned: 0, skipped: 0 }
     try {
-      const budget = { files: 0, bytes: 0 }
+      const progress = () => { if (alive.current) setNotice(`读取拖入文件夹：已扫描 ${budget.scanned} 项，已读取 ${budget.files} 个笔记和附件，跳过 ${budget.skipped} 项`) }
       dropped = []
-      for (const entry of entries) dropped.push(...await readDroppedEntry(entry, '', budget))
+      for (const entry of entries) dropped.push(...await readDroppedEntry(entry, '', budget, progress))
     }
-    catch (caught) { if (alive.current) setError(errorMessage(caught)) }
+    catch (caught) { if (alive.current) setError(`读取拖入文件夹失败（已读取 ${budget.files} 项）：${errorMessage(caught)}`) }
     finally { busyRef.current = false; if (alive.current) { setBusy(false); setReadingFolder(false); setNotice('') } }
     if (alive.current && dropped) await upload(dropped)
   }
@@ -215,7 +263,14 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
           {error && <p role="alert" className="qx-notice qx-notice--danger">{error}</p>}
           {notice && <p role="status" className="qx-notice">{notice}</p>}
           {source ? <>
-            {source.id === 'obsidian' && <NoteFolderPicker disabled={unavailable} onFiles={files => upload(files)} onBusy={value => { busyRef.current = value; setBusy(value); setReadingFolder(value) }} onError={setError} />}
+            {source.id === 'obsidian' && <NoteFolderPicker disabled={unavailable} onFiles={files => upload(files)} onBusy={value => { if (value) setVaultUpload(null); busyRef.current = value; setBusy(value); setReadingFolder(value) }} onError={setError} />}
+            {source.id === 'obsidian' && vaultUpload && !activeBatch && <section className="qx-notice" aria-label="本次上传进度">
+              <p role={vaultUpload.stage === 'failed' ? 'alert' : 'status'}>{vaultUpload.stage === 'failed' ? vaultUpload.error : vaultUpload.stage === 'preparing' ? `准备上传：${vaultUpload.fileCount} 个笔记和附件，正在核对存储限制` : vaultUpload.stage === 'accepting' ? `上传完成，正在等待服务器接收 ${vaultUpload.fileCount} 个笔记和附件…` : `上传中：${size(vaultUpload.loaded)}${vaultUpload.total !== undefined ? ` / ${size(vaultUpload.total)}` : ''}`}</p>
+              {vaultUpload.stage === 'uploading' && <progress aria-label="上传字节进度" {...(vaultUpload.total !== undefined ? { value: vaultUpload.loaded, max: Math.max(1, vaultUpload.total) } : {})} />}
+              {vaultUpload.stage === 'accepting' && <progress aria-label="等待服务器接收" />}
+              {vaultUpload.stage === 'failed' && <><p>已确认接收 0 项，{vaultUpload.fileCount} 项接收结果待确认。重试本批会复用同一请求，避免重复创建。</p><button type="button" className="qx-btn qx-btn--secondary" disabled={busy} onClick={() => void uploadVault(vaultUpload.files, vaultUpload)}>重试本批上传</button></>}
+            </section>}
+            {source.id === 'obsidian' && activeBatch && <ImportBatchProgress batch={activeBatch} busy={busy} stale={batches.isError} onRetry={() => void retryFailedBatch(activeBatch)} onRefresh={() => void refresh()} />}
             <div className="ep-library-ferry" data-over={over} data-disabled={unavailable} role={source.id === 'bilibili' ? undefined : 'button'} tabIndex={source.id === 'bilibili' || unavailable ? undefined : 0} aria-disabled={source.id === 'bilibili' ? undefined : unavailable} aria-label={source.id === 'bilibili' ? undefined : `选择${source.formats}，放进「${destinationName}」`}
               onClick={() => { if (!unavailable && source.id !== 'bilibili') fileInput.current?.click() }} onKeyDown={event => { if ((event.key === 'Enter' || event.key === ' ') && source.id !== 'bilibili') { event.preventDefault(); if (!unavailable) fileInput.current?.click() } }}
               onDragEnter={event => { event.preventDefault(); if (!unavailable && source.id !== 'bilibili') setOver(true) }} onDragOver={event => event.preventDefault()} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(false) }} onDrop={event => { if (source.id !== 'bilibili') void drop(event); else event.preventDefault() }}>
@@ -228,7 +283,7 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
             {source.id === 'bilibili' && <form className="ep-library-add__uid" onSubmit={event => { event.preventDefault(); void favorites() }}><input className="qx-input" aria-label="公开账户 UID" inputMode="numeric" pattern="[0-9]{1,20}" required maxLength={20} placeholder="公开账户 UID，例如 123456" disabled={busy} value={uid} onChange={event => setUid(event.target.value)} /><button type="submit" className="qx-btn qx-btn--primary" disabled={unavailable}>{busy ? '正在读取…' : '读取公开收藏'}</button></form>}
             <div className="ep-library-add__row"><ol className="ep-library-add__steps">{source.steps.map(step => <li key={step}>{step}</li>)}</ol><div className="ep-library-add__destination">{source.id === 'file' ? destinations.length ? <label>放进<select className="qx-input" aria-label="放进哪个知识库" value={targetLibrary?.id ?? ''} disabled={busy} onChange={event => setTarget(event.target.value)}>{destinations.map(library => <option value={library.id} key={library.id}>{library.name || '未命名知识库'}</option>)}</select></label> : <p className="qx-meta">上传时将创建「我的资料」知识库</p> : <p className="qx-meta">统一放进「我的资料」，相同内容自动跳过，有变化的资料会更新。</p>}</div></div>
             {source.id === 'file' && queue.length > 0 && <ul className="ep-library-upload-queue" aria-label="上传队列">{queue.map(entry => <li key={entry.id} data-state={entry.state}><span className="ep-library-upload-queue__name">{entry.file.name}<small>{size(entry.file.size)}{entry.error ? ` · ${entry.error}` : ''}</small></span>{entry.state === 'uploading' && <progress aria-label={`${entry.file.name} 上传中`} />}<span className="ep-library-upload-queue__state">{entry.state === 'done' ? <><CheckCircleIcon aria-hidden />已上传</> : entry.state === 'uploading' ? '上传中' : entry.state === 'failed' ? <><WarningCircleIcon aria-hidden />失败</> : '排队中'}</span>{entry.state === 'failed' && <button type="button" className="qx-btn qx-btn--ghost" disabled={busy} onClick={() => void uploadDocuments([entry.file], entry)}>{entry.document ? '重新上传' : '重试上传'}</button>}{entry.document && <Link className="qx-btn qx-btn--ghost" aria-disabled={busy || undefined} tabIndex={busy ? -1 : undefined} onClick={event => { if (busyRef.current) event.preventDefault() }} to={`/library?kb_id=${encodeURIComponent(entry.libraryId)}${entry.document.status === 'ready' ? `&document_id=${encodeURIComponent(entry.document.id)}` : ''}`}>{entry.document.status === 'ready' ? '打开' : '查看处理状态'}</Link>}</li>)}</ul>}
-            {source.id === 'file' ? <p className="qx-meta">{quota ? `单份不超过 ${size(quota.max_file_bytes)}，每个知识库最多 ${quota.max_documents_per_library} 份。` : '正在读取上传限制。'}{source.note}</p> : <p className="qx-meta">{source.id !== 'bilibili' && '单个文件最多 16 MB，每批最多 64 MB。'}{source.note}</p>}
+            {source.id === 'file' ? <p className="qx-meta">{quota ? `单份不超过 ${size(quota.max_file_bytes)}，每个知识库最多 ${quota.max_documents_per_library} 份。` : '正在读取上传限制。'}{source.note}</p> : <p className="qx-meta">{source.id !== 'bilibili' && '单个文件最多 16 MB，每批最多 64 MB、2000 个文件。'}{source.note}{source.id === 'obsidian' && quota ? `每个知识库最多 ${quota.max_documents_per_library} 篇资料，附件随笔记保存。` : ''}</p>}
             {full && <p role="alert" className="qx-notice">{targetLibrary ? '当前知识库已满，请选择其他知识库。' : '知识库数量已达上限，请先整理已有知识库。'}</p>}
             {quota ? <p className="qx-meta">已用 {size(quota.used_bytes)} / {size(quota.max_bytes)} · {quota.library_count} / {quota.max_libraries} 个知识库{quota.used_bytes >= quota.max_bytes ? ' · 存储空间已满' : ''}</p> : storage.isError ? <p role="alert" className="qx-notice qx-notice--danger">无法读取存储用量。<button type="button" className="qx-btn qx-btn--ghost" onClick={() => void storage.refetch()}>重试读取用量</button></p> : null}
             <div className="ep-library-add__extension"><PuzzlePieceIcon size={24} aria-hidden /><span><strong>读到哪，收到哪</strong><span className="qx-meta">装个浏览器扩展，在网页上点一下，整篇就进了「我的资料」。</span></span><button type="button" className="qx-btn qx-btn--secondary" disabled={busy} onClick={() => select('extension')}>了解扩展</button></div>
@@ -252,14 +307,16 @@ function LibraryAddDialogContent({ userId, libraries, initialLibraryId, initialS
   </dialog>
 }
 
-async function readDroppedEntry(entry: FileSystemEntry, parent = '', budget = { files: 0, bytes: 0 }): Promise<File[]> {
+async function readDroppedEntry(entry: FileSystemEntry, parent = '', budget = { files: 0, bytes: 0, scanned: 0, skipped: 0 }, progress?: () => void): Promise<File[]> {
+  budget.scanned += 1; progress?.()
   const path = `${parent}${entry.name}`
-  if (!isNoteFolderPath(path)) return []
+  if (!isNoteFolderPath(path)) { budget.skipped += 1; progress?.(); return [] }
   if (entry.isFile) {
-    if (!isNoteFolderFile(path)) return []
+    if (!isNoteFolderFile(path)) { budget.skipped += 1; progress?.(); return [] }
     const file = await new Promise<File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject))
     budget.files += 1; budget.bytes += file.size
     if (file.size > importFileLimit || budget.files > 2000 || budget.bytes > importBatchLimit) throw new Error('文件夹超过单文件 16 MB、每批 64 MB 或 2000 个文件的限制。')
+    progress?.()
     Object.defineProperty(file, 'webkitRelativePath', { value: path, configurable: true })
     return [file]
   }
@@ -271,6 +328,6 @@ async function readDroppedEntry(entry: FileSystemEntry, parent = '', budget = { 
     children.push(...batch)
   }
   const files: File[] = []
-  for (const child of children) files.push(...await readDroppedEntry(child, `${path}/`, budget))
+  for (const child of children) files.push(...await readDroppedEntry(child, `${path}/`, budget, progress))
   return files
 }

@@ -147,7 +147,6 @@ def test_partial_ten_omissions_still_produces_three_cited_cards_through_sdk(
             "summary_sources": refs,
             "cards": [{"title": s["content"],
                        "description": f"最近的对话具体提到：{s['content']}。",
-                       "prompt": f"请先回读来源，再一起讨论{s['content']}的安排。",
                        "sources": [ref]} for s, ref in zip(sources, refs, strict=True)],
         }
         assert len(generated["cards"]) == 3

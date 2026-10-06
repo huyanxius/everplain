@@ -83,6 +83,7 @@ from qunxue_api.modules.agent_conversation import (
     AgentToolEvent,
     AgentTurn,
     AgentWritingPreviewEvent,
+    render_context_suggestion,
 )
 from qunxue_api.modules.billing import BillingFailure
 from qunxue_api.modules.shared_knowledge import KnowledgeIndexChoiceRequired
@@ -1243,6 +1244,7 @@ class PydanticAIKnowledgeRunner:
                         prompt=prompt,
                         research_map=None,
                         document_context=None,
+                        context_suggestion=getattr(tools, "context_suggestion", None),
                     ),
                     message_history=_agent_message_history(conversation),
                     deps=tools,
@@ -2664,6 +2666,7 @@ class PydanticAIKnowledgeRunner:
                     material_context=getattr(tools, "material_prompt_context", None),
                     retrieved_evidence=retrieved_evidence,
                     shared_context=getattr(tools, "shared_reference_context", None),
+                    context_suggestion=getattr(tools, "context_suggestion", None),
                 ),
                 message_history=_agent_message_history(conversation),
                 deps=tools,
@@ -2769,6 +2772,7 @@ class PydanticAIKnowledgeRunner:
                         material_context=getattr(tools, "material_prompt_context", None),
                         retrieved_evidence=retrieved_evidence,
                         shared_context=getattr(tools, "shared_reference_context", None),
+                        context_suggestion=getattr(tools, "context_suggestion", None),
                     ),
                     message_history=_agent_message_history(conversation),
                     deps=tools,
@@ -2793,6 +2797,7 @@ class PydanticAIKnowledgeRunner:
                             material_context=getattr(tools, "material_prompt_context", None),
                             retrieved_evidence=retrieved_evidence,
                             shared_context=getattr(tools, "shared_reference_context", None),
+                            context_suggestion=getattr(tools, "context_suggestion", None),
                         ),
                         message_history=_agent_message_history(conversation),
                         deps=tools,
@@ -3681,6 +3686,7 @@ def _compose_agent_prompt(
     retrieved_evidence: Mapping[str, object] | None = None,
     shared_context: Mapping[str, object] | None = None,
     persona: Mapping[str, object] | None = None,
+    context_suggestion: Mapping[str, object] | None = None,
 ) -> str:
     map_context = (
         "\n\n<research_map_policy>"
@@ -3765,6 +3771,7 @@ def _compose_agent_prompt(
     return (
         f"{soul_context}{prompt}{map_context}{document_context_text}{shared_text}"
         f"{writing_context_text}{material_context_text}{retrieved_evidence_text}"
+        f"{render_context_suggestion(context_suggestion)}"
     )
 
 

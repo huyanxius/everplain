@@ -60,6 +60,7 @@ import {
   stopAgentRun,
   streamAgentTurn,
   type AgentCitation,
+  type AgentContextCard,
   type AgentConversation,
   type AgentConversationSummary,
   type AgentOutputAttempt,
@@ -98,6 +99,8 @@ import {
 import { ProjectScopeMenu } from './ProjectScopeMenu'
 import { deleteResearchProject, listResearchProjects, type ResearchProject } from '../../modules/research-projects'
 import { ConversationSuggestions } from '../conversation-view/ConversationSuggestions'
+import { ConversationContextCard } from '../conversation-view/ConversationContextCard'
+import { composeContextCardMessage, contextCardAdditionalText, readContextCard, type SelectedContextCard } from '../conversation-view/contextCard'
 import { ConversationContextSuggestions } from '../conversation-view/ConversationContextSuggestions'
 import { conversationContextSummaryKey } from '../conversation-view/useConversationContextSummary'
 import { useConversationGreeting } from '../conversation-view/researchPrompts'
@@ -322,6 +325,7 @@ type AgentPageStatus = 'idle' | 'loading' | 'thinking' | 'retrieving' | 'answeri
 type AgentToolEvent = Extract<AgentEvent, { type: 'tool_started' | 'tool_finished' | 'tool_failed' }>
 type ResearchToolStep = AgentToolStep & { interrupted?: boolean }
 type StreamingTurn = {
+  contextCard?: AgentContextCard | null
   runId?: string | null
   attemptId?: string | null
   outputAttempts?: AgentOutputAttempt[]
@@ -352,12 +356,18 @@ function mergeOutputAttempts(current: StreamingTurn, runId: string, incoming?: A
 }
 
 type PendingTurnAttempt = {
+  contextCard?: AgentContextCard | null
   question: string
   idempotencyKey: string
   conversationId: string | null
   runId?: string | null
   materialIds: string[]
   request?: AgentTurnRequest
+}
+
+function pendingAttemptDraft(attempt: PendingTurnAttempt | null) {
+  if (!attempt) return ''
+  return attempt.contextCard ? contextCardAdditionalText(attempt.question, attempt.contextCard) : attempt.question
 }
 
 type ResearchStartHandoff = {
@@ -460,6 +470,7 @@ function readPendingTurnAttempt(userId: string | null): PendingTurnAttempt | nul
     ) return null
     return {
       question: value.question,
+      contextCard: readContextCard(value.contextCard),
       idempotencyKey: value.idempotencyKey,
       conversationId: value.conversationId ?? null,
       runId: typeof value.runId === 'string' && value.runId ? value.runId : null,
@@ -518,6 +529,7 @@ function readInterruptedTurn(userId: string | null): StreamingTurn | null {
     return {
       runId: typeof value.runId === 'string' ? value.runId : null,
       question: value.question,
+      contextCard: readContextCard(value.contextCard),
       answer: value.answer,
       attemptId: typeof value.attemptId === 'string' ? value.attemptId : null,
       outputPersistenceFailed: value.outputPersistenceFailed === true,
@@ -935,6 +947,7 @@ function ConversationHistory({
 }
 
 function AssistantTurn({
+  contextCard,
   userId,
   turnId,
   question,
@@ -961,6 +974,7 @@ function AssistantTurn({
   researchEntryBusy,
   liveText,
 }: {
+  contextCard?: AgentContextCard | null
   userId: string | null
   turnId: string
   question: string
@@ -1033,7 +1047,7 @@ function AssistantTurn({
     : streamingStatus === 'answering' ? text('正在生成回答', 'Writing the answer') : text('正在理解并整理研究问题', 'Understanding and structuring the research question')
   return <ConversationTurn
     agent={{ name: profile.data?.name.trim() || 'Everplain', avatar, color: profile.data?.color }}
-    turn={{ id: turnId, question, answer, citations, knowledgeReleaseId,
+    turn={{ id: turnId, question, contextCard, answer, citations, knowledgeReleaseId,
       previousOutputs: outputAttempts.filter(output => output.answer && output.attempt_id !== attemptId && output.answer !== answer)
         .map(output => ({ id: output.attempt_id, ordinal: output.ordinal, answer: output.answer, unsaved: output.status === 'unsaved' })),
       toolSteps: toolSteps.map(step => ({ ...step, label: localizedToolLabel(step.tool, locale, step.label), detail: step.detail ? localizedToolDetail(step.detail, locale) : undefined, purpose: localizedToolPurpose(step.tool, locale), resultItems: resultItemsFromOutput(step.output) })),
@@ -1152,13 +1166,27 @@ export function ResearchAgentConversationPage({
   const requestedConversationId = embedded ? boundConversationId : searchParams.get('conversation_id')
   const homeSubmission = (entryNavigationType ?? navigationType) !== 'POP' && !embedded && !requestedConversationId && !searchParams.get('task_id')
     ? readHomeSubmission(location.state?.homeSubmitId, userId) : null
+  const pendingHomeIntent = useRef(homeSubmission)
+  pendingHomeIntent.current = homeSubmission
   const requestedKnowledgeReleaseId = embedded ? boundKnowledgeReleaseId : searchParams.get('knowledge_release_id')
   const storageWorkspace = writingDocumentId ? `writing:${writingDocumentId}` : embedded && boundReferenceKnowledgeBaseId ? `course:${boundReferenceKnowledgeBaseId}` : embedded ? boundWorkspace : 'agent'
   const requestedScope = conversationStorageScope(userId, requestedConversationId, embedded ? boundTaskId : searchParams.get('task_id'), storageWorkspace)
   const storageScope = useRef(requestedScope)
   const restoredPendingTurn = useRef<PendingTurnAttempt | null>(readPendingTurnAttempt(storageScope.current))
   const restoredInterruptedTurn = useRef<StreamingTurn | null>(readInterruptedTurn(storageScope.current))
-  const [draft, setDraft] = useState(() => homeSubmission?.question ?? (readStoredDraft(storageScope.current) || restoredPendingTurn.current?.question || ''))
+  const [draft, setDraft] = useState(() => homeSubmission
+    ? homeSubmission.contextCard ? contextCardAdditionalText(homeSubmission.question, homeSubmission.contextCard) : homeSubmission.question
+    : readStoredDraft(storageScope.current) || pendingAttemptDraft(restoredPendingTurn.current))
+  const [selectedCard, setSelectedCard] = useState<SelectedContextCard | null>(() => homeSubmission?.contextCard ?? null)
+  const cardLocation = useRef({ owner: userId, scope: requestedScope, path: location.pathname, search: location.search, key: location.key })
+  useLayoutEffect(() => {
+    const previous = cardLocation.current
+    cardLocation.current = { owner: userId, scope: requestedScope, path: location.pathname, search: location.search, key: location.key }
+    if (previous.owner !== userId && typeof location.state?.homeSubmitId === 'string') takeHomeSubmission(location.state.homeSubmitId, previous.owner)
+    if ((entryNavigationType ?? navigationType) === 'POP' && typeof location.state?.homeSubmitId === 'string') takeHomeSubmission(location.state.homeSubmitId, userId)
+    if (previous.scope !== requestedScope || previous.path !== location.pathname || previous.search !== location.search
+      || (previous.key !== location.key && navigationType === 'POP')) setSelectedCard(null)
+  }, [userId, requestedScope, location.pathname, location.search, location.key, location.state, navigationType, entryNavigationType])
   const [conversations, setConversations] = useState<AgentConversationSummary[]>([])
   const [activeConversation, setActiveConversation] = useState<AgentConversation | null>(null)
   const taskId = embedded ? boundTaskId : (
@@ -1442,7 +1470,7 @@ export function ResearchAgentConversationPage({
     return true
   }, !isBusy)
   useEffect(() => { writingCallbacks.current.onBusyChange?.(isBusy) }, [isBusy])
-  const canSubmit = draft.trim().length > 0
+  const canSubmit = Boolean(draft.trim() || selectedCard)
     && !isBusy
     && (!homeSubmission || modelSelection.status === 'ready')
     && !researchEntryBusy
@@ -1473,7 +1501,7 @@ export function ResearchAgentConversationPage({
     if (!question || requestedConversationId) return
     // Only explicit text submitted by a public-page composer may seed this route.
     // Legacy automatic suggestion URLs must never overwrite a user's saved draft.
-    if (searchParams.get('prompt_source') === 'user') updateDraft(question)
+    if (searchParams.get('prompt_source') === 'user') { setSelectedCard(null); updateDraft(question) }
     setSearchParams((current) => {
       const next = new URLSearchParams(current)
       next.delete('prompt')
@@ -1484,6 +1512,7 @@ export function ResearchAgentConversationPage({
 
   useEffect(() => {
     if (!suggestedPrompt) return
+    setSelectedCard(null)
     updateDraft(suggestedPrompt)
     globalThis.requestAnimationFrame?.(() => composerInputRef.current?.focus())
   }, [suggestedPrompt, suggestedPromptKey])
@@ -1556,6 +1585,7 @@ export function ResearchAgentConversationPage({
       idempotency_key: attempt.idempotencyKey,
       status: turn.failure ? 'failed' : 'interrupted',
       request: attempt.request,
+      context_card: turn.contextCard,
       partial_answer: turn.answer,
       output_attempts: turn.outputAttempts,
       tool_summary: turn.toolSteps.map((step) => ({
@@ -1583,6 +1613,7 @@ export function ResearchAgentConversationPage({
   function recoveryAttempt(run: AgentRunRecovery): PendingTurnAttempt {
     return {
       question: run.request.message,
+      contextCard: run.context_card,
       idempotencyKey: run.idempotency_key,
       conversationId: run.request.conversation_id ?? null,
       runId: run.run_id,
@@ -1596,6 +1627,7 @@ export function ResearchAgentConversationPage({
     return {
       runId: run.run_id,
       question: run.idempotency_key.startsWith('writing-ui:') && run.request.writing_context ? '' : run.request.message,
+      contextCard: run.context_card,
       answer: run.output_attempts?.at(-1)?.answer ?? run.partial_answer,
       attemptId: run.output_attempts?.at(-1)?.attempt_id,
       outputAttempts: run.output_attempts ?? [],
@@ -1754,6 +1786,9 @@ export function ResearchAgentConversationPage({
 
   useEffect(() => {
     const onPageHide = () => {
+      const intent = pendingHomeIntent.current
+      if (intent) takeHomeSubmission(intent.id, intent.owner)
+      setSelectedCard(null)
       leaveConversation.current()
       failedTurnAttempt.current = activeTurnAttempt.current ?? failedTurnAttempt.current
       activeTurnAttempt.current = null
@@ -1803,6 +1838,7 @@ export function ResearchAgentConversationPage({
   }, [requestedScope, requestedConversationId, setStreamingTurn])
 
   function cancelActiveStream() {
+    setSelectedCard(null)
     leaveConversation.current()
     researchEntryAbortController.current = null
     setResearchEntryBusy(false)
@@ -1980,7 +2016,7 @@ export function ResearchAgentConversationPage({
     }
   }
 
-  async function submitQuestion(rawQuestion: string, retryIdempotencyKey?: string, deepAction?: { action: 'clarify' | 'confirm' | 'skip'; selection?: string }, researchEntry = false, entrySelection?: ModelSelection, writingShortcut = false, resumeRequest?: AgentTurnRequest, subscription?: AgentStreamResume): Promise<AgentConversation | null> {
+  async function submitQuestion(rawQuestion: string, retryIdempotencyKey?: string, deepAction?: { action: 'clarify' | 'confirm' | 'skip'; selection?: string }, researchEntry = false, entrySelection?: ModelSelection, writingShortcut = false, resumeRequest?: AgentTurnRequest, subscription?: AgentStreamResume, contextCard?: SelectedContextCard): Promise<AgentConversation | null> {
     const question = resumeRequest || retryIdempotencyKey || deepAction || researchEntry ? rawQuestion.trim() : composeResearchDiscussion(rawQuestion.trim(), discussion)
     if (!rawQuestion.trim()) return null
     if (question.length > MAX_AGENT_MESSAGE_LENGTH) {
@@ -2002,6 +2038,7 @@ export function ResearchAgentConversationPage({
       ? toModelSelectionRequest(entrySelection, modelSelection.catalog) : modelSelection.requestFields()
     const attempt: PendingTurnAttempt = {
       question,
+      contextCard: contextCard ? { title: contextCard.title, description: contextCard.description } : resumableAttempt?.contextCard,
       idempotencyKey,
       conversationId: resumeRequest?.conversation_id ?? activeConversation?.conversation_id ?? pendingConversationId.current,
       runId: resumableAttempt?.runId ?? null,
@@ -2021,6 +2058,7 @@ export function ResearchAgentConversationPage({
           ...newModelFields,
           conversation_id: activeConversation?.conversation_id ?? pendingConversationId.current,
           message: question,
+          ...(contextCard ? { context_suggestion: { card_id: contextCard.card_id, version: contextCard.version } } : {}),
           mode: turnMode === 'deep-research' ? 'deep_research' : 'standard',
           workspace,
           ...(writingContext ? { writing_context: writingContext } : {}),
@@ -2053,6 +2091,7 @@ export function ResearchAgentConversationPage({
     persistInterruptedTurn(storageScope.current, null)
     persistPendingTurnAttempt(storageScope.current, attempt)
     if (!writingShortcut) updateDraft('')
+    if (contextCard) setSelectedCard(null)
     setError(null)
     setStatus('thinking')
     pendingToolSteps.current = []
@@ -2064,7 +2103,7 @@ export function ResearchAgentConversationPage({
         status: previousTurn.outputPersistenceFailed ? 'unsaved' : previousTurn.failure ? 'failed' : 'interrupted', answer: previousTurn.answer,
         created_at: new Date(previousTurn.startedAt).toISOString(),
       }] : [])] : []
-    const firstStreamingTurn: StreamingTurn = subscription && previousTurn ? { ...previousTurn, failure: undefined, interrupted: false } : { runId: attempt.runId, question: writingShortcut ? '' : question, answer: '', outputAttempts: previousOutputs, citations: [], toolSteps: [], canvasPatches: [], startedAt: Date.now() }
+    const firstStreamingTurn: StreamingTurn = subscription && previousTurn ? { ...previousTurn, failure: undefined, interrupted: false } : { runId: attempt.runId, question: writingShortcut ? '' : question, contextCard: attempt.contextCard, answer: '', outputAttempts: previousOutputs, citations: [], toolSteps: [], canvasPatches: [], startedAt: Date.now() }
     const controller = new AbortController()
     const runGeneration = streamGeneration.current + 1
     streamGeneration.current = runGeneration
@@ -2139,6 +2178,7 @@ export function ResearchAgentConversationPage({
             if (!pausePending.current) setStatus('thinking')
           } else if (event.type === 'turn_snapshot') {
             const run = event.run
+            attempt.contextCard = run.context_card ?? attempt.contextCard
             for (const preview of run.writing_previews ?? []) if (preview.document_id === writingDocumentId) writingCallbacks.current.onWritingPreview?.(preview)
             activeRunId.current = run.status === 'running' ? run.run_id : null
             pendingConversationId.current = run.conversation_id
@@ -2149,6 +2189,7 @@ export function ResearchAgentConversationPage({
                 || (current.runId === run.run_id && current.answer === DELETED_MATERIAL_ANSWER)
                 || Boolean(redactedStreamingMaterialIds.current.size) || current.citations.some(citation => citation.deleted)
               return { ...current, runId: run.run_id,
+                contextCard: run.context_card ?? current.contextCard,
                 attemptId: run.output_attempts?.at(-1)?.attempt_id,
                 answer: redacted ? DELETED_MATERIAL_ANSWER : run.output_persistence_failed ? run.partial_answer : run.output_attempts?.at(-1)?.answer ?? run.partial_answer,
                 outputPersistenceFailed: run.output_persistence_failed ?? current.outputPersistenceFailed,
@@ -2314,7 +2355,7 @@ export function ResearchAgentConversationPage({
             failedTurnAttempt.current = pending
             activeTurnAttempt.current = null
             persistPendingTurnAttempt(storageScope.current, pending)
-            updateDraft(question)
+            updateDraft(pendingAttemptDraft(pending))
             setStreamingTurn((current) => {
               if (!current) return current
               const saved = { ...current, interrupted: true }
@@ -2331,7 +2372,7 @@ export function ResearchAgentConversationPage({
             failedTurnAttempt.current = failedAttempt
             activeTurnAttempt.current = null
             persistPendingTurnAttempt(storageScope.current, failedAttempt)
-            if (!writingShortcut) updateDraft(question)
+            if (!writingShortcut) updateDraft(pendingAttemptDraft(failedAttempt))
             const failureMessage = localizedTurnFailure(event.code, event.message, locale)
             setStreamingTurn((current) => {
               if (!current) return current
@@ -2350,7 +2391,11 @@ export function ResearchAgentConversationPage({
       if (!controller.signal.aborted && streamGeneration.current === runGeneration) {
         const causeMessage = cause instanceof Error ? cause.message : ''
         const message = locale === 'en-US'
-          ? (causeMessage.includes('完成前中断')
+          ? ((cause as { status?: number } | null)?.status === 409
+              ? causeMessage.includes('背景卡')
+                ? 'This conversation card has changed or its sources are unavailable. Please select it again.'
+                : 'This request conflicts with the current conversation. Please reload and try again.'
+              : causeMessage.includes('完成前中断')
               ? 'The connection ended before the answer completed. Retry this turn; no answer has been fabricated.'
               : 'The Agent is unavailable. Check the model service and retry; no answer has been fabricated.')
           : causeMessage.includes('完成前中断')
@@ -2362,7 +2407,7 @@ export function ResearchAgentConversationPage({
         failedTurnAttempt.current = failedAttempt
         activeTurnAttempt.current = null
         persistPendingTurnAttempt(storageScope.current, failedAttempt)
-        if (!writingShortcut) updateDraft(question)
+        if (!writingShortcut) updateDraft(pendingAttemptDraft(failedAttempt))
         setStreamingTurn((current) => {
           if (!current) return current
           const failed = { ...current, failure: message }
@@ -2400,9 +2445,12 @@ export function ResearchAgentConversationPage({
 
   function submitDraft() {
     if (homeSubmission && modelSelection.status !== 'ready') return
-    const normalized = draft.trim()
+    const normalized = composeContextCardMessage(selectedCard, draft)
     const attempt = failedTurnAttempt.current
-    void submitQuestion(normalized, attempt?.question === normalized ? attempt.idempotencyKey : undefined)
+    // A matching draft is never authority to replay a card's hidden selection.
+    // Only the explicit turn Retry/Resume action preserves that original request.
+    const retryKey = !selectedCard && !attempt?.request?.context_suggestion && attempt?.question === normalized ? attempt.idempotencyKey : undefined
+    void submitQuestion(normalized, retryKey, undefined, false, undefined, false, undefined, undefined, selectedCard ?? undefined)
   }
 
   const sendHomeSubmission = useEffectEvent(() => {
@@ -2411,12 +2459,13 @@ export function ResearchAgentConversationPage({
     if (!intent) return
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null })
     if (!isModelSelectionValid(intent.selection, modelSelection.catalog)) {
-      updateDraft(intent.question)
+      updateDraft(intent.contextCard ? contextCardAdditionalText(intent.question, intent.contextCard) : intent.question)
+      setSelectedCard(intent.contextCard ?? null)
       setError(text('所选模型暂时不可用。问题已保留，请选择模型后重试。', 'The selected model is unavailable. Your question is saved; choose a model and retry.'))
       return
     }
     modelSelection.onChange(intent.selection)
-    void submitQuestion(intent.question, intent.id, undefined, false, intent.selection)
+    void submitQuestion(intent.question, intent.id, undefined, false, intent.selection, false, undefined, undefined, intent.contextCard)
   })
   useEffect(() => {
     if (!writingAction || writingActionStarted.current === writingAction.id || isBusy) return
@@ -2519,12 +2568,12 @@ export function ResearchAgentConversationPage({
       failedTurnAttempt.current = attempt
       activeTurnAttempt.current = null
       persistPendingTurnAttempt(storageScope.current, attempt)
-      if (quickWritingAttempt.current !== attempt.idempotencyKey) updateDraft(attempt.question)
+      if (quickWritingAttempt.current !== attempt.idempotencyKey) updateDraft(pendingAttemptDraft(attempt))
     } else if (attempt) {
       failedTurnAttempt.current = null
       activeTurnAttempt.current = null
       persistPendingTurnAttempt(storageScope.current, null)
-      if (quickWritingAttempt.current !== attempt.idempotencyKey) updateDraft(attempt.question)
+      if (quickWritingAttempt.current !== attempt.idempotencyKey) updateDraft(pendingAttemptDraft(attempt))
     }
     const next = interruptedSteps(pendingToolSteps.current, locale)
     pendingToolSteps.current = next
@@ -2591,7 +2640,13 @@ export function ResearchAgentConversationPage({
   }
 
   function choosePrompt(question: string) {
+    setSelectedCard(null)
     updateDraft(question)
+    globalThis.requestAnimationFrame?.(() => composerInputRef.current?.focus())
+  }
+
+  function chooseContextCard(card: SelectedContextCard) {
+    setSelectedCard(card)
     globalThis.requestAnimationFrame?.(() => composerInputRef.current?.focus())
   }
 
@@ -2836,6 +2891,7 @@ export function ResearchAgentConversationPage({
                     key={visualTurnKeys.current.get(turn.turn_id) ?? turn.turn_id}
                     turnId={visualTurnKeys.current.get(turn.turn_id) ?? turn.turn_id}
                     question={turn.tool_traces?.some(trace => trace.tool === 'writing_ui_action') ? '' : turn.user.content}
+                    contextCard={turn.user.context_card}
                     answer={turn.assistant.content}
                     outputAttempts={turn.output_attempts}
                     deliveryState={turn.delivery_state}
@@ -2860,6 +2916,7 @@ export function ResearchAgentConversationPage({
                     key={run.run_id}
                     turnId={run.run_id}
                     question={saved.question}
+                    contextCard={saved.contextCard}
                     answer={saved.answer}
                     outputAttempts={saved.outputAttempts}
                     deliveryState={saved.deliveryState}
@@ -2902,6 +2959,7 @@ export function ResearchAgentConversationPage({
                   <AssistantTurn key={`live-${streamVisualKey.current}`} turnId={`live-${streamVisualKey.current}`}
                     userId={userId}
                     question={streamingTurn.question}
+                    contextCard={streamingTurn.contextCard}
                     answer={streamingTurn.answer}
                     outputAttempts={streamingTurn.outputAttempts}
                     attemptId={streamingTurn.attemptId}
@@ -3007,7 +3065,7 @@ export function ResearchAgentConversationPage({
               researchLayout={researchToolsVisible}
               modelSelector={<ModelSelectionSettings key={requestedScope} state={modelSelection} disabled={isBusy || materialUploading}
                 activeRequest={isBusy ? activeTurnAttempt.current?.request : null} />}
-              context={composerPrefix}
+              context={selectedCard ? <>{composerPrefix}<ConversationContextCard card={selectedCard} onRemove={() => setSelectedCard(null)} disabled={isBusy} /></> : composerPrefix}
               attachmentPicker={materialPickerOpen ? <AgentMaterialAttachmentPicker inline loading={materialPickerLoading}
                 materials={materialPickerLoading ? [] : availableMaterials} selectedIds={new Set(attachedMaterials.map(item => item.materialId))}
                 locale={locale} onToggle={toggleAttachedMaterial} onClose={() => setMaterialPickerOpen(false)} /> : null}
@@ -3031,7 +3089,7 @@ export function ResearchAgentConversationPage({
             {isLanding && <div className="cv-research-suggestions">{researchToolsVisible ? <ConversationSuggestions
               mode="research" taskId={taskId}
               projects={projects} conversations={conversations} attachedMaterials={attachedMaterials}
-              onSelect={choosePrompt} /> : !embedded && !searchParams.get('reference_knowledge_base_id') ? <ConversationContextSuggestions userId={userId} onSelect={choosePrompt} /> : null}</div>}
+              onSelect={choosePrompt} /> : !embedded && !searchParams.get('reference_knowledge_base_id') ? <ConversationContextSuggestions userId={userId} onSelect={chooseContextCard} /> : null}</div>}
 </>}
 
     source={<ConversationSourcePanel

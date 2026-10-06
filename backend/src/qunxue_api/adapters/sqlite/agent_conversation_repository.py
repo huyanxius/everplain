@@ -36,6 +36,7 @@ from qunxue_api.modules.agent_conversation import (
     RunAlreadyActive,
     aggregate_research_map,
     apply_canvas_edits,
+    display_card,
     merge_digest,
     patches_from_tool_summary,
     prepare_canvas_edit,
@@ -146,6 +147,7 @@ class SqliteConversationRepository:
             run.turn_id: self._run_with_output(run)
             for run in self._session.scalars(select(AgentRunRow).where(
                 AgentRunRow.conversation_id == str(conversation_id),
+                AgentRunRow.user_id == str(user_id),
                 AgentRunRow.status == "completed", AgentRunRow.turn_id.is_not(None),
             ))
         }
@@ -189,7 +191,12 @@ class SqliteConversationRepository:
             turns.append(
                 AgentTurn(
                     turn_id=UUID(user_row.turn_id),
-                    user_message=_message(user_row),
+                    user_message=replace(
+                        _message(user_row),
+                        context_card=display_card(
+                            output_runs_by_turn[user_row.turn_id].request_snapshot.get("_display_card")
+                        ) if user_row.turn_id in output_runs_by_turn else None,
+                    ),
                     assistant_message=_message(
                         assistant_row,
                         citations=citations,

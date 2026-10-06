@@ -62,7 +62,18 @@ it('requests only read access on an explicit sync and reports a revoked permissi
   await waitFor(() => expect(props.onFiles).toHaveBeenCalledOnce())
   expect(handle.requestPermission).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: '再次同步「Vault」' }))
-  await waitFor(() => expect(props.onError).toHaveBeenCalledWith('请允许读取所选笔记文件夹，或重新选择。'))
+  await waitFor(() => expect(props.onError).toHaveBeenCalledWith(expect.stringContaining('请允许读取所选笔记文件夹，或重新选择。')))
   expect(handle.requestPermission).toHaveBeenCalledWith({ mode: 'read' })
   expect(props.onFiles).toHaveBeenCalledOnce()
+})
+
+it('reports the reading stage and exact completed count when one selected file becomes unreadable', async () => {
+  const handle: NoteDirectory = { name: 'Vault', kind: 'directory', async *entries() {
+    yield ['first.md', { kind: 'file', name: 'first.md', getFile: async () => new File(['# First'], 'first.md') }]
+    yield ['second.md', { kind: 'file', name: 'second.md', getFile: async () => { throw new DOMException('文件已移动', 'NotFoundError') } }]
+  } }
+  Object.defineProperty(window, 'showDirectoryPicker', { configurable: true, value: vi.fn(async () => handle) })
+  const props = mount(); fireEvent.click(screen.getByRole('button', { name: '选择笔记文件夹' }))
+  await waitFor(() => expect(props.onError).toHaveBeenCalledWith('读取阶段失败（已读取 1 / 2 项）：文件已移动'))
+  expect(props.onFiles).not.toHaveBeenCalled(); expect(props.onBusy).toHaveBeenLastCalledWith(false)
 })

@@ -436,6 +436,34 @@ export type AgentCitationResponse = {
 };
 
 /**
+ * AgentContextCardResponse
+ */
+export type AgentContextCardResponse = {
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Title
+     */
+    title: string;
+};
+
+/**
+ * AgentContextSuggestionRequest
+ */
+export type AgentContextSuggestionRequest = {
+    /**
+     * Card Id
+     */
+    card_id: string;
+    /**
+     * Version
+     */
+    version: string;
+};
+
+/**
  * AgentConversationListResponse
  */
 export type AgentConversationListResponse = {
@@ -578,6 +606,7 @@ export type AgentMessageResponse = {
      * Content
      */
     content: string;
+    context_card?: AgentContextCardResponse | null;
     /**
      * Created At
      */
@@ -876,6 +905,7 @@ export type AgentRunLookupResponse = {
      * Cancel Requested
      */
     cancel_requested: boolean;
+    context_card?: AgentContextCardResponse | null;
     /**
      * Conversation Id
      */
@@ -935,6 +965,7 @@ export type AgentRunRecoveryResponse = {
      * Cancel Requested
      */
     cancel_requested: boolean;
+    context_card?: AgentContextCardResponse | null;
     /**
      * Delivery State
      */
@@ -1036,6 +1067,7 @@ export type AgentToolTraceResponse = {
  * AgentTurnRequest
  */
 export type AgentTurnRequest = {
+    context_suggestion?: AgentContextSuggestionRequest | null;
     /**
      * Conversation Id
      */
@@ -2615,13 +2647,13 @@ export type ConversationExcerptResponse = {
  */
 export type ConversationSuggestionResponse = {
     /**
+     * Card Id
+     */
+    card_id: string;
+    /**
      * Description
      */
     description: string;
-    /**
-     * Prompt
-     */
-    prompt: string;
     /**
      * Sources
      */
@@ -2630,6 +2662,10 @@ export type ConversationSuggestionResponse = {
      * Title
      */
     title: string;
+    /**
+     * Version
+     */
+    version: string;
 };
 
 /**
@@ -12264,6 +12300,10 @@ export type StreamAgentTurnErrors = {
      * Not Found
      */
     404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
     /**
      * Unprocessable Entity
      */

@@ -14,8 +14,9 @@ an earlier issue is still open, and do not claim a comprehensive account.
 Return zero to three genuinely useful, content-specific proposed continuations. A suggestion
 is a QUESTION the user could choose to ask now, not an assertion of an outstanding task.
 Name the concrete subject in the title. The description must contain relevant actual detail
-from the sources. The prompt must be a standalone, specific next question or work request.
-It must ask the agent to read the cited original conversation before relying on past details.
+from the sources. Return only visible title, description and structured sources for each card.
+Never generate execution instructions, prompts or retrieval pointers in visible text.
+Conversation/message IDs and sequence numbers belong only in structured source fields.
 Do not merely paste a conversation title into a generic template. Do not use stock titles
 such as 'Clarify next steps', 'Compare options', 'Put an idea into words', '理清下一步',
 '比较可选方案', or '把想法写清楚'. Do not force three cards. Similar topics should be combined;
@@ -26,5 +27,4 @@ Assistant suggestions, stated results and explanations are not confirmed user de
 Only a USER message can establish a user preference or commitment. Assistant suggestions
 have not been accepted
 unless the user says so. A source citation must contain conversation_id, message_id and an
-exact non-secret quote from that source. For each prompt include the source conversation IDs
-as retrieval pointers, not claimed authority. Credentials must never appear in output.
+exact non-secret quote from that source. Credentials must never appear in output.

@@ -12,6 +12,7 @@ from qunxue_api.modules.agent_conversation.domain import (
     AgentTurn,
     Conversation,
     IdempotentTurn,
+    display_card,
 )
 from qunxue_api.modules.agent_conversation.errors import (
     ConversationNotFound,
@@ -88,6 +89,14 @@ class _MemoryRepository:
             turns=tuple(
                 replace(
                     turn,
+                    user_message=replace(
+                        turn.user_message,
+                        context_card=next((display_card(run.request_snapshot.get("_display_card"))
+                                           for run in self.runs.values()
+                                           if run.user_id == user_id
+                                           and run.conversation_id == conversation_id
+                                           and run.turn_id == turn.turn_id), None),
+                    ),
                     tool_summary=runs_by_turn.get(turn.turn_id, turn.tool_summary),
                     canvas_patches=patches_by_turn.get(turn.turn_id, turn.canvas_patches),
                     delivery_state=next((run.delivery_state for run in self.runs.values()

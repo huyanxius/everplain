@@ -11,6 +11,7 @@ from qunxue_api.modules.agent_conversation.domain import (
     Conversation,
     IdempotentTurn,
     UserConversation,
+    display_card,
 )
 from qunxue_api.modules.agent_conversation.errors import (
     AgentConversationError,
@@ -44,6 +45,10 @@ from qunxue_api.modules.agent_conversation.service import ConversationService
 
 from .canvas_editing import CanvasEditConflict, apply_canvas_edits, prepare_canvas_edit
 from .context import excerpt, merge_digest, render_recent_context
+from .context_suggestion import (
+    ContextSuggestionUnavailable,
+    render_context_suggestion,
+)
 from .model_selection import (
     LUNA_REASONING_EFFORTS,
     MOCK_AGENT_MODEL_CHOICES,
@@ -56,6 +61,9 @@ from .model_selection import (
 from .writing_preview import validated_writing_preview
 
 __all__ = [
+    "ContextSuggestionUnavailable",
+    "display_card",
+    "render_context_suggestion",
     "validated_writing_preview",
     "excerpt",
     "ContextSummaryBatch",

@@ -24,6 +24,7 @@ from qunxue_api.modules.agent_conversation import (
     AgentToolEvent,
     AgentTurn,
     AgentWritingPreviewEvent,
+    ContextSuggestionUnavailable,
     Conversation,
     ConversationNotFound,
     ConversationService,
@@ -32,6 +33,7 @@ from qunxue_api.modules.agent_conversation import (
     ResearchMaterialCitationUnavailable,
     RunAlreadyActive,
     SubjectAgentRunner,
+    display_card,
     resolve_agent_model_selection,
 )
 from qunxue_api.modules.billing import BillingFailure, BillingOperations, CreditService
@@ -71,6 +73,7 @@ class DisciplinaryAgentApplication:
         memory_tools_factory: Callable[..., object] | None = None,
         shared_references=None,
         persona_factory=None,
+        context_suggestions=None,
     ) -> None:
         self._conversations = conversations
         self._runner = runner
@@ -86,6 +89,7 @@ class DisciplinaryAgentApplication:
         self._memory_tools_factory = memory_tools_factory
         self._shared_references = shared_references
         self._persona_factory = persona_factory
+        self._context_suggestions = context_suggestions
 
     def knowledge_index_status(self, *, user_id, kb_id=None, purpose="search"):
         return self._shared_references.index_status(user_id=user_id, kb_id=kb_id, purpose=purpose)
@@ -239,6 +243,25 @@ class DisciplinaryAgentApplication:
         self._conversations.commit()
         return conversation_id, task_id
 
+    def resolve_context_suggestion(self, *, user_id, selection, existing_run=None):
+        verified = None
+        if existing_run is not None:
+            saved = existing_run.request_snapshot
+            original = saved.get("context_suggestion")
+            if selection is not None and selection != original:
+                raise ContextSuggestionUnavailable()
+            selection = original
+            verified = saved.get("_context_suggestion")
+            if selection is not None and not isinstance(verified, dict):
+                raise ContextSuggestionUnavailable()
+        if selection is None:
+            return None, None
+        if self._context_suggestions is None:
+            raise ContextSuggestionUnavailable()
+        return self._context_suggestions.resolve_suggestion(
+            user_id=user_id, selection=selection, verified_snapshot=verified,
+        )
+
     def run_turn(
         self,
         *,
@@ -255,6 +278,7 @@ class DisciplinaryAgentApplication:
         section_id: str | None = None,
         document_version: int | None = None,
         writing_context: dict[str, object] | None = None,
+        context_suggestion: dict[str, str] | None = None,
         theory_plan_id: UUID | None = None,
         material_ids: tuple[UUID, ...] = (),
         reference_knowledge_base_id: UUID | None = None,
@@ -435,6 +459,13 @@ class DisciplinaryAgentApplication:
                     conversation_id=conversation.conversation_id,
                     requested_task_id=task_id,
                 )
+        selected_card, selected_background = self.resolve_context_suggestion(
+            user_id=user_id, selection=context_suggestion, existing_run=existing_run,
+        )
+        visible_message = (
+            str(existing_run.request_snapshot.get("message", prompt))
+            if existing_run is not None else prompt
+        )
         if conversation is not None:
             if (
                 reference_knowledge_base_id is not None
@@ -457,6 +488,8 @@ class DisciplinaryAgentApplication:
         # The first library read can import a snapshot in its own SQLite transaction.
         # Finish that before creating the conversation, which acquires the write lock.
         tools = self._tools_factory()
+        if selected_background is not None:
+            tools.context_suggestion = selected_background
         if writing_context is not None:
             prepare_writing_context = getattr(tools, "prepare_writing_context", None)
             if not callable(prepare_writing_context):
@@ -467,7 +500,7 @@ class DisciplinaryAgentApplication:
             if conversation is None:
                 conversation = self._conversations.create_conversation(
                     user_id=user_id,
-                    title=prompt,
+                    title=selected_card["title"] if selected_card else visible_message,
                     reference_knowledge_base_id=reference_knowledge_base_id,
                 )
             if workspace == "research" or material_ids:
@@ -481,7 +514,7 @@ class DisciplinaryAgentApplication:
                     task_id = self._ensure_research_draft(
                         user_id=user_id,
                         conversation_id=conversation.conversation_id,
-                        project_title=prompt,
+                        project_title=visible_message,
                     )
         if mode == "deep_research":
             enable_deep_research = getattr(tools, "enable_deep_research", None)
@@ -527,10 +560,10 @@ class DisciplinaryAgentApplication:
         runtime_identity = _runner_identity(runner)
         request_snapshot = {
             "conversation_id": str(conversation.conversation_id),
-            "message": (
-                existing_run.request_snapshot.get("message", prompt)
-                if existing_run is not None
-                else prompt
+            "message": visible_message,
+            "context_suggestion": (
+                {key: selected_card[key] for key in ("card_id", "version")}
+                if selected_card else None
             ),
             "reference_knowledge_base_id": str(reference_knowledge_base_id)
             if reference_knowledge_base_id
@@ -553,6 +586,9 @@ class DisciplinaryAgentApplication:
             "deep_research_selection": deep_research_selection,
             "_execution_prompt": prompt,
         }
+        if selected_card is not None:
+            request_snapshot["_context_suggestion"] = selected_card
+            request_snapshot["_display_card"] = display_card(selected_card)
         billing_resume = existing_run is not None and existing_run.status in {
             "awaiting_clarification", "awaiting_plan_confirmation"
         }
@@ -842,7 +878,8 @@ class DisciplinaryAgentApplication:
                             prepare_kwargs["tools"] = tools
                         if "is_cancelled" in parameters:
                             prepare_kwargs["is_cancelled"] = cancelled
-                        if conversation_was_created and "on_title" in parameters:
+                        if (conversation_was_created and selected_card is None
+                                and "on_title" in parameters):
                             prepare_kwargs["on_title"] = save_initial_title
                         prepare_research(
                             **prepare_kwargs,
