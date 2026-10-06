@@ -32,7 +32,7 @@ export function AppHomePage() {
             : '这里还空着。丢一份资料，或者问一个你想弄清楚的问题。'}
         </p>
         <HomeComposer home={home} />
-        <ConversationContextSuggestions userId={home.userId} onSelect={home.selectCard} />
+        <ConversationContextSuggestions userId={home.userId} onSelect={home.selectCard} onStart={home.selectStarter} hasDraft={Boolean(home.question.trim() || home.selectedCard)} />
       </section>
       <div className="hm-table">
         <section aria-labelledby="home-research-title" className="hm-section">

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation } from 'react-router'
+import { getStarterSuggestions } from './starterSuggestions'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getConversationContextSummary, type ConversationContextSummary } from '../../modules/research-agent'
 import { selectContextCard } from './contextCard'
@@ -37,19 +38,17 @@ beforeEach(() => { vi.resetAllMocks(); vi.mocked(getConversationContextSummary).
 afterEach(() => { cleanup(); clients.splice(0).forEach(value => value.clear()); vi.useRealTimers(); localStorage.clear() })
 
 describe('shared cached conversation suggestions', () => {
-  it('shows content-specific cross-session evidence and only selects a visible card', async () => {
+  it('shows only real card copy and selects opaque context without sending', async () => {
     const onSelect = vi.fn()
     const onSubmit = vi.fn()
     render(<form onSubmit={onSubmit}>{surface(client(), 'reader-1', onSelect)}</form>)
     const card = await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })
-    expect(screen.getAllByRole('button')).toHaveLength(2)
-    expect(screen.getByText(ready.summary)).toBeVisible()
-    expect(screen.getByText('接着聊 · 选卡后发送')).toBeVisible()
-    expect(screen.getByText('还想保留旧入口方便回退。')).not.toBeVisible()
-    fireEvent.click(screen.getByLabelText('查看依据原文'))
-    expect(screen.getByRole('link', { name: '迁移安排' })).toHaveAttribute('href', '/agent?conversation_id=migration%20one')
-    expect(screen.getByRole('link', { name: '回退讨论' })).toHaveAttribute('href', '/agent?conversation_id=migration%2Ftwo')
-    expect(screen.getByText('还想保留旧入口方便回退。')).toBeVisible()
+    expect(document.querySelectorAll('.cv-suggestions__card')).toHaveLength(2)
+    expect(screen.queryByText(ready.summary)).not.toBeInTheDocument()
+    expect(screen.queryByText('接着聊 · 选卡后发送')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: '查看依据原文' }).every(button => button.getAttribute('aria-expanded') === 'false')).toBe(true)
+    expect(screen.queryByText('还想保留旧入口方便回退。')).not.toBeInTheDocument()
+    expect(document.querySelector('time')).toBeNull()
     expect(onSelect).not.toHaveBeenCalled()
     fireEvent.click(card)
     expect(onSelect).toHaveBeenCalledExactlyOnceWith(selectContextCard(ready.cards[0]))
@@ -76,7 +75,7 @@ describe('shared cached conversation suggestions', () => {
     vi.mocked(getConversationContextSummary).mockResolvedValueOnce({ ...ready, cards: [] })
     const view = render(surface(queryClient, 'reader-1'))
     expect(await screen.findByText('暂时没有可继续讨论的建议。')).toBeVisible()
-    expect(screen.getByText(ready.summary)).toBeVisible()
+    expect(screen.queryByText(ready.summary)).not.toBeInTheDocument()
     view.unmount()
     vi.mocked(getConversationContextSummary).mockRejectedValueOnce(new Error('HTTP 503')).mockResolvedValueOnce(ready)
     render(surface(queryClient, 'reader-2'))
@@ -92,20 +91,18 @@ describe('shared cached conversation suggestions', () => {
     ['failed', 'daily_budget'],
     ['failed', 'attempt_limit'],
     ['failed', 'generator_unavailable'],
-  ] as const)('shows the same real cached cards, summary and data time during %s/%s', async (status, status_reason) => {
+  ] as const)('keeps the same real cached cards with accessible status during %s/%s', async (status, status_reason) => {
     const queryClient = client()
     const onSelect = vi.fn()
     const onSubmit = vi.fn()
     const view = render(<form onSubmit={onSubmit}>{surface(queryClient, 'reader-1', onSelect)}</form>)
-    await screen.findByText(ready.summary)
+    await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })
     const cardContent = [...view.container.querySelectorAll('.cv-suggestions__card')].map(card => card.textContent)
-    const timestamp = view.container.querySelector('time')!.textContent
     await act(async () => { queryClient.setQueryData(conversationContextSummaryKey('reader-1'), { ...ready, status, status_reason, is_stale: true }) })
     expect(await screen.findByText(/保留上次整理的建议/)).toBeVisible()
-    expect(screen.getByText(ready.summary)).toBeVisible()
+    expect(screen.queryByText(ready.summary)).not.toBeInTheDocument()
     expect([...view.container.querySelectorAll('.cv-suggestions__card')].map(card => card.textContent)).toEqual(cardContent)
-    expect(view.container.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
-    expect(view.container.querySelector('time')).toHaveTextContent(timestamp!)
+    expect(view.container.querySelector('time')).toBeNull()
     expect(screen.getByRole('status')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: /核对周五迁移的回退入口/ }))
     expect(onSelect).toHaveBeenCalledExactlyOnceWith(selectContextCard(ready.cards[0]))
@@ -115,104 +112,70 @@ describe('shared cached conversation suggestions', () => {
   it.each(['pending', 'failed', 'ready'] as const)('renders a directly returned last-good %s result with pending usage', async status => {
     vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, status, is_stale: true, usage_status: 'pending' })
     render(surface(client(), 'reader-1'))
-    expect(await screen.findByText(ready.summary)).toBeVisible()
+    await screen.findByText(/保留上次整理的建议/)
     expect(screen.getByRole('button', { name: /核对周五迁移的回退入口/ })).toBeVisible()
-    expect(document.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
+    expect(document.querySelector('time')).toBeNull()
     expect(screen.getByText(/保留上次整理的建议/)).toBeVisible()
-    expect(screen.getByText('用量尚待确认。')).toBeVisible()
+    expect(screen.queryByText('用量尚待确认。')).not.toBeInTheDocument()
   })
 
-  it('retains the same real cards and timestamp after a transport failure, then refreshes in place', async () => {
+  it('retains the same real cards after a transport failure, then refreshes in place', async () => {
     const queryClient = client()
     vi.mocked(getConversationContextSummary).mockResolvedValueOnce(ready).mockRejectedValueOnce(new Error('HTTP 503')).mockResolvedValueOnce({ ...ready, summary: '已经整理了新的近期对话。', updated_at: '2026-10-05T12:00:00Z' })
     const view = render(surface(queryClient, 'reader-1'))
-    await screen.findByText(ready.summary)
+    await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })
     const cardContent = [...view.container.querySelectorAll('.cv-suggestions__card')].map(card => card.textContent)
-    const timestamp = view.container.querySelector('time')!.textContent
     await act(async () => { await queryClient.refetchQueries({ queryKey: conversationContextSummaryKey('reader-1'), exact: true }) })
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('暂时无法读取对话建议'))
-    expect(screen.getByText(ready.summary)).toBeVisible()
+    expect(screen.queryByText(ready.summary)).not.toBeInTheDocument()
     expect([...view.container.querySelectorAll('.cv-suggestions__card')].map(card => card.textContent)).toEqual(cardContent)
-    expect(view.container.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
-    expect(view.container.querySelector('time')).toHaveTextContent(timestamp!)
+    expect(view.container.querySelector('time')).toBeNull()
     expect(screen.getByText(/保留上次整理的建议/)).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '重新读取建议' }))
-    expect(await screen.findByText('已经整理了新的近期对话。')).toBeVisible()
-    expect(document.querySelector('time')).toHaveAttribute('datetime', '2026-10-05T12:00:00Z')
+    await waitFor(() => expect(queryClient.getQueryData(conversationContextSummaryKey('reader-1'))).toMatchObject({ summary: '已经整理了新的近期对话。' }))
+    expect(document.querySelector('time')).toBeNull()
     expect(screen.queryByText(/保留上次整理的建议/)).not.toBeInTheDocument()
   })
 
-  it('keeps a cached summary visible even when there are no suggestion cards', async () => {
+  it('does not turn a cached summary without cards into generic starters', async () => {
     vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, status: 'pending', is_stale: true, cards: [] })
     render(surface(client(), 'reader-1'))
-    expect(await screen.findByText(ready.summary)).toBeVisible()
-    expect(document.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
+    await screen.findByText(/保留上次整理的建议/)
+    expect(document.querySelector('time')).toBeNull()
     expect(document.querySelectorAll('.cv-suggestions__card')).toHaveLength(0)
   })
 
-  it('keeps fresh ready cards visible while usage confirmation is pending, including English hints', async () => {
+  it('keeps fresh ready cards clean while usage confirmation is pending', async () => {
     localStorage.setItem('qunxue.interface-locale', 'en-US')
     vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, is_stale: false, usage_status: 'pending' })
     render(<AppLocaleProvider>{surface(client(), 'reader-1')}</AppLocaleProvider>)
     expect(await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })).toBeVisible()
-    expect(screen.getByText(ready.summary)).toBeVisible()
-    expect(screen.getByText('Usage is still being confirmed.')).toBeVisible()
-    expect(screen.getByText(/^Updated$/)).toBeVisible()
-    expect(document.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
+    expect(screen.queryByText(ready.summary)).not.toBeInTheDocument()
+    expect(screen.queryByText('Usage is still being confirmed.')).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Updated$/)).not.toBeInTheDocument()
+    expect(document.querySelector('time')).toBeNull()
     expect(screen.queryByText(/Showing the last prepared suggestions/)).not.toBeInTheDocument()
   })
 
-  it('labels assistant statements as unverified and discloses partial source coverage', async () => {
+  it('keeps source details and support labels out of the compact surface without changing cached evidence', async () => {
     const assistant = { sequence: 1, role: 'assistant' as const, conversation_id: 'assistant-history', message_id: 'assistant-1', title: '迁移助手答复', quote: '可以考虑保留一个旧入口。' }
-    vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, omitted_messages: 2, summary_sources: [assistant], cards: [{ ...ready.cards[0], sources: [assistant] }] })
-    render(surface(client(), 'reader-1'))
-    const disclosure = await screen.findByLabelText('查看依据原文')
-    expect(document.querySelectorAll('details')).toHaveLength(1)
-    expect(disclosure).toHaveTextContent('1')
-    expect(screen.getByText(assistant.quote)).not.toBeVisible()
-    fireEvent.click(disclosure)
-    const sources = screen.getByRole('list', { name: '对话依据' })
-    expect(within(sources).getByText('助手回答（需核实）')).toBeVisible()
-    expect(within(sources).getAllByRole('listitem')).toHaveLength(1)
-    expect(within(sources).getByText(assistant.quote)).toBeVisible()
-    expect(within(sources).getByText(`用于：近况摘要 · 建议：${ready.cards[0].title}`)).toBeVisible()
-    expect(within(sources).queryByText('你的消息')).not.toBeInTheDocument()
-    expect(screen.getByText('这里只依据部分近期消息整理，另有 2 条消息未纳入。')).toBeVisible()
-  })
-
-  it('retains distinct source excerpts and uses one native keyboard-operable disclosure', async () => {
-    const original = ready.cards[0].sources[0]
-    vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, summary_sources: [original, { ...original, quote: '先确认回退时间。' }], cards: [ready.cards[0]] })
-    const onSelect = vi.fn()
-    render(surface(client(), 'reader-1', onSelect))
-    const disclosure = await screen.findByLabelText('查看依据原文')
-    expect(disclosure.tagName).toBe('SUMMARY')
-    expect(disclosure.parentElement?.tagName).toBe('DETAILS')
-    expect(disclosure).not.toHaveAttribute('tabindex', '-1')
-    expect(disclosure).toHaveTextContent('3')
-    expect(screen.getByText('先确认回退时间。')).not.toBeVisible()
-    fireEvent.click(disclosure)
-    expect(screen.getByText('先确认回退时间。')).toBeVisible()
-    expect(screen.getByText(original.quote)).toBeVisible()
-    fireEvent.click(disclosure)
-    expect(screen.getByText('先确认回退时间。')).not.toBeVisible()
-    expect(onSelect).not.toHaveBeenCalled()
-    expect(document.querySelectorAll('.cv-context-suggestions__item')).toHaveLength(1)
-  })
-
-  it('does not show a source control when there is no evidence', async () => {
-    vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards: ready.cards.map(card => ({ ...card, sources: [] })) })
-    render(surface(client(), 'reader-1'))
-    await screen.findByText(ready.summary)
-    expect(screen.queryByLabelText('查看依据原文')).not.toBeInTheDocument()
+    const data = { ...ready, omitted_messages: 2, summary_sources: [assistant], cards: [{ ...ready.cards[0], sources: [assistant] }] }
+    vi.mocked(getConversationContextSummary).mockResolvedValue(data)
+    const queryClient = client()
+    render(surface(queryClient, 'reader-1'))
+    await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })
+    expect(screen.getAllByRole('button', { name: '查看依据原文' }).every(button => button.getAttribute('aria-expanded') === 'false')).toBe(true)
+    expect(screen.queryByText(assistant.quote)).not.toBeInTheDocument()
+    expect(screen.queryByText(/用于：|未纳入/)).not.toBeInTheDocument()
+    expect(queryClient.getQueryData(conversationContextSummaryKey('reader-1'))).toEqual(data)
   })
 
   it('shares identical cards between two surfaces and a remount for 60 seconds', async () => {
     const queryClient = client()
     const first = render(surface(queryClient, 'reader-1'))
-    await screen.findByText(ready.summary)
+    await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })
     const second = render(surface(queryClient, 'reader-1'))
-    expect(await within(second.container).findByText(ready.summary)).toBeVisible()
+    expect(await within(second.container).findByRole('button', { name: /核对周五迁移的回退入口/ })).toBeVisible()
     expect(first.container.textContent).toBe(second.container.textContent)
     expect(getConversationContextSummary).toHaveBeenCalledTimes(1)
     expect(queryClient.getQueryState(conversationContextSummaryKey('reader-1'))?.data).toEqual(ready)
@@ -227,7 +190,7 @@ describe('shared cached conversation suggestions', () => {
     let resolveSecond!: (data: ConversationContextSummary) => void
     vi.mocked(getConversationContextSummary).mockResolvedValueOnce(ready).mockReturnValueOnce(new Promise(resolve => { resolveSecond = resolve }))
     const view = render(surface(queryClient, 'reader-1'))
-    await screen.findByText(ready.summary)
+    await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })
     view.rerender(surface(queryClient, 'reader-2'))
     expect(screen.queryByText(ready.summary)).not.toBeInTheDocument()
     expect(screen.queryByText('我希望周五分批上线。')).not.toBeInTheDocument()
@@ -260,7 +223,7 @@ describe('shared cached conversation suggestions', () => {
     expect(getConversationContextSummary).toHaveBeenCalledTimes(1)
     await act(async () => { await vi.advanceTimersByTimeAsync(60_001) })
     expect(getConversationContextSummary).toHaveBeenCalledTimes(2)
-    expect(screen.getByText(ready.summary)).toBeVisible()
+    expect(screen.queryByText(ready.summary)).not.toBeInTheDocument()
     await act(async () => { await vi.advanceTimersByTimeAsync(120_000) })
     expect(getConversationContextSummary).toHaveBeenCalledTimes(2)
   })
@@ -341,7 +304,7 @@ describe('shared cached conversation suggestions', () => {
       return new Promise(resolve => { resolveRead = resolve })
     })
     const view = render(surface(queryClient, 'reader-1'))
-    await screen.findByText(ready.summary)
+    await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })
     let read!: Promise<void>
     await act(async () => { read = queryClient.refetchQueries({ queryKey: conversationContextSummaryKey('reader-1'), exact: true }) })
     expect(readSignal?.aborted).toBe(false)
@@ -359,9 +322,9 @@ describe('shared cached conversation suggestions', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(15_002) })
     expect(getConversationContextSummary).toHaveBeenCalledTimes(2)
     expect(screen.getByRole('status')).toHaveTextContent('暂时无法读取对话建议')
-    expect(screen.getByText(ready.summary)).toBeVisible()
+    expect(screen.queryByText(ready.summary)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /核对周五迁移的回退入口/ })).toBeVisible()
-    expect(document.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
+    expect(document.querySelector('time')).toBeNull()
     await act(async () => { await vi.advanceTimersByTimeAsync(15_001) })
     expect(getConversationContextSummary).toHaveBeenCalledTimes(3)
     expect(screen.queryByText(/保留上次整理的建议/)).not.toBeInTheDocument()
@@ -377,7 +340,7 @@ describe('shared cached conversation suggestions', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(45_002) })
     expect(getConversationContextSummary).toHaveBeenCalledTimes(2)
     expect(screen.getByRole('button', { name: /核对周五迁移的回退入口/ })).toBeVisible()
-    expect(document.querySelector('time')).toHaveAttribute('datetime', ready.updated_at)
+    expect(document.querySelector('time')).toBeNull()
     await act(async () => { await vi.advanceTimersByTimeAsync(15_001) })
     expect(getConversationContextSummary).toHaveBeenCalledTimes(3)
     expect(screen.queryByText(/保留上次整理的建议/)).not.toBeInTheDocument()
@@ -396,4 +359,156 @@ it('fails closed on a legacy cached card without opaque selection metadata', asy
   expect(screen.getByText('这些建议需要刷新后才能发送。')).toBeVisible()
   expect(screen.getByRole('button', { name: '刷新建议' })).toBeEnabled()
   expect(document.body.textContent).not.toMatch(/INTERNAL_PROMPT|sequence=42|message-id/)
+})
+
+function StarterLocation() { const location = useLocation(); return <output data-testid="starter-location">{location.pathname}{location.search}</output> }
+function starterSurface(queryClient: QueryClient, onStart = vi.fn(), hasDraft = false, onSelect = vi.fn()) {
+  return <QueryClientProvider client={queryClient}><MemoryRouter><ConversationContextSuggestions userId="new-reader" onSelect={onSelect} onStart={onStart} hasDraft={hasDraft} /><StarterLocation /></MemoryRouter></QueryClientProvider>
+}
+
+it('shows exactly three generic starters only for a confirmed empty result, with only card copy', async () => {
+  vi.mocked(getConversationContextSummary).mockResolvedValue(empty)
+  const onStart = vi.fn()
+  const onSelect = vi.fn()
+  const onSubmit = vi.fn()
+  render(<form onSubmit={onSubmit}>{starterSurface(client(), onStart, false, onSelect)}</form>)
+  const cards = await screen.findByRole('region', { name: '起步建议' })
+  const buttons = within(cards).getAllByRole('button')
+  expect(buttons).toHaveLength(3)
+  expect(cards.textContent).toBe(buttons.map(button => button.textContent).join(''))
+  fireEvent.click(buttons[0])
+  expect(onStart).toHaveBeenCalledExactlyOnceWith(buttons[0].textContent)
+  expect(onSelect).not.toHaveBeenCalled()
+  expect(onSubmit).not.toHaveBeenCalled()
+  expect(getConversationContextSummary).toHaveBeenCalledTimes(1)
+})
+
+it.each([1, 2, 3])('shows %i genuine cards without padding or replacing them with generic starters', async count => {
+  const cards = [...ready.cards, { ...ready.cards[1], card_id: 'third-card', title: '检查展示材料的结构' }].slice(0, count)
+  vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards })
+  const onStart = vi.fn()
+  const onSelect = vi.fn()
+  render(starterSurface(client(), onStart, false, onSelect))
+  await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })
+  const buttons = [...document.querySelectorAll<HTMLButtonElement>('.cv-suggestions__card')]
+  expect(buttons).toHaveLength(count)
+  expect(screen.queryByRole('region', { name: '起步建议' })).not.toBeInTheDocument()
+  buttons.forEach((button, index) => {
+    fireEvent.click(button)
+    expect(onSelect).toHaveBeenLastCalledWith(selectContextCard(cards[index]))
+  })
+  expect(onStart).not.toHaveBeenCalled()
+})
+
+it.each([
+  { ...empty, status: 'pending' as const },
+  { ...empty, status: 'failed' as const },
+  { ...empty, status: 'disabled' as const },
+  { ...empty, status: 'ready' as const, summary: ready.summary },
+  { ...empty, is_stale: true },
+  { ...empty, status_reason: 'idle_wait' as const },
+  { ...empty, usage_status: 'pending' as const },
+  { ...empty, retry_at: '2026-10-06T12:00:00Z' },
+])('does not infer new-user emptiness from pending, failed, disabled, stale, or partial state: %j', async data => {
+  vi.mocked(getConversationContextSummary).mockResolvedValue(data)
+  const queryClient = client()
+  render(starterSurface(queryClient))
+  await waitFor(() => expect(queryClient.getQueryData(conversationContextSummaryKey('new-reader'))).toEqual(data))
+  expect(screen.queryByRole('region', { name: '起步建议' })).not.toBeInTheDocument()
+  expect(document.querySelectorAll('.cv-suggestions__card')).toHaveLength(0)
+})
+
+it('protects a nonempty draft from generic text replacement and navigation', async () => {
+  vi.mocked(getConversationContextSummary).mockResolvedValue(empty)
+  const onStart = vi.fn()
+  render(starterSurface(client(), onStart, true))
+  const region = await screen.findByRole('region', { name: '起步建议' })
+  for (const button of within(region).getAllByRole('button')) {
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('title', '发送或清空当前草稿后再选择建议')
+    fireEvent.click(button)
+  }
+  expect(onStart).not.toHaveBeenCalled()
+})
+
+
+it.each([1, 2])('opens the real entry for generic navigation card %i without selecting a conversation or sending', async index => {
+  vi.mocked(getConversationContextSummary).mockResolvedValue(empty)
+  const onStart = vi.fn()
+  const onSelect = vi.fn()
+  const onSubmit = vi.fn()
+  render(<form onSubmit={onSubmit}>{starterSurface(client(), onStart, false, onSelect)}</form>)
+  const region = await screen.findByRole('region', { name: '起步建议' })
+  const suggestion = getStarterSuggestions('zh-CN', 'new-reader')[index]
+  expect(suggestion.kind).toBe('navigate')
+  fireEvent.click(within(region).getByRole('button', { name: suggestion.title }))
+  expect(screen.getByTestId('starter-location')).toHaveTextContent(suggestion.kind === 'navigate' ? suggestion.to : 'unreachable')
+  expect(onStart).not.toHaveBeenCalled()
+  expect(onSelect).not.toHaveBeenCalled()
+  expect(onSubmit).not.toHaveBeenCalled()
+})
+
+
+it('keeps card sources behind an icon and exposes original links and speaker labels only when opened', async () => {
+  const user = ready.cards[0].sources[0]
+  const assistant = { ...ready.cards[0].sources[1], role: 'assistant' as const, quote: '可以先保留旧入口。' }
+  vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards: [{ ...ready.cards[0], sources: [user, assistant, user] }] })
+  const onSelect = vi.fn()
+  const onSubmit = vi.fn()
+  render(<form onSubmit={onSubmit}>{surface(client(), 'reader-1', onSelect)}</form>)
+  const toggle = await screen.findByRole('button', { name: '查看依据原文' })
+  expect(toggle).toHaveAttribute('type', 'button')
+  expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  expect(toggle.textContent).toBe('')
+  expect(toggle.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+  expect(toggle.closest('.cv-suggestions__card')).toBeNull()
+  expect(document.querySelector('button button, button a')).toBeNull()
+  expect(screen.queryByText(user.quote)).not.toBeInTheDocument()
+  fireEvent.click(toggle)
+  expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  const sources = screen.getByRole('list', { name: '对话依据' })
+  expect(sources.id).toBe(toggle.getAttribute('aria-controls'))
+  expect(within(sources).getAllByRole('listitem')).toHaveLength(2)
+  expect(within(sources).getByText('你的消息')).toBeVisible()
+  expect(within(sources).getByText('助手回答（需核实）')).toBeVisible()
+  expect(within(sources).getByRole('link', { name: user.title })).toHaveAttribute('href', '/agent?conversation_id=migration%20one')
+  expect(within(sources).getByRole('link', { name: assistant.title })).toHaveAttribute('href', '/agent?conversation_id=migration%2Ftwo')
+  expect(within(sources).getByText(user.quote)).toBeVisible()
+  expect(within(sources).getByText(assistant.quote)).toBeVisible()
+  fireEvent.click(toggle)
+  expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByRole('list', { name: '对话依据' })).not.toBeInTheDocument()
+  expect(onSelect).not.toHaveBeenCalled()
+  expect(onSubmit).not.toHaveBeenCalled()
+})
+
+it('accepts keyboard-generated activation and Escape from a source link restores focus to its trigger', async () => {
+  vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards: [ready.cards[0]] })
+  const onSelect = vi.fn()
+  render(surface(client(), 'reader-1', onSelect))
+  const toggle = await screen.findByRole('button', { name: '查看依据原文' })
+  toggle.focus()
+  expect(toggle).toHaveFocus()
+  // Native Enter/Space on a focused button dispatches a click with detail=0.
+  fireEvent.click(toggle, { detail: 0 })
+  const source = screen.getByRole('link', { name: ready.cards[0].sources[0].title })
+  source.focus()
+  expect(source).toHaveFocus()
+  fireEvent.keyDown(source, { key: 'Escape' })
+  expect(toggle).toHaveFocus()
+  expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByRole('list', { name: '对话依据' })).not.toBeInTheDocument()
+  expect(onSelect).not.toHaveBeenCalled()
+})
+
+it('does not add a source icon to generic starters or cards without sources', async () => {
+  vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards: [{ ...ready.cards[0], sources: [] }] })
+  const view = render(surface(client(), 'reader-1'))
+  await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })
+  expect(screen.queryByRole('button', { name: '查看依据原文' })).not.toBeInTheDocument()
+  view.unmount()
+  vi.mocked(getConversationContextSummary).mockResolvedValue(empty)
+  render(starterSurface(client()))
+  await screen.findByRole('region', { name: '起步建议' })
+  expect(screen.queryByRole('button', { name: '查看依据原文' })).not.toBeInTheDocument()
 })

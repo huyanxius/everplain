@@ -134,3 +134,12 @@
 .hm-me .conversation-composer { width: 100%; }
 .hm-pile[data-open='true'] .hm-pc[data-depth='3'] { opacity: 1; }
 @media (max-width: 1100px) { .hm-desk { min-height: auto; } }
+
+/* Home's desktop half-column is about 488px wide: it must not inherit the
+   generic 560px container fallback used by narrow research side panels. */
+@media (min-width: 641px) {
+  .hm-me .cv-suggestions__cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .hm-me .cv-suggestions__cards { grid-template-columns: minmax(0, 1fr); }
+}
