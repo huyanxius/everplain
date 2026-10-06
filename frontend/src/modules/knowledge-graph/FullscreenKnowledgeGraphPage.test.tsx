@@ -78,7 +78,7 @@ const childConnection = {
 
 const cores: Array<{
   fit: ReturnType<typeof vi.fn>
-  getElementById: ReturnType<typeof vi.fn>
+  getElementById: (id: string) => { hasClass: (name: string) => boolean }
   layout: ReturnType<typeof vi.fn>
   on: ReturnType<typeof vi.fn>
 }> = []
@@ -450,7 +450,7 @@ it('ignores an older center response after the user selects another result', asy
 })
 
 it('observes current and stale focus classes like the real headless collection API', async () => {
-  const { default: actualCytoscape } = await vi.importActual<typeof import('cytoscape')>('cytoscape')
+  const { default: actualCytoscape } = await vi.importActual<{ default: typeof import('cytoscape') }>('cytoscape')
   const ids = ['previous', 'current']
   const actual = actualCytoscape({ headless: true, elements: ids.map(id => ({ data: { id } })) })
   const fixture = cytoscapeMock()
