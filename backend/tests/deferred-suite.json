@@ -1,0 +1,438 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "9ccab4c92cafd2a6528c24aaaf446b6103918f01",
+  "groups": [
+    {
+      "category": "baseline_review_pending",
+      "reason": "Existing file was not selected by the frozen 9ccab4c product suite. This is an unresolved review/execution backlog, NOT a historical-only classification or a passing result. Promote after current compatibility review and relevant execution; changing a file invalidates this baseline exclusion.",
+      "files": [
+        {
+          "path": "backend/tests/billing/test_actual_usage_policy.py",
+          "sha256": "7d56bab8c9d8222c2ca6ade0f11d8993099f40bb64e5a1825cf54c767dada5cc"
+        },
+        {
+          "path": "backend/tests/billing/test_application_metering.py",
+          "sha256": "d04d645bec72bf76a09ba0e0af7028d11d9f73a77776f248b7a0dc08ce70fa3b"
+        },
+        {
+          "path": "backend/tests/billing/test_bank_reset_codes.py",
+          "sha256": "3a4d29beb8d6541342f9145b6790e04c8618d0526c34442dda3fde760bfe98ba"
+        },
+        {
+          "path": "backend/tests/billing/test_billing_migration.py",
+          "sha256": "c7694a7eb6028dd1bdf1412ae5957527b483c0626891c11e0eb5a369622549ea"
+        },
+        {
+          "path": "backend/tests/billing/test_course_billing.py",
+          "sha256": "326e6e7871938da4926248834e36e60f052b2193a3c31017ecb06309748a0265"
+        },
+        {
+          "path": "backend/tests/billing/test_course_responses.py",
+          "sha256": "513753de81a5042c39df076c7878a852487bd4867fb40d279d8286feb921a699"
+        },
+        {
+          "path": "backend/tests/billing/test_cross_run_refunds.py",
+          "sha256": "34a944100d800f17d8f9f225e5b1822cf34e4c50a1ea757b3d6b2bdc6a43714d"
+        },
+        {
+          "path": "backend/tests/billing/test_durable_billing.py",
+          "sha256": "ba96939842709f8c84b7d11c848368318b24f6fe442e7412009fe803c8cfe1a9"
+        },
+        {
+          "path": "backend/tests/billing/test_financial_faults.py",
+          "sha256": "28ccc2fce0080e801e99caeb85ab668d62de6385bf12d6206d790d87c83ee482"
+        },
+        {
+          "path": "backend/tests/billing/test_graph_naming_billing.py",
+          "sha256": "793275e6425b0aa993e0f23fd8432e80e86b652987b2c818dc8eebb8787b1be7"
+        },
+        {
+          "path": "backend/tests/billing/test_legacy_research_api.py",
+          "sha256": "bf3648398b69cdb304fd145fa8118cab88e00944a2feddf9b2973c1d01696863"
+        },
+        {
+          "path": "backend/tests/billing/test_legacy_research_billing.py",
+          "sha256": "3b4ccd241099d5317dd64e930b51fa974669320c982e3e90da09daaad71d43a2"
+        },
+        {
+          "path": "backend/tests/billing/test_phase_billing_p0.py",
+          "sha256": "80550b4dccc9e1df5896f5801167e44d97d4ed9fdd7a8723da231916f7efdf52"
+        },
+        {
+          "path": "backend/tests/billing/test_prices.py",
+          "sha256": "63256e6a1e287305336c65cd19d712ebb6aefd8a07eaca6c802bc76449a9397c"
+        },
+        {
+          "path": "backend/tests/billing/test_quota_settlement_epoch.py",
+          "sha256": "a16107c26afc13fe5e9d4d47f80ce0c716c11ea31aeb45506d2be81a832cb766"
+        },
+        {
+          "path": "backend/tests/billing/test_responses_metering.py",
+          "sha256": "618d0a9045aa06ba66ecb8dea85ed8b3b31a59e89799b6e5c7881622336dda6a"
+        },
+        {
+          "path": "backend/tests/billing/test_retail_projection.py",
+          "sha256": "d677a8da43682e7e52b2203f75881d9a1fc4635a1cda58525bb3a4a9dcf7b749"
+        },
+        {
+          "path": "backend/tests/billing/test_signup_allowance.py",
+          "sha256": "df5ae01736b1d96854fb92a27fb9e2067c34c88bd0ab01b42e1bd1e406ed3c5b"
+        },
+        {
+          "path": "backend/tests/billing/test_standalone_billing.py",
+          "sha256": "375cb59c3a9a7e82446912f5c76ef1697879bef06f8f0a6b2ad11beb4880f40e"
+        },
+        {
+          "path": "backend/tests/billing/test_usage_stability.py",
+          "sha256": "3bf71bce7b8b9cc201c53b18e4613e535cfd12608619f5a73bcdcd4d7756bf2e"
+        },
+        {
+          "path": "backend/tests/billing/test_weekly_quota.py",
+          "sha256": "ad82dc7d70404201d8cc8149d48e0611ae244081d6be2bfa28dd377ce197d607"
+        },
+        {
+          "path": "backend/tests/test_agent_coding_tools.py",
+          "sha256": "e64d1a77c98baf5843744250ce8b17cf0c83c77d2e3af919ff719f7b0550689f"
+        },
+        {
+          "path": "backend/tests/test_agent_conversation.py",
+          "sha256": "be77951324c9a605e5156eab95ab011dd118750ea44655c2ad971fedcc16e33e"
+        },
+        {
+          "path": "backend/tests/test_agent_soul.py",
+          "sha256": "9b571b521b8654d8b7152d735d21ecaf8ebb3e44f63cc9e65d2c05acdf286fda"
+        },
+        {
+          "path": "backend/tests/test_agent_tool_trace.py",
+          "sha256": "83357aa9938034a42f10d101904d45f04e2a1ca382fea71f661f5b220ab67e8d"
+        },
+        {
+          "path": "backend/tests/test_agent_trace_site_icons.py",
+          "sha256": "cbed570aa9b726c5e5967b64c32d63f16307e6e35ce7d4a7d74b4366045e96af"
+        },
+        {
+          "path": "backend/tests/test_api_contract_freeze.py",
+          "sha256": "762a0b756a2e6726b50094295fbda83442d06b51de77e6838079c91bb270e34e"
+        },
+        {
+          "path": "backend/tests/test_api_key_runtime.py",
+          "sha256": "dcab61ec5dad716603afc4ff3df938834611e2200c003f668582d937954e638f"
+        },
+        {
+          "path": "backend/tests/test_build_retrieval_index_cli.py",
+          "sha256": "b0881fd333bc6b66cdb2f4609ed3d8bdf33b39d60497abde21e022cc71764ee0"
+        },
+        {
+          "path": "backend/tests/test_course_cost_limits.py",
+          "sha256": "a06a37bc0e775f66de8b3ed194a0692e16133ad2b72fe63211bc54cd353bdc51"
+        },
+        {
+          "path": "backend/tests/test_deep_research_agent.py",
+          "sha256": "8e549a0bc7f4066d06e10fc985db2befcaaba58f056b45467f5d99fe8b50ae85"
+        },
+        {
+          "path": "backend/tests/test_doi_metadata.py",
+          "sha256": "3f54367908a32646c5335e350d55c25609e6abcde39ff734aca9f232a6de1944"
+        },
+        {
+          "path": "backend/tests/test_framework_review_contract.py",
+          "sha256": "9ca6d73e353e96d5ef36d153a700cc764a0028f7a7d550cc7ab29b4e772ab37d"
+        },
+        {
+          "path": "backend/tests/test_health.py",
+          "sha256": "3483111d042009830e3dd6ed01c83307f5177f21ed6c01f44004f786eafe5940"
+        },
+        {
+          "path": "backend/tests/test_install_pre_reviewed_theory_release_cli.py",
+          "sha256": "7d647ab9dd005a52cce95ae81c9eea604b16b3e62d0e5c5c2e41e3dc985b0f0c"
+        },
+        {
+          "path": "backend/tests/test_knowledge_catalog_api.py",
+          "sha256": "0da77debf62bcf6030362326c2edc2b5c3dd953915550bc20f6d18b9da2a63d2"
+        },
+        {
+          "path": "backend/tests/test_knowledge_markdown.py",
+          "sha256": "c044016329fe7759c7909356395ea850ba4045c8a3b98416cd0cdcc35ef6ac08"
+        },
+        {
+          "path": "backend/tests/test_knowledge_relations.py",
+          "sha256": "629eb5de7119b5dc3768471602518095a5ce7990a9f0698f022383ce43a695fd"
+        },
+        {
+          "path": "backend/tests/test_knowledge_retrieval.py",
+          "sha256": "9cab09970fc12523922749dfe43c4280395495f8bdd0a7f8deb839a7edfc006c"
+        },
+        {
+          "path": "backend/tests/test_literature_exchange.py",
+          "sha256": "6e449980f309a2a617b4b8213b33c4c79d06e5f039b784b18381a5aac8964ba6"
+        },
+        {
+          "path": "backend/tests/test_m5_delivery_migration.py",
+          "sha256": "e69b0300fe72aa8da1e08bc837048129c4f49221911a120d6ee2eae4e1e86406"
+        },
+        {
+          "path": "backend/tests/test_material_intake.py",
+          "sha256": "8492d1063dc709f3f45fb49c6a0645db82c396ab73000be2202656cbb864348e"
+        },
+        {
+          "path": "backend/tests/test_migrations.py",
+          "sha256": "48d27ab4852e476523451ef158aca20a7c9aa5e643fb6e0e8ae5c3bcaee9b565"
+        },
+        {
+          "path": "backend/tests/test_model_gateway_api.py",
+          "sha256": "c44f972ea284a14d8736c6c093ba26f8866d20a7354b50dd8b0696606b4abbca"
+        },
+        {
+          "path": "backend/tests/test_phenomenon_confirmation.py",
+          "sha256": "37ecf63f36132b264a9e9e37c875f525b552571d6da1b4e9fd73159ba866278a"
+        },
+        {
+          "path": "backend/tests/test_pre_reviewed_theory_release.py",
+          "sha256": "f877f894b8941628b0c8b069a2a35e714c8b340dc3398d3c71be0fca459e3ed1"
+        },
+        {
+          "path": "backend/tests/test_professional_material_api.py",
+          "sha256": "6a88fd48d85a593391ac3b1e876e4b6e9bb0e9466919f342be16197aab7fc563"
+        },
+        {
+          "path": "backend/tests/test_professional_material_application.py",
+          "sha256": "7d0659144a4c906a5ff45db424b305a622457d2cb0201d291b8a55ccb4adc831"
+        },
+        {
+          "path": "backend/tests/test_professional_material_domain.py",
+          "sha256": "96455ba85167c41cfecff58e36521a07dfc07a8b590a5182fc49b0e15b5e85b9"
+        },
+        {
+          "path": "backend/tests/test_professional_material_migration.py",
+          "sha256": "2712fd9d86d4c25934848189d37308eca1a08e6a00a4e1078f47ec6e707ae73a"
+        },
+        {
+          "path": "backend/tests/test_professional_material_repository.py",
+          "sha256": "c5edbf32e6dcca886141a2313ac36863c5da3d61bed4bacf2d368bd2c8447769"
+        },
+        {
+          "path": "backend/tests/test_qdpx_exchange.py",
+          "sha256": "e6292d28d5bf049565866d8f2a64dc07942f5380c471ce5b971fe88633fc888b"
+        },
+        {
+          "path": "backend/tests/test_qualitative_analysis_workspace.py",
+          "sha256": "850f84783812b45a5f88509f607406a0c70411b8a9369c0b7853e72336389603"
+        },
+        {
+          "path": "backend/tests/test_qualitative_analysis_workspace_repository.py",
+          "sha256": "2ae6abb1c31b9930f1d2ee5499d461b3d94e4dfd82d857360ca52b6a913c26d3"
+        },
+        {
+          "path": "backend/tests/test_qunxue_qdpx_mapping.py",
+          "sha256": "5147b5228913f3d02d3c955ac815a0b0c2e4452ca9d5d60e98671602fb6ab8a2"
+        },
+        {
+          "path": "backend/tests/test_release_retrieval_corpus.py",
+          "sha256": "0d7e04efd5cc910d42829866dfd2d531ac5629c92f9df18b6a56b9fa585733c7"
+        },
+        {
+          "path": "backend/tests/test_research_analysis_agent_tools.py",
+          "sha256": "814bee7c3f1311f7d75af8cd6f9f2ae761492f71c10edd03bbaa5de43ee82953"
+        },
+        {
+          "path": "backend/tests/test_research_analysis_api.py",
+          "sha256": "72f13857c7a004e15cdf0817e598eb198bcb79f063fafe699c2662cc969d9c56"
+        },
+        {
+          "path": "backend/tests/test_research_analysis_application.py",
+          "sha256": "cba36a5fc8fe7de027ff6c644b4f7ebe7114477f14129f4503405baa03758a7f"
+        },
+        {
+          "path": "backend/tests/test_research_analysis_domain.py",
+          "sha256": "21a24d99df993554141ed7af7ab49d7f123a4d49f8538324f8ae9ba9a64b820e"
+        },
+        {
+          "path": "backend/tests/test_research_analysis_repository.py",
+          "sha256": "3df95f539d7e64668e9faf4050e220cdc10311517dafba985d40ff0843c7a1ed"
+        },
+        {
+          "path": "backend/tests/test_research_collaboration_ask.py",
+          "sha256": "f9af1fd103b03338759956f89286b4f1d7abf4ceb5119164fff3dc31dae7183d"
+        },
+        {
+          "path": "backend/tests/test_research_cycle_domain.py",
+          "sha256": "a11e66b715ae214ed500c30a308a393d4c59b86128d4d52afc23eaf15894bf98"
+        },
+        {
+          "path": "backend/tests/test_research_cycle_repository.py",
+          "sha256": "88ff29a29f20281411f76af6d45e3bbd824b62327a1f5f0893ad818c54d97c21"
+        },
+        {
+          "path": "backend/tests/test_research_document_agent_tools.py",
+          "sha256": "9486a76f2abb1dc2dcc3e257eee6eec874a152a25e39fe733cd8ee0b5f511602"
+        },
+        {
+          "path": "backend/tests/test_research_document_analysis_handoff.py",
+          "sha256": "a4901b80550daaddfa56d106cba5ceb9f40417d53f7afb44095781f4f998a387"
+        },
+        {
+          "path": "backend/tests/test_research_document_application.py",
+          "sha256": "124b067359cc86c6a9c8ccbd4cba5c7f149a55684c25e12f4c6debdde8298bc6"
+        },
+        {
+          "path": "backend/tests/test_research_document_citations.py",
+          "sha256": "6e9d4172df5275d0393e350ca83bc821e98d38ef1b9d8b3e2fc09f96799e183f"
+        },
+        {
+          "path": "backend/tests/test_research_document_method_plan_export.py",
+          "sha256": "572298abc5a1ce10b04f43fe6373522dedf0471dc11aff550c558dc1b099e34b"
+        },
+        {
+          "path": "backend/tests/test_research_document_proposal_repository.py",
+          "sha256": "12393cd5ae9abee5da393bd766fce9695bf74aded18e0e8db997565752af229f"
+        },
+        {
+          "path": "backend/tests/test_research_document_proposals.py",
+          "sha256": "787fe357aa7f5bbed9c320bb254a14192cd0b9d3fd61b12ad6425887f966fc8e"
+        },
+        {
+          "path": "backend/tests/test_research_document_repository.py",
+          "sha256": "2d393d9d758704b83a72ba1ace2d88d271134b8df35f9b2028094e48eedbaf59"
+        },
+        {
+          "path": "backend/tests/test_research_document_workflow.py",
+          "sha256": "b5ba35c7ec1199fea4e4010a1030c55a485a3f78883110f02e3a75677a3505dd"
+        },
+        {
+          "path": "backend/tests/test_research_entry_sources.py",
+          "sha256": "d89102900b6deb0807a82033a333e04a2ba2dad3c14b1a534bc39ab2918124d1"
+        },
+        {
+          "path": "backend/tests/test_research_journey_contract.py",
+          "sha256": "f5f08f07edcfc5ca9711b7eccb1d5410053dfc9d3118c5c2011e8e6f324404d8"
+        },
+        {
+          "path": "backend/tests/test_research_map_tool.py",
+          "sha256": "1f9275153963e814c404cbacbccf58fcce81b1f94ffc025c62f318cf46fa64c3"
+        },
+        {
+          "path": "backend/tests/test_research_material_agent_tools.py",
+          "sha256": "24e2d2a7b582e4a97d452fe8f9e3efea48644ea205b4a25aa8d8d5886e442db7"
+        },
+        {
+          "path": "backend/tests/test_research_material_application.py",
+          "sha256": "b0f5baca48bbf49d8db756197390a5c40a3f9d8daa48d141af0e6ec38487ddd2"
+        },
+        {
+          "path": "backend/tests/test_research_material_domain.py",
+          "sha256": "337cef352a6e1706a6971861158aad60dbe1458e257f6e4c636dc58097232b4c"
+        },
+        {
+          "path": "backend/tests/test_research_material_repository.py",
+          "sha256": "c0e248543243742fcbda74dbbc95532018a6226d34fe68248b351482bc26a975"
+        },
+        {
+          "path": "backend/tests/test_research_method_domain.py",
+          "sha256": "5083ebb0f48dc985d972f032fc5a19cb162c0be42ec56788a7a4e1ce10693e96"
+        },
+        {
+          "path": "backend/tests/test_research_method_navigation.py",
+          "sha256": "0fdd4095ee44a1f7d9c97dc16c912253919726f47749d3ea2e0b53fe9d982357"
+        },
+        {
+          "path": "backend/tests/test_research_method_repository.py",
+          "sha256": "041afadbb44e449ee6c5a38589b339d96b1654d438ec79c820361751a4fb90a6"
+        },
+        {
+          "path": "backend/tests/test_research_project_exchange_api.py",
+          "sha256": "575bca8e809154341a086d9e54bfd9bf052ddc5cbc63754148f9400fc7ff6da9"
+        },
+        {
+          "path": "backend/tests/test_research_start_journey.py",
+          "sha256": "1db358737ea72776938e0ed556cbe5987be9d69ca13742723d59325b5baa8def"
+        },
+        {
+          "path": "backend/tests/test_research_tasks.py",
+          "sha256": "4bb53da302c59b987b00c0fabc640d4b6d48c0bb1686f42a6547bf72b7eae9d2"
+        },
+        {
+          "path": "backend/tests/test_retrieval_bootstrap.py",
+          "sha256": "6a9fa0e1c862d8f944d8138889946db6994f115cadb36c09a1e83ce8af35721e"
+        },
+        {
+          "path": "backend/tests/test_retrieval_corpus.py",
+          "sha256": "51683be8a7699d3b310fc0223369ba3ecc8ef1e8260591f39793b8d204c23db0"
+        },
+        {
+          "path": "backend/tests/test_retrieval_evaluation.py",
+          "sha256": "a5e0e811208af9a9aab1790300921f69c4b315abf05e445530b53dd45773e5e6"
+        },
+        {
+          "path": "backend/tests/test_retrieval_index_builder.py",
+          "sha256": "2d69c0162754660a269112e5b1bc1392d333d56165a082e1e8e0b42c2e248b7a"
+        },
+        {
+          "path": "backend/tests/test_sqlite_retrieval_index.py",
+          "sha256": "f0e75e8929a06e1f3cd0982cfd415a7f71698b8e6fe316aa569185922d83200b"
+        },
+        {
+          "path": "backend/tests/test_theory_confirmation_rules.py",
+          "sha256": "d9a6cc67c002d4bd9637e90d8713e3605ea517e31e4af3e0414555df302b64d1"
+        },
+        {
+          "path": "backend/tests/test_theory_decision_draft_service.py",
+          "sha256": "d5b26a9a49a390090ff7218624856bea95d51d6fee6a1229950f43683ba4a552"
+        },
+        {
+          "path": "backend/tests/test_theory_evidence_adapter.py",
+          "sha256": "d85e555b196c61f7028330b16a96fc06ebb77370bde31d0fc4d659b218a7762c"
+        },
+        {
+          "path": "backend/tests/test_theory_judgement_batch_contract.py",
+          "sha256": "3524c456fafd04538fd15db4155a1a36631d956a6e6db9b0e5f9b132a51802ae"
+        },
+        {
+          "path": "backend/tests/test_theory_matching_api.py",
+          "sha256": "00cc90b8502472f9f773bdaa10f6b0a17450d08ce51e2bcf83a07d65c2570cea"
+        },
+        {
+          "path": "backend/tests/test_theory_matching_repository.py",
+          "sha256": "e64f40bc44a384e259740fe9c209014a5e1208aa347a5c170d2d7763ca2d4b88"
+        },
+        {
+          "path": "backend/tests/test_theory_matching_service.py",
+          "sha256": "2e828e109d99aaf49669ddd9a2f26a85cfe62131379285e6430a199204ef41a0"
+        },
+        {
+          "path": "backend/tests/test_theory_matching_service_decisions.py",
+          "sha256": "3ad6cb9b2b7924974658fd0ec97083fed95ef0c8fc8be7c7568b90c340324824"
+        }
+      ]
+    },
+    {
+      "category": "explicit_live_provider",
+      "reason": "Requires explicit live model configuration/authorization; normal CI must not call a paid provider.",
+      "files": [
+        {
+          "path": "backend/tests/test_agent_memory_live.py",
+          "sha256": "1c11135a33261ce2f62e489bc1fa232b45c53603dfe619af9cf83511e6a16352"
+        }
+      ]
+    },
+    {
+      "category": "platform_manual",
+      "reason": "PowerShell preparation contracts are an explicit platform-specific invocation, not native Windows installation or default Linux CI evidence.",
+      "files": [
+        {
+          "path": "extensions/clipper/test/setup-windows.test.ps1",
+          "sha256": "2ed8edc0ed9d8dd67979fd4ff98f5345e6475b9253b36ee030cb77ae43317f7b"
+        }
+      ]
+    },
+    {
+      "category": "synthetic_browser_manual",
+      "reason": "Requires both backend/gateway fixture servers and Playwright browser; run explicitly for channel UI acceptance. Unit/HTTP CI does not imply this browser suite ran.",
+      "files": [
+        {
+          "path": "gateway/browser/channel-bindings.spec.mjs",
+          "sha256": "6e62be9873833332979bdf10b9a55de5ce6b36800491fcb47e91a5decb0657e8"
+        }
+      ]
+    }
+  ]
+}

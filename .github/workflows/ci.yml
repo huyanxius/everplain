@@ -119,9 +119,12 @@ jobs:
       - name: Run frontend checks
         run: |
           npm --prefix frontend run check:boundaries
+          npm --prefix frontend run check:styles
           npm --prefix frontend run lint
           npm --prefix frontend run test -- --maxWorkers=1
           npm --prefix frontend run build
+          npm --prefix extensions/clipper test
+          python3 extensions/clipper/test/setup.test.py
 
   required-checks:
     name: Required checks

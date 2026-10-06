@@ -16,16 +16,15 @@ const adapters = {
   generatedApiAdapters: [
     'api/client.ts',
     'modules/alpha/researchTaskApi.ts',
-    // A lookalike .tsx file must not inherit this exact .ts permission.
-    'modules/beta/researchTaskApi.ts',
   ],
   httpRuntimeAdapters: ['api/client.ts'],
   moduleApiAdapters: ['modules/alpha/researchTaskApi.ts'],
 }
 
 async function check(files, moduleDependencies, policy = adapters) {
-  const sourceRoot = await mkdtemp(path.join(tmpdir(), 'qunxue-boundaries-'))
-  roots.push(sourceRoot)
+  const temporary = await mkdtemp(path.join(tmpdir(), 'qunxue-boundaries-'))
+  roots.push(temporary)
+  const sourceRoot = path.join(temporary, 'src')
   for (const [relative, source] of Object.entries(files)) {
     const target = path.join(sourceRoot, relative)
     await mkdir(path.dirname(target), { recursive: true })
@@ -246,4 +245,105 @@ test('keeps the research materials adapter behind the generated API boundary', a
     [],
     `research materials must use the generated SDK and a declared module boundary:\n${researchMaterialViolations.join('\n')}`,
   )
+})
+
+test('rejects unknown source buckets, unresolved dynamic imports and shared backdoors', async () => {
+  const violations = await check({
+    'modules/alpha/index.ts': 'export {}',
+    'app/secret.ts': 'export const secret = 1',
+    'unregistered/bridge.ts': "export { secret } from '../app/secret'",
+    'ui/bridge.ts': "export { secret } from '../app/secret'",
+    'modules/alpha/load.ts': 'export const load = (name) => import(name)',
+  }, { alpha: [] })
+  for (const expected of [
+    'unregistered/bridge.ts is not in a registered source bucket',
+    'ui/bridge.ts imports app code through a shared source bucket',
+    'modules/alpha/load.ts has an unresolved dynamic import',
+  ]) assert.ok(violations.includes(expected), violations.join('\n'))
+})
+
+test('rejects stale adapter permissions', async () => {
+  const violations = await check({ 'modules/alpha/index.ts': 'export {}' }, { alpha: [] }, {
+    appApiAdapters: [], generatedApiAdapters: [], moduleApiAdapters: [],
+    httpRuntimeAdapters: ['api/deleted.ts'],
+  })
+  assert.ok(violations.includes('api/deleted.ts is registered in httpRuntimeAdapters but does not exist'))
+})
+
+test('rejects a cycle even when every cross-module edge is allowed', async () => {
+  const violations = await check({
+    'modules/alpha/index.ts': "export { beta } from '../beta'",
+    'modules/beta/index.ts': "export { alpha } from '../alpha'",
+  }, { alpha: ['beta'], beta: ['alpha'] }, {
+    appApiAdapters: [], generatedApiAdapters: [], moduleApiAdapters: [], httpRuntimeAdapters: [],
+  })
+  assert.ok(violations.includes('product module dependency cycle (SCC): alpha, beta'), violations.join('\n'))
+})
+
+
+test('JavaScript files cannot bypass the source or HTTP guard', async () => {
+  const violations = await check({
+    'modules/alpha/index.ts': 'export {}',
+    'new-bucket/hidden.js': "fetch('/api/private')",
+  }, { alpha: [] }, {
+    appApiAdapters: [], generatedApiAdapters: [], moduleApiAdapters: [], httpRuntimeAdapters: [],
+  })
+  assert.ok(violations.includes('new-bucket/hidden.js is not in a registered source bucket'))
+  assert.ok(violations.includes('new-bucket/hidden.js uses HTTP outside the runtime adapter'))
+})
+
+
+test('configured aliases and files outside src cannot hide an app dependency', async () => {
+  const violations = await check({
+    '../tsconfig.app.json': JSON.stringify({ compilerOptions: {
+      baseUrl: '.', paths: { '@escape/*': ['src/app/*'] },
+    } }),
+    '../bridge.ts': 'export const bridge = true',
+    'app/secret.ts': 'export const secret = true',
+    'modules/alpha/index.ts': 'export {}',
+    'modules/alpha/consumer.ts': `
+      import { secret } from '@escape/secret'
+      import { bridge } from '../../../bridge'
+      export const value = [secret, bridge]
+    `,
+  }, { alpha: [] }, {
+    appApiAdapters: [], generatedApiAdapters: [], moduleApiAdapters: [], httpRuntimeAdapters: [],
+  })
+  assert.ok(violations.includes('modules/alpha/consumer.ts imports app code'))
+  assert.ok(violations.includes('modules/alpha/consumer.ts imports local source outside the registered source root'))
+})
+
+
+const noAdapters = {
+  appApiAdapters: [], generatedApiAdapters: [], moduleApiAdapters: [], httpRuntimeAdapters: [],
+}
+
+test('unowned modules-root source cannot bridge app or cross-module dependencies', async () => {
+  const violations = await check({
+    'modules/alpha/index.ts': "export { beta } from '../bridge'; export const alpha = 1",
+    'modules/bridge.ts': "export { beta } from './beta'; export { secret } from '../app/secret'",
+    'modules/beta/index.ts': "import { alpha } from '../alpha'; export const beta = () => alpha",
+    'app/secret.ts': 'export const secret = 1',
+  }, { alpha: [], beta: ['alpha'] }, noAdapters)
+  assert.ok(violations.includes('modules/bridge.ts is not inside a declared product module'))
+})
+
+test('the composition entry cannot become a reverse-import bridge', async () => {
+  const violations = await check({
+    'modules/alpha/index.ts': "export { secret } from '../../main'",
+    'main.tsx': "export { secret } from './app/secret'",
+    'app/secret.ts': 'export const secret = 1',
+  }, { alpha: [] }, noAdapters)
+  assert.ok(violations.includes('modules/alpha/index.ts imports the application composition entry'))
+})
+
+test('import-equals declarations contribute type and value dependency edges', async () => {
+  const violations = await check({
+    'modules/alpha/index.ts': 'export {}',
+    'modules/alpha/types.d.ts': "import type Secret = require('../../app/secret'); export type Value = Secret.Value",
+    'modules/alpha/loader.cts': "import secret = require('../../app/secret'); export const value = secret.value",
+    'app/secret.ts': 'export interface Value { id: string }; export const value = 1',
+  }, { alpha: [] }, noAdapters)
+  assert.ok(violations.includes('modules/alpha/types.d.ts imports app code'))
+  assert.ok(violations.includes('modules/alpha/loader.cts imports app code'))
 })
