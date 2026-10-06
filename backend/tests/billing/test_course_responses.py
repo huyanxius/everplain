@@ -8,7 +8,9 @@ from uuid import uuid4
 import httpx
 import pytest
 from openai import AsyncOpenAI
+from openai.types.responses import ResponseFunctionCallArgumentsDoneEvent
 from sqlalchemy import text
+from streaming_test_support import chat_http_response
 from test_durable_billing import wallet  # noqa: F401
 
 from qunxue_api.adapters.model import (
@@ -22,6 +24,37 @@ from qunxue_api.adapters.research_agent.course_cost import CourseCostLimits
 from qunxue_api.bootstrap import create_app
 from qunxue_api.modules.shared_knowledge import SharedDocument
 from qunxue_api.settings import Settings
+
+
+def responses_http_response(body):
+    """One real-shaped synthetic SSE stream, including argument deltas and terminal usage."""
+    events = [{"type": "response.created", "response": {
+        **body, "status": "in_progress", "output": [], "usage": None,
+    }}]
+    for index, item in enumerate(body["output"]):
+        assert item["type"] == "function_call"
+        events.extend([
+            {"type": "response.output_item.added", "output_index": index,
+             "item": {**item, "status": "in_progress", "arguments": ""}},
+            {"type": "response.function_call_arguments.delta", "output_index": index,
+             "item_id": item["id"], "delta": item["arguments"]},
+            {"type": "response.function_call_arguments.done", "output_index": index,
+             "item_id": item["id"], "name": item["name"], "arguments": item["arguments"]},
+            {"type": "response.output_item.done", "output_index": index, "item": item},
+        ])
+    events.append({"type": "response.completed", "response": body})
+    for sequence_number, event in enumerate(events):
+        event["sequence_number"] = sequence_number
+        if event["type"] == "response.function_call_arguments.done":
+            ResponseFunctionCallArgumentsDoneEvent.model_validate(event, strict=True)
+    return httpx.Response(
+        200, headers={"content-type": "text/event-stream"},
+        content="".join(
+            "event: " + event["type"] + "\ndata: "
+            + json.dumps(event) + "\n\n"
+            for event in events
+        ),
+    )
 
 
 @pytest.mark.parametrize("billing_enabled", [False, True])
@@ -81,6 +114,7 @@ def test_organization_real_sdk_preserves_anchors_usage_and_cash_guard(
     def reply(request):
         payload = json.loads(request.content)
         calls.append(payload)
+        assert payload["stream"] is True
         expected_path = "/v1/responses" if protocol == "responses" else "/v1/chat/completions"
         assert request.url.path == expected_path
         value = json.dumps(
@@ -96,9 +130,8 @@ def test_organization_real_sdk_preserves_anchors_usage_and_cash_guard(
             assert payload["store"] is False
             assert payload["reasoning"]["effort"] == "none"
             assert payload["max_output_tokens"] == 3000
-            return httpx.Response(
-                200,
-                json={
+            return responses_http_response(
+                {
                     "id": "resp_synthetic_organization",
                     "object": "response",
                     "created_at": 1,
@@ -123,9 +156,8 @@ def test_organization_real_sdk_preserves_anchors_usage_and_cash_guard(
                     },
                 },
             )
-        return httpx.Response(
-            200,
-            json={
+        return chat_http_response(
+            {
                 "id": "chat_synthetic_organization",
                 "object": "chat.completion",
                 "created": 1,
@@ -228,12 +260,12 @@ def test_upload_organize_index_persists_real_sdk_result_without_duplicate_calls(
     def reply(request):
         payload = json.loads(request.content)
         calls.append(payload)
+        assert payload["stream"] is True
         assert request.url.path == "/bypass/openai/v1/responses"
         assert payload["store"] is False
         assert payload["reasoning"]["effort"] == "none"
-        return httpx.Response(
-            200,
-            json={
+        return responses_http_response(
+            {
                 "id": "resp_worker_synthetic",
                 "object": "response",
                 "created_at": 1,

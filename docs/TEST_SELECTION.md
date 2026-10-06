@@ -21,6 +21,18 @@
 
 本轮仅对以上 12 文件进行隔离合成验证：110 项通过，无跳过；两处修改的 Python 文件 Ruff、测试登记检查及其 5 项局部自测通过。已有 SQLAlchemy 互相外键排序警告保留，它不是 Alembic revision 图环。未执行真实模型、实际账号数据库迁移、全量产品回归、全构建或全架构验收。
 
+## 剩余账务 10 文件局部晋升
+
+在上述 171 文件后再登记 10 个完整账务文件，沿用同一后端 CI lane，产品清单增至 181 个；只移除对应 10 条排除记录，其余 80 条内容及 SHA-256 原样保留。其中 119 项为当前/共享边界或已明确的历史账务兼容，另 6 项为默认个人产品禁用的历史理论匹配内部兼容；没有恢复任何退休课程、公共目录、matching HTTP 路由或模型可见工具。
+
+- 当前私库整理/索引及共享边界：course billing 3、course responses 5、financial faults 6、graph naming 4、legacy research API 4。`course_*` 是私库 `SharedDocumentRow` 处理链的内部旧名，不代表公共课程产品。Financial faults 混有当前 `actual_usage_v1` RESET 事务测试与历史终态/回执测试；legacy research API 的现有 `user_research` factory 实际使用 `actual_usage_v2`，但这只是该 API 局部验证。
+- 历史账务/共享 SDK 兼容：cross-run refunds 26、phase billing 13、Responses metering 51、standalone billing 7。退款、拒绝和失败豁免相关断言明确来自 `delivery_v1` fixture，不宣称是当前 Agent v2 行为。该历史策略仍由已保存 operation snapshot 决定，不能因新策略而删除其精度、重放和事务回归。
+- 历史理论匹配内部兼容：legacy research billing 6。保留的 tool registration → workflow → matching application 链不等于默认模型可见；当前 `EmptyKnowledgeCatalog` 使 `catalog_available=False`，prepare gate 隐藏 matching/confirmed-theory 工具，matching HTTP 路由亦未挂载。CI 只执行合成直接内部调用，保护保留实现的 owner/replay/fallback 边界，不扩大产品入口。
+
+原 10 文件执行为 122 通过、3 失败，其中一条旧兑换故障注入还存在空通过。仅修改两测试文件：course Responses/Chat fixture 从旧 JSON 修成实际请求的 SSE 事件并保留全部原断言；financial faults 接真实迁移 RESET 写边界、专用异常、阻塞 reservation、回滚前后 8 张账务/审计表快照与旧 epoch 放行，保留原 balance ≥ holds 断言。两个提前 commit 负控制分别在 writer 锁隔离或财务状态快照断言失败。独立审查又要求补齐 SSE `function_call_arguments.done.name` 并对真实输出事件做严格 SDK schema 校验，以及加入 RESET 的 `billing_precision_adjustments` 审计表。
+
+验证账本：修订 1 的十完整文件一次执行 125 通过、无 skip；独审修订 2 后受影响 11 项再次通过，其余 114 项源码不变，未重复整个 125。独立审查修订 2 的定向 6 项及 4 项负控制按预期通过，单列记录，不累计到 125。两修订文件 Ruff、后续登记检查及既有 inventory 自测另留收据。空环境、DNS/外网 socket 禁用和合成临时 SQLite/SDK transport 不代表真实模型、生产数据库、浏览器、部署、全产品或架构全验收。
+
 ## 发现规则与依赖安装
 
 当前 `frontend/vite.config.ts` 没有覆写 include/exclude；Vitest 4.1.10 的默认 include 是 `**/*.{test,spec}.?(c|m)[jt]s?(x)`，exclude 为 node_modules 和 .git。已用该版本实际 `vitest list --filesOnly --json` 与登记范围逐文件比对。它是收集证明，不是测试执行通过。
@@ -31,9 +43,9 @@ CI frontend 的安装步骤执行 `make bootstrap`，其既有依赖包含 `boot
 
 ## 仍开放的存量
 
-基线有 250 个后端测试文件，产品清单仅选择 141 个；不能将其余 109 个一概称为历史学科测试。Guard 补回 8 个并经 O02/G05 后续晋升后，剩余排除记录见 `backend/tests/deferred-suite.json`：
+基线有 250 个后端测试文件，产品清单仅选择 141 个；不能将其余 109 个一概称为历史学科测试。Guard 补回 8 个、O02/G05 后续晋升及剩余账务 10 文件登记后，剩余排除记录见 `backend/tests/deferred-suite.json`：
 
-- `baseline_review_pending`：初始 100 个，移除已晋升的 billing API 错误测试后为 99 个；本轮再晋升 O02/G05 的 12 个后，当前为 87 个，仍缺当前分类/执行证明，按原精确 SHA-256 登记待核验。它们可能混有当前产品、兼容研究与陈旧期望；这不是批准永久不测。
+- `baseline_review_pending`：初始 100 个，移除已晋升的 billing API 错误测试后为 99 个；O02/G05 的 12 个后为 87 个，本次再晋升 10 个后为 77 个，仍缺当前分类/执行证明，按原精确 SHA-256 登记待核验。它们可能混有当前产品、兼容研究与陈旧期望；这不是批准永久不测。
 - `explicit_live_provider`：1 个真实模型验收依赖显式配置，不放进无凭据 CI。
 - `platform_manual`：扩展 PowerShell 准备测试需单独执行；不假装 Linux Bash 测试就是 Windows 安装验收。
 - `synthetic_browser_manual`：网关 Playwright 场景需要本地后端、网关和浏览器 fixture；当前合成 HTTP job 不代表浏览器场景跑过。

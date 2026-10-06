@@ -10,18 +10,14 @@ import pytest
 from openai import AsyncOpenAI
 from pydantic_ai import Agent
 from pydantic_ai.providers.openai import OpenAIProvider
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from test_durable_billing import wallet  # noqa: F401
 
 from qunxue_api.adapters.model.metering import MeteredOpenAIChatModel, OperationScope
-from qunxue_api.adapters.sqlite.billing_model import (
-    CreditAccountRow,
-    CreditLedgerRow,
-    CreditRedemptionCodeRow,
-)
+from qunxue_api.adapters.sqlite.billing_model import CreditRedemptionCodeRow
 from qunxue_api.adapters.sqlite.billing_repository import SqliteCreditRepository
-from qunxue_api.adapters.sqlite.durable_billing import DurableBilling, create_billing_tables
+from qunxue_api.adapters.sqlite.durable_billing import DurableBilling
 from qunxue_api.modules.billing import PriceBook
 
 
@@ -99,72 +95,154 @@ def test_metered_stream_handles_async_context_and_terminal_billing(wallet, finis
         assert conn.scalar(text("SELECT reference_cost_pico FROM billing_attempts")) == 500000000
 
 
-def test_redemption_and_new_hold_are_atomic(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path}/redeem-race.db")
-    for model in (CreditAccountRow, CreditLedgerRow, CreditRedemptionCodeRow):
-        model.__table__.create(engine)
-    create_billing_tables(engine)
-    user, code = uuid4(), uuid4()
-    now = datetime.now(UTC)
+def test_redemption_and_new_hold_are_atomic(plain_client, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+    from threading import Event
+    from uuid import UUID
+
+    from sqlalchemy import event
+    from test_agent_memory import register
+
+    from qunxue_api.adapters.sqlite import billing_repository
+    from qunxue_api.modules.billing import Tariff
+
+    engine = plain_client.app.state.database.engine
+    user, code, now = UUID(register(plain_client)), uuid4(), datetime.now(UTC)
     with Session(engine) as session:
-        session.add(
-            CreditAccountRow(
-                user_id=str(user),
-                balance=50000,
-                active_run_id=None,
-                active_run_expires_at=None,
-                created_at=now,
-                updated_at=now,
-            )
-        )
-        session.add(
-            CreditRedemptionCodeRow(
-                code_id=str(code),
-                code_hash="test-hash",
-                batch_id="synthetic",
-                code_index=0,
-                created_by_user_id=str(user),
-                created_at=now,
-                expires_at=now + timedelta(days=1),
-                redeemed_by_user_id=None,
-                redeemed_at=None,
-            )
-        )
+        session.add(CreditRedemptionCodeRow(
+            code_id=str(code), code_hash="atomic-reset-hash", batch_id="synthetic",
+            code_index=0, created_by_user_id=str(user), created_at=now,
+            expires_at=now + timedelta(days=1),
+        ))
         session.commit()
     runtime = DurableBilling(
         engine,
-        price_book=PriceBook(credits_per_usd=10000, version="synthetic"),
-        max_attempt_pico=5 * 10**12,
-        max_operation_pico=5 * 10**12,
-        daily_budget_pico=50 * 10**12,
-        billing_policy="delivery_v1",
+        price_book=PriceBook(credits_per_usd=10000, version="synthetic-reset-rollback", tariffs={
+            "synthetic-meter": Tariff(1000000, 1000000, 1000000, 1000000, long_threshold=None),
+        }),
+        max_attempt_pico=2 * 10**9, max_operation_pico=2 * 10**9,
+        daily_budget_pico=10**12, billing_policy="actual_usage_v1", clock=lambda: now,
     )
-    with Session(engine) as session:
-        repository = SqliteCreditRepository(session)
-        original = repository._billing_details
 
-        def interleaving(user_id, limit, offset):
-            observed = original(user_id, limit, offset)
-            assert observed[0] == 0
-            # A separate SQLite writer commits after the frozen check, before redeem writes.
-            runtime.start(user_id=user, run_id=str(uuid4()), fingerprint="concurrent-hold")
-            return observed
-
-        repository._billing_details = interleaving
-        try:
-            repository.redeem_code(user_id=user, code_hash="test-hash", now=now)
-            session.commit()
-        except Exception:
-            session.rollback()
-    with engine.connect() as conn:
-        balance = conn.scalar(text("SELECT balance FROM credit_accounts"))
-        held = conn.scalar(
-            text(
-                "SELECT coalesce(sum(hold_points),0) FROM billing_operations WHERE status='active'"
-            )
+    def attempt(run):
+        return runtime.before_attempt(
+            run_id=run, endpoint_id="synthetic", model="synthetic-meter",
+            input_limit=1000, output_limit=100, request_hash=str(uuid4()),
         )
+
+    initial = runtime.start(user_id=user, run_id=uuid4(), fingerprint="initial-epoch")
+    runtime.complete_attempt(
+        attempt_id=attempt(initial), input_tokens=600, output_tokens=0,
+        returned_model="synthetic-meter", outcome="success",
+    )
+    runtime.finish(run_id=initial, outcome="success")
+
+    def snapshot():
+        # Inspect before allowing the waiting reservation's legitimate next writes.
+        with engine.connect() as connection:
+            return {
+                table: sorted(connection.execute(text(f"SELECT * FROM {table}")).all(), key=repr)
+                for table in (
+                    "credit_accounts", "credit_quota_periods", "billing_precision",
+                    "credit_ledger", "credit_redemption_codes", "billing_operations",
+                    "billing_attempts", "billing_precision_adjustments",
+                )
+            }
+
+    before = snapshot()
+    with engine.connect() as connection:
+        assert connection.execute(text(
+            "SELECT balance,quota_period_epoch FROM credit_accounts"
+        )).one() == (24, 1)
+    attempted, acquired, allow_reservation = Event(), Event(), Event()
+    reset_written, injected = Event(), Event()
+
+    class InjectedResetFailure(RuntimeError):
+        pass
+
+    def before_execute(_conn, _cursor, statement, _params, _context, _many):
+        if statement == "BEGIN IMMEDIATE":
+            attempted.set()
+
+    def after_execute(_conn, _cursor, statement, _params, _context, _many):
+        if statement == "BEGIN IMMEDIATE":
+            acquired.set()
+            assert allow_reservation.wait(5), "reservation gate was not released"
+
+    def reserve():
+        run = runtime.start(user_id=user, run_id=uuid4(), fingerprint="after-reset-rollback")
+        return run, attempt(run)
+
+    original = billing_repository.ensure_quota_period
+    event.listen(engine, "before_cursor_execute", before_execute)
+    event.listen(engine, "after_cursor_execute", after_execute)
+    future = None
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            def fail_after_reset(conn, user_id, reset_now, plan_limits=None, **kwargs):
+                nonlocal future
+                assert kwargs["reset"] is True
+                period = original(conn, user_id, reset_now, plan_limits, **kwargs)
+                assert period["epoch"] == 2 and period["balance"] == 30
+                assert conn.scalar(text(
+                    "SELECT redeemed_by_user_id FROM credit_redemption_codes"
+                )) == str(user)
+                reset_written.set()
+                future = pool.submit(reserve)
+                assert attempted.wait(2)
+                with pytest.raises(TimeoutError):
+                    future.result(timeout=0.05)
+                assert not acquired.is_set(), "reservation escaped the RESET writer lock"
+                injected.set()
+                raise InjectedResetFailure("synthetic failure after RESET writes")
+
+            monkeypatch.setattr(billing_repository, "ensure_quota_period", fail_after_reset)
+            try:
+                with Session(engine) as session:
+                    with pytest.raises(InjectedResetFailure, match="after RESET writes"):
+                        SqliteCreditRepository(session).redeem_code(
+                            user_id=user, code_hash="atomic-reset-hash", now=now,
+                        )
+                    assert reset_written.is_set() and injected.is_set()
+                    session.rollback()
+                    assert acquired.wait(2), "rollback did not release the writer lock"
+                    assert snapshot() == before, "failed RESET changed committed financial state"
+            finally:
+                # Release even after failed assertions so the executor cannot hang.
+                allow_reservation.set()
+            run, waiting_attempt = future.result(timeout=5)
+    finally:
+        allow_reservation.set()
+        event.remove(engine, "before_cursor_execute", before_execute)
+        event.remove(engine, "after_cursor_execute", after_execute)
+    with engine.connect() as connection:
+        balance = connection.scalar(text("SELECT balance FROM credit_accounts"))
+        held = connection.scalar(text(
+            "SELECT coalesce(sum(hold_points),0) FROM billing_operations WHERE status='active'"
+        ))
         assert balance >= held, f"balance={balance}, holds={held}"
-    engine.dispose()
+        assert (balance, held) == (24, 11)
+        assert connection.scalar(text(
+            "SELECT quota_period_epoch FROM billing_operations WHERE run_id=:run"
+        ), {"run": run}) == 1
+        assert connection.scalar(text(
+            "SELECT redeemed_by_user_id FROM credit_redemption_codes"
+        )) is None
+        assert connection.scalars(text(
+            "SELECT epoch FROM credit_quota_periods ORDER BY epoch"
+        )).all() == [0, 1]  # Epoch 0 preserves the pre-activation historical snapshot.
+    runtime.complete_attempt(
+        attempt_id=waiting_attempt, input_tokens=600, output_tokens=0,
+        returned_model="synthetic-meter", outcome="success",
+    )
+    runtime.finish(run_id=run, outcome="success")
+    with engine.connect() as connection:
+        assert connection.execute(text(
+            "SELECT balance,quota_period_epoch FROM credit_accounts"
+        )).one() == (18, 1)
+        assert connection.scalar(text(
+            "SELECT hold_points FROM billing_operations WHERE run_id=:run"
+        ), {"run": run}) == 0
 
 
 def test_redemption_writer_lock_allows_waiting_reservation_to_progress(plain_client, monkeypatch):
