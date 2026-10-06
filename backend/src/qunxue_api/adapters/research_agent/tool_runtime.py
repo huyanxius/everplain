@@ -1,8 +1,12 @@
 """Run-local tool events, cancellation and proposal delivery; no prompt selection."""
 
+import asyncio
+import threading
 from collections.abc import Callable, Mapping
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
+from functools import wraps
+from inspect import iscoroutinefunction
 
 from pydantic_ai import RunContext
 
@@ -18,9 +22,18 @@ class AgentToolCommitFailure(RuntimeError):
     """An unacknowledged command commit must stop execution, never trigger a tool retry."""
 
 
+class _ToolOwners:
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.active = 0
+
+
 class AgentToolRuntime:
     def __init__(self, *, writing_instructions: Callable[[], str]) -> None:
         self._writing_instructions = writing_instructions
+        self._active_workers: ContextVar[_ToolOwners | None] = ContextVar(
+            f"agent_tool_workers_{id(self)}", default=None,
+        )
         self._active_tool_event: ContextVar[Callable[[AgentToolEvent], None] | None] = ContextVar(
             f"agent_tool_event_{id(self)}", default=None,
         )
@@ -33,6 +46,86 @@ class AgentToolRuntime:
         self._active_cancelled: ContextVar[Callable[[], bool] | None] = ContextVar(
             f"agent_cancelled_{id(self)}", default=None,
         )
+
+    def tool(self, agent, **options):
+        """Register a sync tool whose resources cannot outlive its SDK awaiter.
+
+        Cancelling an SDK thread await does not stop its synchronous function.
+        Keep that complete invocation (including callbacks and error cleanup)
+        owned until it exits, before the runner reuses or closes its Session.
+        Only tool work is shielded; model requests remain promptly cancellable.
+        """
+        def register(function):
+            if iscoroutinefunction(function):
+                return agent.tool(function, **options)
+
+            @wraps(function)
+            async def owned_call(*args, **kwargs):
+                started = stopped = False
+                owners = self._active_workers.get()
+                start_lock = owners.lock if owners is not None else threading.RLock()
+
+                def invoke():
+                    nonlocal started
+                    with start_lock:
+                        if stopped:
+                            return None
+                        started = True
+                        if owners is not None:
+                            owners.active += 1
+                    return function(*args, **kwargs)
+
+                # Preserve to_thread's run-local callbacks/route/billing context,
+                # but retain a Future: loop shutdown cancels all Tasks, and must
+                # not cancel a separate worker Task before its thread has exited.
+                worker = asyncio.get_running_loop().run_in_executor(
+                    None, copy_context().run, invoke,
+                )
+                try:
+                    try:
+                        return await asyncio.shield(worker)
+                    except asyncio.CancelledError:
+                        with start_lock:
+                            stopped = True
+                            if not started:
+                                # Never start queued work after a stop. The lock
+                                # closes the race before the thread touches deps.
+                                worker.cancel()
+                        # Repeated stop signals cannot abandon an active owner.
+                        # Retrieve and propagate worker failures, including ORM
+                        # failures, rather than hiding them behind cancellation.
+                        while not worker.done():
+                            try:
+                                await asyncio.shield(worker)
+                            except asyncio.CancelledError:
+                                continue
+                        if not worker.cancelled():
+                            worker.result()
+                        raise
+                finally:
+                    with start_lock:
+                        if owners is not None and started:
+                            owners.active -= 1
+
+            return agent.tool(owned_call, **options)
+
+        return register
+
+    def when_idle(self, callback, *, default=None):
+        """Poll/checkpoint atomically against the start of a Session owner.
+
+        Queued workers own no resources yet and must not prevent stop polling.
+        Hold their start lock through the synchronous callback to avoid a
+        check-then-start race. Active owners are never polled or checkpointed.
+        """
+        owners = self._active_workers.get()
+        if owners is None:
+            return callback()
+        with owners.lock:
+            return default if owners.active else callback()
+
+    def is_idle(self) -> bool:
+        return self.when_idle(lambda: True, default=False)
 
     def invoke(self, tools, tool_name: str, *args, **kwargs):
         """Finish the shared-Session command before publishing any terminal event.
@@ -68,6 +161,7 @@ class AgentToolRuntime:
         """Bind callbacks to this run, including SDK worker-thread context copies."""
         proposals = []
         tokens = (
+            (self._active_workers, self._active_workers.set(_ToolOwners())),
             (self._active_tool_event, self._active_tool_event.set(on_tool_event)),
             (self._active_cancelled, self._active_cancelled.set(is_cancelled)),
             (self._active_writing_preview, self._active_writing_preview.set(writing_preview)),

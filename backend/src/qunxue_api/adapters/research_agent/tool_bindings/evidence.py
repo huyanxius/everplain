@@ -29,7 +29,7 @@ def register_knowledge_search_tool(agent, runtime: AgentToolRuntime) -> None:
     # These tools share the run's SQLite Session. Pydantic dispatches sync
     # tools in worker threads, so knowledge batches must never race that
     # Session/connection. Pure web-only batches keep their parallel policy.
-    @agent.tool(prepare=_prepare_knowledge_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_knowledge_tool, sequential=True)
     def search_knowledge(
         ctx: RunContext[KnowledgeToolRegistry], query: str
     ) -> list[dict[str, object]] | dict[str, object]:
@@ -99,7 +99,7 @@ def register_knowledge_search_tool(agent, runtime: AgentToolRuntime) -> None:
 
 
 def register_knowledge_read_tools(agent, runtime: AgentToolRuntime) -> None:
-    @agent.tool(prepare=_prepare_knowledge_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_knowledge_tool, sequential=True)
     def read_knowledge_entry(
         ctx: RunContext[KnowledgeToolRegistry], knowledge_id: str
     ) -> dict[str, object]:
@@ -163,7 +163,7 @@ def register_knowledge_read_tools(agent, runtime: AgentToolRuntime) -> None:
         )
         return result
 
-    @agent.tool(prepare=_prepare_knowledge_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_knowledge_tool, sequential=True)
     def read_sources(
         ctx: RunContext[KnowledgeToolRegistry], source_ids: list[str]
     ) -> list[dict[str, object]] | dict[str, object]:
@@ -219,7 +219,7 @@ def register_knowledge_read_tools(agent, runtime: AgentToolRuntime) -> None:
         )
         return result
 
-    @agent.tool(prepare=_prepare_knowledge_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_knowledge_tool, sequential=True)
     def browse_knowledge_directory(
         ctx: RunContext[KnowledgeToolRegistry],
         query: str | None = None,
@@ -286,7 +286,7 @@ def register_knowledge_read_tools(agent, runtime: AgentToolRuntime) -> None:
 
 
 def register_web_tools(agent, runtime: AgentToolRuntime) -> None:
-    @agent.tool(prepare=_prepare_web_tool)
+    @runtime.tool(agent, prepare=_prepare_web_tool)
     def search_web(
         ctx: RunContext[KnowledgeToolRegistry], query: str, limit: int = 5
     ) -> list[dict[str, object]] | dict[str, object]:
@@ -342,7 +342,7 @@ def register_web_tools(agent, runtime: AgentToolRuntime) -> None:
         ))
         return result
 
-    @agent.tool(prepare=_prepare_web_read_tool)
+    @runtime.tool(agent, prepare=_prepare_web_read_tool)
     def read_web_page(
         ctx: RunContext[KnowledgeToolRegistry], url: str
     ) -> dict[str, object]:
@@ -387,7 +387,7 @@ def register_web_tools(agent, runtime: AgentToolRuntime) -> None:
 
 
 def register_material_tools(agent, runtime: AgentToolRuntime) -> None:
-    @agent.tool(prepare=_prepare_material_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_material_tool, sequential=True)
     def search_research_materials(
         ctx: RunContext[KnowledgeToolRegistry], query: str, limit: int = 5
     ) -> list[dict[str, object]] | dict[str, object]:
@@ -460,7 +460,7 @@ def register_material_tools(agent, runtime: AgentToolRuntime) -> None:
         )
         return result
 
-    @agent.tool(prepare=_prepare_material_tool, sequential=True)
+    @runtime.tool(agent, prepare=_prepare_material_tool, sequential=True)
     def read_research_material_context(
         ctx: RunContext[KnowledgeToolRegistry],
         material_id: str,
