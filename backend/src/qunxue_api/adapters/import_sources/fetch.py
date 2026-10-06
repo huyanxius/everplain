@@ -1,11 +1,17 @@
 """Bounded public webpage extraction for explicitly imported bookmarks."""
 
-import ipaddress
 import socket
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin
 
 import httpx
 import trafilatura
+
+from .public_http import (
+    BookmarkProxyError,
+    PublicHTTPTransport,
+    public_addresses,
+    validate_url,
+)
 
 
 class BookmarkFetchError(ValueError):
@@ -39,29 +45,17 @@ def extract_bookmark(content, *, url=None):
 
 
 def public_url(url):
-    value = urlsplit(url)
-    if (
-        value.scheme not in {"http", "https"}
-        or not value.hostname
-        or value.username
-        or value.password
-    ):
-        raise ValueError("书签需要公开的 HTTP(S) 网页地址")
-    if value.port not in (None, 80, 443):
-        raise ValueError("不支持此网页端口")
-    addresses = socket.getaddrinfo(
-        value.hostname,
-        value.port or (443 if value.scheme == "https" else 80),
-        type=socket.SOCK_STREAM,
-    )
-    if not addresses or any(not ipaddress.ip_address(row[4][0]).is_global for row in addresses):
-        raise ValueError("不能读取本机、内网或保留地址")
+    """Validate a URL for callers; fetching additionally binds checks to dialing."""
+    value = validate_url(url)
+    public_addresses(value.hostname, value.port or (443 if value.scheme == "https" else 80))
     return url
 
 
 def fetch_bookmark(url):
     try:
         return _fetch_bookmark(url)
+    except BookmarkProxyError as exc:
+        raise BookmarkFetchError("proxy_unsupported", str(exc)) from exc
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         if status in (401, 403):
@@ -83,9 +77,11 @@ def fetch_bookmark(url):
 
 
 def _fetch_bookmark(url):
-    with httpx.Client(timeout=15, follow_redirects=False) as client:
+    with httpx.Client(
+        timeout=15, follow_redirects=False, transport=PublicHTTPTransport()
+    ) as client:
         for _ in range(6):
-            public_url(url)
+            validate_url(url)
             with client.stream(
                 "GET", url, headers={"User-Agent": "EverplainImport/1.0"}
             ) as response:

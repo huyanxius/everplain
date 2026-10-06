@@ -55,13 +55,7 @@ def test_short_chinese_definition_is_preserved_without_a_length_gate():
 
 
 def fake_web(monkeypatch, handler):
-    client = httpx.Client
-    monkeypatch.setattr(
-        fetcher.httpx,
-        "Client",
-        lambda **kwargs: client(transport=httpx.MockTransport(handler), **kwargs),
-    )
-    monkeypatch.setattr(fetcher, "public_url", lambda url: url)
+    monkeypatch.setattr(fetcher, "PublicHTTPTransport", lambda: httpx.MockTransport(handler))
 
 
 @pytest.mark.parametrize(
@@ -128,7 +122,7 @@ def test_every_redirect_still_checks_public_destination(monkeypatch):
         if "127.0.0.1" in url:
             raise ValueError("不能读取本机、内网或保留地址")
 
-    monkeypatch.setattr(fetcher, "public_url", validate)
+    monkeypatch.setattr(fetcher, "validate_url", validate)
     with pytest.raises(ValueError, match="内网"):
         fetcher.fetch_bookmark("https://example.org")
     assert checked == ["https://example.org", "http://127.0.0.1/internal"]
