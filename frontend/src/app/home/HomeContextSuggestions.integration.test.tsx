@@ -44,13 +44,19 @@ it('uses one server-cached, content-specific result on Home and a new standard C
     <Route path="/app" element={<AppHomePage />} />
     <Route path="/agent" element={<ResearchAgentConversationPage userId="reader-shared" />} />
   </Routes><Location /></MemoryRouter></QueryClientProvider>)
-  const homeCards = await screen.findByRole('region', { name: '根据你最近的对话' })
+  const homeCards = await screen.findByRole('region', { name: '建议' })
   await within(homeCards).findByRole('button', { name: /把对照案例放进五分钟展示/ })
+  expect(homeCards.querySelectorAll('.cv-suggestions__card')).toHaveLength(3)
+  expect(within(homeCards).getAllByRole('button', { name: '查看依据原文' })).toHaveLength(1)
   const content = homeCards.textContent
   expect(await screen.findByRole('region', { name: '接着聊' })).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: '展开对话' }))
   expect(screen.getByRole('link', { name: '继续对话：旧对话' })).toHaveAttribute('href', '/agent?conversation_id=history')
   fireEvent.change(screen.getByRole('textbox', { name: '问小叶' }), { target: { value: '保留首页补充。' } })
+  for (const generic of [...homeCards.querySelectorAll<HTMLButtonElement>('.cv-suggestions__card')].slice(1)) {
+    expect(generic).toBeDisabled()
+    fireEvent.click(generic)
+  }
   fireEvent.click(within(homeCards).getByRole('button', { name: /把对照案例放进五分钟展示/ }))
   expect(await screen.findByRole('textbox', { name: '问小叶' })).toHaveValue('保留首页补充。')
   const homeSelection = screen.getByRole('region', { name: '已选对话卡片' })
@@ -60,11 +66,17 @@ it('uses one server-cached, content-specific result on Home and a new standard C
   expect(reads).not.toContain('/api/agent/turns')
   fireEvent.click(screen.getByRole('link', { name: '全部对话' }))
   await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/agent'))
-  const chatCards = await screen.findByRole('region', { name: '根据你最近的对话' })
+  const chatCards = await screen.findByRole('region', { name: '建议' })
   expect(chatCards.textContent).toBe(content)
+  expect(chatCards.querySelectorAll('.cv-suggestions__card')).toHaveLength(3)
+  expect(within(chatCards).getAllByRole('button', { name: '查看依据原文' })).toHaveLength(1)
   expect(reads.filter(path => path === '/api/agent/context-summary')).toHaveLength(1)
   expect(screen.queryByRole('region', { name: '已选对话卡片' })).not.toBeInTheDocument()
   fireEvent.change(screen.getByRole('textbox', { name: '问 Everplain' }), { target: { value: '保留新对话补充。' } })
+  for (const generic of [...chatCards.querySelectorAll<HTMLButtonElement>('.cv-suggestions__card')].slice(1)) {
+    expect(generic).toBeDisabled()
+    fireEvent.click(generic)
+  }
   fireEvent.click(within(chatCards).getByRole('button', { name: /把对照案例放进五分钟展示/ }))
   expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('保留新对话补充。')
   const chatSelection = screen.getByRole('region', { name: '已选对话卡片' })

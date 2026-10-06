@@ -252,7 +252,7 @@ describe('shared cached conversation suggestions', () => {
     vi.useFakeTimers()
     const queryClient = client()
     const three = { ...ready, cards: [...ready.cards, {
-      ...ready.cards[1], title: '核对读书会对照例子的篇幅', description: '五分钟展示需要保留原先提到的对照例子，可以具体分配篇幅。',
+      ...ready.cards[1], card_id: 'reading-length-card', title: '核对读书会对照例子的篇幅', description: '五分钟展示需要保留原先提到的对照例子，可以具体分配篇幅。',
     }] }
     vi.mocked(getConversationContextSummary).mockResolvedValueOnce({
       ...empty, status: 'failed', status_reason: 'retry_wait',
@@ -362,11 +362,11 @@ it('fails closed on a legacy cached card without opaque selection metadata', asy
 })
 
 function StarterLocation() { const location = useLocation(); return <output data-testid="starter-location">{location.pathname}{location.search}</output> }
-function starterSurface(queryClient: QueryClient, onStart = vi.fn(), hasDraft = false, onSelect = vi.fn()) {
-  return <QueryClientProvider client={queryClient}><MemoryRouter><ConversationContextSuggestions userId="new-reader" onSelect={onSelect} onStart={onStart} hasDraft={hasDraft} /><StarterLocation /></MemoryRouter></QueryClientProvider>
+function starterSurface(queryClient: QueryClient, onStart = vi.fn(), hasDraft = false, onSelect = vi.fn(), userId: string | null = 'new-reader') {
+  return <QueryClientProvider client={queryClient}><MemoryRouter><ConversationContextSuggestions userId={userId} onSelect={onSelect} onStart={onStart} hasDraft={hasDraft} /><StarterLocation /></MemoryRouter></QueryClientProvider>
 }
 
-it('shows exactly three generic starters only for a confirmed empty result, with only card copy', async () => {
+it('shows exactly three generic starters for a confirmed empty result, with only card copy', async () => {
   vi.mocked(getConversationContextSummary).mockResolvedValue(empty)
   const onStart = vi.fn()
   const onSelect = vi.fn()
@@ -383,28 +383,47 @@ it('shows exactly three generic starters only for a confirmed empty result, with
   expect(getConversationContextSummary).toHaveBeenCalledTimes(1)
 })
 
-it.each([1, 2, 3])('shows %i genuine cards without padding or replacing them with generic starters', async count => {
+it.each([0, 1, 2, 3])('composes exactly three cards from %i genuine cards without changing their identity', async count => {
   const cards = [...ready.cards, { ...ready.cards[1], card_id: 'third-card', title: '检查展示材料的结构' }].slice(0, count)
-  vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards })
+  const data = { ...ready, cards }
+  vi.mocked(getConversationContextSummary).mockResolvedValue(data)
   const onStart = vi.fn()
   const onSelect = vi.fn()
-  render(starterSurface(client(), onStart, false, onSelect))
-  await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })
+  const onSubmit = vi.fn()
+  const queryClient = client()
+  render(<form onSubmit={onSubmit}>{starterSurface(queryClient, onStart, false, onSelect)}</form>)
+  await waitFor(() => expect(queryClient.getQueryData(conversationContextSummaryKey('new-reader'))).toEqual(data))
   const buttons = [...document.querySelectorAll<HTMLButtonElement>('.cv-suggestions__card')]
-  expect(buttons).toHaveLength(count)
-  expect(screen.queryByRole('region', { name: '起步建议' })).not.toBeInTheDocument()
-  buttons.forEach((button, index) => {
-    fireEvent.click(button)
-    expect(onSelect).toHaveBeenLastCalledWith(selectContextCard(cards[index]))
+  expect(buttons).toHaveLength(3)
+  const region = screen.getByRole('region', { name: count === 3 ? '根据你最近的对话' : count ? '建议' : '起步建议' })
+  expect(region.textContent).toBe(buttons.map(button => button.textContent).join(''))
+  expect(within(region).queryAllByRole('button', { name: '查看依据原文' })).toHaveLength(count)
+  cards.forEach((card, index) => {
+    expect(buttons[index]).toHaveTextContent(card.title)
+    expect(buttons[index]).toHaveTextContent(card.description)
+    fireEvent.click(buttons[index])
+    expect(onSelect).toHaveBeenLastCalledWith(selectContextCard(card))
   })
-  expect(onStart).not.toHaveBeenCalled()
+  for (const button of buttons.slice(count)) {
+    expect(button.closest('article')?.querySelector('[data-source-role], .cv-context-suggestions__evidence')).toBeNull()
+    fireEvent.click(button)
+  }
+  expect(onSelect).toHaveBeenCalledTimes(count)
+  const destinations = getStarterSuggestions('zh-CN', 'new-reader').slice(0, 3 - count)
+    .flatMap(card => card.kind === 'navigate' ? [card.to] : [])
+  expect(screen.getByTestId('starter-location').textContent).toBe(destinations.at(-1) ?? '/')
+  if (count < 3) expect(onStart).toHaveBeenCalledExactlyOnceWith(getStarterSuggestions('zh-CN', 'new-reader')[0].title)
+  else expect(onStart).not.toHaveBeenCalled()
+  expect(onSubmit).not.toHaveBeenCalled()
+  expect(queryClient.getQueryData(conversationContextSummaryKey('new-reader'))).toEqual(data)
+  expect(getConversationContextSummary).toHaveBeenCalledTimes(1)
 })
 
 it.each([
   { ...empty, status: 'pending' as const },
   { ...empty, status: 'failed' as const },
   { ...empty, status: 'disabled' as const },
-  { ...empty, status: 'ready' as const, summary: ready.summary },
+  { ...empty, status: 'ready' as const, summary: ready.summary, is_stale: true },
   { ...empty, is_stale: true },
   { ...empty, status_reason: 'idle_wait' as const },
   { ...empty, usage_status: 'pending' as const },
@@ -511,4 +530,103 @@ it('does not add a source icon to generic starters or cards without sources', as
   render(starterSurface(client()))
   await screen.findByRole('region', { name: '起步建议' })
   expect(screen.queryByRole('button', { name: '查看依据原文' })).not.toBeInTheDocument()
+})
+
+
+it('retains the same three-card composition through pending, read failure and recovery', async () => {
+  const data = { ...ready, cards: [ready.cards[0]] }
+  vi.mocked(getConversationContextSummary).mockResolvedValueOnce(data).mockRejectedValueOnce(new Error('HTTP 503')).mockResolvedValueOnce(data)
+  const queryClient = client()
+  render(starterSurface(queryClient))
+  const region = await screen.findByRole('region', { name: '建议' })
+  const cardCopy = () => [...region.querySelectorAll('.cv-suggestions__card')].map(button => button.textContent)
+  const original = cardCopy()
+  expect(original).toHaveLength(3)
+  await act(async () => { queryClient.setQueryData(conversationContextSummaryKey('new-reader'), { ...data, status: 'pending', is_stale: true }) })
+  expect(cardCopy()).toEqual(original)
+  expect(await within(region).findByRole('status')).toHaveTextContent('正在根据最近的对话整理建议')
+  await act(async () => { await queryClient.refetchQueries({ queryKey: conversationContextSummaryKey('new-reader'), exact: true }) })
+  await waitFor(() => expect(within(region).getByRole('status')).toHaveTextContent('暂时无法读取对话建议'))
+  expect(cardCopy()).toEqual(original)
+  fireEvent.click(screen.getByRole('button', { name: '重新读取建议' }))
+  await waitFor(() => expect(within(region).queryByRole('status')).not.toBeInTheDocument())
+  expect(cardCopy()).toEqual(original)
+  expect(getConversationContextSummary).toHaveBeenCalledTimes(3)
+})
+
+it('keeps mixed cards identical across Home/Chat observers and protects an edited draft', async () => {
+  vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards: [ready.cards[0]] })
+  const queryClient = client()
+  const onStart = vi.fn()
+  const first = render(starterSurface(queryClient, onStart))
+  await within(first.container).findByRole('region', { name: '建议' })
+  const second = render(starterSurface(queryClient))
+  expect(second.container.textContent).toBe(first.container.textContent)
+  const original = [...first.container.querySelectorAll('.cv-suggestions__card')].map(button => button.textContent)
+  first.rerender(starterSurface(queryClient, onStart, true))
+  expect([...first.container.querySelectorAll('.cv-suggestions__card')].map(button => button.textContent)).toEqual(original)
+  const generics = [...first.container.querySelectorAll<HTMLButtonElement>('.cv-suggestions__card')].slice(1)
+  for (const button of generics) { expect(button).toBeDisabled(); fireEvent.click(button) }
+  expect(onStart).not.toHaveBeenCalled()
+  expect(within(first.container).getByTestId('starter-location')).toHaveTextContent(/^\/$/)
+  expect(getConversationContextSummary).toHaveBeenCalledTimes(1)
+})
+
+it('does not show fillers or prior-account cards during an unread account switch, late read or logout', async () => {
+  const queryClient = client()
+  let resolveSecond!: (data: ConversationContextSummary) => void
+  let secondSignal: AbortSignal | undefined
+  vi.mocked(getConversationContextSummary).mockResolvedValueOnce({ ...ready, cards: [ready.cards[0]] })
+    .mockImplementationOnce(signal => { secondSignal = signal; return new Promise(resolve => { resolveSecond = resolve }) })
+    .mockResolvedValueOnce(empty)
+  const view = render(starterSurface(queryClient))
+  await screen.findByRole('region', { name: '建议' })
+  view.rerender(starterSurface(queryClient, vi.fn(), false, vi.fn(), 'next-reader'))
+  expect(document.querySelectorAll('.cv-suggestions__card')).toHaveLength(0)
+  expect(screen.queryByText(ready.cards[0].title)).not.toBeInTheDocument()
+  view.rerender(starterSurface(queryClient, vi.fn(), false, vi.fn(), 'third-reader'))
+  expect(secondSignal?.aborted).toBe(true)
+  await screen.findByRole('region', { name: '起步建议' })
+  await act(async () => { resolveSecond(ready) })
+  expect([...document.querySelectorAll('.cv-suggestions__card')].map(button => button.textContent)).toEqual(getStarterSuggestions('zh-CN', 'third-reader').map(card => card.title))
+  view.rerender(starterSurface(queryClient, vi.fn(), false, vi.fn(), null))
+  expect(screen.queryByRole('region')).not.toBeInTheDocument()
+  expect(getConversationContextSummary).toHaveBeenCalledTimes(3)
+})
+
+it('fills around matching generic titles without duplicate cards or synthetic evidence', async () => {
+  const [generic] = getStarterSuggestions('zh-CN', 'new-reader')
+  const real = { ...ready.cards[0], title: generic.title }
+  vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards: [real] })
+  render(starterSurface(client()))
+  const region = await screen.findByRole('region', { name: '建议' })
+  const titles = [...region.querySelectorAll('.cv-suggestions__card strong')].map(title => title.textContent)
+  expect(titles).toHaveLength(3)
+  expect(new Set(titles).size).toBe(3)
+  expect(within(region).getAllByRole('button', { name: '查看依据原文' })).toHaveLength(1)
+})
+
+it('keeps malformed legacy cards disabled without filling them as validated personal suggestions', async () => {
+  const { card_id: _id, version: _version, ...legacy } = ready.cards[0]
+  vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards: [legacy] } as never)
+  render(starterSurface(client()))
+  expect(await screen.findByRole('button', { name: /核对周五迁移的回退入口/ })).toBeDisabled()
+  expect(document.querySelectorAll('.cv-suggestions__card')).toHaveLength(1)
+  expect(screen.getByRole('button', { name: '刷新建议' })).toBeEnabled()
+})
+
+
+it('labels a mixed English set neutrally and namespaces generic keys apart from opaque real identity', async () => {
+  localStorage.setItem('qunxue.interface-locale', 'en-US')
+  const generic = getStarterSuggestions('en-US', 'new-reader')[0]
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards: [{ ...ready.cards[0], card_id: 'starter', version: generic.id }] })
+    render(<AppLocaleProvider>{starterSurface(client())}</AppLocaleProvider>)
+    const region = await screen.findByRole('region', { name: 'Suggestions' })
+    expect(region.querySelectorAll('.cv-suggestions__card')).toHaveLength(3)
+    expect(within(region).getByRole('button', { name: generic.title })).toBeVisible()
+    expect(within(region).getAllByRole('button', { name: 'View source quotes' })).toHaveLength(1)
+    expect(error).not.toHaveBeenCalled()
+  } finally { error.mockRestore() }
 })

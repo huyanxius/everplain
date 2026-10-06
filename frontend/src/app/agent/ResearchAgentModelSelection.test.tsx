@@ -49,7 +49,7 @@ describe('conversation model selection integration', () => {
     mount()
     await screen.findByRole('button', { name: /GPT 6 Luna · 中/ })
     const suggestion = await screen.findByRole('button', { name: /核对分批迁移的停机窗口/ })
-    expect(document.querySelectorAll('.cv-suggestions__card')).toHaveLength(1)
+    expect(document.querySelectorAll('.cv-suggestions__card')).toHaveLength(3)
     fireEvent.click(suggestion)
     expect(screen.getByRole('textbox', { name: '问 Everplain' })).toHaveValue('')
     expect(screen.getByRole('region', { name: '已选对话卡片' })).toHaveTextContent('核对分批迁移的停机窗口')
