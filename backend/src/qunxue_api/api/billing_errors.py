@@ -12,11 +12,18 @@ from qunxue_api.modules.billing import (
     BillingReplayBlocked,
     CreditRunInProgress,
     CreditsDepleted,
+    ModelDeliveryRejected,
     UnknownPrice,
+    UnknownTokenUsage,
 )
+
+_USAGE_SETTLEMENT_MESSAGE = "已产生的模型用量按实际结算，请在账户设置中查看用量。"
 
 
 def billing_error(error):
+    # An error describes the failed attempt, not the operation's settled usage.
+    # Even a pre-dispatch rejection can follow an earlier paid stage. Without a
+    # ledger snapshot, this boundary must never promise a free turn or a refund.
     if isinstance(error, CreditsDepleted) or (
         isinstance(error, BillingBudgetExceeded) and error.reason == "credits_depleted"
     ):
@@ -32,20 +39,31 @@ def billing_error(error):
             "本轮请求已处理，请刷新查看结果；不会重复扣费。",
         )
     if isinstance(error, (BillingContextMissing, UnknownPrice)):
-        return 503, ErrorCode.BILLING_NOT_CONFIGURED, "计费配置暂未启用，本轮未扣费，请稍后重试。"
+        return (
+            503,
+            ErrorCode.BILLING_NOT_CONFIGURED,
+            "计费配置暂不可用，请稍后重试。" + _USAGE_SETTLEMENT_MESSAGE,
+        )
     if isinstance(error, BillingBudgetExceeded):
         if error.reason == "service_budget_exceeded":
             return (
                 429,
                 ErrorCode.BILLING_BUDGET_EXCEEDED,
-                "模型服务的安全额度暂时不足，本轮未扣费，请稍后重试或联系管理员。",
+                "模型服务的安全额度暂时不足，请稍后重试或联系管理员。"
+                + _USAGE_SETTLEMENT_MESSAGE,
             )
         return (
             429,
             ErrorCode.BILLING_BUDGET_EXCEEDED,
-            "本轮请求超过费用上限，已停止且未扣费，请稍后重试。",
+            "本轮请求因费用上限已停止。" + _USAGE_SETTLEMENT_MESSAGE,
         )
-    return 502, ErrorCode.BILLING_PROVIDER_ERROR, "模型费用或输出尚未确认，本轮未扣费，请稍后重试。"
+    if isinstance(error, UnknownTokenUsage):
+        message = "模型用量尚未确认，请等待 receipt。"
+    elif isinstance(error, ModelDeliveryRejected):
+        message = "模型输出未能完整交付。"
+    else:
+        message = "模型费用或输出暂时无法确认。"
+    return 502, ErrorCode.BILLING_PROVIDER_ERROR, message + _USAGE_SETTLEMENT_MESSAGE
 
 
 def install_billing_error_handlers(app):
