@@ -719,11 +719,13 @@ def test_literal_public_tool_event_fields_require_export_contract_review():
 
     source = Path(__file__).parents[1] / "src/qunxue_api"
     seen = 0
-    for filename in (
-        "adapters/research_agent/pydantic_runner.py",
-        "application/disciplinary_agent.py",
-    ):
-        module = ast.parse((source / filename).read_text())
+    producers = {
+        source / "application/disciplinary_agent.py",
+        *(source / "adapters/research_agent").rglob("*.py"),
+    }
+    # Discover moved events globally, but require an explicitly reviewed producer scope.
+    for filename in source.rglob("*.py"):
+        module = ast.parse(filename.read_text())
         for call in ast.walk(module):
             if not (
                 isinstance(call, ast.Call)
@@ -734,8 +736,54 @@ def test_literal_public_tool_event_fields_require_export_contract_review():
             arguments = {item.arg: item.value for item in call.keywords}
             tool, output = arguments.get("tool"), arguments.get("output")
             if isinstance(tool, ast.Constant) and isinstance(output, ast.Dict):
+                assert filename in producers, ("Unregistered event producer", filename)
                 seen += 1
                 assert tool.value in TOOL_CONTRACTS, tool.value
                 keys = {key.value for key in output.keys if isinstance(key, ast.Constant)}
                 assert keys <= set(TOOL_CONTRACTS[tool.value][1]), (tool.value, keys)
     assert seen >= 19
+
+
+@pytest.mark.parametrize("producer", ["evidence.py", "memory.py", "research.py"])
+def test_moved_public_event_producer_still_rejects_unreviewed_output(producer, monkeypatch):
+    from pathlib import Path
+
+    original_read = Path.read_text
+    target = (
+        Path(__file__).parents[1]
+        / "src/qunxue_api/adapters/research_agent/tool_bindings" / producer
+    )
+
+    def read(path, *args, **kwargs):
+        content = original_read(path, *args, **kwargs)
+        if path == target:
+            # A synthetic extra literal event must be reviewed just like the moved real events.
+            content += '\nAgentToolEvent(tool="read_sources", output={"unreviewed_field": []})\n'
+        return content
+
+    monkeypatch.setattr(Path, "read_text", read)
+    with pytest.raises(AssertionError, match="unreviewed_field"):
+        test_literal_public_tool_event_fields_require_export_contract_review()
+
+
+def test_new_public_event_producer_requires_explicit_scope_review(monkeypatch):
+    from pathlib import Path
+
+    source = Path(__file__).parents[1] / "src/qunxue_api"
+    added = source / "application/unreviewed_event_producer.py"
+    original_glob, original_read = Path.rglob, Path.read_text
+
+    def glob(path, pattern):
+        yield from original_glob(path, pattern)
+        if path == source:
+            yield added
+
+    def read(path, *args, **kwargs):
+        if path == added:
+            return 'AgentToolEvent(tool="read_sources", output={"items": []})'
+        return original_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "rglob", glob)
+    monkeypatch.setattr(Path, "read_text", read)
+    with pytest.raises(AssertionError, match="Unregistered event producer"):
+        test_literal_public_tool_event_fields_require_export_contract_review()
