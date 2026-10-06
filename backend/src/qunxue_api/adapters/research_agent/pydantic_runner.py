@@ -83,6 +83,7 @@ from qunxue_api.modules.agent_conversation import (
     AgentToolEvent,
     AgentTurn,
     AgentWritingPreviewEvent,
+    project_context_card_prompt,
     render_context_suggestion,
 )
 from qunxue_api.modules.billing import BillingFailure
@@ -3688,6 +3689,8 @@ def _compose_agent_prompt(
     persona: Mapping[str, object] | None = None,
     context_suggestion: Mapping[str, object] | None = None,
 ) -> str:
+    if context_suggestion:
+        prompt = project_context_card_prompt(prompt, context_suggestion.get("card"))
     map_context = (
         "\n\n<research_map_policy>"
         "研究工作区内，只要本轮形成或修订研究问题、理论、主张、证据、缺口或综合判断，"
@@ -3780,9 +3783,13 @@ def _agent_message_history(
 ) -> list[ModelRequest | ModelResponse]:
     history: list[ModelRequest | ModelResponse] = []
     for turn in conversation:
+        prompt = turn.user_message.content
+        if turn.user_message.context_card:
+            prompt = project_context_card_prompt(prompt, turn.user_message.context_card)
+            prompt += render_context_suggestion({"card": turn.user_message.context_card})
         history.extend(
             (
-                ModelRequest(parts=[UserPromptPart(turn.user_message.content)]),
+                ModelRequest(parts=[UserPromptPart(prompt)]),
                 ModelResponse(parts=[TextPart(turn.assistant_message.content)]),
             )
         )

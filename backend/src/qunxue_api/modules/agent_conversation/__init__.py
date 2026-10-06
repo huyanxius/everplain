@@ -47,6 +47,7 @@ from .canvas_editing import CanvasEditConflict, apply_canvas_edits, prepare_canv
 from .context import excerpt, merge_digest, render_recent_context
 from .context_suggestion import (
     ContextSuggestionUnavailable,
+    project_context_card_prompt,
     render_context_suggestion,
 )
 from .model_selection import (
@@ -63,6 +64,7 @@ from .writing_preview import validated_writing_preview
 __all__ = [
     "ContextSuggestionUnavailable",
     "display_card",
+    "project_context_card_prompt",
     "render_context_suggestion",
     "validated_writing_preview",
     "excerpt",
