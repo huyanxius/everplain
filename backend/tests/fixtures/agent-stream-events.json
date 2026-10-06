@@ -1,0 +1,54 @@
+{
+  "body": [
+    "正文",
+    "末尾",
+    "新一步"
+  ],
+  "preview": [
+    [
+      "append",
+      [
+        "call-a",
+        "{\"original_text\":"
+      ],
+      {
+        "initial": true
+      }
+    ],
+    [
+      "append",
+      [
+        "call-a",
+        "\"旧\"}"
+      ],
+      {}
+    ],
+    [
+      "append",
+      [
+        "",
+        "{}"
+      ],
+      {
+        "initial": true
+      }
+    ],
+    [
+      "invalidate",
+      [
+        "",
+        "writing_preview_identity_changed"
+      ]
+    ],
+    [
+      "append",
+      [
+        "new-id",
+        "[]"
+      ],
+      {
+        "initial": true
+      }
+    ]
+  ]
+}
