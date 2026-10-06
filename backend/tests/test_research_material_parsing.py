@@ -174,3 +174,63 @@ def test_docx_parser_allows_styles_at_member_limit(monkeypatch: pytest.MonkeyPat
     parsed = parse_material(filename="bounded.docx", media_type=None, content=output.getvalue())
     assert parsed.blocks[0].kind == "heading"
     assert parsed.blocks[0].text == "访谈主题"
+
+
+def _pdf_with_font_limits(
+    *, widths_count: int = 0, cmap_source: bytes = b"41", cmap_destination: bytes = b"0041",
+) -> bytes:
+    """An inert, sub-2-KiB text PDF exercises the real reader/extractor boundary."""
+    stream = b"BT /F1 12 Tf 24 160 Td (A) Tj ET"
+    cmap = (
+        b"/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n"
+        b"1 begincodespacerange\n<00> <FF>\nendcodespacerange\n"
+        b"1 beginbfchar\n<" + cmap_source + b"> <" + cmap_destination + b">\n"
+        b"endbfchar\nendcmap\nend\nend"
+    )
+    font = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /ToUnicode 6 0 R"
+    if widths_count:
+        font += b" /FirstChar 0 /LastChar 255 /Widths [" + b"600 " * widths_count + b"]"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] "
+         b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"),
+        font + b" >>",
+        b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream",
+        b"<< /Length " + str(len(cmap)).encode() + b" >>\nstream\n" + cmap + b"\nendstream",
+    ]
+    body = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, value in enumerate(objects, 1):
+        offsets.append(len(body))
+        body.extend(f"{number} 0 obj\n".encode() + value + b"\nendobj\n")
+    xref = len(body)
+    body.extend(f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode())
+    for offset in offsets:
+        body.extend(f"{offset:010d} 00000 n \n".encode())
+    body.extend(
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    )
+    return bytes(body)
+
+
+@pytest.mark.parametrize("font_options", [
+    {"cmap_source": b"01" * 9},
+    {"cmap_destination": b"0041" * 257},
+    {"widths_count": 257},
+])
+def test_pdf_parser_rejects_overlong_font_metadata(font_options: dict) -> None:
+    # GHSA-fp3h-c4fm-7vvf / GHSA-g9cg-prrw-2r8q: bounded inputs prove the
+    # actual parse_material -> extract_text path observes upstream limits.
+    with pytest.raises(MaterialParseError, match="pdf_text_extraction_failed"):
+        parse_material(
+            filename="limited.pdf", media_type=None, content=_pdf_with_font_limits(**font_options)
+        )
+
+
+def test_pdf_parser_keeps_valid_font_widths_at_limit() -> None:
+    parsed = parse_material(
+        filename="text.pdf", media_type=None, content=_pdf_with_font_limits(widths_count=256)
+    )
+    assert parsed.full_text == "A"
+    assert parsed.blocks[0].locator.page == 1
