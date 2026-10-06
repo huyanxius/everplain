@@ -175,10 +175,6 @@
           "sha256": "8492d1063dc709f3f45fb49c6a0645db82c396ab73000be2202656cbb864348e"
         },
         {
-          "path": "backend/tests/test_migrations.py",
-          "sha256": "48d27ab4852e476523451ef158aca20a7c9aa5e643fb6e0e8ae5c3bcaee9b565"
-        },
-        {
           "path": "backend/tests/test_model_gateway_api.py",
           "sha256": "c44f972ea284a14d8736c6c093ba26f8866d20a7354b50dd8b0696606b4abbca"
         },

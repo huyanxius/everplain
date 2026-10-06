@@ -180,3 +180,7 @@ tests/billing/test_metering_bridge.py
 tests/test_agent_event_reconnect.py
 tests/test_agent_output_journal.py
 tests/test_agent_delivery_output_state.py
+
+# Current migration schema, supported offline range, and explicit full-head offline refusal.
+tests/test_migrations.py
+
