@@ -130,10 +130,20 @@ def run(args, timeout=180, report=None, prefix=""):
                     "CORS_ALLOWED_ORIGINS",
                     "MODEL_FALLBACKS",
                     "SETTINGS_FORMAT",
+                    "BOOKMARK_PROXY_COMPATIBILITY",
                 ]
             )
             try:
-                fields = set(json.loads(result.stdout)["invalid_fields"])
+                configuration = json.loads(result.stdout)
+                fields = set(configuration["invalid_fields"])
+                report["bookmark_proxy_configured"] = (
+                    configuration.get("bookmark_proxy_configured") is True
+                )
+                report["bookmark_proxy_compatibility_verified"] = (
+                    type(configuration.get("bookmark_proxy_configured")) is bool
+                    and type(configuration.get("bookmark_proxy_compatible")) is bool
+                    and configuration.get("bookmark_proxy_compatible") is True
+                )
                 for name in allowed:
                     report["invalid_" + name.lower()] = "EVERPLAIN_" + name in fields
                 report["invalid_other_configuration"] = bool(
@@ -141,6 +151,8 @@ def run(args, timeout=180, report=None, prefix=""):
                 )
             except (ValueError, TypeError, KeyError):
                 report["configuration_report_unrecognized"] = True
+            if result.returncode == 0 and not report.get("bookmark_proxy_compatibility_verified"):
+                raise RuntimeError("bookmark proxy compatibility not verified")
     if result.returncode:
         # Never print argv/output: inspect and preflight can contain private configuration.
         raise RuntimeError("checked release command failed")

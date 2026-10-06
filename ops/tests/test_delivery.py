@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -55,6 +56,61 @@ class ProductionPreflightTests(unittest.TestCase):
         for key, value in env.items():
             if "KEY" in key or "PASSWORD" in key:
                 self.assertNotIn(value, result.stdout + result.stderr)
+
+    def test_bookmark_required_proxy_fails_without_disclosing_configuration(self):
+        sentinel = "http://synthetic-user:synthetic-password@proxy.example.invalid:8888"
+        for name in (
+            "HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy",
+        ):
+            with self.subTest(name=name):
+                env = {**production_env(), name: sentinel, "NO_PROXY": "example.invalid"}
+                original = dict(env)
+                result = self.run_preflight(env)
+                report = json.loads(result.stdout)
+                self.assertEqual(result.returncode, 1)
+                self.assertIs(report["bookmark_proxy_configured"], True)
+                self.assertIs(report["bookmark_proxy_compatible"], False)
+                self.assertIn("EVERPLAIN_BOOKMARK_PROXY_COMPATIBILITY", report["invalid_fields"])
+                for secret in (
+                    sentinel, "synthetic-password", "proxy.example.invalid", "example.invalid",
+                ):
+                    self.assertNotIn(secret, result.stdout + result.stderr)
+                self.assertEqual(env, original)
+
+    def test_bookmark_global_bypass_and_scheme_coverage_are_explicit(self):
+        import httpx
+        from qunxue_api.adapters.import_sources.public_http import require_direct_route
+
+        cases = (
+            ({}, False, True),
+            ({"FTP_PROXY": "synthetic-proxy"}, False, True),
+            ({"HTTP_PROXY": "synthetic-proxy", "http_proxy": ""}, False, True),
+            ({"HTTP_PROXY": "synthetic-proxy", "REQUEST_METHOD": "GET"}, False, True),
+            ({"http_proxy": "synthetic-proxy", "REQUEST_METHOD": "GET"}, True, False),
+            ({"ALL_PROXY": "synthetic-proxy", "NO_PROXY": " * "}, True, True),
+            ({"ALL_PROXY": "synthetic-proxy", "no_proxy": "localhost, *"}, True, True),
+            ({"ALL_PROXY": "synthetic-proxy", "NO_PROXY": "http://*,https://*"}, True, True),
+            ({"HTTPS_PROXY": "synthetic-proxy", "NO_PROXY": "http://*"}, True, False),
+            ({"HTTPS_PROXY": "synthetic-proxy", "NO_PROXY": "https://*"}, True, True),
+            ({"ALL_PROXY": "synthetic-proxy", "NO_PROXY": "http://*:80,https://*:443"}, True, True),
+            ({"ALL_PROXY": "synthetic-proxy", "NO_PROXY": "all://*:8080"}, True, False),
+        )
+        for additions, configured, compatible in cases:
+            with self.subTest(additions=additions):
+                result = self.run_preflight({**production_env(), **additions})
+                report = json.loads(result.stdout)
+                self.assertIs(report["bookmark_proxy_configured"], configured)
+                self.assertIs(report["bookmark_proxy_compatible"], compatible)
+                self.assertEqual(result.returncode, 0 if compatible else 1)
+                self.assertNotIn("synthetic-proxy", result.stdout + result.stderr)
+                if compatible:
+                    with patch.dict(os.environ, additions, clear=True):
+                        for url in (
+                            "http://one.example", "https://two.example",
+                            "http://one.example:443", "https://two.example:80",
+                            "http://93.184.216.34", "https://[2606:4700:4700::1111]",
+                        ):
+                            require_direct_route(httpx.URL(url))
 
     def test_free_retrieval_configuration_passes_without_weakening_other_checks(self):
         env = production_env()
@@ -128,7 +184,8 @@ class DatabaseBackupTests(unittest.TestCase):
                 connection.execute("CREATE TABLE users(user_id TEXT PRIMARY KEY)")
                 connection.execute("INSERT INTO users VALUES ('owner')")
                 connection.execute(
-                    "CREATE TABLE documents(id TEXT PRIMARY KEY, user_id TEXT REFERENCES users(user_id), content BLOB)"
+                    "CREATE TABLE documents(id TEXT PRIMARY KEY, "
+                    "user_id TEXT REFERENCES users(user_id), content BLOB)"
                 )
                 connection.execute(
                     "INSERT INTO documents VALUES (?, ?, ?)",
@@ -193,7 +250,9 @@ class ExplicitModelFallbackTests(ProductionPreflightTests):
         env["EVERPLAIN_SESSION_COOKIE_SECURE"] = "false"
         result = self.run_preflight(env)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("EVERPLAIN_SESSION_COOKIE_SECURE", json.loads(result.stdout)["invalid_fields"])
+        self.assertIn(
+            "EVERPLAIN_SESSION_COOKIE_SECURE", json.loads(result.stdout)["invalid_fields"],
+        )
 
     def test_demo_requires_complete_real_email_config_when_supplied(self):
         env = self.demo_env()
