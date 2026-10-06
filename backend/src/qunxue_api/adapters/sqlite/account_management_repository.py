@@ -1,13 +1,13 @@
 import base64
-from collections import deque
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import MetaData, delete, func, or_, select, tuple_, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from qunxue_api.adapters.sqlite.account_export_reader import personal_records, project_row
 from qunxue_api.adapters.sqlite.account_management_model import (
     AccountAuditEventRow,
     AccountMutationRequestRow,
@@ -15,9 +15,6 @@ from qunxue_api.adapters.sqlite.account_management_model import (
     AccountSystemStateRow,
     PersonalDataExportRow,
     UserPreferenceRow,
-)
-from qunxue_api.adapters.sqlite.conversation_summary_repository import (
-    SqliteConversationSummaryRepository,
 )
 from qunxue_api.adapters.sqlite.identity_model import UserRow, UserSessionRow
 from qunxue_api.adapters.sqlite.model_invocation_model import ModelInvocationRow
@@ -775,142 +772,21 @@ class SqliteAccountRepository:
         )
 
     def _personal_snapshot(self, *, user_id: UUID, exported_at: datetime) -> dict[str, object]:
-        bind = self._db.get_bind()
-        metadata = MetaData()
-        metadata.reflect(bind=bind)
-        user_table = metadata.tables["users"]
-        user_row = (
-            self._db.execute(select(user_table).where(user_table.c.user_id == str(user_id)))
-            .mappings()
-            .first()
-        )
-        if user_row is None:
-            raise RuntimeError("account disappeared while exporting")
-
-        excluded_tables = {
-            "alembic_version",
-            "account_system_state",
-            "account_mutation_requests",
-            "account_password_resets",
-            "personal_data_exports",
-        }
-        selected: dict[str, list[dict[str, Any]]] = {"users": [dict(user_row)]}
-        selected_identities: dict[str, set[tuple[Any, ...]]] = {
-            "users": {self._row_identity(user_table, dict(user_row))}
-        }
-        queue: deque[tuple[str, list[dict[str, Any]]]] = deque([("users", [dict(user_row)])])
-        while queue:
-            parent_name, parent_rows = queue.popleft()
-            for child_name, child in metadata.tables.items():
-                if child_name in excluded_tables or child_name == "users":
-                    continue
-                predicates = []
-                for constraint in child.foreign_key_constraints:
-                    if constraint.referred_table.name != parent_name:
-                        continue
-                    pairs = list(constraint.elements)
-                    parent_values = {
-                        tuple(row[element.column.name] for element in pairs) for row in parent_rows
-                    }
-                    if not parent_values:
-                        continue
-                    local_columns = [child.c[element.parent.name] for element in pairs]
-                    if len(local_columns) == 1:
-                        predicate = local_columns[0].in_({item[0] for item in parent_values})
-                    else:
-                        predicate = tuple_(*local_columns).in_(parent_values)
-                    predicates.append(predicate)
-                if not predicates:
-                    continue
-                rows = [
-                    dict(row)
-                    for row in self._db.execute(select(child).where(or_(*predicates))).mappings()
-                ]
-                identities = selected_identities.setdefault(child_name, set())
-                new_rows = []
-                for row in rows:
-                    identity = self._row_identity(child, row)
-                    if identity in identities:
-                        continue
-                    identities.add(identity)
-                    new_rows.append(row)
-                if new_rows:
-                    selected.setdefault(child_name, []).extend(new_rows)
-                    queue.append((child_name, new_rows))
-
-        task_ids = {
-            row["task_id"] for row in selected.get("research_tasks", []) if row.get("task_id")
-        }
-        if task_ids and "model_invocations" in metadata.tables:
-            invocations = metadata.tables["model_invocations"]
-            selected["model_invocations"] = [
-                dict(row)
-                for row in self._db.execute(
-                    select(invocations).where(invocations.c.task_id.in_(task_ids))
-                ).mappings()
-            ]
-
-        records: dict[str, object] = {}
-        for table_name, rows in sorted(selected.items()):
-            if table_name == "agent_conversation_summaries":
-                # The derived cache contains worker instructions/audit state, not
-                # user-authored messages. Export its owner-validated public view,
-                # including last-good handling, never raw (including legacy) prompts.
-                display = SqliteConversationSummaryRepository(self._db).read(user_id)
-                rows = [{
-                    "user_id": str(user_id), "updated_at": display["updated_at"],
-                    "summary": {key: display[key] for key in (
-                        "summary", "summary_sources", "cards",
-                    )},
-                }]
-            records[table_name] = [
-                self._sanitize_export_row(row, table_name=table_name) for row in rows
-            ]
-        return _json_safe(
-            {
-                "format_version": "2026-09-everplain-export-v1",
-                "exported_at": exported_at,
-                "processing_notice": (
-                    "模型改进授权仅适用于可选的二次使用；研究功能所需推理记录按产品保留策略导出。"
-                ),
-                "records": records,
-            }
-        )
-
-    @staticmethod
-    def _row_identity(table: Any, row: dict[str, Any]) -> tuple[Any, ...]:
-        primary_keys = list(table.primary_key.columns)
-        if primary_keys:
-            return tuple(row[column.name] for column in primary_keys)
-        return tuple(sorted(row.items()))
+        return _json_safe({
+            "format_version": "2026-09-everplain-export-v1",
+            "exported_at": exported_at,
+            "processing_notice": (
+                "模型改进授权仅适用于可选的二次使用；研究功能所需推理记录按产品保留策略导出。"
+            ),
+            "records": personal_records(self._db, user_id),
+        })
 
     @staticmethod
     def _sanitize_export_row(
         row: dict[str, Any], *, table_name: str | None = None,
     ) -> dict[str, object]:
-        forbidden = {
-            "credential_hash",
-            "password_hash",
-            "token_digest",
-            "payload",
-        }
-        output = {key: _json_safe(value) for key, value in row.items() if key not in forbidden}
-        if table_name == "agent_runs" and isinstance(row.get("request_snapshot"), dict):
-            snapshot = row["request_snapshot"]
-            # The visible request remains portable. Server-only execution context
-            # is not a user message and must not reappear through account export.
-            output["request_snapshot"] = {
-                key: _json_safe(value) for key, value in snapshot.items()
-                if not key.startswith("_")
-            }
-            card = snapshot.get("_display_card")
-            if isinstance(card, dict) and all(
-                isinstance(card.get(key), str) for key in ("title", "description")
-            ):
-                output["context_card"] = {
-                    key: card[key] for key in ("title", "description")
-                }
-        return output
+        # Kept as the existing adapter test seam; unknown tables fail closed.
+        return project_row(table_name, row)
 
     @staticmethod
     def _account(user: UserRow, preference: UserPreferenceRow) -> dict[str, object]:
