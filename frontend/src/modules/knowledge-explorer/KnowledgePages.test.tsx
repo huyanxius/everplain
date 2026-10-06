@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { KnowledgeEntryPage, KnowledgeExplorerPage } from './index'
@@ -481,6 +481,52 @@ describe('knowledge pages', () => {
       theoryId: 'theory-1',
       theoryName: '概念理论',
     })
+  })
+
+  it('keeps the first evidence activation and resets only when its display mode changes', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json(detail())))
+    const props = {
+      knowledgeId: 'D1:C001',
+      releaseId: 'release-a',
+      onReleaseResolved: vi.fn(),
+      onStartResearch: vi.fn(),
+    }
+    let activated = false
+    // Activate as soon as the committed DOM becomes interactive, before passive
+    // mount effects have necessarily run. No artificial timeout or retry click.
+    const observer = new MutationObserver(() => {
+      const trigger = document.querySelector<HTMLButtonElement>('[aria-label="打开第 1 条文献依据"]')
+      if (trigger && !activated) {
+        activated = true
+        observer.disconnect()
+        fireEvent.click(trigger)
+      }
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+    try {
+      const view = render(<KnowledgeEntryPage {...props} />)
+      await screen.findByRole('heading', { name: '概念' })
+      expect(activated).toBe(true)
+      const note = () => screen.getByRole('note', { name: '文献依据，1 条' })
+      await waitFor(() => expect(note()).toHaveAttribute('data-open', 'true'))
+      view.rerender(<KnowledgeEntryPage {...props} onStartResearch={vi.fn()} />)
+      expect(note()).toHaveAttribute('data-open', 'true')
+      fireEvent.click(screen.getByRole('radio', { name: '点击批注显示文献' }))
+      expect(note()).toHaveAttribute('data-open', 'true')
+      fireEvent.click(screen.getByRole('radio', { name: '悬浮正文显示文献' }))
+      expect(note()).not.toHaveAttribute('data-open')
+      fireEvent.click(screen.getByRole('radio', { name: '点击批注显示文献' }))
+      expect(note()).not.toHaveAttribute('data-open')
+      fireEvent.click(screen.getByRole('button', { name: '打开第 1 条文献依据' }))
+      expect(note()).toHaveAttribute('data-open', 'true')
+      fireEvent.click(screen.getByRole('button', { name: '关闭文献依据' }))
+      expect(note()).not.toHaveAttribute('data-open')
+      const trigger = screen.getByRole('button', { name: '打开第 1 条文献依据' })
+      act(() => { trigger.click(); trigger.click() })
+      expect(note()).not.toHaveAttribute('data-open')
+    } finally {
+      observer.disconnect()
+    }
   })
 
   it('renders a successful detail slot without another request', async () => {

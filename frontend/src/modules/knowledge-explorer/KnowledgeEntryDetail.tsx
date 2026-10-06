@@ -108,12 +108,17 @@ function KnowledgeMarkdown({
   content,
   evidenceMode,
   headings,
+  openEvidenceId,
+  onToggleEvidence,
+  onCloseEvidence,
 }: {
   content: string
   evidenceMode: EvidenceDisplayMode
   headings: readonly MarkdownHeading[]
+  openEvidenceId?: string
+  onToggleEvidence: (id: string) => void
+  onCloseEvidence: () => void
 }) {
-  const [openEvidenceId, setOpenEvidenceId] = useState<string>()
   let headingIndex = 0
   function heading(level: number, children: ReactNode) {
     const current = headings[headingIndex]
@@ -128,8 +133,6 @@ function KnowledgeMarkdown({
     }
     return createElement(`h${level}`, { id: current?.id }, children)
   }
-
-  useEffect(() => setOpenEvidenceId(undefined), [evidenceMode])
 
   return (
     <div className="knowledge-reader__content" data-evidence-display={evidenceMode}>
@@ -152,7 +155,7 @@ function KnowledgeMarkdown({
                   aria-label={node.properties['aria-label'] as string}
                   aria-expanded={openEvidenceId === evidenceId}
                   aria-controls={evidenceId}
-                  onClick={() => setOpenEvidenceId((current) => current === evidenceId ? undefined : evidenceId)}
+                  onClick={() => onToggleEvidence(evidenceId)}
                 >{children}</button>
               )
             }
@@ -163,7 +166,7 @@ function KnowledgeMarkdown({
             return (
               <blockquote {...props} data-open={evidenceId === openEvidenceId ? 'true' : undefined}>
                 {evidenceId === openEvidenceId ? (
-                  <button className="qx-btn qx-btn--ghost knowledge-reader__evidence-close" type="button" aria-label="关闭文献依据" onClick={() => setOpenEvidenceId(undefined)}>×</button>
+                  <button className="qx-btn qx-btn--ghost knowledge-reader__evidence-close" type="button" aria-label="关闭文献依据" onClick={onCloseEvidence}>×</button>
                 ) : null}
                 {children}
               </blockquote>
@@ -217,7 +220,10 @@ export function KnowledgeEntryDetail({ detail, onStartResearch }: KnowledgeEntry
   const canSeedTheory = theory?.relatedKnowledgeIds.includes(detail.knowledgeId)
   const outline = useMemo(() => buildMarkdownOutline(detail.content), [detail.content])
   const [activeHeadingId, setActiveHeadingId] = useState(outline.headings[0]?.id)
-  const [evidenceMode, setEvidenceMode] = useState<EvidenceDisplayMode>('annotations')
+  // Reset selection with its display mode, never in a passive mount effect
+  // that can overwrite a click made as the committed DOM becomes interactive.
+  const [evidence, setEvidence] = useState<{ mode: EvidenceDisplayMode; openId?: string }>({ mode: 'annotations' })
+  const evidenceMode = evidence.mode
   const breadcrumbNodes = detail.directoryPath.slice(
     0,
     detail.directoryPath.length >= 4 ? -2 : -1,
@@ -288,7 +294,9 @@ export function KnowledgeEntryDetail({ detail, onStartResearch }: KnowledgeEntry
           </nav>
           <ReadingTools
             evidenceMode={evidenceMode}
-            onChangeEvidenceMode={setEvidenceMode}
+            onChangeEvidenceMode={(mode) => setEvidence((current) => (
+              current.mode === mode ? current : { mode }
+            ))}
           />
         </aside>
         <article className="knowledge-reader__article">
@@ -296,6 +304,12 @@ export function KnowledgeEntryDetail({ detail, onStartResearch }: KnowledgeEntry
             content={detail.content}
             evidenceMode={evidenceMode}
             headings={outline.headings}
+            openEvidenceId={evidence.openId}
+            onToggleEvidence={(id) => setEvidence((current) => ({
+              ...current,
+              openId: current.openId === id ? undefined : id,
+            }))}
+            onCloseEvidence={() => setEvidence((current) => ({ ...current, openId: undefined }))}
           />
 
           <section className="knowledge-reader__section" data-section-role="evidence" aria-labelledby="knowledge-sources-title">
