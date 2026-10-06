@@ -19,6 +19,9 @@ def mutation(client, method, path, *, key=None, **kwargs):
 
 @pytest.fixture
 def index_client(plain_client):
+    # Tests below explicitly drive repair and graph refresh with test-index vectors.
+    # The mock lifespan loop retains its original graph scope; keep it idle here.
+    plain_client.app.state.import_worker_enabled = False
     plain_client.app.state.knowledge_retriever = SimpleNamespace(_embedding_model="test-index")
     original_graph_scope = plain_client.app.state.personal_graph_scope
     @contextmanager
