@@ -250,11 +250,12 @@ def _parse_docx(
             if document_info.file_size > _MAX_ZIP_MEMBER_BYTES:
                 raise MaterialParseError("document_too_large", "文档正文超过可处理大小。")
             document_xml = archive.read(document_info)
-            styles_xml = (
-                archive.read("word/styles.xml")
-                if "word/styles.xml" in archive.namelist()
-                else b""
-            )
+            styles_xml = b""
+            if "word/styles.xml" in archive.namelist():
+                styles_info = archive.getinfo("word/styles.xml")
+                if styles_info.file_size > _MAX_ZIP_MEMBER_BYTES:
+                    raise MaterialParseError("document_too_large", "文档样式超过可处理大小。")
+                styles_xml = archive.read(styles_info)
         root = ElementTree.fromstring(document_xml)
         styles = ElementTree.fromstring(styles_xml) if styles_xml else None
     except MaterialParseError:
