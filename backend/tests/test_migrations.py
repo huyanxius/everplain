@@ -7,6 +7,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from alembic.util.exc import CommandError
 from sqlalchemy import (
     CheckConstraint,
     Column,
@@ -136,7 +137,7 @@ def test_default_database_url_is_independent_of_working_directory(
     monkeypatch.chdir(BACKEND_ROOT)
     settings_from_backend = Settings(_env_file=None)
 
-    expected_path = (BACKEND_ROOT / "var" / "qunxue.db").resolve()
+    expected_path = (BACKEND_ROOT / "var" / "everplain.db").resolve()
     assert settings_from_repository_root.database_url == settings_from_backend.database_url
     assert make_url(settings_from_backend.database_url).database == str(expected_path)
 
@@ -358,7 +359,7 @@ def test_research_project_lifecycle_upgrade_preserves_task_conversation_and_mate
         database.engine.dispose()
 
 
-def test_database_url_override_drives_offline_migrations(
+def test_database_url_override_drives_supported_offline_range_and_head_rejection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     alembic_config: Config,
@@ -377,10 +378,19 @@ def test_database_url_override_drives_offline_migrations(
     output = StringIO()
     alembic_config.output_buffer = output
 
-    command.upgrade(alembic_config, "head", sql=True)
+    # 0430 is the last fully renderable historical range. 0440 requires
+    # live SQLite reflection; 0630/0640 also explicitly require online checks.
+    # See ops/cd/FEDERATED_ACCOUNTS_0630_REVIEW.md and the 0640 review.
+    command.upgrade(alembic_config, "20260908_0430", sql=True)
 
     assert resolved_urls == [database_url]
     assert "CREATE TABLE research_tasks" in output.getvalue()
+    assert not database_path.exists()
+
+    with pytest.raises(CommandError, match="requires a live database connection"):
+        command.upgrade(alembic_config, "head", sql=True)
+
+    assert resolved_urls == [database_url, database_url]
     assert not database_path.exists()
 
 

@@ -7,22 +7,6 @@
       "reason": "Existing file was not selected by the frozen 9ccab4c product suite. This is an unresolved review/execution backlog, NOT a historical-only classification or a passing result. Promote after current compatibility review and relevant execution; changing a file invalidates this baseline exclusion.",
       "files": [
         {
-          "path": "backend/tests/billing/test_actual_usage_policy.py",
-          "sha256": "7d56bab8c9d8222c2ca6ade0f11d8993099f40bb64e5a1825cf54c767dada5cc"
-        },
-        {
-          "path": "backend/tests/billing/test_application_metering.py",
-          "sha256": "d04d645bec72bf76a09ba0e0af7028d11d9f73a77776f248b7a0dc08ce70fa3b"
-        },
-        {
-          "path": "backend/tests/billing/test_bank_reset_codes.py",
-          "sha256": "3a4d29beb8d6541342f9145b6790e04c8618d0526c34442dda3fde760bfe98ba"
-        },
-        {
-          "path": "backend/tests/billing/test_billing_migration.py",
-          "sha256": "c7694a7eb6028dd1bdf1412ae5957527b483c0626891c11e0eb5a369622549ea"
-        },
-        {
           "path": "backend/tests/billing/test_course_billing.py",
           "sha256": "326e6e7871938da4926248834e36e60f052b2193a3c31017ecb06309748a0265"
         },
@@ -33,10 +17,6 @@
         {
           "path": "backend/tests/billing/test_cross_run_refunds.py",
           "sha256": "34a944100d800f17d8f9f225e5b1822cf34e4c50a1ea757b3d6b2bdc6a43714d"
-        },
-        {
-          "path": "backend/tests/billing/test_durable_billing.py",
-          "sha256": "ba96939842709f8c84b7d11c848368318b24f6fe442e7412009fe803c8cfe1a9"
         },
         {
           "path": "backend/tests/billing/test_financial_faults.py",
@@ -59,36 +39,12 @@
           "sha256": "80550b4dccc9e1df5896f5801167e44d97d4ed9fdd7a8723da231916f7efdf52"
         },
         {
-          "path": "backend/tests/billing/test_prices.py",
-          "sha256": "63256e6a1e287305336c65cd19d712ebb6aefd8a07eaca6c802bc76449a9397c"
-        },
-        {
-          "path": "backend/tests/billing/test_quota_settlement_epoch.py",
-          "sha256": "a16107c26afc13fe5e9d4d47f80ce0c716c11ea31aeb45506d2be81a832cb766"
-        },
-        {
           "path": "backend/tests/billing/test_responses_metering.py",
           "sha256": "618d0a9045aa06ba66ecb8dea85ed8b3b31a59e89799b6e5c7881622336dda6a"
         },
         {
-          "path": "backend/tests/billing/test_retail_projection.py",
-          "sha256": "d677a8da43682e7e52b2203f75881d9a1fc4635a1cda58525bb3a4a9dcf7b749"
-        },
-        {
-          "path": "backend/tests/billing/test_signup_allowance.py",
-          "sha256": "df5ae01736b1d96854fb92a27fb9e2067c34c88bd0ab01b42e1bd1e406ed3c5b"
-        },
-        {
           "path": "backend/tests/billing/test_standalone_billing.py",
           "sha256": "375cb59c3a9a7e82446912f5c76ef1697879bef06f8f0a6b2ad11beb4880f40e"
-        },
-        {
-          "path": "backend/tests/billing/test_usage_stability.py",
-          "sha256": "3bf71bce7b8b9cc201c53b18e4613e535cfd12608619f5a73bcdcd4d7756bf2e"
-        },
-        {
-          "path": "backend/tests/billing/test_weekly_quota.py",
-          "sha256": "ad82dc7d70404201d8cc8149d48e0611ae244081d6be2bfa28dd377ce197d607"
         },
         {
           "path": "backend/tests/test_agent_coding_tools.py",
@@ -173,10 +129,6 @@
         {
           "path": "backend/tests/test_material_intake.py",
           "sha256": "8492d1063dc709f3f45fb49c6a0645db82c396ab73000be2202656cbb864348e"
-        },
-        {
-          "path": "backend/tests/test_migrations.py",
-          "sha256": "48d27ab4852e476523451ef158aca20a7c9aa5e643fb6e0e8ae5c3bcaee9b565"
         },
         {
           "path": "backend/tests/test_model_gateway_api.py",

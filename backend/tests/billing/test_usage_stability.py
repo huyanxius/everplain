@@ -95,13 +95,15 @@ def test_audited_reset_projects_new_baseline_through_usage_and_refund(account_cl
     reset_id = "synthetic-reset"
     entry = str(uuid5(NAMESPACE_URL, f"everplain-balance-reset:{reset_id}:{user}"))
     with engine.begin() as conn:
-        conn.execute(text("CREATE TABLE billing_precision_adjustments (reset_id TEXT, "
-                          "user_id TEXT, "
-                          "reason TEXT, after_precision TEXT, delta_points INTEGER, "
-                          "after_balance INTEGER, created_at TEXT)"))
-        conn.execute(text("INSERT INTO billing_precision_adjustments VALUES "
-                          "(:r,:u,'user_requested_all_accounts_reset','0',0,30,'2027-01-01')"),
-                     {"r": reset_id, "u": user})
+        # The migrated schema owns this table. Seed the historical admin-reset
+        # audit row without replacing its required precision/balance evidence.
+        conn.execute(text(
+            "INSERT INTO billing_precision_adjustments "
+            "(reset_id,user_id,reason,before_precision,delta_precision,after_precision,"
+            "before_balance,delta_points,after_balance,closed_operation_ids,created_at) "
+            "VALUES (:r,:u,'user_requested_all_accounts_reset','0','0','0',"
+            "30,0,30,'[]','2027-01-01')"
+        ), {"r": reset_id, "u": user})
         conn.execute(text("INSERT INTO credit_ledger (entry_id,user_id,run_id,kind,points,"
                           "balance_after,input_tokens,output_tokens,model,created_at) VALUES "
                           "(:id,:u,:id,'redemption',0,30,0,0,'admin-balance-reset','2027-01-01')"),

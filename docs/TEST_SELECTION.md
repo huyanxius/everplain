@@ -1,6 +1,6 @@
 # 测试选择与未验范围
 
-2026-10-06，初始台账固定到 `9ccab4c92cafd2a6528c24aaaf446b6103918f01`。本次接入保留当前产品清单的全部新增登记，再并入下述 8 个已审文件；`billing/test_billing_api_errors.py` 已在产品清单中，因此仅移除其旧排除记录，其余排除文件的原哈希不变。这是一份选择契约，不是所有测试已执行的证明。
+2026-10-06，初始台账固定到 `9ccab4c92cafd2a6528c24aaaf446b6103918f01`。Guard 接入保留当前产品清单的全部新增登记，再并入下述 8 个已审文件；`billing/test_billing_api_errors.py` 已在产品清单中，因此仅移除其旧排除记录，其余排除文件的原哈希不变。这是一份选择契约，不是所有测试已执行的证明。
 
 ## 已接入的自动路径
 
@@ -10,6 +10,16 @@
 - 网关：保留 `gateway/scripts/verify-local.sh` 的 pytest 单元与真实本地 HTTP 合同；合成账号/数据库/端点不能替代机器人实号验收。
 
 `ops/cd/check_test_inventory.py` 对新未分类测试、失效 product 路径、重复登记、既 selected 又 deferred、失效 deferred 路径与已改内容的旧排除记录报错。自动发现范围与实际 runner 一致：例如 unittest 的直接 `ops/tests` 文件、扩展的直接 `test/*.test.mjs`，不能把未被 runner 收集的嵌套目录当作已覆盖。
+
+## O02/G05 局部晋升
+
+在 Guard 清单及 #248 新增的 1 个工具生命周期测试文件后，再晋升 12 个完整文件，产品清单从 160 个增至 172 个，只移除这 12 个对应的排除记录，其余 90 个排除记录及原哈希不变。
+
+- O02：`test_migrations.py` 的 16 项，修正默认数据库名为 `everplain.db`，验证离线迁移截至 0430 成功、全 head 明确拒绝；在线 schema 检查及既有 0630/0640 离线拒绝断言保留，未修改历史迁移。
+- G05 当前/共享账务契约：weekly quota、quota settlement epoch、Bank RESET、signup allowance、prices、actual usage policy、retail projection、billing migration 共 8 文件、77 项。这不是当前 Agent-v2 全策略覆盖。
+- 历史 `delivery_v1` 兼容：application metering、durable billing 共 15 项，另有 usage stability 的 2 项。后者仅修正旧 RESET fixture，使其向迁移创建的 11 列表写入具名列，17 条断言与 2 条 ledger INSERT 不变；不将历史退款期望改称当前 v2 行为。
+
+本轮仅对以上 12 文件进行隔离合成验证：110 项通过，无跳过；两处修改的 Python 文件 Ruff、测试登记检查及其 5 项局部自测通过。已有 SQLAlchemy 互相外键排序警告保留，它不是 Alembic revision 图环。未执行真实模型、实际账号数据库迁移、全量产品回归、全构建或全架构验收。
 
 ## 发现规则与依赖安装
 
@@ -21,9 +31,9 @@ CI frontend 的安装步骤执行 `make bootstrap`，其既有依赖包含 `boot
 
 ## 仍开放的存量
 
-基线有 250 个后端测试文件，产品清单仅选择 141 个；不能将其余 109 个一概称为历史学科测试。补回 8 个后，剩余排除记录见 `backend/tests/deferred-suite.json`：
+基线有 250 个后端测试文件，产品清单仅选择 141 个；不能将其余 109 个一概称为历史学科测试。Guard 补回 8 个并经 O02/G05 后续晋升后，剩余排除记录见 `backend/tests/deferred-suite.json`：
 
-- `baseline_review_pending`：初始 100 个，移除已晋升的 billing API 错误测试后当前为 99 个，仍缺当前分类/执行证明，按原精确 SHA-256 登记待核验。它们可能混有当前产品、兼容研究与陈旧期望；这不是批准永久不测。
+- `baseline_review_pending`：初始 100 个，移除已晋升的 billing API 错误测试后为 99 个；本轮再晋升 O02/G05 的 12 个后，当前为 87 个，仍缺当前分类/执行证明，按原精确 SHA-256 登记待核验。它们可能混有当前产品、兼容研究与陈旧期望；这不是批准永久不测。
 - `explicit_live_provider`：1 个真实模型验收依赖显式配置，不放进无凭据 CI。
 - `platform_manual`：扩展 PowerShell 准备测试需单独执行；不假装 Linux Bash 测试就是 Windows 安装验收。
 - `synthetic_browser_manual`：网关 Playwright 场景需要本地后端、网关和浏览器 fixture；当前合成 HTTP job 不代表浏览器场景跑过。
