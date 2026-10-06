@@ -114,23 +114,14 @@ def document_dict(row):
     }
 
 
+_REVISION_FIELDS = (
+    "revision_id", "document_id", "base_version", "action", "before_markdown",
+    "after_markdown", "status", "warnings", "selection_start", "selection_end", "created_at",
+)
+
+
 def revision_dict(row):
-    return {
-        k: getattr(row, k)
-        for k in (
-            "revision_id",
-            "document_id",
-            "base_version",
-            "action",
-            "before_markdown",
-            "after_markdown",
-            "status",
-            "warnings",
-            "selection_start",
-            "selection_end",
-            "created_at",
-        )
-    }
+    return {key: getattr(row, key) for key in _REVISION_FIELDS}
 
 
 def sample_dict(row):
@@ -342,6 +333,37 @@ class SqliteWritingRepository:
                 .order_by(WritingRevisionRow.created_at.desc())
             )
         ]
+
+    def _pending_revisions(self, user_id, document_id, *columns):
+        # Both owners are constrained; no historical bodies or cached ORM state
+        # are needed for a live edit eligibility query.
+        return select(*columns).join(
+            WritingDocumentRow,
+            WritingDocumentRow.document_id == WritingRevisionRow.document_id,
+        ).where(
+            WritingDocumentRow.user_id == str(user_id),
+            WritingRevisionRow.user_id == str(user_id),
+            WritingRevisionRow.document_id == str(document_id),
+            WritingRevisionRow.status == "pending",
+        )
+
+    def has_pending_revision(self, user_id, document_id):
+        return self.session.scalar(select(self._pending_revisions(
+            user_id, document_id, WritingRevisionRow.revision_id,
+        ).exists()))
+
+    def pending_revision_ids(self, user_id, document_id):
+        return list(self.session.scalars(self._pending_revisions(
+            user_id, document_id, WritingRevisionRow.revision_id,
+        ).order_by(WritingRevisionRow.created_at.desc())))
+
+    def pending_revision(self, user_id, document_id, revision_id):
+        # Column projection deliberately bypasses the Session identity map: a
+        # different request may have accepted/rejected this revision meanwhile.
+        row = self.session.execute(self._pending_revisions(
+            user_id, document_id, *(getattr(WritingRevisionRow, key) for key in _REVISION_FIELDS),
+        ).where(WritingRevisionRow.revision_id == str(revision_id))).mappings().first()
+        return dict(row) if row is not None else None
 
     def add_revision(self, user_id, document, *, action, after_markdown, warnings,
                      selection_start=None, selection_end=None):

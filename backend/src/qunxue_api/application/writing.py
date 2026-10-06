@@ -7,6 +7,7 @@ from uuid import UUID
 
 from qunxue_api.modules.writing import (
     MAX_DOCUMENT_CHARACTERS,
+    EditTargetConflict,
     Genre,
     WritingConflict,
     WritingUnavailable,
@@ -17,6 +18,8 @@ from qunxue_api.modules.writing import (
     output_issues,
     preview_safe_prefix,
     redact_style_contacts,
+    require_edit_scope,
+    resolve_edit_target,
     retrieve_samples,
     sample_import_preview,
     style_profile,
@@ -212,6 +215,60 @@ class WritingApplication:
             ),
         }
 
+    def validate_agent_context(self, user_id, context):
+        document_id = UUID(str(context["document_id"]))
+        version = context["document_version"]
+        if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+            raise ValueError("文稿版本无效")
+        document = self.repository.get(user_id, document_id)
+        # Interrupted conversations may discuss a newer version, but their old
+        # selection must never be reinterpreted against it.
+        if document["version"] == version:
+            utf16_slice(document["markdown"], context.get("selection_start"),
+                        context.get("selection_end"), allow_empty=True)
+
+    def read_agent_document(self, user_id, context):
+        document = self.repository.get(user_id, context["document_id"])
+        stale = document["version"] != context["document_version"]
+        selection = None
+        if not stale and context.get("selection_start") is not None:
+            _, text, _ = utf16_slice(document["markdown"], context["selection_start"],
+                                    context["selection_end"], allow_empty=True)
+            selection = {"start": context["selection_start"],
+                         "end": context["selection_end"], "text": text}
+        return {
+            **document, "selection": selection, "context_stale": stale,
+            **self.agent_style_context(user_id, document,
+                                       selection["text"] if selection else document["markdown"]),
+            "context_version": context["document_version"],
+            "pending_revision_ids": self.repository.pending_revision_ids(
+                user_id, context["document_id"],
+            ),
+        }
+
+    def propose_agent_edit(self, user_id, document_id, run_id, request, *, selection_scope=None,
+                           runtime_instructions="", execution_fence=None, creation_observer=None):
+        # Preserve persisted semantic request keys: selected implicit anchors are
+        # canonicalized before hashing, just as explicit offsets already are.
+        request = dict(request)
+        if selection_scope is not None:
+            start, end = request.get("selection_start"), request.get("selection_end")
+            if start is None and end is None:
+                document = self.repository.get(user_id, document_id)
+                if document["version"] != request["expected_version"]:
+                    raise WritingConflict("原文已改变，请保存后重新发起修改")
+                target = resolve_edit_target(document["markdown"], request["original_text"],
+                                             scope=selection_scope)
+                start, end = target.start, target.end
+                request.update(selection_start=start, selection_end=end)
+            require_edit_scope(start, end, selection_scope)
+        digest = sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
+        return self.propose_edit(
+            user_id, document_id, f"agent-writing:{run_id}:{digest}", request,
+            runtime_instructions=runtime_instructions, selection_scope=selection_scope,
+            execution_fence=execution_fence, creation_observer=creation_observer,
+        )
+
     def mutate(self, user_id, key, target, payload, action):
         digest = sha256(
             json.dumps({"target": target, "payload": payload}, sort_keys=True, default=str).encode()
@@ -233,51 +290,37 @@ class WritingApplication:
             raise WritingConflict("invalid_preview_version")
         if document["version"] != version:
             raise WritingConflict("stale_preview_context")
-        pending = [item for item in self.repository.revisions(user_id, document_id)
-                   if item["status"] == "pending"]
-        if revision is None and pending:
+        if revision is None and self.repository.has_pending_revision(user_id, document_id):
             raise WritingConflict("pending_preview_revision")
-        original = request["original_text"]
-        if not isinstance(original, str):
-            raise WritingConflict("invalid_preview_original")
-        start, end = request.get("selection_start"), request.get("selection_end")
-        if start is None and end is None:
-            position = document["markdown"].find(original)
-            if (not original or position < 0
-                    or document["markdown"].find(original, position + 1) >= 0):
-                raise WritingConflict("ambiguous_preview_anchor")
-            prefix, _, suffix = document["markdown"].partition(original)
-            start = len(prefix.encode("utf-16-le")) // 2
-            end = start + len(original.encode("utf-16-le")) // 2
-        else:
-            prefix, selected, suffix = utf16_slice(document["markdown"], start, end,
-                                                  allow_empty=True)
-            if selected != original:
-                raise WritingConflict("preview_original_mismatch")
-        scope_start, scope_end = (
-            (selection_scope["start"], selection_scope["end"])
-            if selection_scope is not None else
-            (0, len(document["markdown"].encode("utf-16-le")) // 2)
-        )
-        utf16_slice(document["markdown"], scope_start, scope_end, allow_empty=True)
-        if not scope_start <= start <= end <= scope_end:
-            raise WritingConflict("preview_outside_scope")
+        try:
+            target = resolve_edit_target(
+                document["markdown"], request["original_text"],
+                request.get("selection_start"), request.get("selection_end"),
+                scope=selection_scope,
+            )
+        except EditTargetConflict as exc:
+            reason = {"invalid_original": "invalid_preview_original",
+                      "ambiguous_anchor": "ambiguous_preview_anchor",
+                      "original_mismatch": "preview_original_mismatch",
+                      "outside_scope": "preview_outside_scope"}[exc.reason]
+            raise WritingConflict(reason) from exc
         safe = preview_safe_prefix(
-            original, replacement, self.repository.style_samples(user_id),
+            target.original, replacement, self.repository.style_samples(user_id),
             runtime_instructions=WRITING_INSTRUCTIONS + "\n" + runtime_instructions,
             complete=complete,
         )
         if revision is not None:
-            persisted = next((item for item in pending
-                              if item["revision_id"] == revision.get("revision_id")), None)
+            persisted = self.repository.pending_revision(
+                user_id, document_id, revision.get("revision_id"),
+            )
             if (persisted is None or persisted != revision
                     or str(revision.get("document_id")) != str(document_id)
                     or revision.get("base_version") != version
                     or revision.get("before_markdown") != document["markdown"]
-                    or revision.get("after_markdown") != prefix + replacement + suffix):
+                    or revision.get("after_markdown") != target.replace(replacement)):
                 raise WritingConflict("unpersisted_preview_revision")
         return {"document_id": str(document_id), "base_version": version,
-                "selection_start": start, "selection_end": end,
+                "selection_start": target.start, "selection_end": target.end,
                 "safe_replacement_text": safe}
 
     def discard_agent_proposal(self, user_id, document_id, run_id, revision, expected_fence=None):
@@ -316,17 +359,7 @@ class WritingApplication:
             document = self.repository.get(user_id, document_id)
             if document["version"] != request["expected_version"]:
                 raise WritingConflict("原文已改变，请保存并刷新后重试")
-            scope_start, scope_end = (
-                (selection_scope["start"], selection_scope["end"])
-                if selection_scope is not None else (0, len(document["markdown"].encode(
-                    "utf-16-le",
-                )) // 2)
-            )
-            utf16_slice(document["markdown"], scope_start, scope_end, allow_empty=True)
-            if any(
-                r["status"] == "pending"
-                for r in self.repository.revisions(user_id, document_id)
-            ):
+            if self.repository.has_pending_revision(user_id, document_id):
                 raise WritingConflict("请先接受或撤回当前待定修订；仍可继续讨论")
             original, replacement = request["original_text"], request["replacement_text"]
             if len(replacement) > 30000:
@@ -341,26 +374,12 @@ class WritingApplication:
             )) & {"sample_contact_leak", "copied_sample_span"}
             if sample_issues:
                 raise WritingUnsafeOutput("替换内容包含样文长句或个人信息，请重新组织表达")
-            start, end = request.get("selection_start"), request.get("selection_end")
-            if start is None and end is None:
-                position = document["markdown"].find(original)
-                if (
-                    not original or position < 0
-                    or document["markdown"].find(original, position + 1) >= 0
-                ):
-                    raise WritingConflict("原文片段必须唯一匹配，请重新读取并提供准确选区")
-                prefix, _, suffix = document["markdown"].partition(original)
-            else:
-                prefix, selected, suffix = utf16_slice(
-                    document["markdown"], start, end, allow_empty=True,
-                )
-                if selected != original:
-                    raise WritingConflict("选区原文不匹配，修改没有保存；请重新读取文稿")
-            actual_start = len(prefix.encode("utf-16-le")) // 2
-            actual_end = actual_start + len(original.encode("utf-16-le")) // 2
-            if not scope_start <= actual_start <= actual_end <= scope_end:
-                raise WritingConflict("修改超出本轮用户选区，请仅修改所选文字")
-            markdown = prefix + replacement + suffix
+            edit_target = resolve_edit_target(
+                document["markdown"], original,
+                request.get("selection_start"), request.get("selection_end"),
+                scope=selection_scope,
+            )
+            markdown = edit_target.replace(replacement)
             if markdown == document["markdown"]:
                 raise ValueError("建议与原文相同，没有创建修订")
             if len(markdown) > MAX_DOCUMENT_CHARACTERS:
@@ -368,7 +387,7 @@ class WritingApplication:
             result = self.repository.add_revision(
                 user_id, document, action="rewrite", after_markdown=markdown,
                 warnings=["Agent 提议尚未写入正文。请复核事实、语义及引用后接受或撤回。"],
-                selection_start=scope_start, selection_end=scope_end,
+                selection_start=edit_target.scope_start, selection_end=edit_target.scope_end,
             )
             if execution_fence is not None:
                 self.repository.require_agent_execution(user_id, execution_fence)
@@ -394,7 +413,7 @@ class WritingApplication:
             return old.result
         if document["version"] != request["expected_version"]:
             raise WritingConflict("原文已改变，请保存并刷新后重试")
-        if any(r["status"] == "pending" for r in self.repository.revisions(user_id, document_id)):
+        if self.repository.has_pending_revision(user_id, document_id):
             raise WritingConflict("请先接受或撤回当前待定修订")
         if self.generate is None:
             raise WritingUnavailable("当前尚未配置可用模型，文稿已保存；没有生成模拟修订")
