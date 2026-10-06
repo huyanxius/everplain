@@ -1076,9 +1076,14 @@ def create_app(
             matching_requests = SqliteMatchingRequestRepository(session)
             proposal_repository = SqliteResearchDocumentProposalRepository(session)
             material_repository = SqliteResearchMaterialRepository(session)
-            analysis_application = build_research_analysis_application(
-                session,
-                task_repository=task_repository,
+            # The registry's explicit command-completion boundary commits only
+            # after domain work and result serialization succeed. This applies
+            # with or without a streaming subscriber; reads remain read-only.
+            analysis_application = ResearchAnalysisApplication(
+                analysis=ResearchAnalysisService(SqliteResearchAnalysisRepository(session)),
+                materials=material_repository,
+                research_tasks=task_repository,
+                commit=session.flush,
             )
             descriptor = app.state.model_gateway.descriptor
             matching_service = TheoryMatchingService(
@@ -1302,6 +1307,7 @@ def create_app(
                         require_material_vectors=resolved_settings.runtime_mode != "mock",
                         analysis=analysis_application,
                         writing=WritingApplication(SqliteWritingRepository(session)),
+                        rollback_tool=session.rollback,
                     ),
                 )
             except Exception:
