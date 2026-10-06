@@ -144,6 +144,14 @@ class Provider:
         assert params["code_challenge_method"] == ["S256"]
         assert params["scope"] == ["openid email profile" if provider == "google" else "user:email"]
         assert params["redirect_uri"] == [ORIGIN + f"/api/session/oauth/{provider}/callback"]
+        if provider == "google":
+            url = urlsplit(response.json()["authorization_url"])
+            assert f"{url.scheme}://{url.netloc}{url.path}" == (
+                "https://accounts.google.com/o/oauth2/v2/auth"
+            )
+            assert params["access_type"] == ["online"]
+            assert params["prompt"] == ["select_account"]
+            assert "client_secret" not in params
         with client.app.state.database.session() as db:
             row = db.scalar(
                 select(OAuthTransactionRow).order_by(OAuthTransactionRow.expires_at.desc())
@@ -152,6 +160,8 @@ class Provider:
                 urlsafe_b64encode(sha256(row.code_verifier.encode()).digest()).rstrip(b"=").decode()
             )
             assert params["code_challenge"] == [challenge]
+            if provider == "google":
+                assert params["nonce"] == [row.nonce]
             code = str(uuid4())
             self.code_params[code] = {"verifier": row.code_verifier, "nonce": row.nonce}
         return params["state"][0], code
@@ -187,6 +197,50 @@ def test_unconfigured_providers_are_hidden_and_not_startable(plain_client):
     assert response.json() == {"providers": []}
     assert response.headers["cache-control"] == "no-store"
     assert plain_client.post("/api/session/oauth/google/start", json={}).status_code == 403
+
+
+def test_google_start_does_not_require_provider_network_even_on_cold_start(plain_client):
+    mock = Provider(plain_client)
+    remote = plain_client.app.state.oauth_clients.client("google")
+    requests = []
+
+    def unavailable(request):
+        requests.append(request)
+        raise httpx.ConnectTimeout("synthetic-discovery-connect-timeout", request=request)
+
+    remote.client_kwargs["transport"] = httpx.MockTransport(unavailable)
+    previous_state = None
+    for _ in range(2):
+        state, _code = mock.start(plain_client)
+        assert state != previous_state
+        previous_state = state
+        assert plain_client.cookies.get("everplain_oauth_google")
+    assert requests == []
+    assert counts(plain_client) == (0, 0, 0)
+
+
+def test_google_login_uses_official_token_and_jwks_endpoints_without_discovery(plain_client):
+    mock = Provider(plain_client)
+    remote = plain_client.app.state.oauth_clients.client("google")
+    assert remote.server_metadata["issuer"] == "https://accounts.google.com"
+    assert remote.server_metadata["id_token_signing_alg_values_supported"] == ["RS256"]
+    requests = []
+
+    def provider_without_discovery(request):
+        requests.append((request.method, str(request.url)))
+        if request.url.path == "/.well-known/openid-configuration":
+            raise httpx.ConnectTimeout("synthetic-discovery-connect-timeout", request=request)
+        return mock.http(request)
+
+    remote.client_kwargs["transport"] = httpx.MockTransport(provider_without_discovery)
+    state, code = mock.start(plain_client)
+    assert requests == []
+    assert mock.finish(plain_client, state, code).headers["location"] == "/library"
+    assert counts(plain_client) == (1, 1, 1)
+    assert requests == [
+        ("POST", "https://oauth2.googleapis.com/token"),
+        ("GET", "https://www.googleapis.com/oauth2/v3/certs"),
+    ]
 
 
 @pytest.mark.parametrize("provider", ["google", "github"])
@@ -696,17 +750,17 @@ def operational_loggers(monkeypatch):
         monkeypatch.setattr(logging.getLogger(name), "disabled", False)
 
 
-def test_provider_initialization_failure_is_diagnosable_without_logging_credentials(
-    plain_client, caplog, operational_loggers
+def test_provider_authorization_failure_is_diagnosable_without_logging_credentials(
+    plain_client, monkeypatch, caplog, operational_loggers
 ):
     mock = Provider(plain_client)
     client = plain_client.app.state.oauth_clients.client("google")
     marker = "synthetic-token-code-secret-must-not-be-logged"
 
-    def unavailable(request):
-        raise httpx.ConnectError(marker, request=request)
+    async def unavailable(*args, **kwargs):
+        raise ValueError(marker)
 
-    client.client_kwargs["transport"] = httpx.MockTransport(unavailable)
+    monkeypatch.setattr(client, "create_authorization_url", unavailable)
     with caplog.at_level("WARNING"):
         response = plain_client.post(
             "/api/session/oauth/google/start",
@@ -714,7 +768,7 @@ def test_provider_initialization_failure_is_diagnosable_without_logging_credenti
             json={"return_path": "/library"},
         )
     assert response.status_code == 503
-    assert "provider=google operation=authorization category=ConnectError" in caplog.text
+    assert "provider=google operation=authorization category=ValueError" in caplog.text
     assert marker not in caplog.text
     assert "synthetic-test-only" not in caplog.text
     assert plain_client.cookies.get("everplain_oauth_google") is None
@@ -739,26 +793,39 @@ def test_callback_reports_missing_browser_binder_without_leaking_flow(
     assert not mock.exchanges
 
 
-def test_callback_exchange_failure_is_distinct_from_state_validation(
-    plain_client, caplog, operational_loggers
+@pytest.mark.parametrize(
+    ("provider", "failed_path", "error_type"),
+    [
+        ("github", "/login/oauth/access_token", httpx.ReadTimeout),
+        ("google", "/token", httpx.ConnectTimeout),
+        ("google", "/oauth2/v3/certs", httpx.ConnectTimeout),
+    ],
+)
+def test_callback_provider_failure_is_distinct_from_state_validation(
+    plain_client, caplog, operational_loggers, provider, failed_path, error_type
 ):
     mock = Provider(plain_client)
-    remote = plain_client.app.state.oauth_clients.client("github")
+    remote = plain_client.app.state.oauth_clients.client(provider)
     marker = "synthetic-code-client-secret-redacted"
 
     def unavailable(request):
-        if request.url.path == "/login/oauth/access_token":
-            raise httpx.ReadTimeout(marker, request=request)
+        if request.url.path == failed_path:
+            raise error_type(marker, request=request)
         return mock.http(request)
 
     remote.client_kwargs["transport"] = httpx.MockTransport(unavailable)
-    state, code = mock.start(plain_client, "github")
-    binder = plain_client.cookies.get("everplain_oauth_github")
+    state, code = mock.start(plain_client, provider)
+    binder = plain_client.cookies.get(f"everplain_oauth_{provider}")
     with caplog.at_level("WARNING"):
-        response = mock.finish(plain_client, state, code, "github")
+        response = mock.finish(plain_client, state, code, provider)
     assert "invalid_flow" in response.headers["location"]
-    assert "provider=github operation=identity category=ReadTimeout" in caplog.text
-    assert "provider=github stage=provider_identity" in caplog.text
+    assert (
+        f"provider={provider} operation=identity category={error_type.__name__}" in caplog.text
+    )
+    assert f"provider={provider} stage=provider_identity" in caplog.text
     assert "browser_cookie_present=True" in caplog.text
     assert all(value not in caplog.text for value in (state, code, binder, marker))
     assert counts(plain_client) == (0, 0, 0)
+    assert plain_client.cookies.get("everplain_session") is None
+    with plain_client.app.state.database.session() as db:
+        assert db.scalar(select(func.count()).select_from(OAuthTransactionRow)) == 0
