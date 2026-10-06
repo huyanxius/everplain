@@ -537,7 +537,8 @@ export function ObsidianKnowledgeGraph({
     y: number
   }>()
   const activationTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const initialFocus = personal ? undefined : focusNodeId
+  // Workspace selection updates classes in place; only previews embed focus at creation.
+  const initialFocus = !personal && variant === 'preview' ? focusNodeId : undefined
   const elements = useMemo(
     () => graphElements(projection, initialFocus),
     [projection, initialFocus],
@@ -886,17 +887,23 @@ export function ObsidianKnowledgeGraph({
 
   useEffect(() => {
     const graph = graphRef.current
-    if (!graph || !personal || variant === 'preview') return
+    if (!graph || variant === 'preview') return
     const nodeClasses = graphElements(projection, focusNodeId)
     graph.batch(() => {
+      if (!personal) {
+        // The previous single-library rebuild cleared native node selection.
+        graph.nodes().unselect()
+        // Keep an edge selected when its details replace the node focus.
+        if (focusNodeId) graph.edges().unselect()
+      }
       for (const element of nodeClasses) {
         const target = graph.getElementById(String(element.data.id))
         target.removeClass('node--focus node--neighbor node--context edge--neighbor edge--context')
         target.addClass(element.classes as string)
       }
     })
-    fitView(graph, focusNodeId, false, motionDuration())
-  }, [focusNodeId, projection, variant, personal, motionDuration])
+    fitView(graph, focusNodeId, false, personal ? motionDuration() : 0)
+  }, [focusNodeId, projection, variant, personal, motionDuration, cacheKey])
 
   const zoomBy = (factor: number) => {
     const graph = graphRef.current
