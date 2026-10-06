@@ -198,3 +198,5 @@ tests/billing/test_weekly_quota.py
 tests/billing/test_application_metering.py
 tests/billing/test_durable_billing.py
 
+# Historical delivery_v1 usage projection, including the repaired migrated RESET fixture.
+tests/billing/test_usage_stability.py

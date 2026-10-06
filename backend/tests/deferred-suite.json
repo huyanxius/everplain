@@ -47,10 +47,6 @@
           "sha256": "375cb59c3a9a7e82446912f5c76ef1697879bef06f8f0a6b2ad11beb4880f40e"
         },
         {
-          "path": "backend/tests/billing/test_usage_stability.py",
-          "sha256": "3bf71bce7b8b9cc201c53b18e4613e535cfd12608619f5a73bcdcd4d7756bf2e"
-        },
-        {
           "path": "backend/tests/test_agent_coding_tools.py",
           "sha256": "e64d1a77c98baf5843744250ce8b17cf0c83c77d2e3af919ff719f7b0550689f"
         },
