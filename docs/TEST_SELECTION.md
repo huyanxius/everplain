@@ -13,7 +13,7 @@
 
 ## O02/G05 局部晋升
 
-在 Guard 清单后再晋升 12 个完整文件，产品清单从 159 个增至 171 个，只移除这 12 个对应的排除记录，其余 90 个排除记录及原哈希不变。
+在 Guard 清单及 #248 新增的 1 个工具生命周期测试文件后，再晋升 12 个完整文件，产品清单从 160 个增至 172 个，只移除这 12 个对应的排除记录，其余 90 个排除记录及原哈希不变。
 
 - O02：`test_migrations.py` 的 16 项，修正默认数据库名为 `everplain.db`，验证离线迁移截至 0430 成功、全 head 明确拒绝；在线 schema 检查及既有 0630/0640 离线拒绝断言保留，未修改历史迁移。
 - G05 当前/共享账务契约：weekly quota、quota settlement epoch、Bank RESET、signup allowance、prices、actual usage policy、retail projection、billing migration 共 8 文件、77 项。这不是当前 Agent-v2 全策略覆盖。
@@ -23,15 +23,17 @@
 
 ## 剩余账务 10 文件局部晋升
 
-在上述 171 文件后再登记 10 个完整账务文件，沿用同一后端 CI lane，产品清单增至 181 个；只移除对应 10 条排除记录，其余 80 条内容及 SHA-256 原样保留。其中 119 项为当前/共享边界或已明确的历史账务兼容，另 6 项为默认个人产品禁用的历史理论匹配内部兼容；没有恢复任何退休课程、公共目录、matching HTTP 路由或模型可见工具。
+在上述 172 文件后再登记 10 个完整账务文件，沿用同一后端 CI lane，产品清单增至 182 个；只移除对应 10 条排除记录，其余 80 条内容及 SHA-256 原样保留。其中 119 项为当前/共享边界或已明确的历史账务兼容，另 6 项为默认个人产品禁用的历史理论匹配内部兼容；没有恢复任何退休课程、公共目录、matching HTTP 路由或模型可见工具。
 
 - 当前私库整理/索引及共享边界：course billing 3、course responses 5、financial faults 6、graph naming 4、legacy research API 4。`course_*` 是私库 `SharedDocumentRow` 处理链的内部旧名，不代表公共课程产品。Financial faults 混有当前 `actual_usage_v1` RESET 事务测试与历史终态/回执测试；legacy research API 的现有 `user_research` factory 实际使用 `actual_usage_v2`，但这只是该 API 局部验证。
 - 历史账务/共享 SDK 兼容：cross-run refunds 26、phase billing 13、Responses metering 51、standalone billing 7。退款、拒绝和失败豁免相关断言明确来自 `delivery_v1` fixture，不宣称是当前 Agent v2 行为。该历史策略仍由已保存 operation snapshot 决定，不能因新策略而删除其精度、重放和事务回归。
 - 历史理论匹配内部兼容：legacy research billing 6。保留的 tool registration → workflow → matching application 链不等于默认模型可见；当前 `EmptyKnowledgeCatalog` 使 `catalog_available=False`，prepare gate 隐藏 matching/confirmed-theory 工具，matching HTTP 路由亦未挂载。CI 只执行合成直接内部调用，保护保留实现的 owner/replay/fallback 边界，不扩大产品入口。
 
-原 10 文件执行为 122 通过、3 失败，其中一条旧兑换故障注入还存在空通过。仅修改两测试文件：course Responses/Chat fixture 从旧 JSON 修成实际请求的 SSE 事件并保留全部原断言；financial faults 接真实迁移 RESET 写边界、专用异常、阻塞 reservation、回滚前后 8 张账务/审计表快照与旧 epoch 放行，保留原 balance ≥ holds 断言。两个提前 commit 负控制分别在 writer 锁隔离或财务状态快照断言失败。独立审查又要求补齐 SSE `function_call_arguments.done.name` 并对真实输出事件做严格 SDK schema 校验，以及加入 RESET 的 `billing_precision_adjustments` 审计表。
+原 10 文件执行为 122 通过、3 失败，其中一条旧兑换故障注入还存在空通过。当时仅修改两测试文件：course Responses/Chat fixture 从旧 JSON 修成实际请求的 SSE 事件并保留全部原断言；financial faults 接真实迁移 RESET 写边界、专用异常、阻塞 reservation、回滚前后 8 张账务/审计表快照与旧 epoch 放行，保留原 balance ≥ holds 断言。两个提前 commit 负控制分别在 writer 锁隔离或财务状态快照断言失败。独立审查又要求补齐 SSE `function_call_arguments.done.name` 并对真实输出事件做严格 SDK schema 校验，以及加入 RESET 的 `billing_precision_adjustments` 审计表。
 
-验证账本：修订 1 的十完整文件一次执行 125 通过、无 skip；独审修订 2 后受影响 11 项再次通过，其余 114 项源码不变，未重复整个 125。独立审查修订 2 的定向 6 项及 4 项负控制按预期通过，单列记录，不累计到 125。两修订文件 Ruff、后续登记检查及既有 inventory 自测另留收据。空环境、DNS/外网 socket 禁用和合成临时 SQLite/SDK transport 不代表真实模型、生产数据库、浏览器、部署、全产品或架构全验收。
+该独立审查阶段的验证账本：修订 1 的十完整文件一次执行 125 通过、无 skip；独审修订 2 后受影响 11 项再次通过，其余 114 项源码不变，未重复整个 125。独立审查修订 2 的定向 6 项及 4 项负控制按预期通过，单列记录，不累计到 125。两修订文件 Ruff、后续登记检查及既有 inventory 自测另留收据。空环境、DNS/外网 socket 禁用和合成临时 SQLite/SDK transport 不代表真实模型、生产数据库、浏览器、部署、全产品或架构全验收。
+
+后续 CI [37540343270](https://github.com/huyanxius/everplain/actions/runs/37540343270) 暴露 phase billing 的三个真实进程退出用例依赖全局 `tests/billing` 导入路径，子进程未进入预期崩溃点。已审修复以显式文件路径和 `runpy` 启动同一测试函数，成为本组第三个修改的测试文件，不增加登记文件数；31 条断言、崩溃函数与真实退出码 73 保持不变。该修复在最小 CI 环境单列 13 项通过，独审 26 项及异工作目录/含空格路径的 3 个真实子进程退出检查通过；这些结果不累计到旧阶段的 125，也不替代最终组合提交的正常 CI。
 
 ## 发现规则与依赖安装
 

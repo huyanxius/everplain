@@ -155,9 +155,9 @@ def test_all_registered_tool_results_and_traces_match_frozen_samples(tool_name):
     ctx = SimpleNamespace(deps=tools, tool_call_id="frozen-call", run_id=UUID(int=1), run_step=2)
     with value._tool_runtime.activate(on_tool_event=events.append, is_cancelled=None,
                                       writing_preview=None):
-        result = value._agent._function_toolset.tools[tool_name].function(
-            ctx, **PAYLOADS[tool_name],
-        )
+        result = asyncio.run(value._agent._function_toolset.tools[tool_name].function_schema.call(
+            PAYLOADS[tool_name], ctx,
+        ))
     assert {"result": result, "events": [dataclasses.asdict(event) for event in events]} == expected
 
 
@@ -198,7 +198,9 @@ def test_every_shared_registry_invocation_rolls_back_before_terminal_event(
             ),
             suppress(ValueError, TypeError, AttributeError, KeyError, ModelRetry),
         ):
-            value._agent._function_toolset.tools[tool_name].function(ctx, **PAYLOADS[tool_name])
+            asyncio.run(value._agent._function_toolset.tools[tool_name].function_schema.call(
+                PAYLOADS[tool_name], ctx,
+            ))
         session.commit()
         assert session.scalars(text("SELECT body FROM effects")).all() == ["previous-success"]
         assert events[0].phase == "started"
@@ -473,8 +475,10 @@ def test_old_tool_receipt_cannot_replace_current_theory_authorization_check():
     tools.save_confirmed_theory_plan = lambda **kwargs: {"error": "user_confirmation_required"}
     value = runner()
     ctx = SimpleNamespace(deps=tools, tool_call_id="new-attempt-call")
-    result = value._agent._function_toolset.tools["save_confirmed_theory_plan"].function(
-        ctx, **payload,
+    result = asyncio.run(
+        value._agent._function_toolset.tools["save_confirmed_theory_plan"].function_schema.call(
+            payload, ctx,
+        )
     )
     assert result == {"error": "user_confirmation_required"}
 
@@ -501,3 +505,207 @@ def test_only_explicit_business_commands_complete_shared_transaction():
     with pytest.raises(TypeError, match="serialized result"):
         registry.commit_completed_tool("propose_analysis_memo", object())
     assert len(commits) == 5
+
+
+@pytest.mark.parametrize("tool_name", SHARED_TOOLS)
+@pytest.mark.parametrize("worker_error", [False, True])
+def test_sdk_cancellation_drains_entire_shared_tool_callback(
+    tool_name, worker_error,
+):
+    from test_writing_preview_cancellation import cancellation_checkpoint
+
+    value, tools = runner(), fake_tools()
+    release_worker = threading.Event()
+    worker_done = threading.Event()
+    trace = []
+    correlation = {"agent_run_id": UUID(int=99)}
+
+    async def scenario():
+        loop = asyncio.get_running_loop()
+        callback_entered = asyncio.Event()
+
+        def terminal_callback(event):
+            assert pydantic_runner._agent_route_correlation.get() == correlation
+            if event.phase != "started":
+                try:
+                    trace.append("terminal_callback_entered")
+                    loop.call_soon_threadsafe(callback_entered.set)
+                    assert release_worker.wait(5), "test did not release the callback barrier"
+                    if worker_error:
+                        raise RuntimeError("synthetic receipt failure")
+                finally:
+                    trace.append("terminal_callback_returned")
+                    worker_done.set()
+
+        token = pydantic_runner._agent_route_correlation.set(correlation)
+        try:
+            with value._tool_runtime.activate(
+                on_tool_event=terminal_callback, is_cancelled=None, writing_preview=None,
+            ):
+                task = asyncio.create_task(
+                    value._agent._function_toolset.tools[tool_name].function_schema.call(
+                        PAYLOADS[tool_name],
+                        SimpleNamespace(deps=tools, tool_call_id="drain", run_id=UUID(int=1),
+                                        run_step=2),
+                    )
+                )
+                try:
+                    await asyncio.wait_for(callback_entered.wait(), 5)
+                    for _ in range(2):
+                        task.cancel()
+                        await cancellation_checkpoint()
+                        assert not task.done(), "SDK tool outlived its cancelled awaiter"
+                    assert not worker_done.is_set()
+                finally:
+                    release_worker.set()
+                    assert await asyncio.to_thread(worker_done.wait, 5)
+                    expected = RuntimeError if worker_error else asyncio.CancelledError
+                    with pytest.raises(expected):
+                        await task
+                trace.append("sdk_call_returned")
+        finally:
+            pydantic_runner._agent_route_correlation.reset(token)
+
+    asyncio.run(scenario())
+    assert trace == ["terminal_callback_entered", "terminal_callback_returned", "sdk_call_returned"]
+
+
+def test_cancel_before_thread_start_does_not_execute_queued_tool():
+    from concurrent.futures import ThreadPoolExecutor
+
+    value, tools = runner(), fake_tools()
+    occupied, release = threading.Event(), threading.Event()
+    calls = []
+    tools.read_writing_document = lambda: calls.append("unexpected work")
+
+    async def scenario():
+        submitted = asyncio.Event()
+
+        class ObservedExecutor(ThreadPoolExecutor):
+            def submit(self, function, *args, **kwargs):
+                result = super().submit(function, *args, **kwargs)
+                if occupied.is_set():
+                    submitted.set()
+                return result
+
+        def occupy():
+            occupied.set()
+            assert release.wait(5), "test did not release the executor"
+
+        executor = ObservedExecutor(max_workers=1)
+        executor.submit(occupy)
+        assert occupied.wait(5)
+        asyncio.get_running_loop().set_default_executor(executor)
+        with value._tool_runtime.activate(
+            on_tool_event=None, is_cancelled=None, writing_preview=None,
+        ):
+            task = asyncio.create_task(
+                value._agent._function_toolset.tools["read_writing_document"].function_schema.call(
+                    {}, SimpleNamespace(deps=tools, tool_call_id="queued"),
+                )
+            )
+            try:
+                # Ignore the holder's own submission if it started immediately.
+                submitted.clear()
+                await asyncio.wait_for(submitted.wait(), 5)
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await asyncio.wait_for(task, 5)
+                assert value._tool_runtime.is_idle()
+                assert not release.is_set()
+            finally:
+                release.set()
+
+    asyncio.run(scenario())
+    assert calls == []
+
+
+def test_native_async_tool_retains_prompt_cancellation_and_finally():
+    from pydantic_ai import RunContext
+
+    value = runner()
+    entered, exited = asyncio.Event(), []
+
+    @value._tool_runtime.tool(value._agent)
+    async def native_async(ctx: RunContext):
+        try:
+            entered.set()
+            await asyncio.Event().wait()
+        finally:
+            exited.append("cleaned")
+
+    async def scenario():
+        task = asyncio.create_task(
+            value._agent._function_toolset.tools["native_async"].function_schema.call(
+                {}, SimpleNamespace(deps=None),
+            )
+        )
+        await asyncio.wait_for(entered.wait(), 5)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 5)
+
+    asyncio.run(scenario())
+    assert exited == ["cleaned"]
+
+
+def test_run_stream_stop_cancels_queued_tool_without_waiting_for_executor(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    value, tools = runner(), fake_tools()
+    occupied, release, stop = threading.Event(), threading.Event(), threading.Event()
+    calls, trace = [], []
+    tools.read_writing_document = lambda: calls.append("unexpected work")
+    loop = asyncio.new_event_loop()
+    submitted = asyncio.Event()
+
+    class ObservedExecutor(ThreadPoolExecutor):
+        record = False
+
+        def submit(self, function, *args, **kwargs):
+            result = super().submit(function, *args, **kwargs)
+            if self.record:
+                trace.append("tool_queued")
+                stop.set()
+                loop.call_soon_threadsafe(submitted.set)
+            return result
+
+    def occupy():
+        occupied.set()
+        assert release.wait(5), "test did not release the executor"
+
+    executor = ObservedExecutor(max_workers=1)
+    executor.submit(occupy)
+    assert occupied.wait(5)
+    executor.record = True
+    loop.set_default_executor(executor)
+    monkeypatch.setattr(pydantic_runner._worker_event_loop, "loop", loop, raising=False)
+    asyncio.set_event_loop(loop)
+
+    async def monitor_tick(_delay):
+        await asyncio.wait_for(submitted.wait(), 5)
+
+    async def stream(messages, info):
+        yield {0: DeltaToolCall(
+            name="read_writing_document", json_args="{}", tool_call_id="queued-stop",
+        )}
+
+    monkeypatch.setattr(pydantic_runner, "async_sleep", monitor_tick)
+    try:
+        with (
+            value._agent.override(model=FunctionModel(stream_function=stream)),
+            pytest.raises(AgentInterrupted),
+        ):
+            value.run_stream(
+                prompt="继续", conversation=(), tools=tools, on_delta=lambda _: None,
+                is_cancelled=stop.is_set,
+            )
+        trace.append("runner_returned_before_executor_release")
+        assert not release.is_set()
+    finally:
+        release.set()
+        loop.run_until_complete(loop.shutdown_default_executor())
+        loop.close()
+        asyncio.set_event_loop(None)
+    assert calls == []
+    assert trace == ["tool_queued", "runner_returned_before_executor_release"]
