@@ -211,3 +211,231 @@ def test_narrow_queries_are_owner_scoped_and_new_samples_are_not_cached(plain_cl
             )
         with pytest.raises(WritingUnsafeOutput):
             app.preview_edit_target(user_id, document["document_id"], request, candidate, True)
+
+
+def _legacy_command_digest(target, payload):
+    # Deliberately independent of WritingApplication.mutate: this is the old
+    # HTTP route's persisted operation identity, including default=str.
+    return sha256(json.dumps(
+        {"target": target, "payload": payload}, sort_keys=True, default=str,
+    ).encode()).hexdigest()
+
+
+@pytest.mark.parametrize("decision", ["accept", "reject"])
+def test_http_write_routes_require_only_public_commands(decision):
+    from types import SimpleNamespace
+
+    from qunxue_api.api.contracts.writing import WritingDocumentUpdate, WritingRevisionResolve
+    from qunxue_api.api.routes.writing import resolve, update_document
+
+    owner, document_id, revision_id, key = uuid4(), uuid4(), uuid4(), str(uuid4())
+    current = SimpleNamespace(user=SimpleNamespace(user_id=owner))
+    calls = []
+    saved = {"title": "  原样标题  ", "markdown": "", "version": 2}
+    resolved = {"document": saved, "revision": {"status": decision + "ed"}}
+
+    class UseCases:
+        # No repository, mutate, Session, or executable callback on this fake.
+        def save_document(self, user_id, document, request_key, data):
+            calls.append(("save", user_id, document, request_key, data))
+            return saved
+
+        def resolve_revision(self, user_id, document, revision, request_key, data):
+            calls.append(("resolve", user_id, document, revision, request_key, data))
+            return resolved
+
+    app = UseCases()
+    assert update_document(
+        document_id, WritingDocumentUpdate(expected_version="1", title="  原样标题  ",
+                                           markdown="", genre=None), current, app, key,
+    ) == saved
+    assert resolve(
+        document_id, revision_id, WritingRevisionResolve(expected_version="2", decision=decision),
+        current, app, key,
+    ) == resolved
+    assert calls == [
+        ("save", owner, document_id, key,
+         {"expected_version": 1, "title": "  原样标题  ", "markdown": ""}),
+        ("resolve", owner, document_id, revision_id, key,
+         {"decision": decision, "expected_version": 2}),
+    ]
+
+
+@pytest.mark.parametrize("data,message", [
+    ({"expected_version": 1}, "没有要保存的修改"),
+    ({"expected_version": 1, "title": " \t\n"}, "标题不能为空"),
+    ({"expected_version": 1, "title": " \t\n", "markdown": "正文"}, "标题不能为空"),
+])
+def test_save_command_validates_before_even_looking_up_a_receipt(data, message):
+    class NoCalls:
+        def operation(self, *args):
+            pytest.fail("Validation must precede receipt lookup, including replay")
+
+    with pytest.raises(ValueError, match=message):
+        WritingApplication(NoCalls()).save_document(uuid4(), uuid4(), str(uuid4()), data)
+
+
+@pytest.mark.parametrize("command", ["save", "accept", "reject"])
+@pytest.mark.parametrize("replay", [False, True])
+def test_write_commands_own_legacy_identity_action_order_and_replay(command, replay):
+    from types import SimpleNamespace
+
+    owner, document, revision, key = uuid4(), uuid4(), uuid4(), str(uuid4())
+    calls, receipt = [], object()
+    result = {"markdown": "😀原样\r\n[[笔记]]", "version": 2}
+    data = ({"expected_version": 1, "title": "  标题  ", "markdown": result["markdown"]}
+            if command == "save" else {"expected_version": 1, "decision": command})
+    original = dict(data)
+    target = (f"document:update:{document}" if command == "save"
+              else f"revision:resolve:{document}:{revision}")
+    digest = _legacy_command_digest(target, data)
+
+    class Commands:
+        def operation(self, *args):
+            calls.append(("operation", *args))
+            return SimpleNamespace(result=result) if replay else None
+
+        def start(self, *args):
+            calls.append(("start", *args))
+            return receipt
+
+        def update(self, *args):
+            calls.append(("update", *args))
+            return result
+
+        def resolve(self, *args, **kwargs):
+            calls.append(("resolve", *args, kwargs))
+            return result
+
+        def complete(self, *args):
+            calls.append(("complete", *args))
+
+    app = WritingApplication(Commands())
+    actual = (app.save_document(owner, document, key, data) if command == "save"
+              else app.resolve_revision(owner, document, revision, key, data))
+    assert actual is result and data == original
+    expected = [("operation", owner, key, digest)]
+    if not replay:
+        expected += [("start", owner, key, digest, target)]
+        if command == "save":
+            expected += [("update", owner, document, 1,
+                          {"title": "  标题  ", "markdown": result["markdown"]})]
+        else:
+            expected += [("resolve", owner, document, revision, data)]
+        expected += [("complete", receipt, result)]
+    assert calls == expected
+
+
+@pytest.mark.parametrize("command", ["save", "accept", "reject"])
+def test_http_commands_replay_old_completed_receipts_and_reject_changed_identity(
+    plain_client, command,
+):
+    from qunxue_api.api.contracts.writing import (
+        WritingDocumentResponse,
+        WritingRevisionResolution,
+    )
+
+    c = plain_client
+    owner = UUID(_authenticate(c)["user"]["user_id"])
+    document = doc(c, "😀原稿\r\n[[笔记|别名]]\n- [ ] 待办")
+    key = str(uuid4())
+    document_id = document["document_id"]
+    with c.app.state.database.session() as session:
+        repo = SqliteWritingRepository(session)
+        revision = repo.add_revision(owner, document, action="rewrite",
+                                     after_markdown="😀修订\r\n> [!note]\n> 引文[^来源]",
+                                     warnings=[])
+        if command == "save":
+            data = {"expected_version": 1, "title": "  原样标题  ", "markdown": ""}
+            target = f"document:update:{document_id}"
+            old_result = repo.update(owner, document_id, 1,
+                                     {"title": data["title"], "markdown": ""})
+        else:
+            data = {"expected_version": 1, "decision": command}
+            target = f"revision:resolve:{document_id}:{revision['revision_id']}"
+            old_result = repo.resolve(owner, document_id, revision["revision_id"], command, 1)
+        # Seed a durable receipt using the old computation, without new commands.
+        session.add(WritingOperationRow(
+            operation_id=str(uuid4()), user_id=str(owner), request_key=key,
+            request_hash=_legacy_command_digest(target, data), target=target,
+            status="completed", result=old_result, created_at=document["created_at"],
+        ))
+    path = f"/api/writing/documents/{document_id}"
+    if command != "save":
+        path += f"/revisions/{revision['revision_id']}/resolve"
+    send = c.patch if command == "save" else c.post
+    writes = []
+
+    def record(_connection, _cursor, statement, *_args):
+        if statement.lstrip().upper().startswith((
+            "UPDATE WRITING_", "INSERT INTO WRITING_", "DELETE FROM WRITING_",
+        )):
+            writes.append(statement)
+
+    event.listen(c.app.state.database.engine, "before_cursor_execute", record)
+    try:
+        # Null fields must still be omitted before hashing a save request.
+        body = {**data, "genre": None} if command == "save" else data
+        with c.app.state.writing_scope() as app:
+            raw_replay = (app.save_document(owner, UUID(document_id), key, data)
+                          if command == "save" else app.resolve_revision(
+                              owner, UUID(document_id), UUID(revision["revision_id"]), key, data,
+                          ))
+        assert raw_replay == old_result
+        replay = send(path, json=body, headers={"Idempotency-Key": key})
+        assert replay.status_code == 200, replay.text
+        response_model = WritingDocumentResponse if command == "save" else WritingRevisionResolution
+        assert replay.json() == response_model.model_validate(old_result).model_dump(mode="json")
+        changes = ({**body, "markdown": "别的内容"} if command == "save"
+                   else {**body, "decision": "reject" if command == "accept" else "accept"})
+        conflict = send(path, json=changes, headers={"Idempotency-Key": key})
+        assert conflict.status_code == 409
+        assert conflict.json()["error"]["message"] == "同一请求标识不能用于不同内容"
+        targets = [path.replace(document_id, str(uuid4()))]
+        if command != "save":
+            targets.append(path.replace(revision["revision_id"], str(uuid4())))
+        for other_path in targets:
+            conflict = send(other_path, json=body, headers={"Idempotency-Key": key})
+            assert conflict.status_code == 409
+            assert conflict.json()["error"]["message"] == "同一请求标识不能用于不同内容"
+        assert writes == []
+    finally:
+        event.remove(c.app.state.database.engine, "before_cursor_execute", record)
+    stranger = UUID(_authenticate(c)["user"]["user_id"])
+    forbidden = send(path, json=body, headers={"Idempotency-Key": key})
+    assert forbidden.status_code == 404
+    assert forbidden.json()["error"]["code"] == "not_found"
+    with c.app.state.database.session() as session:
+        assert session.scalar(select(WritingOperationRow).where(
+            WritingOperationRow.user_id == str(stranger), WritingOperationRow.request_key == key,
+        )) is None
+        repo = SqliteWritingRepository(session)
+        assert repo.get(owner, document_id) == (
+            old_result if command == "save" else old_result["document"]
+        )
+        assert repo.revisions(owner, document_id)[0]["status"] == {
+            "save": "stale", "accept": "accepted", "reject": "rejected",
+        }[command]
+
+
+def test_http_save_keeps_validation_precedence_nulls_and_exact_title(plain_client):
+    c = plain_client
+    _authenticate(c)
+    document = doc(c)
+    path = f"/api/writing/documents/{document['document_id']}"
+    headers = {"Idempotency-Key": str(uuid4())}
+    saved = c.patch(path, json={"expected_version": "1", "title": "  标题  ",
+                                "markdown": "", "genre": None}, headers=headers)
+    assert saved.status_code == 200
+    assert saved.json()["title"] == "  标题  "
+    assert saved.json()["markdown"] == "" and saved.json()["genre"] == document["genre"]
+    for body, message in [
+        ({"expected_version": 1, "title": None, "markdown": None}, "没有要保存的修改"),
+        ({"expected_version": 1, "title": " \t", "markdown": "new"}, "标题不能为空"),
+    ]:
+        # Reusing the completed key must not turn validation into an identity conflict.
+        response = c.patch(path, json=body, headers=headers)
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "validation_error"
+        assert response.json()["error"]["message"] == message
+    assert c.get(path).json() == saved.json()

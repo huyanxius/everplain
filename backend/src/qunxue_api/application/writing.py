@@ -272,6 +272,25 @@ class WritingApplication:
             execution_fence=execution_fence, creation_observer=creation_observer,
         )
 
+    def save_document(self, user_id, document_id, key, data):
+        """Save supplied changes under the existing retry identity and transaction."""
+        changes = {k: v for k, v in data.items() if k != "expected_version"}
+        if "title" in changes and not changes["title"].strip():
+            raise ValueError("标题不能为空")
+        if not changes:
+            raise ValueError("没有要保存的修改")
+        return self.mutate(
+            user_id, key, f"document:update:{document_id}", data,
+            lambda: self.repository.update(user_id, document_id, data["expected_version"], changes),
+        )
+
+    def resolve_revision(self, user_id, document_id, revision_id, key, data):
+        """Resolve once; start reserves the write before repository eligibility checks."""
+        return self.mutate(
+            user_id, key, f"revision:resolve:{document_id}:{revision_id}", data,
+            lambda: self.repository.resolve(user_id, document_id, revision_id, **data),
+        )
+
     def mutate(self, user_id, key, target, payload, action):
         digest = sha256(
             json.dumps({"target": target, "payload": payload}, sort_keys=True, default=str).encode()
