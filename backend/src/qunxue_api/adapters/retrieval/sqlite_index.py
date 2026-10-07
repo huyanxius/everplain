@@ -179,47 +179,64 @@ class SqliteRetrievalIndex:
         document_kind: str | None,
         limit: int,
     ) -> tuple[VectorSearchHit, ...]:
-        manifest = self.get_manifest(retrieval_index_id)
+        try:
+            manifest = self.get_manifest(retrieval_index_id)
+        except sqlite3.Error as error:
+            raise RetrievalIndexUnavailable("retrieval index storage is unavailable") from error
         if manifest.knowledge_release_id != knowledge_release_id:
             raise RetrievalIndexMismatch("retrieval index belongs to a different knowledge release")
-        values = tuple(float(value) for value in query_vector)
+        if not isinstance(manifest.vector_dimension, int) or manifest.vector_dimension < 1:
+            raise RetrievalIndexUnavailable("stored vector dimension is invalid")
+        try:
+            values = tuple(float(value) for value in query_vector)
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError("query vector must contain finite numbers") from error
         if len(values) != manifest.vector_dimension:
             raise RetrievalIndexMismatch("query vector dimension does not match index")
-        query_norm = math.sqrt(sum(value * value for value in values))
-        if query_norm == 0:
-            raise ValueError("query vector must not be zero")
+        try:
+            values = _unit_vector(values, dimension=manifest.vector_dimension)
+        except ValueError as error:
+            raise ValueError(f"query {error}") from error
         safe_limit = max(1, limit)
         where = "retrieval_index_id = ?"
         parameters: list[object] = [retrieval_index_id]
         if document_kind is not None:
             where += " AND document_kind = ?"
             parameters.append(document_kind)
-        with self._connect() as connection:
-            rows = connection.execute(
-                f"""
-                SELECT
-                    chunk_id,
-                    document_kind,
-                    knowledge_id,
-                    theory_id,
-                    content_version,
-                    content_hash,
-                    title,
-                    text,
-                    source_ids_json,
-                    vector
-                FROM retrieval_points
-                WHERE {where}
-                """,
-                parameters,
-            ).fetchall()
-        hits = [
-            VectorSearchHit(
-                chunk=_chunk_from_row(row),
-                score=_cosine_similarity(values, _unpack_vector(row[9])),
-            )
-            for row in rows
-        ]
+        try:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    f"""
+                    SELECT
+                        chunk_id,
+                        document_kind,
+                        knowledge_id,
+                        theory_id,
+                        content_version,
+                        content_hash,
+                        title,
+                        text,
+                        source_ids_json,
+                        vector
+                    FROM retrieval_points
+                    WHERE {where}
+                    """,
+                    parameters,
+                ).fetchall()
+        except sqlite3.Error as error:
+            raise RetrievalIndexUnavailable("retrieval index storage is unavailable") from error
+        try:
+            hits = [
+                VectorSearchHit(
+                    chunk=_chunk_from_row(row),
+                    score=_cosine_similarity(
+                        values, _unpack_vector(row[9], dimension=manifest.vector_dimension)
+                    ),
+                )
+                for row in rows
+            ]
+        except (TypeError, ValueError, OverflowError) as error:
+            raise RetrievalIndexUnavailable("stored retrieval point is invalid") from error
         return tuple(sorted(hits, key=lambda item: (-item.score, item.chunk.chunk_id))[:safe_limit])
 
     def list_chunks(
@@ -436,18 +453,41 @@ def _pack_vector(vector: Sequence[float]) -> bytes:
     return struct.pack(f"<{len(vector)}f", *vector)
 
 
-def _unpack_vector(value: bytes) -> tuple[float, ...]:
-    if len(value) % 4:
-        raise RetrievalIndexUnavailable("stored vector has an invalid byte length")
-    return struct.unpack(f"<{len(value) // 4}f", value)
+def _unit_vector(values: Sequence[float], *, dimension: int) -> tuple[float, ...]:
+    numbers = tuple(float(value) for value in values)
+    if len(numbers) != dimension:
+        raise ValueError("vector dimension does not match index")
+    if not numbers or any(not math.isfinite(value) for value in numbers):
+        raise ValueError("vector must contain finite numbers")
+    scale = max(abs(value) for value in numbers)
+    if scale == 0:
+        raise ValueError("vector must not be zero")
+    # Scale before taking a norm: finite float64 queries can otherwise overflow
+    # when squared, or underflow to zero, despite having a valid direction.
+    scaled = tuple(value / scale for value in numbers)
+    norm = math.hypot(*scaled)
+    return tuple(value / norm for value in scaled)
+
+
+def _unpack_vector(value: bytes, *, dimension: int) -> tuple[float, ...]:
+    if not isinstance(value, bytes) or len(value) != dimension * 4:
+        raise RetrievalIndexUnavailable("stored vector has an invalid byte length or type")
+    values = struct.unpack(f"<{dimension}f", value)
+    # Zero stored vectors have historically contributed a neutral score. Keep
+    # that contract; only a zero query lacks a direction for the whole search.
+    if all(number == 0 for number in values):
+        return values
+    try:
+        return _unit_vector(values, dimension=dimension)
+    except (TypeError, ValueError, OverflowError) as error:
+        raise RetrievalIndexUnavailable("stored vector is invalid") from error
 
 
 def _cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
-    right_norm = math.sqrt(sum(value * value for value in right))
-    if right_norm == 0:
-        return 0.0
-    left_norm = math.sqrt(sum(value * value for value in left))
-    return sum(a * b for a, b in zip(left, right, strict=True)) / (left_norm * right_norm)
+    """Compare validated unit vectors, bounding floating-point rounding only."""
+
+    score = math.fsum(a * b for a, b in zip(left, right, strict=True))
+    return max(-1.0, min(1.0, score))
 
 
 def _chunk_from_row(row: sqlite3.Row | tuple[object, ...]) -> RetrievalChunk:
