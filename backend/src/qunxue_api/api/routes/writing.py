@@ -206,18 +206,9 @@ def update_document(
     app: Application,
     key: IdempotencyKey,
 ):
-    user_id, data = current.user.user_id, payload.model_dump(mode="json", exclude_none=True)
-    changes = {k: v for k, v in data.items() if k != "expected_version"}
-    if "title" in changes and not changes["title"].strip():
-        raise ValueError("标题不能为空")
-    if not changes:
-        raise ValueError("没有要保存的修改")
-    return app.mutate(
-        user_id,
-        key,
-        f"document:update:{document_id}",
-        data,
-        lambda: app.repository.update(user_id, document_id, payload.expected_version, changes),
+    return app.save_document(
+        current.user.user_id, document_id, key,
+        payload.model_dump(mode="json", exclude_none=True),
     )
 
 
@@ -259,11 +250,6 @@ def resolve(
     app: Application,
     key: IdempotencyKey,
 ):
-    user_id, data = current.user.user_id, payload.model_dump(mode="json")
-    return app.mutate(
-        user_id,
-        key,
-        f"revision:resolve:{document_id}:{revision_id}",
-        data,
-        lambda: app.repository.resolve(user_id, document_id, revision_id, **data),
+    return app.resolve_revision(
+        current.user.user_id, document_id, revision_id, key, payload.model_dump(mode="json"),
     )
