@@ -2,8 +2,69 @@
 
 from uuid import uuid4
 
+import pytest
 from test_research_material_api import _authenticate
 from test_shared_knowledge_api import create_library, mutation, upload
+
+
+@pytest.mark.parametrize(
+    ("path", "method"),
+    [
+        ("/api/agent/turns", "POST"),
+        (
+            "/api/shared-knowledge-bases/00000000-0000-0000-0000-000000000001"
+            "/documents/00000000-0000-0000-0000-000000000002/knowledge",
+            "PUT",
+        ),
+    ],
+)
+def test_configured_frontend_origin_can_preflight_mutations(
+    plain_client,
+    path: str,
+    method: str,
+) -> None:
+    origin = plain_client.app.state.settings.cors_allowed_origins[0]
+    response = plain_client.options(
+        path,
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": method,
+            "Access-Control-Request-Headers": "content-type,idempotency-key",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+    assert response.headers["access-control-allow-credentials"] == "true"
+    assert "origin" in response.headers["vary"].lower()
+    assert method in response.headers["access-control-allow-methods"].split(", ")
+    assert {"content-type", "idempotency-key"} <= {
+        header.strip().lower()
+        for header in response.headers["access-control-allow-headers"].split(",")
+    }
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["http://localhost.evil.example.test:5196", "https://unconfigured.example.test"],
+)
+def test_unconfigured_origin_cannot_preflight_knowledge_put(
+    plain_client,
+    origin: str,
+) -> None:
+    response = plain_client.options(
+        "/api/shared-knowledge-bases/00000000-0000-0000-0000-000000000001"
+        "/documents/00000000-0000-0000-0000-000000000002/knowledge",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "PUT",
+            "Access-Control-Request-Headers": "content-type,idempotency-key",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
+    assert "origin" in response.headers["vary"].lower()
 
 
 def test_private_library_ignores_membership_without_explicit_sharing(plain_client):
@@ -109,10 +170,15 @@ def test_upload_refuses_file_and_text_budgets(plain_client):
 
 
 def test_knowledge_edits_validate_source_and_relations(plain_client):
-    from qunxue_api.adapters.sqlite.shared_knowledge import SharedDocumentRow
+    from qunxue_api.adapters.sqlite.shared_knowledge import (
+        SharedDocumentRow,
+        SharedKnowledgeBaseRow,
+        SharedKnowledgeSubscriptionRow,
+    )
 
     client = plain_client
     _authenticate(client)
+    owner_cookies = dict(client.cookies)
     kb = create_library(client)
     doc = upload(client, kb["id"], "A durable knowledge base stores sources.")
     path = f"/api/shared-knowledge-bases/{kb['id']}/documents/{doc['id']}"
@@ -152,13 +218,45 @@ def test_knowledge_edits_validate_source_and_relations(plain_client):
         ).status_code
         == 422
     )
-    saved = mutation(client, "put", f"{path}/knowledge", json=payload)
+    # A direct HTTP mutation is separate from browser preflight authorization.
+    origin = client.app.state.settings.cors_allowed_origins[0]
+
+    def edit(value):
+        return client.put(
+            f"{path}/knowledge",
+            json=value,
+            headers={"Origin": origin, "Idempotency-Key": str(uuid4())},
+        )
+
+    saved = edit(payload)
     assert saved.status_code == 200, saved.text
-    assert saved.json()["knowledge"]["summary"] == "Personal notes"
+    assert saved.headers["access-control-allow-origin"] == origin
+    assert saved.headers["access-control-allow-credentials"] == "true"
+    assert "origin" in saved.headers["vary"].lower()
+    assert saved.json()["knowledge"] == payload
     assert saved.json()["knowledge_status"] == "ready"
+    assert client.get(f"{path}/source").json()["document"]["knowledge"] == payload
+
+    denied_payload = {**payload, "summary": "Unauthorized change"}
     client.cookies.clear()
-    _authenticate(client)
-    assert mutation(client, "put", f"{path}/knowledge", json=payload).status_code == 404
+    assert edit(denied_payload).status_code == 401
+    reader = _authenticate(client)
+    assert edit(denied_payload).status_code == 404
+    # Seed an existing legacy reader only in the synthetic database.
+    with client.app.state.shared_knowledge_scope() as application:
+        row = application.repository.session.get(SharedKnowledgeBaseRow, kb["id"])
+        row.sharing_enabled = True
+        application.repository.session.add(
+            SharedKnowledgeSubscriptionRow(
+                user_id=reader["user"]["user_id"], knowledge_base_id=kb["id"]
+            )
+        )
+        application.repository.commit()
+    assert client.get(f"{path}/source").status_code == 200
+    assert edit(denied_payload).status_code == 403
+    client.cookies.clear()
+    client.cookies.update(owner_cookies)
+    assert client.get(f"{path}/source").json()["document"]["knowledge"] == payload
 
 
 def test_storage_budget_is_atomic_for_concurrent_uploads(plain_client):
