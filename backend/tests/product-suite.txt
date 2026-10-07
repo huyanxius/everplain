@@ -102,6 +102,7 @@ tests/test_channel_gateway_migration.py
 tests/test_writing.py
 tests/test_writing_agent_tools.py
 tests/test_writing_edit_boundary.py
+tests/test_writing_sample_queries.py
 tests/test_writing_preview_stream.py
 tests/test_writing_preview_native_protocol.py
 tests/test_writing_preview_journal.py
