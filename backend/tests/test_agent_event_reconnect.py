@@ -61,9 +61,36 @@ def event_parts(frame):
             json.loads(next(line[6:] for line in lines if line.startswith("data: "))))
 
 
-def test_disconnect_and_two_cursor_subscribers_do_not_execute_again(client):
+@pytest.mark.parametrize("observe_terminal_commit", [False, True])
+def test_disconnect_and_two_cursor_subscribers_do_not_execute_again(
+    client, monkeypatch, observe_terminal_commit,
+):
     runner, request, current, database = setup_runtime(client)
     key = "disconnect-and-multi-subscribe"
+    publication_snapshots = []
+    if observe_terminal_commit:
+        from sqlalchemy import text
+
+        append = SqliteConversationRepository._append_output_event
+
+        def observe_before_terminal(repo, **kwargs):
+            if kwargs["name"] == "turn_completed":
+                # A different SQLite connection cannot see the canonical
+                # terminal before its real cursor exists, even without a local
+                # publisher registry (as after reconnect in another process).
+                with database.engine.connect() as observer:
+                    row = observer.execute(text(
+                        "SELECT status,last_event_sequence FROM agent_runs WHERE run_id=:id"
+                    ), {"id": str(kwargs["run_id"])}).one()
+                    terminal_count = observer.scalar(text(
+                        "SELECT count(*) FROM agent_output_events "
+                        "WHERE run_id=:id AND name='turn_completed'"
+                    ), {"id": str(kwargs["run_id"])})
+                    publication_snapshots.append((*row, terminal_count))
+            return append(repo, **kwargs)
+
+        monkeypatch.setattr(SqliteConversationRepository, "_append_output_event",
+                            observe_before_terminal)
 
     async def exercise():
         response = stream_agent_turn(AgentTurnRequest(message="问题"), request, current, key)
@@ -121,6 +148,8 @@ def test_disconnect_and_two_cursor_subscribers_do_not_execute_again(client):
             runner.release.set()
 
     asyncio.run(exercise())
+    if observe_terminal_commit:
+        assert publication_snapshots == [("running", 4, 0)]
 
 
 def test_lost_initial_response_still_executes_once_and_lookup_can_reconcile(client):
@@ -349,15 +378,22 @@ def test_runtime_checkpoint_keeps_active_tool_write_rollbackable(client):
                      idempotency_key="active-tool-rollback", on_delta=delivered)
 
 
-def test_missing_terminal_journal_preserves_committed_completed_turn(client, monkeypatch):
+def test_missing_terminal_journal_preserves_committed_completed_turn(client, monkeypatch, caplog):
     """A journal outage cannot turn a successfully committed answer into a failure."""
     from sqlalchemy.exc import OperationalError
+
+    from qunxue_api.application import disciplinary_agent as agent_application
+
+    # Alembic's test database logging setup disables pre-imported loggers.
+    # Capture the diagnostic through the application's real logger in this test.
+    monkeypatch.setattr(agent_application.logger, "disabled", False)
+    caplog.set_level("ERROR", logger=agent_application.__name__)
 
     from qunxue_api.api.routes.agent import _TERMINAL_EVENT_NAMES
 
     runner, request, current, database = setup_runtime(client)
     runner.release.set()
-    original = SqliteConversationRepository.append_output_event
+    original = SqliteConversationRepository._append_output_event
     failed_names = []
 
     def fail_terminal(repo, **kwargs):
@@ -366,7 +402,7 @@ def test_missing_terminal_journal_preserves_committed_completed_turn(client, mon
             raise OperationalError("terminal journal", {}, RuntimeError("injected outage"))
         return original(repo, **kwargs)
 
-    monkeypatch.setattr(SqliteConversationRepository, "append_output_event", fail_terminal)
+    monkeypatch.setattr(SqliteConversationRepository, "_append_output_event", fail_terminal)
 
     async def exercise():
         response = stream_agent_turn(AgentTurnRequest(message="问题"), request, current,
@@ -378,11 +414,332 @@ def test_missing_terminal_journal_preserves_committed_completed_turn(client, mon
         assert "".join(body["delta"] for _, name, body in frames
                        if name == "assistant_delta") == "原文A原文B"
         assert runner.calls == 1
+        assert not any(name == "output_persistence_failed" for _, name, _ in frames)
+        assert frames[-1][0] is None  # A storage outage never invents a durable cursor.
 
     asyncio.run(exercise())
-    assert failed_names == ["turn_completed", "turn_failed"]
+    assert failed_names == ["turn_completed"]
+    assert "Agent terminal journal transaction failed" in caplog.text
     with database.session() as session:
         saved = SqliteConversationRepository(session).find_run(
             user_id=current.user.user_id, idempotency_key="completed-without-terminal-journal",
         )
         assert saved.status == "completed"
+        events = SqliteConversationRepository(session).read_output_events(
+            user_id=current.user.user_id, run_id=saved.run_id,
+        )
+        assert not any(event.name in _TERMINAL_EVENT_NAMES for event in events)
+        assert saved.output_attempts[0].answer == "原文A原文B"
+@pytest.mark.parametrize("outcome", ["completed", "failed", "interrupted", "awaiting", "length"])
+def test_no_committed_terminal_state_without_real_terminal_event(client, monkeypatch, outcome):
+    from sqlalchemy import event, text
+    from sqlalchemy.orm import Session
+    from test_agent_delivery_output_state import Billing, ReceiptScope
+
+    from qunxue_api.api.routes import agent
+    from qunxue_api.modules.agent_conversation import AgentInterrupted, AgentResearchEvent
+
+    TERMINALS = agent._TERMINAL_EVENT_NAMES
+    uid = registered_user(client)
+    db = client.app.state.database
+    key = "independent-commit-atomic-" + outcome
+    seen = []
+    worker_done = threading.Event()
+    calls = []
+    financial_order = []
+
+    class Runner:
+        def prepare_research(self, *, on_event, **kwargs):
+            if outcome == "awaiting":
+                on_event(AgentResearchEvent(kind="plan", payload={"title": "Synthetic plan"}))
+
+        def run_stream(self, *, on_delta, **kwargs):
+            calls.append("model")
+            on_delta("independent durable body")
+            if outcome == "failed":
+                raise RuntimeError("synthetic failure")
+            if outcome == "interrupted":
+                raise AgentInterrupted("synthetic stop")
+            return AgentRunResult(
+                answer="canonical answer",
+                citations=(),
+                release_id="release-a",
+                provider="test",
+                model="test",
+            )
+
+    class Receipt(ReceiptScope):
+        def finish(self, result):
+            if result == "error" and outcome == "length":
+                with db.engine.connect() as conn:
+                    row = conn.execute(
+                        text("SELECT status FROM agent_runs WHERE idempotency_key=:key"),
+                        {"key": key},
+                    ).first()
+                    financial_order.append(row[0] if row else None)
+            return super().finish(result)
+
+    receipt = Receipt(
+        {
+            "output_finish_reason": "truncated" if outcome == "length" else "complete",
+            "usage_status": "known",
+            "settlement_status": "settled",
+            "receipt_persistence": "saved",
+        }
+    )
+
+    @contextmanager
+    def scope():
+        with db.session() as session:
+            yield DisciplinaryAgentApplication(
+                conversations=ConversationService(SqliteConversationRepository(session)),
+                runner=Runner(),
+                tools_factory=Tools,
+                rollback=session.rollback,
+                billing=Billing(receipt) if outcome == "length" else None,
+            )
+
+    client.app.state.disciplinary_agent_scope = scope
+    request = SimpleNamespace(app=client.app, headers={})
+    current = SimpleNamespace(user=SimpleNamespace(user_id=uid))
+    release = agent._release_active_run
+
+    def mark_done(*args):
+        release(*args)
+        worker_done.set()
+
+    monkeypatch.setattr(agent, "_release_active_run", mark_done)
+
+    def observe_commit(session):
+        if session.get_bind() is not db.engine:
+            return
+        with db.engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT run_id, status, lease_token, last_event_sequence "
+                    "FROM agent_runs WHERE user_id=:uid AND idempotency_key=:key"
+                ),
+                {"uid": str(uid), "key": key},
+            ).all()
+            for rid, status, attempt, cursor in rows:
+                if status == "running":
+                    continue
+                events = conn.execute(
+                    text(
+                        "SELECT sequence, name FROM agent_output_events "
+                        "WHERE run_id=:rid AND attempt_id=:attempt ORDER BY sequence"
+                    ),
+                    {"rid": rid, "attempt": attempt},
+                ).all()
+                seen.append((status, cursor, tuple(events)))
+
+    event.listen(Session, "after_commit", observe_commit)
+
+    async def collect():
+        stream = agent.stream_agent_turn(
+            AgentTurnRequest(
+                message="Synthetic outcome",
+                mode="deep_research" if outcome == "awaiting" else "standard",
+            ),
+            request,
+            current,
+            key,
+        )
+        frames = [
+            event_parts(frame) async for frame in stream.body_iterator if not frame.startswith(":")
+        ]
+        assert await asyncio.to_thread(worker_done.wait, 3)
+        return frames
+
+    try:
+        frames = asyncio.run(asyncio.wait_for(collect(), 6))
+    finally:
+        event.remove(Session, "after_commit", observe_commit)
+    assert seen, "Observer must see the committed terminal state."
+    gaps = [
+        (status, cursor, events)
+        for status, cursor, events in seen
+        if not any(name in TERMINALS for _, name in events)
+    ]
+    assert not gaps, f"Canonical terminal was externally committed before its real event: {gaps}"
+    assert len(calls) == (0 if outcome == "awaiting" else 1)
+    assert len([e for e in seen[-1][2] if e[1] in TERMINALS]) == 1
+    assert frames[-1][0] is not None, "Terminal has a real durable cursor."
+    if outcome == "length":
+        assert financial_order == ["running"], (
+            "Streaming finance closes without holding the final logical writer."
+        )
+
+
+@pytest.mark.parametrize(
+    "events",
+    [
+        (),
+        (("assistant_delta", {"delta": "must stay independent"}),),
+        (("turn_completed", {}), ("turn_failed", {})),
+        (("turn_completed", []),),
+        (("turn_completed",),),
+        (("agent_delivery_state", {}),),
+    ],
+)
+def test_terminal_batch_rejects_missing_or_ambiguous_terminal(events):
+    from qunxue_api.modules.agent_conversation import AgentTerminalEventBatch
+
+    with pytest.raises(ValueError):
+        AgentTerminalEventBatch(events)
+
+
+@pytest.mark.parametrize("repository_kind", ["sqlite", "memory"])
+def test_terminal_batch_replay_and_rejected_owner_never_advance_cursor(client, repository_kind):
+    from qunxue_api.modules.agent_conversation import AgentTerminalEventBatch
+
+    runner, request, current, database = setup_runtime(client)
+    user_id = current.user.user_id
+    key = "terminal-batch-fences"
+
+    @contextmanager
+    def repository_scope():
+        if repository_kind == "memory":
+            yield ConversationService.in_memory()._repository
+        else:
+            with database.session() as session:
+                yield SqliteConversationRepository(session)
+
+    with repository_scope() as repo:
+        service = ConversationService(repo)
+        conversation = service.create_conversation(user_id=user_id, title="terminal batch")
+        run = service.start_run(
+            user_id=user_id,
+            conversation_id=conversation.conversation_id,
+            idempotency_key=key,
+            knowledge_release_id="release-a",
+        )
+        service.finish_run(run_id=run.run_id, lease_token=run.lease_token, status="failed")
+        body = (
+            ("agent_delivery_state", {"usage_status": "pending"}),
+            ("citation_added", {"citation_id": "actual-citation"}),
+            ("turn_failed", {"code": "test_failure"}),
+        )
+        first = service.append_terminal_events(
+            user_id=user_id,
+            run_id=run.run_id,
+            attempt_id=run.lease_token,
+            batch=AgentTerminalEventBatch(body),
+        )
+        assert [event.sequence for event in first] == [1, 2, 3]
+        assert tuple((event.name, event.payload) for event in first) == body
+        service.commit()
+        for name in AgentTerminalEventBatch.terminal_names:
+            assert (
+                service.append_terminal_events(
+                    user_id=user_id,
+                    run_id=run.run_id,
+                    attempt_id=run.lease_token,
+                    batch=AgentTerminalEventBatch(
+                        (
+                            ("agent_delivery_state", {"wrong": "duplicate"}),
+                            (name, {}),
+                        )
+                    ),
+                )
+                == ()
+            )
+        for owner, attempt in ((UUID(int=987), run.lease_token), (user_id, "stale")):
+            assert (
+                service.append_terminal_events(
+                    user_id=owner,
+                    run_id=run.run_id,
+                    attempt_id=attempt,
+                    batch=AgentTerminalEventBatch((("turn_failed", {}),)),
+                )
+                is None
+            )
+        assert service.read_output_events(user_id=user_id, run_id=run.run_id) == first
+        assert service.find_run_by_id(user_id=user_id, run_id=run.run_id).last_event_sequence == 3
+
+
+def test_canonical_preflush_error_is_not_a_terminal_journal_outage(client, monkeypatch):
+    from qunxue_api.modules.agent_conversation import (
+        AgentTerminalEventBatch,
+        AgentTerminalJournalFailure,
+    )
+
+    database = client.app.state.database
+    with database.session() as session:
+        repo = SqliteConversationRepository(session)
+
+        def failed_flush(*args, **kwargs):
+            raise RuntimeError("canonical flush failure")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(session, "flush", failed_flush)
+            with pytest.raises(RuntimeError, match="canonical flush failure") as caught:
+                repo.append_terminal_events(
+                    user_id=UUID(int=1),
+                    run_id=UUID(int=2),
+                    attempt_id="old",
+                    batch=AgentTerminalEventBatch((("turn_failed", {}),)),
+                )
+            assert not isinstance(caught.value, AgentTerminalJournalFailure)
+
+
+@pytest.mark.parametrize("failure_stage", ["billing_open", "tool_binding"])
+@pytest.mark.parametrize("journal_failure", [False, True])
+def test_failure_before_run_started_keeps_its_original_terminal_identity(
+    client, monkeypatch, failure_stage, journal_failure,
+):
+    from sqlalchemy.exc import OperationalError
+
+    runner, request, current, database = setup_runtime(client)
+    original_scope = request.app.state.disciplinary_agent_scope
+    key = "failure-before-start-callback"
+
+    class BrokenBilling:
+        def open(self, **kwargs):
+            raise RuntimeError("synthetic billing admission failure")
+
+    class BrokenTools(Tools):
+        def bind_agent_context(self, **kwargs):
+            raise RuntimeError("synthetic tool binding failure")
+
+    @contextmanager
+    def failing_scope():
+        with original_scope() as app:
+            if failure_stage == "billing_open":
+                app._billing = BrokenBilling()
+            else:
+                app._tools_factory = BrokenTools
+            yield app
+
+    request.app.state.disciplinary_agent_scope = failing_scope
+    if journal_failure:
+        append = SqliteConversationRepository._append_output_event
+
+        def fail_terminal(repo, **kwargs):
+            if kwargs["name"] == "turn_failed":
+                raise OperationalError("terminal INSERT", {}, RuntimeError("synthetic outage"))
+            return append(repo, **kwargs)
+
+        monkeypatch.setattr(SqliteConversationRepository, "_append_output_event", fail_terminal)
+
+    async def collect(response):
+        return [event_parts(frame) async for frame in response.body_iterator]
+
+    response = stream_agent_turn(AgentTurnRequest(message="问题"), request, current, key)
+    frames = asyncio.run(asyncio.wait_for(collect(response), timeout=3))
+    assert len(frames) == 1 and frames[0][1] == "turn_failed"
+    assert frames[0][2]["code"] == "agent_unavailable"
+    assert runner.calls == 0
+    with database.session() as session:
+        repo = SqliteConversationRepository(session)
+        run = repo.find_run(user_id=current.user.user_id, idempotency_key=key)
+        assert run.status == "failed" and not run.partial_answer
+        assert run.output_attempts[0].answer == ""
+        journal = repo.read_output_events(user_id=current.user.user_id, run_id=run.run_id)
+    if journal_failure:
+        assert frames[0][0] is None and journal == ()
+    else:
+        assert len(journal) == 1 and frames[0][0] == f"{run.run_id}:1"
+        replay = subscribe_agent_run_events(run.run_id, request, current, after=0)
+        assert asyncio.run(asyncio.wait_for(collect(replay), timeout=3)) == frames
+    assert runner.calls == 0

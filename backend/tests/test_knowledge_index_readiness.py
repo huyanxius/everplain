@@ -133,7 +133,7 @@ def readiness_terminal_gap(request, monkeypatch):
     def delayed_failure(error):
         if find_knowledge_index_choice(error) is not None:
             failure_ready.set()
-            assert publish_allowed.wait(5), "subscriber never observed committed failure"
+            assert publish_allowed.wait(5), "subscriber never observed uncommitted terminal"
         return original_failure(error)
 
     def released(*args, **kwargs):
@@ -146,8 +146,8 @@ def readiness_terminal_gap(request, monkeypatch):
         events = original_read(app, **kwargs)
         if failure_ready.is_set() and not events and not observations:
             run = app.find_run_by_id(user_id=kwargs["user_id"], run_id=kwargs["run_id"])
-            assert run.status == "failed"
-            observations.append("failed run read with empty terminal journal")
+            assert run.status == "running"
+            observations.append("running run read before atomic terminal commit")
             publish_allowed.set()
             assert worker_finished.wait(5), "publisher failed to finish"
             # Return the real SQLite snapshot read before publication completed.
@@ -159,7 +159,7 @@ def readiness_terminal_gap(request, monkeypatch):
     monkeypatch.setattr(DisciplinaryAgentApplication, "read_output_events", read_before_publish)
     try:
         yield
-        assert observations == ["failed run read with empty terminal journal"]
+        assert observations == ["running run read before atomic terminal commit"]
     finally:
         publish_allowed.set()
 

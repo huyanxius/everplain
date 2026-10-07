@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 from collections.abc import Callable
@@ -20,6 +21,8 @@ from qunxue_api.modules.agent_conversation import (
     AgentResearchEvent,
     AgentRunResult,
     AgentRuntimeIdentity,
+    AgentTerminalEventBatch,
+    AgentTerminalJournalFailure,
     AgentToolContext,
     AgentToolEvent,
     AgentTurn,
@@ -39,6 +42,8 @@ from qunxue_api.modules.agent_conversation import (
 from qunxue_api.modules.billing import BillingFailure, BillingOperations, CreditService
 from qunxue_api.modules.shared_knowledge import find_knowledge_index_choice
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True, slots=True)
 class AgentTurnExecution:
@@ -51,6 +56,8 @@ class AgentTurnExecution:
     pending_research: dict[str, object] | None = None
     delivery_state: dict[str, object] = field(default_factory=dict)
     incomplete_reason: str | None = None
+    terminal_journaled: bool = False
+    terminal_journal_failed: bool = False
 
 
 class DisciplinaryAgentApplication:
@@ -292,6 +299,10 @@ class DisciplinaryAgentApplication:
         on_tool_event: Callable[[AgentToolEvent], None] | None = None,
         on_writing_preview: Callable[[AgentWritingPreviewEvent], None] | None = None,
         on_research_event: Callable[[AgentResearchEvent], None] | None = None,
+        terminal_events: Callable[
+            [AgentTurnExecution | None, Exception | None],
+            AgentTerminalEventBatch,
+        ] | None = None,
         is_cancelled: Callable[[], bool] | None = None,
     ) -> AgentTurnExecution:
         if not prompt.strip():
@@ -629,6 +640,66 @@ class DisciplinaryAgentApplication:
         last_cancel_check = 0.0
         persisted_cancelled = False
 
+        def journal_terminal(execution=None, error=None):
+            if terminal_events is None:
+                return execution
+            if error is not None:
+                # Admission/finance/tool binding can fail before on_run_started.
+                # Keep this exact attempt available to the initial subscriber.
+                error.agent_terminal_identity = {
+                    "run_id": run.run_id, "conversation_id": run.conversation_id,
+                    "attempt_id": run.lease_token,
+                }
+            try:
+                batch = terminal_events(execution, error)
+            except Exception:
+                logger.exception("Agent terminal event projection failed")
+            else:
+                try:
+                    recorded = self._conversations.append_terminal_events(
+                        user_id=user_id, run_id=run.run_id, attempt_id=run.lease_token,
+                        batch=batch,
+                    )
+                except AgentTerminalJournalFailure:
+                    # Only the journal savepoint failed. A canonical business
+                    # flush/commit failure is deliberately not caught here.
+                    logger.exception("Agent terminal journal transaction failed")
+                else:
+                    if recorded is None:
+                        raise AgentInterrupted("Agent execution lease was replaced")
+                    if error is not None:
+                        error.agent_terminal_journaled = True
+                        return None
+                    return replace(execution, terminal_journaled=True)
+            if error is not None:
+                error.agent_terminal_journal_failed = True
+                return None
+            return replace(execution, terminal_journal_failed=True)
+
+        def completed_execution(turn_result, result, summary):
+            # This read cannot recover/commit other runs while finalization is
+            # atomic. Use the repository-facing domain read, not get_conversation.
+            refreshed = self._conversations.get_conversation(
+                user_id=user_id, conversation_id=conversation.conversation_id,
+            )
+            if isinstance(turn_result, IdempotentTurn):
+                replayed_turn = _find_turn(refreshed, turn_result.turn_id)
+                if replayed_turn is None:
+                    raise RuntimeError("idempotent Agent run is missing its persisted turn")
+                return AgentTurnExecution(
+                    conversation=refreshed, run_id=run.run_id,
+                    result=_result_from_turn(
+                        replayed_turn,
+                        release_id=run.knowledge_release_id or tools.release.knowledge_release_id,
+                        provider=run.provider, model=run.model,
+                    ), turn=replayed_turn, replayed=True, tool_summary=saved_summary(),
+                )
+            return AgentTurnExecution(
+                conversation=refreshed, run_id=run.run_id, result=result,
+                turn=turn_result, replayed=False, tool_summary=summary,
+                delivery_state=_delivery_state(billing_context),
+            )
+
         def owns_run() -> bool:
             latest = self._conversations.find_run_by_id(user_id=user_id, run_id=run.run_id)
             return (
@@ -713,6 +784,7 @@ class DisciplinaryAgentApplication:
                 on_delta(delta)
 
         billing_context = None
+        failure_settlement_attempted = False
         try:
             if self._billing is not None:
                 self._conversations.commit()
@@ -960,26 +1032,27 @@ class DisciplinaryAgentApplication:
                                     self._credits.release(user_id=user_id, run_id=run.run_id)
                                 if billing_context is not None:
                                     billing_context.finish("paused")
-                            self._conversations.commit()
-                            return AgentTurnExecution(
-                                conversation=current,
-                                run_id=run.run_id,
-                                result=AgentRunResult(
-                                    answer="",
-                                    citations=(),
-                                    release_id=(
-                                        run.knowledge_release_id
-                                        or tools.release.knowledge_release_id
+                                execution = journal_terminal(AgentTurnExecution(
+                                    conversation=current,
+                                    run_id=run.run_id,
+                                    result=AgentRunResult(
+                                        answer="",
+                                        citations=(),
+                                        release_id=(
+                                            run.knowledge_release_id
+                                            or tools.release.knowledge_release_id
+                                        ),
+                                        provider=run.provider,
+                                        model=run.model,
                                     ),
-                                    provider=run.provider,
-                                    model=run.model,
-                                ),
-                                turn=None,
-                                replayed=False,
-                                tool_summary=(pending,),
-                                pending_research=pending,
-                                delivery_state=_delivery_state(billing_context),
-                            )
+                                    turn=None,
+                                    replayed=False,
+                                    tool_summary=(pending,),
+                                    pending_research=pending,
+                                    delivery_state=_delivery_state(billing_context),
+                                ))
+                            self._conversations.commit()
+                            return execution
 
             def record_tool_event(event: AgentToolEvent) -> None:
                 with tool_events_lock:
@@ -1087,23 +1160,30 @@ class DisciplinaryAgentApplication:
             delivery_state = _delivery_state(billing_context)
             if delivery_state.get("output_finish_reason") == "truncated":
                 checkpoint(force=True)
+                if terminal_events is not None and billing_context is not None:
+                    failure_settlement_attempted = True
+                    billing_context.finish("error")
                 self._conversations.finish_run(
                     run_id=run.run_id, lease_token=run.lease_token, status="interrupted",
                     error="output_truncated", tool_summary=saved_summary(),
                 )
-                # Error/partial settlement uses the independent finance writer.
-                # Commit the completed logical-state update before asking it to
-                # close, so it cannot wait on our own SQLite write transaction.
-                self._conversations.commit()
-                if billing_context is not None:
-                    billing_context.finish("error")
-                return AgentTurnExecution(
-                    conversation=self.get_conversation(
+                if terminal_events is None:
+                    # Existing non-streaming callers retain their settlement order.
+                    self._conversations.commit()
+                    if billing_context is not None:
+                        billing_context.finish("error")
+                read_conversation = (self._conversations.get_conversation
+                                     if terminal_events is not None else self.get_conversation)
+                execution = journal_terminal(AgentTurnExecution(
+                    conversation=read_conversation(
                         user_id=user_id, conversation_id=conversation.conversation_id,
                     ), run_id=run.run_id, result=result, turn=None, replayed=False,
                     tool_summary=saved_summary(), delivery_state=_delivery_state(billing_context),
                     incomplete_reason="length",
-                )
+                ))
+                if terminal_events is not None:
+                    self._conversations.commit()
+                return execution
             citations = tuple(_agent_citation(item) for item in result.citations)
             evidence_ids = frozenset(tools.evidence)
             with self._atomic():
@@ -1151,7 +1231,11 @@ class DisciplinaryAgentApplication:
                         finalize_agent_turn(source_turn_id=turn_result.turn_id)
                 if billing_context is not None:
                     billing_context.finish("success")
-            if billing_context is not None:
+                if terminal_events is not None:
+                    execution = journal_terminal(completed_execution(
+                        turn_result, result, completed_tool_summary,
+                    ))
+            if billing_context is not None or terminal_events is not None:
                 self._conversations.commit()
         except Exception as error:
             if self._rollback is not None:
@@ -1173,6 +1257,17 @@ class DisciplinaryAgentApplication:
                     checkpoint(force=True)
                     if self._credits is not None:
                         self._credits.release(user_id=user_id, run_id=run.run_id)
+                    if terminal_events is not None:
+                        # Release all business writes before the independent
+                        # finance writer, then atomically publish its true state
+                        # with the logical outcome. No model/tool is called again.
+                        self._conversations.commit()
+                        if billing_context is not None and not failure_settlement_attempted:
+                            failure_settlement_attempted = True
+                            billing_context.finish(
+                                "cancelled" if isinstance(error, AgentInterrupted) else "error"
+                            )
+                        error.agent_delivery_state = _delivery_state(billing_context)
                     self._conversations.finish_run(
                         run_id=run.run_id,
                         lease_token=run.lease_token,
@@ -1180,13 +1275,16 @@ class DisciplinaryAgentApplication:
                         error=None if isinstance(error, AgentInterrupted) else str(error),
                         tool_summary=saved_summary(),
                     )
+                    journal_terminal(error=error)
                     self._conversations.commit()
             except BaseException:
                 if self._rollback is not None:
                     self._rollback()
                 raise
             finally:
-                if billing_context is not None:
+                if billing_context is not None and not (
+                    terminal_events is not None and failure_settlement_attempted
+                ):
                     billing_context.finish(
                         "cancelled" if isinstance(error, AgentInterrupted) else "error"
                     )
@@ -1195,6 +1293,8 @@ class DisciplinaryAgentApplication:
         finally:
             if billing_context is not None:
                 billing_context.__exit__(None, None, None)
+        if terminal_events is not None:
+            return execution
         if isinstance(turn_result, IdempotentTurn):
             refreshed = self.get_conversation(
                 user_id=user_id,

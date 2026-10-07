@@ -19,7 +19,11 @@ from qunxue_api.modules.agent_conversation.errors import (
     ConversationTaskBindingConflict,
     RunAlreadyActive,
 )
-from qunxue_api.modules.agent_conversation.ports import ConversationRepository
+from qunxue_api.modules.agent_conversation.ports import (
+    AgentTerminalEventBatch,
+    AgentTerminalJournalFailure,
+    ConversationRepository,
+)
 from qunxue_api.modules.agent_conversation.research_map import (
     aggregate_research_map,
     patches_from_tool_summary,
@@ -378,6 +382,26 @@ class _MemoryRepository:
         self.output_events.setdefault(run_id, []).append(event)
         return event
 
+    def append_terminal_events(
+        self, *, user_id: UUID, run_id: UUID, attempt_id: str,
+        batch: AgentTerminalEventBatch,
+    ) -> tuple[AgentOutputEvent, ...] | None:
+        run = self.find_run_by_id(user_id=user_id, run_id=run_id)
+        if run is None or run.lease_token != attempt_id or run.status == "running":
+            return None
+        previous_events = list(self.output_events.get(run_id, ()))
+        if any(item.attempt_id == attempt_id and item.name in batch.terminal_names
+               for item in previous_events):
+            return ()
+        try:
+            return tuple(self.append_output_event(
+                user_id=user_id, run_id=run_id, attempt_id=attempt_id, name=name, payload=payload,
+            ) for name, payload in batch.events)
+        except Exception as error:
+            self.runs[run_id] = run
+            self.output_events[run_id] = previous_events
+            raise AgentTerminalJournalFailure("Terminal publication rolled back") from error
+
     def read_output_events(
         self, *, user_id: UUID, run_id: UUID, after: int = 0, limit: int = 200,
     ) -> tuple[AgentOutputEvent, ...]:
@@ -616,6 +640,9 @@ class ConversationService:
 
     def append_output_event(self, **kwargs) -> AgentOutputEvent | None:
         return self._repository.append_output_event(**kwargs)
+
+    def append_terminal_events(self, **kwargs) -> tuple[AgentOutputEvent, ...] | None:
+        return self._repository.append_terminal_events(**kwargs)
 
     def read_output_events(self, **kwargs) -> tuple[AgentOutputEvent, ...]:
         return self._repository.read_output_events(**kwargs)

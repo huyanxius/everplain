@@ -26,6 +26,8 @@ from qunxue_api.modules.agent_conversation import (
     AgentOutputAttempt,
     AgentOutputEvent,
     AgentRun,
+    AgentTerminalEventBatch,
+    AgentTerminalJournalFailure,
     AgentTurn,
     CanvasEditConflict,
     Conversation,
@@ -718,6 +720,36 @@ class SqliteConversationRepository:
             )
             session.commit()
             return event
+
+    def append_terminal_events(
+        self, *, user_id: UUID, run_id: UUID, attempt_id: str,
+        batch: AgentTerminalEventBatch,
+    ) -> tuple[AgentOutputEvent, ...] | None:
+        # begin_nested flushes canonical writes BEFORE opening its savepoint.
+        # Let that failure propagate: only an error inside this savepoint is a
+        # journal-only outage that may preserve the canonical outcome.
+        with self._session.begin_nested() as publication:
+            try:
+                row = self._session.scalar(select(AgentRunRow).where(
+                    AgentRunRow.run_id == str(run_id), AgentRunRow.user_id == str(user_id),
+                    AgentRunRow.lease_token == attempt_id, AgentRunRow.status != "running",
+                ).execution_options(populate_existing=True))
+                if row is None:
+                    return None
+                existing = self._session.scalar(select(AgentOutputEventRow).where(
+                    AgentOutputEventRow.run_id == str(run_id),
+                    AgentOutputEventRow.attempt_id == attempt_id,
+                    AgentOutputEventRow.name.in_(batch.terminal_names),
+                ))
+                if existing is not None:
+                    return ()
+                return tuple(self._append_output_event(
+                    user_id=user_id, run_id=run_id, attempt_id=attempt_id,
+                    name=name, payload=payload,
+                ) for name, payload in batch.events)
+            except Exception as error:
+                publication.rollback()
+                raise AgentTerminalJournalFailure("Terminal publication rolled back") from error
 
     def _append_output_event(
         self, *, user_id: UUID, run_id: UUID, attempt_id: str,

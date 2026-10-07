@@ -1,7 +1,7 @@
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, Protocol
+from typing import ClassVar, Literal, Protocol
 from uuid import UUID
 
 from qunxue_api.modules.agent_conversation.domain import (
@@ -11,6 +11,32 @@ from qunxue_api.modules.agent_conversation.domain import (
     Conversation,
     IdempotentTurn,
 )
+
+
+class AgentTerminalJournalFailure(RuntimeError):
+    """Only terminal publication was rolled back; the enclosing outcome is valid."""
+
+
+@dataclass(frozen=True, slots=True)
+class AgentTerminalEventBatch:
+    events: tuple[tuple[str, dict[str, object]], ...]
+    terminal_names: ClassVar[frozenset[str]] = frozenset({
+        "turn_completed", "turn_failed", "turn_interrupted", "research_waiting",
+        "knowledge_index_choice_required",
+    })
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.events, tuple) or not self.events:
+            raise ValueError("A terminal batch must contain a terminal event")
+        for item in self.events:
+            if (not isinstance(item, tuple) or len(item) != 2
+                    or not isinstance(item[0], str) or not isinstance(item[1], dict)):
+                raise ValueError("Invalid terminal event envelope")
+        if self.events[-1][0] not in self.terminal_names or any(
+            name not in {"agent_delivery_state", "citation_added"}
+            for name, _payload in self.events[:-1]
+        ):
+            raise ValueError("A terminal batch must end with exactly one terminal event")
 
 
 class AgentRelease(Protocol):
@@ -248,6 +274,11 @@ class ConversationRepository(Protocol):
         self, *, user_id: UUID, run_id: UUID, attempt_id: str,
         name: str, payload: dict[str, object],
     ) -> AgentOutputEvent | None: ...
+
+    def append_terminal_events(
+        self, *, user_id: UUID, run_id: UUID, attempt_id: str,
+        batch: AgentTerminalEventBatch,
+    ) -> tuple[AgentOutputEvent, ...] | None: ...
 
     def read_output_events(
         self, *, user_id: UUID, run_id: UUID, after: int = 0, limit: int = 200,

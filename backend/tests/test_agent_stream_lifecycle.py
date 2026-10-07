@@ -369,3 +369,45 @@ def test_redacted_run_never_releases_unjournaled_terminal_details(status):
         assert "knowledge_index_choice_required" not in "".join(frames)
 
     asyncio.run(asyncio.wait_for(exercise(), timeout=2))
+
+
+def test_replaced_live_worker_cannot_emit_its_old_terminal_or_unsaved_body():
+    from qunxue_api.api.routes.agent import _subscribe_run_events
+
+    user_id = UUID(int=953)
+    service = ConversationService.in_memory()
+    conversation = service.create_conversation(user_id=user_id, title="replacement fence")
+    old = service.start_run(user_id=user_id, conversation_id=conversation.conversation_id,
+                            idempotency_key="replacement", knowledge_release_id="release-a")
+    service.finish_run(run_id=old.run_id, lease_token=old.lease_token, status="interrupted")
+    current = service.start_run(user_id=user_id, conversation_id=conversation.conversation_id,
+                                idempotency_key="replacement", knowledge_release_id="release-a")
+    assert current.lease_token != old.lease_token
+
+    class Application:
+        def find_run_by_id(self, **kwargs):
+            return service.find_run_by_id(**kwargs)
+
+        def read_output_events(self, **kwargs):
+            return service.read_output_events(**kwargs)
+
+    @contextmanager
+    def scope():
+        yield Application()
+
+    finished = threading.Event()
+    finished.set()
+
+    async def exercise():
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+            disciplinary_agent_scope=scope,
+        )))
+        frames = [frame async for frame in _subscribe_run_events(
+            request, user_id, current.run_id, after=0, worker_finished=finished,
+            fallback_identity={"attempt_id": old.lease_token}, unsaved_body=["old private tail"],
+            terminal_failure=[("turn_failed", {"code": "old_failure"})],
+        )]
+        assert frames == []
+
+    asyncio.run(asyncio.wait_for(exercise(), timeout=2))
+    assert service.find_run_by_id(user_id=user_id, run_id=current.run_id) == current
