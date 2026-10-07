@@ -1,6 +1,7 @@
 """Writing orchestration; raw samples are never instructions or factual evidence."""
 
 import json
+import re
 from contextlib import nullcontext
 from hashlib import sha256
 from uuid import UUID
@@ -188,6 +189,22 @@ class WritingApplication:
                 "请排除引用、他人文字和弃稿。预览不会保存样文或调用模型。",
             ],
         }
+
+    def create_sample(self, user_id, key, data):
+        """Validate and create a sample under its existing atomic retry identity."""
+        if len(re.sub(r"\s+", "", data["text"])) < 80 or not data["title"].strip():
+            raise ValueError("样文至少需要80个有效字符和一个标题")
+        return self.mutate(
+            user_id, key, "sample:create", data,
+            lambda: self.repository.add_sample(user_id, **data),
+        )
+
+    def create_document(self, user_id, key, data):
+        """Create a document and its retry receipt in the same transaction."""
+        return self.mutate(
+            user_id, key, "document:create", data,
+            lambda: self.repository.create(user_id, data),
+        )
 
     def list_samples(self, user_id):
         return {"items": self.repository.sample_summaries(user_id)}
