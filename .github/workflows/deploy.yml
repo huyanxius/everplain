@@ -17,7 +17,7 @@ jobs:
     outputs:
       release: ${{ steps.paths.outputs.release }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -42,10 +42,10 @@ jobs:
     outputs:
       digest: ${{ steps.digest.outputs.sha256 }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
       - name: Build immutable application artifact
@@ -56,7 +56,7 @@ jobs:
       - name: Record artifact identity
         id: digest
         run: echo "sha256=$(sha256sum dist/release/everplain.tar.gz | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: everplain-${{ github.sha }}-${{ github.run_attempt }}
           path: dist/release/
@@ -75,7 +75,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
       - name: Require a reviewed initial live baseline
@@ -84,7 +84,7 @@ jobs:
             echo 'Initial live baseline is not bound; run production inspection and review its fingerprints before release.' >&2
             exit 2
           fi
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: everplain-${{ github.sha }}-${{ github.run_attempt }}
           path: dist/release
