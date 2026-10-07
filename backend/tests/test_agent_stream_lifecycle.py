@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from uuid import UUID
 
+import pytest
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
@@ -161,3 +162,210 @@ def test_input_limit_stream_error_is_not_a_provider_outage():
         assert "暂时不可用" not in payload["message"]
 
     asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("finishes_during_read", [False, True])
+@pytest.mark.parametrize(("status", "name", "payload"), [
+    ("failed", "knowledge_index_choice_required", {"status": {"missing_count": 1}}),
+    ("interrupted", "turn_interrupted", {"code": "output_truncated"}),
+])
+def test_live_terminal_waits_for_journal_even_if_worker_finishes_during_read(
+    finishes_during_read, status, name, payload,
+):
+    """The business commit and route's terminal journal are separate transactions."""
+    from qunxue_api.api.routes.agent import _subscribe_run_events
+
+    user_id = UUID(int=944)
+    service = ConversationService.in_memory()
+    conversation = service.create_conversation(user_id=user_id, title="terminal race")
+    run = service.start_run(user_id=user_id, conversation_id=conversation.conversation_id,
+                            idempotency_key="terminal-race", knowledge_release_id="test")
+    service.finish_run(run_id=run.run_id, status=status, lease_token=run.lease_token)
+    finished = threading.Event()
+    reads = []
+
+    def publish():
+        service.append_output_event(user_id=user_id, run_id=run.run_id,
+                                    attempt_id=run.lease_token, name=name, payload=payload)
+        finished.set()
+
+    class Application:
+        def find_run_by_id(self, **kwargs):
+            return service.find_run_by_id(**kwargs)
+
+        def read_output_events(self, **kwargs):
+            reads.append(1)
+            if len(reads) == 1:
+                snapshot = service.read_output_events(**kwargs)
+                assert snapshot == ()
+                if finishes_during_read:
+                    publish()
+                return snapshot
+            if not finishes_during_read:
+                publish()
+            return service.read_output_events(**kwargs)
+
+    @contextmanager
+    def scope():
+        yield Application()
+
+    async def exercise():
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+            disciplinary_agent_scope=scope,
+        )))
+        stream = _subscribe_run_events(request, user_id, run.run_id, after=0,
+                                       worker_finished=finished)
+        frames = [frame async for frame in stream]
+        assert len(reads) == 2
+        assert len(frames) == 1
+        assert f"id: {run.run_id}:1\nevent: {name}\n" in frames[0]
+        assert json.loads(frames[0].split("data: ", 1)[1]) == {
+            **payload, "attempt_id": run.lease_token,
+        }
+
+    asyncio.run(asyncio.wait_for(exercise(), timeout=2))
+
+
+def test_finished_live_worker_preserves_unjournaled_terminal_error():
+    from qunxue_api.api.routes.agent import _subscribe_run_events
+
+    user_id = UUID(int=945)
+    service = ConversationService.in_memory()
+    conversation = service.create_conversation(user_id=user_id, title="failed terminal write")
+    run = service.start_run(user_id=user_id, conversation_id=conversation.conversation_id,
+                            idempotency_key="failed-terminal-write", knowledge_release_id="test")
+    service.finish_run(run_id=run.run_id, status="failed", lease_token=run.lease_token)
+    finished = threading.Event()
+    finished.set()
+    failure = ("knowledge_index_choice_required", {"status": {"missing_count": 1}})
+
+    @contextmanager
+    def scope():
+        yield service
+
+    async def exercise():
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+            disciplinary_agent_scope=scope,
+        )))
+        stream = _subscribe_run_events(request, user_id, run.run_id, after=0,
+                                       worker_finished=finished, terminal_failure=[failure])
+        frames = [frame async for frame in stream]
+        assert len(frames) == 1
+        assert "event: knowledge_index_choice_required\n" in frames[0]
+        assert json.loads(frames[0].split("data: ", 1)[1]) == failure[1]
+        assert not frames[0].startswith("id:")  # No fabricated durable event/cursor.
+
+    asyncio.run(asyncio.wait_for(exercise(), timeout=2))
+
+
+@pytest.mark.parametrize("local_worker", [False, True])
+@pytest.mark.parametrize(("status", "expected"), [
+    ("failed", "turn_failed"), ("interrupted", "turn_interrupted"),
+    ("awaiting_plan_confirmation", "research_waiting"),
+])
+def test_terminal_without_journal_still_closes_reconnect_or_finished_worker(local_worker,
+                                                                           status, expected):
+    from qunxue_api.api.routes.agent import _subscribe_run_events
+
+    user_id = UUID(int=946)
+    service = ConversationService.in_memory()
+    conversation = service.create_conversation(user_id=user_id, title="missing terminal")
+    run = service.start_run(user_id=user_id, conversation_id=conversation.conversation_id,
+                            idempotency_key="missing-terminal", knowledge_release_id="test")
+    service.finish_run(run_id=run.run_id, status=status, lease_token=run.lease_token)
+    finished = threading.Event()
+    finished.set()
+
+    @contextmanager
+    def scope():
+        yield service
+
+    async def exercise():
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+            disciplinary_agent_scope=scope,
+        )))
+        stream = _subscribe_run_events(request, user_id, run.run_id, after=0,
+                                       worker_finished=finished if local_worker else None)
+        frames = [frame async for frame in stream]
+        assert len(frames) == 1 and f"event: {expected}\n" in frames[0]
+
+    asyncio.run(asyncio.wait_for(exercise(), timeout=2))
+
+
+@pytest.mark.parametrize("status", ["completed", "awaiting_plan_confirmation"])
+def test_committed_canonical_result_wins_over_terminal_publish_failure(status):
+    from qunxue_api.api.routes.agent import _subscribe_run_events
+
+    user_id = UUID(int=947)
+    service = ConversationService.in_memory()
+    conversation = service.create_conversation(user_id=user_id, title="canonical terminal")
+    run = service.start_run(user_id=user_id, conversation_id=conversation.conversation_id,
+                            idempotency_key="canonical-terminal", knowledge_release_id="test")
+    service.finish_run(run_id=run.run_id, status=status, lease_token=run.lease_token)
+    finished = threading.Event()
+    finished.set()
+
+    @contextmanager
+    def scope():
+        yield SimpleNamespace(
+            find_run_by_id=service.find_run_by_id,
+            read_output_events=service.read_output_events,
+            get_conversation=service.get_conversation,
+            release_ids_by_turn=lambda **kwargs: {},
+        )
+
+    async def exercise():
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+            disciplinary_agent_scope=scope,
+        )))
+        stream = _subscribe_run_events(request, user_id, run.run_id, after=0,
+                                       worker_finished=finished,
+                                       terminal_failure=[("turn_failed", {
+                                           "code": "agent_unavailable",
+                                       })])
+        frames = [frame async for frame in stream]
+        expected = "turn_completed" if status == "completed" else "research_waiting"
+        assert len(frames) == 1 and f"event: {expected}\n" in frames[0]
+
+    asyncio.run(asyncio.wait_for(exercise(), timeout=2))
+
+
+@pytest.mark.parametrize("status", ["failed", "interrupted", "running"])
+def test_redacted_run_never_releases_unjournaled_terminal_details(status):
+    from dataclasses import replace
+
+    from qunxue_api.api.routes.agent import _subscribe_run_events
+
+    service = ConversationService.in_memory()
+    user_id = UUID(int=948)
+    conversation = service.create_conversation(user_id=user_id, title="redacted terminal")
+    run = service.start_run(user_id=user_id, conversation_id=conversation.conversation_id,
+                            idempotency_key="redacted-terminal", knowledge_release_id="test")
+    if status != "running":
+        service.finish_run(run_id=run.run_id, status=status, lease_token=run.lease_token)
+    run = replace(service.find_run_by_id(user_id=user_id, run_id=run.run_id),
+                  output_redacted=True)
+    finished = threading.Event()
+    finished.set()
+
+    @contextmanager
+    def scope():
+        yield SimpleNamespace(find_run_by_id=lambda **kwargs: run,
+                              read_output_events=lambda **kwargs: ())
+
+    async def exercise():
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
+            disciplinary_agent_scope=scope,
+        )))
+        stream = _subscribe_run_events(request, user_id, run.run_id, after=0,
+                                       worker_finished=finished,
+                                       terminal_failure=[("knowledge_index_choice_required", {
+                                           "status": {"private_document": "deleted-secret"},
+                                       })])
+        frames = [frame async for frame in stream]
+        expected = "turn_interrupted" if status == "interrupted" else "turn_failed"
+        assert f"event: {expected}\n" in frames[-1]
+        assert "deleted-secret" not in "".join(frames)
+        assert "knowledge_index_choice_required" not in "".join(frames)
+
+    asyncio.run(asyncio.wait_for(exercise(), timeout=2))

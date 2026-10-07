@@ -347,3 +347,42 @@ def test_runtime_checkpoint_keeps_active_tool_write_rollbackable(client):
 
         app.run_turn(user_id=user_id, conversation_id=None, prompt="问题",
                      idempotency_key="active-tool-rollback", on_delta=delivered)
+
+
+def test_missing_terminal_journal_preserves_committed_completed_turn(client, monkeypatch):
+    """A journal outage cannot turn a successfully committed answer into a failure."""
+    from sqlalchemy.exc import OperationalError
+
+    from qunxue_api.api.routes.agent import _TERMINAL_EVENT_NAMES
+
+    runner, request, current, database = setup_runtime(client)
+    runner.release.set()
+    original = SqliteConversationRepository.append_output_event
+    failed_names = []
+
+    def fail_terminal(repo, **kwargs):
+        if kwargs["name"] in _TERMINAL_EVENT_NAMES:
+            failed_names.append(kwargs["name"])
+            raise OperationalError("terminal journal", {}, RuntimeError("injected outage"))
+        return original(repo, **kwargs)
+
+    monkeypatch.setattr(SqliteConversationRepository, "append_output_event", fail_terminal)
+
+    async def exercise():
+        response = stream_agent_turn(AgentTurnRequest(message="问题"), request, current,
+                                     "completed-without-terminal-journal")
+        frames = [event_parts(frame) async for frame in response.body_iterator]
+        assert frames[-1][1] == "turn_completed"
+        assert not any(name == "turn_failed" for _, name, _ in frames)
+        assert frames[-1][2]["conversation"]["turns"][0]["assistant"]["content"] == "完整答案"
+        assert "".join(body["delta"] for _, name, body in frames
+                       if name == "assistant_delta") == "原文A原文B"
+        assert runner.calls == 1
+
+    asyncio.run(exercise())
+    assert failed_names == ["turn_completed", "turn_failed"]
+    with database.session() as session:
+        saved = SqliteConversationRepository(session).find_run(
+            user_id=current.user.user_id, idempotency_key="completed-without-terminal-journal",
+        )
+        assert saved.status == "completed"

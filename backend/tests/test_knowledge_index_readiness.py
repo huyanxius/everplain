@@ -1,5 +1,6 @@
 """Real owner-scoped readiness, explicit decisions and resumable index jobs."""
 
+import threading
 from contextlib import contextmanager
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -111,7 +112,61 @@ def test_default_retrieval_stops_without_choice_and_skip_excludes_missing_text(i
         assert coverage["missing_count"] == 1
 
 
-def test_actual_tool_readiness_is_terminal_and_recoverable_without_greeting_gate(index_client):
+@pytest.fixture(params=[False, True], ids=["normal", "commit-journal-gap"])
+def readiness_terminal_gap(request, monkeypatch):
+    if not request.param:
+        yield
+        return
+
+    from qunxue_api.api.routes import agent as agent_routes
+    from qunxue_api.application.disciplinary_agent import DisciplinaryAgentApplication
+    from qunxue_api.modules.shared_knowledge import find_knowledge_index_choice
+
+    failure_ready = threading.Event()
+    publish_allowed = threading.Event()
+    worker_finished = threading.Event()
+    observations = []
+    original_failure = agent_routes._agent_failure
+    original_release = agent_routes._release_active_run
+    original_read = DisciplinaryAgentApplication.read_output_events
+
+    def delayed_failure(error):
+        if find_knowledge_index_choice(error) is not None:
+            failure_ready.set()
+            assert publish_allowed.wait(5), "subscriber never observed committed failure"
+        return original_failure(error)
+
+    def released(*args, **kwargs):
+        try:
+            return original_release(*args, **kwargs)
+        finally:
+            worker_finished.set()
+
+    def read_before_publish(app, **kwargs):
+        events = original_read(app, **kwargs)
+        if failure_ready.is_set() and not events and not observations:
+            run = app.find_run_by_id(user_id=kwargs["user_id"], run_id=kwargs["run_id"])
+            assert run.status == "failed"
+            observations.append("failed run read with empty terminal journal")
+            publish_allowed.set()
+            assert worker_finished.wait(5), "publisher failed to finish"
+            # Return the real SQLite snapshot read before publication completed.
+            # A worker flag checked after this read cannot validate that snapshot.
+        return events
+
+    monkeypatch.setattr(agent_routes, "_agent_failure", delayed_failure)
+    monkeypatch.setattr(agent_routes, "_release_active_run", released)
+    monkeypatch.setattr(DisciplinaryAgentApplication, "read_output_events", read_before_publish)
+    try:
+        yield
+        assert observations == ["failed run read with empty terminal journal"]
+    finally:
+        publish_allowed.set()
+
+
+def test_actual_tool_readiness_is_terminal_and_recoverable_without_greeting_gate(
+    index_client, readiness_terminal_gap,
+):
     c = index_client
     _, _, _, _ = prepare(c)
     original = c.app.state.disciplinary_agent_scope
