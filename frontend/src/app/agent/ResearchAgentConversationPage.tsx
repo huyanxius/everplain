@@ -1,3 +1,56 @@
+import { AgentTurnController } from './agentTurnController'
+import {
+  MAX_AGENT_MESSAGE_LENGTH,
+  DELETED_MATERIAL_ANSWER,
+  type ResearchToolStep,
+  type StreamingTurn,
+  type PendingTurnAttempt,
+  objectRecord,
+} from './conversationState'
+import {
+  localizedToolLabel,
+  localizedToolPurpose,
+  localizedToolDetail,
+  localizedTurnFailure,
+  mergeOutputAttempts,
+  type SelectedCitationContext,
+  researchStartHandoffFromSteps,
+  resultItemsFromOutput,
+  citationKindLabel,
+  materialCitationFields,
+  tombstoneMaterialCitation,
+  tombstoneConversationMaterial,
+  citationToRail,
+  toActivity,
+  updateToolSteps,
+  researchStepForTools,
+  deepResearchRecord,
+  persistedToolSteps,
+  attachLocalToolSteps,
+  interruptedSteps,
+  hasKnowledgeActivity,
+  hasCompletedKnowledgeActivity,
+  hasResearchMaterialActivity,
+  recoveryTurn,
+  recoverTurnWithLocalOutput,
+} from './conversationProjection'
+import {
+  KNOWLEDGE_RELEASE_STORAGE_KEY,
+  AGENT_RUNTIME_STORAGE_KEY,
+  pendingAttemptDraft,
+  conversationStorageScope,
+  readStoredDraft,
+  persistDraft,
+  readPendingTurnAttempt,
+  persistPendingTurnAttempt,
+  readInterruptedTurn,
+  persistInterruptedTurn,
+  readStringMap,
+  persistStringMap,
+  readStoredRuntimeModes,
+  recoveryAttempt,
+} from './conversationRecovery'
+export { seedAgentDraft } from './conversationRecovery'
 import { KnowledgeReadinessChoice } from '../ui/KnowledgeReadinessChoice'
 import { knowledgeReadinessDocuments, useKnowledgeIndexChoice } from './useKnowledgeIndexChoice'
 import { ConversationHistoryView, ConversationHistoryView as AgentConversationHistoryRail } from '../conversation-view/ConversationHistoryView'
@@ -45,8 +98,6 @@ import { createPortal, flushSync } from 'react-dom'
 import { useLocation, useNavigate, useNavigationType, useSearchParams, type NavigationType } from 'react-router'
 
 import {
-  type ResearchActivity,
-  type ResearchCitation,
   type ResearchContextTab,
 } from '../research-workspace/ResearchContextRail'
 import { PageContent, PageShell } from '../ui/PageShell'
@@ -57,25 +108,21 @@ import {
   getResearchStartJourney,
   listAgentConversations,
   renameAgentConversation,
-  stopAgentRun,
-  streamAgentTurn,
   type AgentCitation,
+  type AgentOutputAttempt,
+  type AgentDeliveryState,
+  citationGroup,
   type AgentContextCard,
   type AgentConversation,
   type AgentConversationSummary,
-  type AgentOutputAttempt,
-  type AgentDeliveryState,
   type AgentStreamResume,
   type AgentEvent,
   type AgentRuntimeMode,
   type AgentToolStep,
-  type AgentToolTrace,
-  type AgentTurn,
   type AgentTurnRequest,
   type AgentRunRecovery,
   buildResearchReport,
   collectReferences,
-  citationGroup,
   conclusionDigest,
   createResearchReportDocx,
   openResearchReportPrintWindow,
@@ -90,36 +137,27 @@ import {
   listAgentMaterials,
   prepareAgentMaterialContext,
   getAgentAttachmentMaterial,
-  normalizeMaterialLocator,
   RESEARCH_MATERIAL_ACCEPT,
   ResearchMaterialsPanel,
   type ResearchMaterial,
-  type ResearchMaterialLocator,
 } from '../../modules/research-materials'
 import { ProjectScopeMenu } from './ProjectScopeMenu'
 import { deleteResearchProject, listResearchProjects, type ResearchProject } from '../../modules/research-projects'
 import { ConversationSuggestions } from '../conversation-view/ConversationSuggestions'
 import { ConversationContextCard } from '../conversation-view/ConversationContextCard'
-import { composeContextCardMessage, contextCardAdditionalText, readContextCard, type SelectedContextCard } from '../conversation-view/contextCard'
+import { composeContextCardMessage, contextCardAdditionalText, type SelectedContextCard } from '../conversation-view/contextCard'
 import { ConversationContextSuggestions } from '../conversation-view/ConversationContextSuggestions'
 import { conversationContextSummaryKey } from '../conversation-view/useConversationContextSummary'
 import { useConversationGreeting } from '../conversation-view/researchPrompts'
 import { readHomeSubmission, takeHomeSubmission } from '../conversation-view/homeSubmission'
 import { isModelSelectionValid, toModelSelectionRequest, type ModelSelection } from '../model-selection'
-import { useAppLocale, type AppLocale } from '../i18n/AppLocaleProvider'
+import { useAppLocale } from '../i18n/AppLocaleProvider'
 
 // The conversation controller is shared by the standalone Agent and embedded
 // research workspaces. Embedded callers provide the research context explicitly;
 // the standalone route remains isolated in the read-only Agent workspace.
-const MAX_AGENT_MESSAGE_LENGTH = 12_000
-const DRAFT_STORAGE_KEY = 'everplain.agent.composer-draft.v2'
-const PENDING_TURN_STORAGE_KEY = 'everplain.agent.pending-turn.v2'
-const INTERRUPTED_TURN_STORAGE_KEY = 'everplain.agent.interrupted-turn.v2'
-const KNOWLEDGE_RELEASE_STORAGE_KEY = 'everplain.agent.knowledge-releases.v1'
-const AGENT_RUNTIME_STORAGE_KEY = 'everplain.agent.runtime-modes.v1'
 const DEEP_RESEARCH_INTRO_SESSION_KEY = 'everplain.agent.deep-research-intro-session.v1'
 const DEEP_RESEARCH_INTRO_TIMEOUT_MS = 10_000
-const DELETED_MATERIAL_ANSWER = '该回答引用的个人研究材料已删除，原回答内容已隐藏。'
 type AgentComposerMode = 'standard' | 'deep-research'
 type DeepResearchMockStage = 'idle' | 'clarifying' | 'planning' | 'researching' | 'completed'
 type DeepResearchExportState = 'idle' | 'docx' | 'pdf'
@@ -191,725 +229,7 @@ function DeepResearchMockFlow({
     onContinueResearch={onContinueResearch} />
 }
 
-const knowledgeTools = new Set([
-  'search_knowledge',
-  'read_knowledge_entry',
-  'read_sources',
-  'browse_knowledge_directory',
-])
-
-const researchMaterialTools = new Set([
-  'search_research_materials',
-  'read_research_material_context',
-])
-
-// Labels also cover historical traces created before workspace tool scopes were
-// narrowed; displaying them does not make those tools callable from /agent.
-const toolLabels: Record<string, string> = {
-  search_knowledge: '检索知识库',
-  read_knowledge_entry: '读取知识条目',
-  read_sources: '读取来源',
-  browse_knowledge_directory: '浏览知识目录',
-  search_research_materials: '检索研究材料',
-  read_research_material_context: '读取研究材料原文',
-  search_web: '搜索公开网页',
-  read_web_page: '读取网页正文',
-  ask_research_question: '讨论研究下一步',
-  update_research_map: '更新研究地图',
-  propose_start_research: '整理研究起点',
-  get_research_workflow_state: '读取研究进度',
-  start_theory_matching: '启动理论匹配',
-  save_confirmed_theory_plan: '保存已确认理论方案',
-  read_writing_document: '读取当前文稿',
-  propose_writing_edit: '提出文稿精确修订',
-  read_research_document: '读取研究文档',
-  propose_document_revision: '整理文档修订提议',
-  propose_document_creation: '整理文档创建提议',
-}
-
-const englishToolLabels: Record<string, string> = {
-  search_knowledge: 'Search knowledge base',
-  read_knowledge_entry: 'Read knowledge entry',
-  read_sources: 'Read sources',
-  browse_knowledge_directory: 'Browse knowledge directory',
-  search_research_materials: 'Search research materials',
-  read_research_material_context: 'Read research material context',
-  search_web: 'Search the web',
-  read_web_page: 'Read web page',
-  update_research_map: 'Update research map',
-  propose_start_research: 'Prepare research starting point',
-  get_research_workflow_state: 'Read research progress',
-  start_theory_matching: 'Start theory matching',
-  save_confirmed_theory_plan: 'Save confirmed theory plan',
-  read_writing_document: 'Read current article',
-  propose_writing_edit: 'Propose article edit',
-  read_research_document: 'Read research document',
-  propose_document_revision: 'Prepare document revision',
-  propose_document_creation: 'Prepare document creation',
-}
-
-const toolPurposes: Record<string, string> = {
-  search_knowledge: '根据当前研究问题寻找相关概念、理论与已有研究参照',
-  read_knowledge_entry: '根据当前问题核对知识条目的主张、适用前提与证据边界',
-  read_sources: '补充作者、年份、研究对象与原始来源信息',
-  browse_knowledge_directory: '查看当前知识版本中可用于研究的内容范围',
-  search_research_materials: '从当前研究任务的个人材料中寻找相关原文片段',
-  read_research_material_context: '沿精确位置读取片段前后文，避免脱离整份材料解释',
-  search_web: '查找当前政策、新闻、报告与其他公开网页来源',
-  read_web_page: '读取网页正文，避免只根据搜索摘要形成结论',
-  update_research_map: '把已确认的问题、理论与证据关系写入研究画布',
-  propose_start_research: '把现象、研究意图与情境整理成待确认的研究起点',
-  get_research_workflow_state: '读取当前研究任务的阶段与可继续操作',
-  start_theory_matching: '基于已确认现象和证据生成可比较的理论候选',
-  save_confirmed_theory_plan: '保存你已经确认的理论取舍与使用方式',
-  read_writing_document: '读取当前文章、选区、版本及同文体样文',
-  propose_writing_edit: '按原文与版本校验提出修订，接受前不会覆盖正文',
-  read_research_document: '读取当前正式研究文档及其版本',
-  propose_document_revision: '把修改整理成待你接受或拒绝的文档建议',
-  propose_document_creation: '把已确认理论方案整理成 12 节研究框架草稿',
-}
-
-const englishToolPurposes: Record<string, string> = {
-  search_knowledge: 'Find concepts, theories, and prior research relevant to the question',
-  read_knowledge_entry: 'Check an entry\'s claims, assumptions, and evidence limits',
-  read_sources: 'Add author, year, research subject, and original source details',
-  browse_knowledge_directory: 'Review the research material available in this knowledge release',
-  search_research_materials: 'Find relevant passages in the personal materials bound to this research task',
-  read_research_material_context: 'Read the surrounding context at the exact source position',
-  search_web: 'Find current policies, news, reports, and other public web sources',
-  read_web_page: 'Read the page text instead of relying on a search snippet',
-  update_research_map: 'Record confirmed questions, theories, and evidence relationships',
-  propose_start_research: 'Prepare the phenomenon and research intent for confirmation',
-  get_research_workflow_state: 'Read the current research phase and available next actions',
-  start_theory_matching: 'Compare theory candidates against the confirmed phenomenon and evidence',
-  save_confirmed_theory_plan: 'Save the theory choices and use confirmed by you',
-  read_writing_document: 'Read the current article, selection, version and style samples',
-  propose_writing_edit: 'Prepare an exact version-checked edit for your review',
-  read_research_document: 'Read the current formal research document and version',
-  propose_document_revision: 'Prepare document changes for your acceptance or rejection',
-  propose_document_creation: 'Turn the confirmed theory plan into a 12-section framework draft',
-}
-
-function localizedToolLabel(tool: string, locale: AppLocale, fallback?: string) {
-  if (locale === 'en-US') return englishToolLabels[tool] ?? tool.replaceAll('_', ' ')
-  return toolLabels[tool] ?? fallback ?? tool
-}
-
-function localizedToolPurpose(tool: string, locale: AppLocale) {
-  if (locale === 'en-US') return englishToolPurposes[tool] ?? 'Use this step to advance the current research task'
-  return toolPurposes[tool] ?? '根据当前问题推进研究任务'
-}
-
-function localizedToolDetail(detail: string, locale: AppLocale) {
-  const publicDetail = detail
-    .replaceAll('知识库预览内容（未审核）', '知识条目')
-    .replaceAll('知识库预览条目（未审核）', '知识条目')
-    .replaceAll('未审核预览', '知识条目')
-    .replaceAll('待审核发现关系', '候选关系')
-    .replaceAll('已审核知识关系', '知识关系')
-  if (locale !== 'en-US') return publicDetail
-  if (publicDetail === '工具调用失败') return 'Tool call failed'
-  if (publicDetail === '已停止') return 'Stopped'
-  return publicDetail
-}
-
-function localizedTurnFailure(code: string, message: string, locale: AppLocale) {
-  if (locale !== 'en-US') return message
-  if (code === 'not_found') return 'This conversation does not exist or you do not have access.'
-  if (code === 'run_in_progress') return 'A response is already being generated. Please wait.'
-  if (code === 'credits_depleted') return 'Quota is exhausted. Please wait for the receipt.'
-  return 'The Agent cannot complete this answer right now. Please try again later.'
-}
-
 type AgentPageStatus = 'idle' | 'loading' | 'thinking' | 'retrieving' | 'answering' | 'pausing' | 'pause-failed' | 'error'
-type AgentToolEvent = Extract<AgentEvent, { type: 'tool_started' | 'tool_finished' | 'tool_failed' }>
-type ResearchToolStep = AgentToolStep & { interrupted?: boolean }
-type StreamingTurn = {
-  contextCard?: AgentContextCard | null
-  runId?: string | null
-  attemptId?: string | null
-  outputAttempts?: AgentOutputAttempt[]
-  outputPersistenceFailed?: boolean
-  deliveryState?: AgentDeliveryState
-  progressEnd?: number
-  question: string
-  answer: string
-  citations: AgentCitation[]
-  toolSteps: ResearchToolStep[]
-  canvasPatches: ResearchCanvasStreamingTurn['canvasPatches']
-  startedAt: number
-  interrupted?: boolean
-  failure?: string
-}
-// Server snapshots cannot contain a tail that failed to save. Preserve only
-// this run's explicitly unsaved local versions; the server owns saved versions.
-function mergeOutputAttempts(current: StreamingTurn, runId: string, incoming?: AgentOutputAttempt[], redacted = false): AgentOutputAttempt[] {
-  const local = current.runId === runId ? current.outputAttempts ?? [] : []
-  const merged = new Map((incoming ?? local).map(output => [output.attempt_id, output]))
-  for (const output of local) {
-    if (output.status === 'unsaved' && !merged.has(output.attempt_id)) merged.set(output.attempt_id, output)
-  }
-  // The existing recovery contract represents deleted sources with a tombstone.
-  // A local unsaved archive must never restore text hidden by that projection.
-  const hidden = redacted || incoming?.some(output => output.answer === DELETED_MATERIAL_ANSWER)
-  return [...merged.values()].map(output => hidden ? { ...output, answer: DELETED_MATERIAL_ANSWER } : output)
-}
-
-type PendingTurnAttempt = {
-  contextCard?: AgentContextCard | null
-  question: string
-  idempotencyKey: string
-  conversationId: string | null
-  runId?: string | null
-  materialIds: string[]
-  request?: AgentTurnRequest
-}
-
-function pendingAttemptDraft(attempt: PendingTurnAttempt | null) {
-  if (!attempt) return ''
-  return attempt.contextCard ? contextCardAdditionalText(attempt.question, attempt.contextCard) : attempt.question
-}
-
-type ResearchStartHandoff = {
-  proposalId: string
-  conversationId: string
-  knowledgeReleaseId: string
-  phenomenon: string
-  researchIntent: string | null
-}
-
-type SelectedCitationContext = {
-  citation: AgentCitation
-  knowledgeReleaseId: string | null
-}
-
-function objectRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null
-}
-
-function nonEmptyString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim() : null
-}
-
-function researchStartHandoffFromSteps(steps: ResearchToolStep[]): ResearchStartHandoff | null {
-  for (let index = steps.length - 1; index >= 0; index -= 1) {
-    const step = steps[index]
-    if (step.tool !== 'propose_start_research' || step.status !== 'completed') continue
-    const output = objectRecord(step.output)
-    if (!output || output.requires_user_confirmation !== true || output.status !== 'pending_confirmation') continue
-    const proposalId = nonEmptyString(output.proposal_id)
-    const conversationId = nonEmptyString(output.conversation_id)
-    const knowledgeReleaseId = nonEmptyString(output.knowledge_release_id)
-    const phenomenon = nonEmptyString(output.phenomenon)
-    if (!proposalId || !conversationId || !knowledgeReleaseId || !phenomenon) continue
-    return {
-      proposalId,
-      conversationId,
-      knowledgeReleaseId,
-      phenomenon,
-      researchIntent: nonEmptyString(output.research_intent),
-    }
-  }
-  return null
-}
-
-function conversationStorageScope(userId: string | null, conversationId: string | null, taskId: string | null, workspace: string) {
-  return userId ? `${encodeURIComponent(userId)}.${conversationId ? `conversation.${encodeURIComponent(conversationId)}` : `draft.${workspace}.${encodeURIComponent(taskId ?? 'independent')}`}` : null
-}
-
-function scopedSessionKey(base: string, userId: string | null) {
-  return userId ? `${base}.${userId}` : null
-}
-
-function readStoredDraft(userId: string | null) {
-  if (typeof window === 'undefined') return ''
-  try {
-    const storageKey = scopedSessionKey(DRAFT_STORAGE_KEY, userId)
-    return storageKey
-      ? window.localStorage.getItem(storageKey)?.slice(0, MAX_AGENT_MESSAGE_LENGTH) ?? ''
-      : ''
-  } catch {
-    return ''
-  }
-}
-
-function persistDraft(userId: string | null, value: string) {
-  if (typeof window === 'undefined') return
-  try {
-    const storageKey = scopedSessionKey(DRAFT_STORAGE_KEY, userId)
-    if (!storageKey) return
-    if (value) window.localStorage.setItem(storageKey, value)
-    else window.localStorage.removeItem(storageKey)
-  } catch {
-    // Storage recovery is optional; the controlled composer remains usable.
-  }
-}
-
-/** Persist a recoverable draft. This alone never authorizes sending it. */
-export function seedAgentDraft(userId: string, value: string) {
-  persistDraft(conversationStorageScope(userId, null, null, 'agent'), value.slice(0, MAX_AGENT_MESSAGE_LENGTH))
-}
-
-function readPendingTurnAttempt(userId: string | null): PendingTurnAttempt | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const storageKey = scopedSessionKey(PENDING_TURN_STORAGE_KEY, userId)
-    if (!storageKey) return null
-    const raw = window.localStorage.getItem(storageKey)
-    if (!raw) return null
-    const value = JSON.parse(raw) as Partial<PendingTurnAttempt>
-    if (
-      typeof value.question !== 'string'
-      || !value.question.trim()
-      || value.question.length > MAX_AGENT_MESSAGE_LENGTH
-      || typeof value.idempotencyKey !== 'string'
-      || !value.idempotencyKey
-      || (value.conversationId !== null && typeof value.conversationId !== 'string')
-    ) return null
-    return {
-      question: value.question,
-      contextCard: readContextCard(value.contextCard),
-      idempotencyKey: value.idempotencyKey,
-      conversationId: value.conversationId ?? null,
-      runId: typeof value.runId === 'string' && value.runId ? value.runId : null,
-      // Keep the original request, including model_id/reasoning_effort; never reselect on recovery.
-      request: value.request && typeof value.request.message === 'string' ? value.request : undefined,
-      materialIds: Array.isArray(value.materialIds)
-        ? value.materialIds.filter((item): item is string => typeof item === 'string').slice(0, 20)
-        : [],
-    }
-  } catch {
-    return null
-  }
-}
-
-function persistPendingTurnAttempt(userId: string | null, value: PendingTurnAttempt | null) {
-  if (typeof window === 'undefined') return
-  try {
-    const storageKey = scopedSessionKey(PENDING_TURN_STORAGE_KEY, userId)
-    if (!storageKey) return
-    if (value) window.localStorage.setItem(storageKey, JSON.stringify(value))
-    else window.localStorage.removeItem(storageKey)
-  } catch {
-    // The in-memory idempotency key still protects the active retry.
-  }
-}
-
-function readInterruptedTurn(userId: string | null): StreamingTurn | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const storageKey = scopedSessionKey(INTERRUPTED_TURN_STORAGE_KEY, userId)
-    if (!storageKey) return null
-    const raw = window.localStorage.getItem(storageKey)
-    if (!raw) return null
-    const value = objectRecord(JSON.parse(raw))
-    if (
-      !value
-      || typeof value.question !== 'string'
-      || !value.question.trim()
-      || value.question.length > MAX_AGENT_MESSAGE_LENGTH
-      || typeof value.answer !== 'string'
-      || value.interrupted !== true
-      || !Array.isArray(value.citations)
-      || !Array.isArray(value.toolSteps)
-      || !Array.isArray(value.canvasPatches)
-    ) return null
-    const toolSteps = value.toolSteps.filter((item): item is ResearchToolStep => {
-      const step = objectRecord(item)
-      return Boolean(
-        step
-        && typeof step.id === 'string'
-        && typeof step.tool === 'string'
-        && typeof step.label === 'string'
-        && (step.status === 'running' || step.status === 'completed' || step.status === 'failed'),
-      )
-    })
-    return {
-      runId: typeof value.runId === 'string' ? value.runId : null,
-      question: value.question,
-      contextCard: readContextCard(value.contextCard),
-      answer: value.answer,
-      attemptId: typeof value.attemptId === 'string' ? value.attemptId : null,
-      outputPersistenceFailed: value.outputPersistenceFailed === true,
-      outputAttempts: Array.isArray(value.outputAttempts)
-        ? value.outputAttempts.filter((item): item is AgentOutputAttempt => Boolean(
-          item && typeof item === 'object' && typeof item.attempt_id === 'string'
-          && typeof item.answer === 'string' && typeof item.ordinal === 'number',
-        )) : [],
-      citations: value.citations as AgentCitation[],
-      toolSteps,
-      canvasPatches: value.canvasPatches as ResearchCanvasStreamingTurn['canvasPatches'],
-      startedAt: typeof value.startedAt === 'number' && Number.isFinite(value.startedAt) ? value.startedAt : Date.now(),
-      interrupted: true,
-      failure: typeof value.failure === 'string' && value.failure ? value.failure : undefined,
-    }
-  } catch {
-    return null
-  }
-}
-
-function persistInterruptedTurn(userId: string | null, value: StreamingTurn | null) {
-  if (typeof window === 'undefined') return
-  try {
-    const storageKey = scopedSessionKey(INTERRUPTED_TURN_STORAGE_KEY, userId)
-    if (!storageKey) return
-    if (value) window.localStorage.setItem(storageKey, JSON.stringify(value))
-    else window.localStorage.removeItem(storageKey)
-  } catch {
-    // The stopped turn remains visible in memory when storage is unavailable.
-  }
-}
-
-function readStringMap(userId: string | null, base: string): Record<string, string> {
-  if (typeof window === 'undefined') return {}
-  try {
-    const storageKey = scopedSessionKey(base, userId)
-    if (!storageKey) return {}
-    const raw = window.sessionStorage.getItem(storageKey)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>)
-        .filter((entry): entry is [string, string] => (
-          Boolean(entry[0]) && typeof entry[1] === 'string' && Boolean(entry[1].trim())
-        ))
-        .slice(-100),
-    )
-  } catch {
-    return {}
-  }
-}
-
-function persistStringMap(userId: string | null, base: string, values: Record<string, string>) {
-  if (typeof window === 'undefined') return
-  try {
-    const storageKey = scopedSessionKey(base, userId)
-    if (storageKey) window.sessionStorage.setItem(storageKey, JSON.stringify(values))
-  } catch {
-    // URL state and persisted turns remain authoritative when storage is disabled.
-  }
-}
-
-function readStoredRuntimeModes(userId: string | null): Record<string, AgentRuntimeMode> {
-  const stored = readStringMap(userId, AGENT_RUNTIME_STORAGE_KEY)
-  return Object.fromEntries(
-    Object.entries(stored).filter((entry): entry is [string, AgentRuntimeMode] => (
-      entry[1] === 'mock' || entry[1] === 'base' || entry[1] === 'sft'
-    )),
-  )
-}
-
-function formatToolPayload(value: unknown): string | null {
-  if (value === null || value === undefined) return null
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (Array.isArray(value)) return value.map(formatToolPayload).filter(Boolean).join(' · ') || null
-  if (typeof value === 'object') {
-    return Object.entries(value as Record<string, unknown>)
-      .map(([key, item]) => {
-        const label = formatToolPayload(item)
-        return label ? `${key}: ${label}` : null
-      })
-      .filter(Boolean)
-      .join(' · ') || null
-  }
-  return null
-}
-
-function outputCandidates(output: unknown): unknown[] {
-  if (Array.isArray(output)) return output
-  if (!output || typeof output !== 'object') return []
-  const value = output as Record<string, unknown>
-  for (const key of ['items', 'results', 'entries', 'sources']) {
-    if (Array.isArray(value[key])) return value[key] as unknown[]
-  }
-  return []
-}
-
-function resultItemsFromOutput(output: unknown): NonNullable<ResearchActivity['resultItems']> {
-  return outputCandidates(output).flatMap((item, index) => {
-    if (!item || typeof item !== 'object') return []
-    const value = item as Record<string, unknown>
-    const title = typeof value.title === 'string'
-      ? value.title
-      : typeof value.label === 'string'
-        ? value.label
-        : typeof value.name === 'string'
-          ? value.name
-          : `结果 ${index + 1}`
-    const excerpt = typeof value.excerpt === 'string'
-      ? value.excerpt
-      : typeof value.summary === 'string'
-        ? value.summary
-        : typeof value.content === 'string'
-          ? value.content
-          : null
-    const id = typeof value.knowledge_id === 'string'
-      ? value.knowledge_id
-      : typeof value.id === 'string'
-        ? value.id
-        : `${title}-${index}`
-    return [{ id, title, excerpt }]
-  })
-}
-
-function citationKindLabel(kind: string, locale: AppLocale) {
-  if (kind === 'preview' || kind === 'entry') return locale === 'en-US' ? 'Knowledge entry' : '知识条目'
-  if (kind === 'source') return locale === 'en-US' ? 'Source' : '来源'
-  if (kind === 'material' || kind === 'research_material') return locale === 'en-US' ? 'Research material' : '研究材料'
-  if (kind === 'theory') return locale === 'en-US' ? 'Theory lead' : '理论线索'
-  if (kind === 'directory') return locale === 'en-US' ? 'Knowledge directory' : '知识目录'
-  return locale === 'en-US' ? 'Evidence' : '证据'
-}
-
-type MaterialCitationFields = {
-  material_id?: unknown
-  materialId?: unknown
-  parse_id?: unknown
-  parseId?: unknown
-  segment_id?: unknown
-  segmentId?: unknown
-  locator?: unknown
-}
-
-function materialCitationFields(citation: AgentCitation | null): {
-  materialId: string | null
-  parseId: string | null
-  segmentId: string | null
-  locator: ResearchMaterialLocator | null
-} {
-  if (!citation || (citation.kind !== 'material' && citation.kind !== 'research_material')) {
-    return { materialId: null, parseId: null, segmentId: null, locator: null }
-  }
-  const fields = citation as AgentCitation & MaterialCitationFields
-  const materialId = typeof fields.material_id === 'string'
-    ? fields.material_id
-    : typeof fields.materialId === 'string' ? fields.materialId : null
-  const segmentId = typeof fields.segment_id === 'string'
-    ? fields.segment_id
-    : typeof fields.segmentId === 'string' ? fields.segmentId : null
-  const parseId = typeof fields.parse_id === 'string'
-    ? fields.parse_id
-    : typeof fields.parseId === 'string' ? fields.parseId : null
-  return {
-    materialId,
-    parseId,
-    segmentId,
-    locator: fields.locator ? normalizeMaterialLocator(fields.locator) : null,
-  }
-}
-
-function tombstoneMaterialCitation(citation: AgentCitation, materialId: string): AgentCitation {
-  if (materialCitationFields(citation).materialId !== materialId) return citation
-  return { ...citation, deleted: true, excerpt: null }
-}
-
-function tombstoneConversationMaterial(conversation: AgentConversation, materialId: string): AgentConversation {
-  let changed = false
-  const turns = conversation.turns.map((turn) => {
-    const citations = turn.assistant.citations.map((citation) => {
-      return tombstoneMaterialCitation(citation, materialId)
-    })
-    const affected = citations.some((citation, index) => citation !== turn.assistant.citations[index])
-    if (!affected) return turn
-    changed = true
-    return {
-      ...turn,
-      assistant: { ...turn.assistant, content: DELETED_MATERIAL_ANSWER, citations },
-      output_attempts: turn.output_attempts?.map(output => ({ ...output, answer: DELETED_MATERIAL_ANSWER })),
-    }
-  })
-  return changed ? { ...conversation, turns } : conversation
-}
-
-
-// 维度既可能来自条目号（D1:C213），也可能只出现在来源路径里（价值论/02-02-1...md）。
-const dimensionByName: Array<[string, string]> = [
-  ['本体论', 'D1'], ['实践论', 'D2'], ['方法论', 'D3'], ['价值论', 'D4'],
-  ['认识论', 'D5'], ['传统', 'D6'], ['学科史', 'D7'],
-]
-
-function citationDimension(citation: AgentCitation): string | null {
-  const fromId = citation.knowledge_id?.match(/\b(D[1-7])\b/)?.[1]
-  if (fromId) return fromId
-  if (citation.source_kind === 'web') return null
-  const label = citation.label ?? ''
-  return dimensionByName.find(([name]) => label.includes(name))?.[1] ?? null
-}
-
-// 网页来源的副标题给域名，比统一写"来源"更能让人判断这条证据可不可信。
-function citationHost(citation: AgentCitation) {
-  if (citation.source_kind !== 'web' || !citation.source_id) return null
-  try {
-    return new URL(citation.source_id).host.replace(/^www\./, '')
-  } catch {
-    return null
-  }
-}
-
-function citationToRail(citation: AgentCitation, locale: AppLocale): ResearchCitation {
-  const material = materialCitationFields(citation)
-  const materialLocator = material.locator ? formatMaterialLocator(material.locator) : null
-  const host = citationHost(citation)
-  // 知识条目号形如 D1:C213，前缀就是知识库的维度，用它取和知识库页面同一套色。
-  const dimension = citationDimension(citation)
-  return {
-    id: citation.citation_id,
-    title: citation.label,
-    kind: citation.kind,
-    subtitle: host ?? `${citationGroup(citation) === 'knowledge' ? (locale === 'en-US' ? 'Library material' : '知识库资料') : citationKindLabel(citation.kind, locale)}${materialLocator ? ` · ${materialLocator}` : ''}`,
-    excerpt: citation.excerpt,
-    knowledgeId: citation.knowledge_id,
-    group: citationGroup(citation),
-    dimension,
-  }
-}
-
-function toActivity(step: ResearchToolStep, locale: AppLocale): ResearchActivity {
-  return {
-    id: step.id,
-    tool: step.tool,
-    label: localizedToolLabel(step.tool, locale, step.label),
-    status: step.status,
-    interrupted: step.interrupted,
-    input: step.input,
-    detail: step.detail ? localizedToolDetail(step.detail, locale) : step.detail,
-    resultItems: resultItemsFromOutput(step.output),
-  }
-}
-
-function updateToolSteps(steps: ResearchToolStep[], event: AgentToolEvent): ResearchToolStep[] {
-  if (event.type === 'tool_started') {
-    const id = event.call_id || `${event.tool}:${steps.filter((step) => step.tool === event.tool).length + 1}`
-    const next: ResearchToolStep = {
-      id,
-      tool: event.tool,
-      label: toolLabels[event.tool] || event.tool,
-      status: 'running',
-      input: event.input,
-      detail: event.detail,
-    }
-    const existing = steps.findIndex((step) => step.id === id)
-    return existing < 0 ? [...steps, next] : steps.map((step, index) => index === existing ? next : step)
-  }
-
-  const index = event.call_id
-    ? steps.findIndex((step) => step.id === event.call_id)
-    : steps.findLastIndex((step) => step.tool === event.tool && step.status === 'running')
-  const existing = index >= 0 ? steps[index] : undefined
-  const next: ResearchToolStep = {
-    id: existing?.id || event.call_id || `${event.tool}:${steps.length + 1}`,
-    tool: event.tool,
-    label: existing?.label || toolLabels[event.tool] || event.tool,
-    status: event.type === 'tool_failed' ? 'failed' : 'completed',
-    input: existing?.input ?? (event.type === 'tool_failed' ? event.input : undefined),
-    output: event.type === 'tool_finished' ? event.output : existing?.output,
-    detail: event.type === 'tool_failed'
-      ? event.detail || event.message
-      : event.detail || formatToolPayload(event.output),
-  }
-  return index < 0 ? [...steps, next] : steps.map((step, stepIndex) => stepIndex === index ? next : step)
-}
-
-function researchStepForTools(steps: ResearchToolStep[]): number {
-  const active = [...steps].reverse().find((step) => step.status === 'running')
-  const tool = active?.tool || steps[steps.length - 1]?.tool
-  if (!tool) return 0
-  if (['search_knowledge', 'browse_knowledge_directory', 'search_research_materials'].includes(tool)) return 1
-  if (['search_web', 'read_web_page'].includes(tool)) return 2
-  if (['read_knowledge_entry', 'read_sources', 'read_research_material_context'].includes(tool)) return 2
-  return 3
-}
-
-const DEEP_RESEARCH_TRACE = 'deep_research'
-
-type DeepResearchRecord = { elapsedSeconds: number; knowledgeCount: number; webCount: number }
-
-/** 深入研究完成时后端留在工具轨迹里的一条记录，重开对话靠它还原那张卡片。 */
-function deepResearchRecord(turn: AgentTurn | undefined): DeepResearchRecord | null {
-  const trace = turn?.tool_traces?.find((item) => item.tool === DEEP_RESEARCH_TRACE)
-  const output = trace?.output
-  if (!output || typeof output !== 'object') return null
-  const value = output as Record<string, unknown>
-  if (value.schema_version !== 1) return null
-  return {
-    elapsedSeconds: typeof value.elapsed_seconds === 'number' ? value.elapsed_seconds : 0,
-    knowledgeCount: typeof value.knowledge_count === 'number' ? value.knowledge_count : 0,
-    webCount: typeof value.web_count === 'number' ? value.web_count : 0,
-  }
-}
-
-function persistedToolSteps(traces: AgentToolTrace[] | undefined): ResearchToolStep[] {
-  let steps: ResearchToolStep[] = []
-  for (const trace of traces ?? []) {
-    if (trace.tool === 'writing_ui_action') continue
-    if (trace.tool === DEEP_RESEARCH_TRACE) continue
-    const event: AgentToolEvent = trace.phase === 'started'
-      ? { type: 'tool_started', tool: trace.tool, call_id: trace.call_id, input: trace.input ?? undefined, detail: trace.detail }
-      : trace.phase === 'failed'
-        ? {
-            type: 'tool_failed',
-            tool: trace.tool,
-            call_id: trace.call_id,
-            input: trace.input ?? undefined,
-            message: trace.detail ?? '工具调用失败',
-            error_code: trace.error ?? null,
-            detail: trace.detail ?? null,
-          }
-        : { type: 'tool_finished', tool: trace.tool, call_id: trace.call_id, output: trace.output, detail: trace.detail }
-    steps = updateToolSteps(steps, event)
-  }
-  return steps
-}
-
-function attachLocalToolSteps(conversation: AgentConversation, steps: ResearchToolStep[]): AgentConversation {
-  if (!steps.length || !conversation.turns.length) return conversation
-  const lastIndex = conversation.turns.length - 1
-  const lastTurn = conversation.turns[lastIndex]
-  const existingIds = new Set((lastTurn.tool_traces ?? []).map((trace) => trace.call_id))
-  const localTraces: AgentToolTrace[] = steps
-    .filter((step) => !existingIds.has(step.id))
-    .map((step) => ({
-      tool: step.tool,
-      phase: step.status === 'failed' ? 'failed' : 'finished',
-      call_id: step.id,
-      input: step.input && typeof step.input === 'object' && !Array.isArray(step.input)
-        ? step.input as Record<string, unknown>
-        : null,
-      output: step.output,
-      detail: step.detail,
-      error: step.status === 'failed' ? 'tool_failed' : null,
-    }))
-  if (!localTraces.length) return conversation
-  return {
-    ...conversation,
-    turns: conversation.turns.map((turn, index) => index === lastIndex
-      ? { ...turn, tool_traces: [...(turn.tool_traces ?? []), ...localTraces] }
-      : turn),
-  }
-}
-
-function interruptedSteps(steps: ResearchToolStep[], locale: AppLocale) {
-  return steps.map((step) => step.status === 'running'
-    ? { ...step, status: 'failed' as const, interrupted: true, detail: locale === 'en-US' ? 'Stopped' : '已停止' }
-    : step)
-}
-
-function hasKnowledgeActivity(steps: ResearchToolStep[]) {
-  return steps.some((step) => knowledgeTools.has(step.tool))
-}
-
-function hasCompletedKnowledgeActivity(steps: ResearchToolStep[]) {
-  return steps.some((step) => knowledgeTools.has(step.tool) && step.status === 'completed')
-}
-
-function hasResearchMaterialActivity(steps: ResearchToolStep[]) {
-  return steps.some((step) => researchMaterialTools.has(step.tool))
-}
-
 function ConversationHistory({
   projects,
   setProjects,
@@ -1235,7 +555,6 @@ export function ResearchAgentConversationPage({
   const writingActionStarted = useRef<string | null>(null)
   const quickWritingAttempt = useRef<string | null>(null)
   const writingCallbacks = useRef({ onWritingActionFinished, onBusyChange, onWritingPreview, onWritingPreviewEnded }); writingCallbacks.current = { onWritingActionFinished, onBusyChange, onWritingPreview, onWritingPreviewEnded }
-  const writingPreparation = useRef(false)
   const [preparingWriting, setPreparingWriting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [historyLoading, setHistoryLoading] = useState(!embedded)
@@ -1283,16 +602,11 @@ export function ResearchAgentConversationPage({
   const [selectedCitationContext, setSelectedCitationContext] = useState<SelectedCitationContext | null>(null)
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null)
   const [, setLandingBackdropPhase] = useState<'visible' | 'leaving' | 'hidden'>('visible')
-  const streamAbortController = useRef<AbortController | null>(null)
+  const [turnController] = useState(() => new AgentTurnController(restoredPendingTurn.current))
   const [streamInFlight, setStreamInFlight] = useState(false)
-  const activeRunId = useRef<string | null>(null)
-  const pausePending = useRef(false)
-  const streamGeneration = useRef(0)
   const conversationLoadAbortController = useRef<AbortController | null>(null)
   const conversationLoadGeneration = useRef(0)
   const pendingToolSteps = useRef<ResearchToolStep[]>([])
-  const failedTurnAttempt = useRef<PendingTurnAttempt | null>(restoredPendingTurn.current)
-  const activeTurnAttempt = useRef<PendingTurnAttempt | null>(null)
   const materialsOpenRef = useRef(false)
   const locallyDeletedMaterialIds = useRef(new Set<string>())
   const redactedStreamingMaterialIds = useRef(new Set<string>())
@@ -1465,7 +779,7 @@ export function ResearchAgentConversationPage({
   const canStopGeneration = status === 'thinking' || status === 'retrieving' || status === 'answering'
   const isBusy = preparingWriting || streamInFlight || status === 'loading' || status === 'pausing' || status === 'pause-failed' || canStopGeneration
   const knowledgeIndex = useKnowledgeIndexChoice(requestedScope, (request, idempotencyKey) => {
-    if (isBusy || writingPreparation.current || streamAbortController.current || researchEntryAbortController.current) return false
+    if (isBusy || turnController.isPreparing || turnController.isSubscribed || researchEntryAbortController.current) return false
     void submitQuestion(request.message, idempotencyKey, undefined, false, undefined, false, request)
     return true
   }, !isBusy)
@@ -1610,43 +924,12 @@ export function ResearchAgentConversationPage({
     })
   }
 
-  function recoveryAttempt(run: AgentRunRecovery): PendingTurnAttempt {
-    return {
-      question: run.request.message,
-      contextCard: run.context_card,
-      idempotencyKey: run.idempotency_key,
-      conversationId: run.request.conversation_id ?? null,
-      runId: run.run_id,
-      materialIds: run.request.material_ids ?? [],
-      request: run.request,
-    }
-  }
-
-  function recoveryTurn(run: AgentRunRecovery): StreamingTurn {
-    const traces = (run.tool_summary ?? []).filter((item) => typeof item.tool === 'string' && typeof item.phase === 'string') as AgentToolTrace[]
-    return {
-      runId: run.run_id,
-      question: run.idempotency_key.startsWith('writing-ui:') && run.request.writing_context ? '' : run.request.message,
-      contextCard: run.context_card,
-      answer: run.output_attempts?.at(-1)?.answer ?? run.partial_answer,
-      attemptId: run.output_attempts?.at(-1)?.attempt_id,
-      outputAttempts: run.output_attempts ?? [],
-      deliveryState: run.delivery_state,
-      citations: [],
-      toolSteps: run.status === 'running' ? persistedToolSteps(traces) : interruptedSteps(persistedToolSteps(traces), locale),
-      canvasPatches: [],
-      startedAt: Date.parse(run.updated_at) || Date.now(),
-      interrupted: run.status !== 'running' && !run.status.startsWith('awaiting_'),
-      failure: run.status === 'failed' ? text('这轮回答未完成，可以从保存的位置重试。', 'This answer did not finish. Retry from the saved state.') : undefined,
-    }
-  }
-
   function restoreRecovery(run: AgentRunRecovery) {
     const attempt = recoveryAttempt(run)
-    const turn = recoveryTurn(run)
-    failedTurnAttempt.current = attempt
-    activeTurnAttempt.current = run.status === 'running' || run.status.startsWith('awaiting_') ? attempt : null
-    activeRunId.current = run.status === 'running' ? run.run_id : null
+    const localAttempt = turnController.activeAttempt ?? turnController.failedAttempt
+    const turn = recoverTurnWithLocalOutput(run, locale, localAttempt && streamingTurnRef.current
+      ? { turn: streamingTurnRef.current, attempt: localAttempt } : null)
+    turnController.restore(attempt, run.status)
     pendingToolSteps.current = turn.toolSteps
     setStreamingTurn(turn)
     setComposerMode(run.request.mode === 'deep_research' ? 'deep-research' : 'standard')
@@ -1665,12 +948,12 @@ export function ResearchAgentConversationPage({
 
   function resumeRecovery(run: AgentRunRecovery) {
     if (isBusy) return
-    failedTurnAttempt.current = recoveryAttempt(run)
+    turnController.rememberFailure(recoveryAttempt(run))
     void submitQuestion(run.request.message, run.idempotency_key, undefined, false, undefined, run.idempotency_key.startsWith('writing-ui:') && Boolean(run.request.writing_context))
   }
 
   const loadConversation = useCallback(async (conversationId: string) => {
-    if (activeTurnAttempt.current?.conversationId === conversationId && streamAbortController.current) return
+    if (turnController.activeAttempt?.conversationId === conversationId && turnController.isSubscribed) return
     if (loadedConversationId.current === conversationId && activeConversation?.conversation_id === conversationId) return
     conversationLoadAbortController.current?.abort()
     const controller = new AbortController()
@@ -1693,12 +976,12 @@ export function ResearchAgentConversationPage({
       if (conversation.unfinished_runs) {
         const unfinished = conversation.unfinished_runs
         const selected = unfinished.find((run) => run.status === 'running' || run.status.startsWith('awaiting_'))
-          ?? unfinished.find((run) => run.run_id === failedTurnAttempt.current?.runId)
+          ?? unfinished.find((run) => run.run_id === turnController.failedAttempt?.runId)
           ?? unfinished.at(-1)
         if (selected) restoreRecovery(selected)
         else {
           setStreamingTurn(null)
-          failedTurnAttempt.current = null
+          turnController.rememberFailure(null)
           persistPendingTurnAttempt(storageScope.current, null)
           persistInterruptedTurn(storageScope.current, null)
         }
@@ -1766,7 +1049,7 @@ export function ResearchAgentConversationPage({
   const leaveConversation = useRef<() => void>(() => undefined)
   leaveConversation.current = () => {
     researchEntryAbortController.current?.abort()
-    const attempt = activeTurnAttempt.current ?? failedTurnAttempt.current
+    const attempt = turnController.activeAttempt ?? turnController.failedAttempt
     if (attempt && streamingTurnRef.current) {
       const saved = { ...streamingTurnRef.current, interrupted: true, toolSteps: interruptedSteps(pendingToolSteps.current, locale) }
       persistPendingTurnAttempt(storageScope.current, attempt)
@@ -1774,11 +1057,8 @@ export function ResearchAgentConversationPage({
     }
     // Leaving/backgrounding disconnects the subscription. Only the explicit
     // pause command cancels execution; pagehide can be a transient mobile state.
-    activeRunId.current = null
-    pausePending.current = false
-    streamGeneration.current += 1
-    streamAbortController.current?.abort()
-    streamAbortController.current = null
+    turnController.detach()
+    setPreparingWriting(false)
     setStreamInFlight(false)
     conversationLoadGeneration.current += 1
     conversationLoadAbortController.current?.abort()
@@ -1790,8 +1070,7 @@ export function ResearchAgentConversationPage({
       if (intent) takeHomeSubmission(intent.id, intent.owner)
       setSelectedCard(null)
       leaveConversation.current()
-      failedTurnAttempt.current = activeTurnAttempt.current ?? failedTurnAttempt.current
-      activeTurnAttempt.current = null
+      turnController.restore(turnController.activeAttempt ?? turnController.failedAttempt)
       setStreamingTurn(readInterruptedTurn(storageScope.current))
       resetDeepResearchMock()
       setStatus('idle')
@@ -1808,8 +1087,7 @@ export function ResearchAgentConversationPage({
     leaveConversation.current()
     storageScope.current = requestedScope
     const pending = readPendingTurnAttempt(requestedScope)
-    failedTurnAttempt.current = pending
-    activeTurnAttempt.current = null
+    turnController.restore(pending)
     pendingConversationId.current = requestedConversationId
     loadedConversationId.current = null
     setActiveConversation(null)
@@ -1843,8 +1121,7 @@ export function ResearchAgentConversationPage({
     researchEntryAbortController.current = null
     setResearchEntryBusy(false)
     pendingToolSteps.current = []
-    failedTurnAttempt.current = null
-    activeTurnAttempt.current = null
+    turnController.restore(null)
     setStreamingTurn(null)
   }
 
@@ -1989,7 +1266,7 @@ export function ResearchAgentConversationPage({
         const prompt = '请基于这段对话整理待确认的研究起点，包括现象、研究意图与情境，等待我确认。不要重新运行深入研究，不要替我确认或开展理论匹配。'
           + (hasResearchReference ? '前面已完成的调研报告及其引用是参考资料，请沿用已有成果和来源，不要从零追问，也不要把初步结论当作我已确认的研究判断。' : '')
         setComposerMode('standard')
-        const retryKey = failedTurnAttempt.current?.question === prompt ? failedTurnAttempt.current.idempotencyKey : undefined
+        const retryKey = turnController.failedAttempt?.question === prompt ? turnController.failedAttempt.idempotencyKey : undefined
         const result = await submitQuestion(prompt, retryKey, undefined, true)
         if (!result || controller.signal.aborted) return
         completed = result
@@ -2023,20 +1300,20 @@ export function ResearchAgentConversationPage({
       setError('讨论内容过长，请缩短问题或重新选择较短的段落。')
       return null
     }
-    if (!question || writingPreparation.current || (isBusy && !subscription) || streamAbortController.current || (!researchEntry && researchEntryAbortController.current)) return null
-    const turnMode = resumeRequest ? (resumeRequest.mode === 'deep_research' ? 'deep-research' : 'standard') : (researchEntry || writingShortcut) ? 'standard' : (failedTurnAttempt.current?.idempotencyKey === retryIdempotencyKey && failedTurnAttempt.current?.request ? failedTurnAttempt.current.request.mode === 'deep_research' ? 'deep-research' : 'standard' : composerMode)
+    if (!question || turnController.isPreparing || (isBusy && !subscription) || turnController.isSubscribed || (!researchEntry && researchEntryAbortController.current)) return null
+    const turnMode = resumeRequest ? (resumeRequest.mode === 'deep_research' ? 'deep-research' : 'standard') : (researchEntry || writingShortcut) ? 'standard' : (turnController.failedAttempt?.idempotencyKey === retryIdempotencyKey && turnController.failedAttempt?.request ? turnController.failedAttempt.request.mode === 'deep_research' ? 'deep-research' : 'standard' : composerMode)
     let resultConversation: AgentConversation | null = null
     const idempotencyKey = retryIdempotencyKey
       ?? `${writingShortcut ? 'writing-ui:retry:' : ''}${globalThis.crypto?.randomUUID?.() ?? `agent-${Date.now()}`}`
     quickWritingAttempt.current = writingShortcut ? idempotencyKey : null
-    const resumableAttempt = failedTurnAttempt.current?.idempotencyKey === idempotencyKey
-      ? failedTurnAttempt.current
-      : activeTurnAttempt.current?.idempotencyKey === idempotencyKey
-        ? activeTurnAttempt.current
+    const resumableAttempt = turnController.failedAttempt?.idempotencyKey === idempotencyKey
+      ? turnController.failedAttempt
+      : turnController.activeAttempt?.idempotencyKey === idempotencyKey
+        ? turnController.activeAttempt
         : null
     const newModelFields = resumeRequest || resumableAttempt?.request ? {} : entrySelection
       ? toModelSelectionRequest(entrySelection, modelSelection.catalog) : modelSelection.requestFields()
-    const attempt: PendingTurnAttempt = {
+    let attempt: PendingTurnAttempt = {
       question,
       contextCard: contextCard ? { title: contextCard.title, description: contextCard.description } : resumableAttempt?.contextCard,
       idempotencyKey,
@@ -2047,12 +1324,11 @@ export function ResearchAgentConversationPage({
     }
     let writingContext: AgentTurnRequest['writing_context']
     if (!resumeRequest && !attempt.request && prepareWritingContext) {
-      const preparationGeneration = streamGeneration.current
-      writingPreparation.current = true
+      const preparation = turnController.beginPreparation()
       setPreparingWriting(true)
-      try { writingContext = await prepareWritingContext(); if (preparationGeneration !== streamGeneration.current) return null }
-      catch (cause) { setError(cause instanceof Error ? cause.message : '无法保存当前文稿，请重试。'); return null }
-      finally { writingPreparation.current = false; setPreparingWriting(false) }
+      try { writingContext = await prepareWritingContext(); if (!turnController.isCurrentPreparation(preparation)) return null }
+      catch (cause) { if (turnController.isCurrentPreparation(preparation)) setError(cause instanceof Error ? cause.message : '无法保存当前文稿，请重试。'); return null }
+      finally { if (turnController.finishPreparation(preparation)) setPreparingWriting(false) }
     }
     const request: AgentTurnRequest = resumeRequest ? { ...resumeRequest } : attempt.request ? { ...attempt.request, conversation_id: attempt.conversationId } : {
           ...newModelFields,
@@ -2070,7 +1346,7 @@ export function ResearchAgentConversationPage({
           theory_plan_id: workspace === 'research' ? theoryPlanId : null,
           material_ids: attempt.materialIds,
           reference_knowledge_base_id: activeConversation ? activeConversation.reference_knowledge_base_id ?? null : embedded ? boundReferenceKnowledgeBaseId : searchParams.get('reference_knowledge_base_id'),
-          deep_research_run_id: deepAction ? (activeTurnAttempt.current?.runId ?? null) : null,
+          deep_research_run_id: deepAction ? (turnController.activeAttempt?.runId ?? null) : null,
           deep_research_action: deepAction?.action ?? null,
           deep_research_selection: deepAction?.selection ?? null,
     }
@@ -2080,14 +1356,13 @@ export function ResearchAgentConversationPage({
       request.deep_research_action = deepAction.action
       request.deep_research_selection = deepAction.selection ?? null
     }
-    attempt.request = request
-    const previousAttempt = failedTurnAttempt.current ?? activeTurnAttempt.current
+    attempt = { ...attempt, request }
+    const previousAttempt = turnController.failedAttempt ?? turnController.activeAttempt
     const previousTurn = streamingTurnRef.current
     if (previousAttempt && previousAttempt.idempotencyKey !== idempotencyKey && previousTurn && (previousTurn.interrupted || previousTurn.failure)) {
       retainUnfinishedTurn(previousAttempt, previousTurn)
     }
-    activeTurnAttempt.current = attempt
-    failedTurnAttempt.current = null
+    turnController.prepare(attempt)
     persistInterruptedTurn(storageScope.current, null)
     persistPendingTurnAttempt(storageScope.current, attempt)
     if (!writingShortcut) updateDraft('')
@@ -2104,291 +1379,266 @@ export function ResearchAgentConversationPage({
         created_at: new Date(previousTurn.startedAt).toISOString(),
       }] : [])] : []
     const firstStreamingTurn: StreamingTurn = subscription && previousTurn ? { ...previousTurn, failure: undefined, interrupted: false } : { runId: attempt.runId, question: writingShortcut ? '' : question, contextCard: attempt.contextCard, answer: '', outputAttempts: previousOutputs, citations: [], toolSteps: [], canvasPatches: [], startedAt: Date.now() }
-    const controller = new AbortController()
-    const runGeneration = streamGeneration.current + 1
-    streamGeneration.current = runGeneration
-    streamAbortController.current = controller
+    const subscriptionTicket = turnController.beginSubscription()
     setStreamInFlight(true)
-    pausePending.current = false
-    if (isEmpty) await revealFirstStreamingTurn(firstStreamingTurn, () => !controller.signal.aborted && streamGeneration.current === runGeneration)
+    if (isEmpty) await revealFirstStreamingTurn(firstStreamingTurn, () => turnController.isCurrent(subscriptionTicket))
     else setStreamingTurn(firstStreamingTurn)
-    if (controller.signal.aborted || streamGeneration.current !== runGeneration) {
-      if (streamAbortController.current === controller) {
-        streamAbortController.current = null
-        setStreamInFlight(false)
-      }
+    if (!turnController.isCurrent(subscriptionTicket)) {
+      if (turnController.finishSubscription(subscriptionTicket)) setStreamInFlight(false)
       return null
     }
 
     try {
-      await streamAgentTurn(
-        { ...request, idempotencyKey },
-        (event: AgentEvent) => {
-          if (['turn_completed', 'turn_interrupted', 'turn_failed', 'research_waiting'].includes(event.type)) notifyAccountUsageChanged()
-          if (streamGeneration.current !== runGeneration) return
-          if (event.type === 'turn_started') {
-            activeRunId.current = event.run_id
-            pendingConversationId.current = event.conversation_id
-            const startedAttempt = {
-              ...attempt,
-              conversationId: event.conversation_id,
-              runId: event.run_id,
-            }
-            startedAttempt.request = { ...request, conversation_id: event.conversation_id }
-            activeTurnAttempt.current = startedAttempt
-            const nextScope = conversationStorageScope(userId, event.conversation_id, taskId, embedded && (boundReferenceKnowledgeBaseId || writingDocumentId) ? storageWorkspace : workspace)
-            if (storageScope.current !== nextScope) {
-              persistPendingTurnAttempt(storageScope.current, null)
-              persistInterruptedTurn(storageScope.current, null)
-              persistDraft(storageScope.current, '')
-              storageScope.current = nextScope
-              if (writingShortcut) persistDraft(nextScope, draft)
-            }
-            setStreamingTurn((current) => current ? { ...current, runId: event.run_id,
-              attemptId: event.attempt_id,
-              answer: current.attemptId && event.attempt_id && current.attemptId !== event.attempt_id ? '' : current.answer,
-              outputAttempts: mergeOutputAttempts(current, event.run_id, event.output_attempts,
-                Boolean(redactedStreamingMaterialIds.current.size) || current.citations.some(citation => citation.deleted)),
-            } : current)
-            persistPendingTurnAttempt(storageScope.current, startedAttempt)
-            setConversations((current) => current.some((item) => item.conversation_id === event.conversation_id) ? current : [{
-              conversation_id: event.conversation_id, task_id: taskId,
-              title: question.slice(0, 100), updated_at: new Date().toISOString(), turn_count: 0,
-            }, ...current])
-            if (!embedded) setSearchParams((current) => {
-              const next = new URLSearchParams(current)
-              next.set('conversation_id', event.conversation_id)
-              return next
-            }, { replace: true })
-            else onConversationStarted?.({ conversation_id: event.conversation_id, task_id: taskId })
-            if (event.runtime_mode) {
-              setRuntimeMode(event.runtime_mode)
-              rememberRuntimeMode(event.conversation_id, event.runtime_mode)
-            }
-            if (event.replayed) {
-              pendingToolSteps.current = []
-              setStreamingTurn((current) => current ? {
-                ...current,
-                answer: '',
-                citations: [],
-                toolSteps: [],
-                canvasPatches: [],
-              } : current)
-            }
-            if (!pausePending.current) setStatus('thinking')
-          } else if (event.type === 'turn_snapshot') {
-            const run = event.run
-            attempt.contextCard = run.context_card ?? attempt.contextCard
-            for (const preview of run.writing_previews ?? []) if (preview.document_id === writingDocumentId) writingCallbacks.current.onWritingPreview?.(preview)
-            activeRunId.current = run.status === 'running' ? run.run_id : null
-            pendingConversationId.current = run.conversation_id
-            activeTurnAttempt.current = { ...attempt, runId: run.run_id, conversationId: run.conversation_id }
-            setStreamingTurn(current => {
-              if (!current) return current
-              const redacted = run.partial_answer === DELETED_MATERIAL_ANSWER
-                || (current.runId === run.run_id && current.answer === DELETED_MATERIAL_ANSWER)
-                || Boolean(redactedStreamingMaterialIds.current.size) || current.citations.some(citation => citation.deleted)
-              return { ...current, runId: run.run_id,
-                contextCard: run.context_card ?? current.contextCard,
-                attemptId: run.output_attempts?.at(-1)?.attempt_id,
-                answer: redacted ? DELETED_MATERIAL_ANSWER : run.output_persistence_failed ? run.partial_answer : run.output_attempts?.at(-1)?.answer ?? run.partial_answer,
-                outputPersistenceFailed: run.output_persistence_failed ?? current.outputPersistenceFailed,
-                outputAttempts: mergeOutputAttempts(current, run.run_id, run.output_attempts, redacted),
-                deliveryState: run.delivery_state,
-              }
-            })
-          } else if (event.type === 'agent_delivery_state') {
-            setStreamingTurn(current => current ? { ...current, deliveryState: event.delivery_state } : current)
-          } else if (event.type === 'agent_status') {
-            if (!pausePending.current) setStatus(event.status === 'answering' ? 'answering' : 'thinking')
-          } else if (event.type === 'research_ask') {
-            deepResearchLifecycleStarted.current = true
-            setDeepResearchMockQuestion(event.question)
-            setDeepResearchMockOptions(event.options)
-            setDeepResearchMockStep(0)
-            setDeepResearchMockStage('clarifying')
-          } else if (event.type === 'research_plan') {
-            deepResearchLifecycleStarted.current = true
-            setDeepResearchMockQuestion(event.title)
-            setDeepResearchMockOptions(event.steps)
-            setDeepResearchMockStep(0)
-            setDeepResearchMockStage('planning')
-          } else if (event.type === 'research_step') {
-            deepResearchLifecycleStarted.current = true
-            setDeepResearchMockStage('researching')
-            setDeepResearchMockStep(Math.min(Math.max(0, DEEP_RESEARCH_MOCK_STEPS.indexOf(event.step)), DEEP_RESEARCH_MOCK_STEPS.length - 1))
-          } else if (event.type === 'research_result') {
-            deepResearchLifecycleStarted.current = true
-            setDeepResearchResult({ summary: event.summary, knowledgeCount: event.knowledge_count, webCount: event.web_count })
-            settleDeepResearchElapsed()
-            setDeepResearchMockStage('completed')
-          } else if (event.type === 'tool_started' || event.type === 'tool_finished' || event.type === 'tool_failed') {
-            if (event.type === 'tool_finished' && event.tool === 'propose_writing_edit') onWritingRevisionCreated?.()
-            const next = updateToolSteps(pendingToolSteps.current, event)
-            pendingToolSteps.current = next
-            if (turnMode === 'deep-research' && event.type === 'tool_started') {
-              if (deepResearchStartedAt.current === null) deepResearchStartedAt.current = Date.now()
-              setDeepResearchMockStage('researching')
-              setDeepResearchMockStep(researchStepForTools(next))
-            }
-            if (!pausePending.current) setStatus(event.type === 'tool_started' ? 'retrieving' : 'thinking')
-            // 工具开始前的文字是阶段说明；之后的最终回答仍保留原段落。
-            setStreamingTurn((current) => current ? {
-              ...current,
-              toolSteps: next,
-              progressEnd: event.type === 'tool_started' ? current.answer.length : current.progressEnd,
-            } : current)
-          } else if (event.type === 'writing_preview') {
-            if (event.document_id === writingDocumentId) writingCallbacks.current.onWritingPreview?.(event)
-          } else if (event.type === 'assistant_delta') {
-            if (!pausePending.current) setStatus('answering')
-            if (!redactedStreamingMaterialIds.current.size) {
-              setStreamingTurn((current) => current ? { ...current, answer: current.answer + event.delta } : current)
-            }
-          } else if (event.type === 'output_persistence_failed') {
-            setStreamingTurn(current => {
-              if (!current) return current
-              const unsaved = { ...current, outputPersistenceFailed: true }
-              persistInterruptedTurn(storageScope.current, { ...unsaved, interrupted: true })
-              return unsaved
-            })
-          } else if (event.type === 'citation_added') {
-            const materialId = materialCitationFields(event.citation).materialId
-            const citation = materialId && locallyDeletedMaterialIds.current.has(materialId)
-              ? tombstoneMaterialCitation(event.citation, materialId)
-              : event.citation
-            if (materialId && citation.deleted) redactedStreamingMaterialIds.current.add(materialId)
-            setStreamingTurn((current) => current ? {
-              ...current,
-              answer: citation.deleted ? DELETED_MATERIAL_ANSWER : current.answer,
-              citations: [...current.citations, citation],
-            } : current)
-          } else if (event.type === 'research_waiting') {
-            deepResearchLifecycleStarted.current = true
-            activeRunId.current = event.run_id
-            const waitingAttempt = { ...(activeTurnAttempt.current ?? attempt), runId: event.run_id }
-            activeTurnAttempt.current = waitingAttempt
-            persistPendingTurnAttempt(storageScope.current, waitingAttempt)
-            setDeepResearchMockQuestion(event.question ?? event.title ?? question)
-            setDeepResearchMockOptions(event.options ?? event.steps ?? [])
-            setDeepResearchMockStep(0)
-            setDeepResearchMockStage(event.state === 'awaiting_clarification' ? 'clarifying' : 'planning')
-            // Keep the question card in the transcript while waiting for the
-            // user's answer; it is part of the conversation history.
-            setStatus('idle')
-          } else if (event.type === 'canvas_patch') {
-            setStreamingTurn((current) => current ? { ...current, canvasPatches: [...current.canvasPatches, event.patch] } : current)
-          } else if (event.type === 'turn_completed') {
-            pausePending.current = false
-            if (turnMode === 'deep-research' && deepResearchLifecycleStarted.current) {
-              settleDeepResearchElapsed()
-              setDeepResearchMockStage('completed')
-            }
-            else if (turnMode === 'deep-research') resetDeepResearchMock()
-            activeRunId.current = null
-            failedTurnAttempt.current = null
-            activeTurnAttempt.current = null
+      const receiveEvent = (event: AgentEvent) => {
+        if (['turn_completed', 'turn_interrupted', 'turn_failed', 'research_waiting'].includes(event.type)) notifyAccountUsageChanged()
+        if (event.type === 'turn_started') {
+          pendingConversationId.current = event.conversation_id
+          const startedAttempt = {
+            ...attempt,
+            conversationId: event.conversation_id,
+            runId: event.run_id,
+            request: { ...request, conversation_id: event.conversation_id },
+          }
+          turnController.bindRun(startedAttempt)
+          const nextScope = conversationStorageScope(userId, event.conversation_id, taskId, embedded && (boundReferenceKnowledgeBaseId || writingDocumentId) ? storageWorkspace : workspace)
+          if (storageScope.current !== nextScope) {
             persistPendingTurnAttempt(storageScope.current, null)
             persistInterruptedTurn(storageScope.current, null)
-            persistDraft(storageScope.current, writingShortcut ? draft : '')
-            const localToolSteps = pendingToolSteps.current
-            const unsavedOutputs = (streamingTurnRef.current?.outputAttempts ?? []).filter(output => output.status === 'unsaved')
-            const deliveryConversation = event.delivery_state ? { ...event.conversation,
-              turns: event.conversation.turns.map((turn, index) => index === event.conversation.turns.length - 1
-                ? { ...turn, delivery_state: event.delivery_state } : turn),
-            } : event.conversation
-            const preservedConversation = unsavedOutputs.length ? { ...deliveryConversation,
-              turns: event.conversation.turns.map((turn, index) => index === event.conversation.turns.length - 1
-                ? { ...turn, output_attempts: [...(turn.output_attempts ?? []), ...unsavedOutputs] } : turn),
-            } : deliveryConversation
-            const completedConversation = [...locallyDeletedMaterialIds.current].reduce(
-              (conversation, materialId) => tombstoneConversationMaterial(conversation, materialId),
-              attachLocalToolSteps(preservedConversation, localToolSteps),
-            )
-            resultConversation = completedConversation
-            const completedTurn = completedConversation.turns.at(-1)
-            if (writingShortcut && completedTurn) completedTurn.tool_traces = [...(completedTurn.tool_traces ?? []), { tool: 'writing_ui_action', phase: 'finished', call_id: idempotencyKey, input: { origin: 'selection_toolbar' } }]
-            if (completedTurn) visualTurnKeys.current.set(completedTurn.turn_id, `live-${streamVisualKey.current}`)
-            const releaseId = event.knowledge_release_id.trim()
-            if (releaseId) rememberKnowledgeRelease(completedConversation.conversation_id, releaseId)
-            if (completedTurn && localToolSteps.length) {
-              setToolStepsByTurnId((current) => ({ ...current, [completedTurn.turn_id]: localToolSteps }))
-            }
-            pendingToolSteps.current = []
-            redactedStreamingMaterialIds.current.clear()
-            setActiveConversation(completedConversation)
-            onConversationChange?.(completedConversation)
-            loadedConversationId.current = completedConversation.conversation_id
-            pendingConversationId.current = completedConversation.conversation_id
-            setConversations((current) => [
-              {
-                task_id: completedConversation.task_id ?? null,
-                conversation_id: completedConversation.conversation_id,
-                title: completedConversation.title,
-                updated_at: completedConversation.updated_at,
-                turn_count: completedConversation.turn_count,
-              },
-              ...current.filter((item) => item.conversation_id !== completedConversation.conversation_id),
-            ])
-            setStreamingTurn(null)
-            setAttachedMaterials([])
-            setStatus('idle')
-            if (!embedded) {
-              setSearchParams((current) => {
-                const next = new URLSearchParams(current)
-                next.set('conversation_id', completedConversation.conversation_id)
-                if (releaseId) next.set('knowledge_release_id', releaseId)
-                else next.delete('knowledge_release_id')
-                return next
-              }, { replace: true })
-            }
-            void queryClient.invalidateQueries({ queryKey: conversationContextSummaryKey(userId), exact: true, refetchType: 'none' })
-            onTurnCompleted?.()
-          } else if (event.type === 'turn_interrupted') {
-            pausePending.current = false
-            activeRunId.current = null
-            settleInterruptedTurn()
-          } else if (event.type === 'knowledge_index_choice_required') {
-            activeRunId.current = null
-            pausePending.current = false
-            const pending = { ...(activeTurnAttempt.current ?? attempt) }
-            failedTurnAttempt.current = pending
-            activeTurnAttempt.current = null
-            persistPendingTurnAttempt(storageScope.current, pending)
-            updateDraft(pendingAttemptDraft(pending))
-            setStreamingTurn((current) => {
-              if (!current) return current
-              const saved = { ...current, interrupted: true }
-              persistInterruptedTurn(storageScope.current, saved)
-              return saved
-            })
-            setStatus('idle')
-            setError(null)
-            knowledgeIndex.present(event.status, { ...request, conversation_id: pending.conversationId }, storageScope.current, idempotencyKey)
-          } else if (event.type === 'turn_failed') {
-            pausePending.current = false
-            activeRunId.current = null
-            const failedAttempt = { ...(activeTurnAttempt.current ?? attempt) }
-            failedTurnAttempt.current = failedAttempt
-            activeTurnAttempt.current = null
-            persistPendingTurnAttempt(storageScope.current, failedAttempt)
-            if (!writingShortcut) updateDraft(pendingAttemptDraft(failedAttempt))
-            const failureMessage = localizedTurnFailure(event.code, event.message, locale)
-            setStreamingTurn((current) => {
-              if (!current) return current
-              const failedTurn = { ...current, interrupted: true, failure: failureMessage }
-              persistInterruptedTurn(storageScope.current, failedTurn)
-              return failedTurn
-            })
-            setError(failureMessage)
-            setStatus('error')
+            persistDraft(storageScope.current, '')
+            storageScope.current = nextScope
+            if (writingShortcut) persistDraft(nextScope, draft)
           }
-        },
-        controller.signal,
-        subscription,
-      )
+          setStreamingTurn((current) => current ? { ...current, runId: event.run_id,
+            attemptId: event.attempt_id,
+            answer: current.attemptId && event.attempt_id && current.attemptId !== event.attempt_id ? '' : current.answer,
+            outputAttempts: mergeOutputAttempts(current, event.run_id, event.output_attempts,
+              Boolean(redactedStreamingMaterialIds.current.size) || current.citations.some(citation => citation.deleted)),
+          } : current)
+          persistPendingTurnAttempt(storageScope.current, startedAttempt)
+          setConversations((current) => current.some((item) => item.conversation_id === event.conversation_id) ? current : [{
+            conversation_id: event.conversation_id, task_id: taskId,
+            title: question.slice(0, 100), updated_at: new Date().toISOString(), turn_count: 0,
+          }, ...current])
+          if (!embedded) setSearchParams((current) => {
+            const next = new URLSearchParams(current)
+            next.set('conversation_id', event.conversation_id)
+            return next
+          }, { replace: true })
+          else onConversationStarted?.({ conversation_id: event.conversation_id, task_id: taskId })
+          if (event.runtime_mode) {
+            setRuntimeMode(event.runtime_mode)
+            rememberRuntimeMode(event.conversation_id, event.runtime_mode)
+          }
+          if (event.replayed) {
+            pendingToolSteps.current = []
+            setStreamingTurn((current) => current ? {
+              ...current,
+              answer: '',
+              citations: [],
+              toolSteps: [],
+              canvasPatches: [],
+            } : current)
+          }
+          if (!turnController.pausePending) setStatus('thinking')
+        } else if (event.type === 'turn_snapshot') {
+          const run = event.run
+          attempt = { ...attempt, contextCard: run.context_card ?? attempt.contextCard }
+          for (const preview of run.writing_previews ?? []) if (preview.document_id === writingDocumentId) writingCallbacks.current.onWritingPreview?.(preview)
+          pendingConversationId.current = run.conversation_id
+          turnController.bindRun({ ...attempt, runId: run.run_id, conversationId: run.conversation_id }, run.status === 'running')
+          setStreamingTurn(current => {
+            if (!current) return current
+            const redacted = run.partial_answer === DELETED_MATERIAL_ANSWER
+              || (current.runId === run.run_id && current.answer === DELETED_MATERIAL_ANSWER)
+              || Boolean(redactedStreamingMaterialIds.current.size) || current.citations.some(citation => citation.deleted)
+            return { ...current, runId: run.run_id,
+              contextCard: run.context_card ?? current.contextCard,
+              attemptId: run.output_attempts?.at(-1)?.attempt_id,
+              answer: redacted ? DELETED_MATERIAL_ANSWER : run.output_persistence_failed ? run.partial_answer : run.output_attempts?.at(-1)?.answer ?? run.partial_answer,
+              outputPersistenceFailed: run.output_persistence_failed ?? current.outputPersistenceFailed,
+              outputAttempts: mergeOutputAttempts(current, run.run_id, run.output_attempts, redacted),
+              deliveryState: run.delivery_state,
+            }
+          })
+        } else if (event.type === 'agent_delivery_state') {
+          setStreamingTurn(current => current ? { ...current, deliveryState: event.delivery_state } : current)
+        } else if (event.type === 'agent_status') {
+          if (!turnController.pausePending) setStatus(event.status === 'answering' ? 'answering' : 'thinking')
+        } else if (event.type === 'research_ask') {
+          deepResearchLifecycleStarted.current = true
+          setDeepResearchMockQuestion(event.question)
+          setDeepResearchMockOptions(event.options)
+          setDeepResearchMockStep(0)
+          setDeepResearchMockStage('clarifying')
+        } else if (event.type === 'research_plan') {
+          deepResearchLifecycleStarted.current = true
+          setDeepResearchMockQuestion(event.title)
+          setDeepResearchMockOptions(event.steps)
+          setDeepResearchMockStep(0)
+          setDeepResearchMockStage('planning')
+        } else if (event.type === 'research_step') {
+          deepResearchLifecycleStarted.current = true
+          setDeepResearchMockStage('researching')
+          setDeepResearchMockStep(Math.min(Math.max(0, DEEP_RESEARCH_MOCK_STEPS.indexOf(event.step)), DEEP_RESEARCH_MOCK_STEPS.length - 1))
+        } else if (event.type === 'research_result') {
+          deepResearchLifecycleStarted.current = true
+          setDeepResearchResult({ summary: event.summary, knowledgeCount: event.knowledge_count, webCount: event.web_count })
+          settleDeepResearchElapsed()
+          setDeepResearchMockStage('completed')
+        } else if (event.type === 'tool_started' || event.type === 'tool_finished' || event.type === 'tool_failed') {
+          if (event.type === 'tool_finished' && event.tool === 'propose_writing_edit') onWritingRevisionCreated?.()
+          const next = updateToolSteps(pendingToolSteps.current, event)
+          pendingToolSteps.current = next
+          if (turnMode === 'deep-research' && event.type === 'tool_started') {
+            if (deepResearchStartedAt.current === null) deepResearchStartedAt.current = Date.now()
+            setDeepResearchMockStage('researching')
+            setDeepResearchMockStep(researchStepForTools(next))
+          }
+          if (!turnController.pausePending) setStatus(event.type === 'tool_started' ? 'retrieving' : 'thinking')
+          // 工具开始前的文字是阶段说明；之后的最终回答仍保留原段落。
+          setStreamingTurn((current) => current ? {
+            ...current,
+            toolSteps: next,
+            progressEnd: event.type === 'tool_started' ? current.answer.length : current.progressEnd,
+          } : current)
+        } else if (event.type === 'writing_preview') {
+          if (event.document_id === writingDocumentId) writingCallbacks.current.onWritingPreview?.(event)
+        } else if (event.type === 'assistant_delta') {
+          if (!turnController.pausePending) setStatus('answering')
+          if (!redactedStreamingMaterialIds.current.size) {
+            setStreamingTurn((current) => current ? { ...current, answer: current.answer + event.delta } : current)
+          }
+        } else if (event.type === 'output_persistence_failed') {
+          setStreamingTurn(current => {
+            if (!current) return current
+            const unsaved = { ...current, outputPersistenceFailed: true }
+            persistInterruptedTurn(storageScope.current, { ...unsaved, interrupted: true })
+            return unsaved
+          })
+        } else if (event.type === 'citation_added') {
+          const materialId = materialCitationFields(event.citation).materialId
+          const citation = materialId && locallyDeletedMaterialIds.current.has(materialId)
+            ? tombstoneMaterialCitation(event.citation, materialId)
+            : event.citation
+          if (materialId && citation.deleted) redactedStreamingMaterialIds.current.add(materialId)
+          setStreamingTurn((current) => current ? {
+            ...current,
+            answer: citation.deleted ? DELETED_MATERIAL_ANSWER : current.answer,
+            citations: [...current.citations, citation],
+          } : current)
+        } else if (event.type === 'research_waiting') {
+          deepResearchLifecycleStarted.current = true
+          const waitingAttempt = { ...(turnController.activeAttempt ?? attempt), runId: event.run_id }
+          turnController.bindRun(waitingAttempt)
+          persistPendingTurnAttempt(storageScope.current, waitingAttempt)
+          setDeepResearchMockQuestion(event.question ?? event.title ?? question)
+          setDeepResearchMockOptions(event.options ?? event.steps ?? [])
+          setDeepResearchMockStep(0)
+          setDeepResearchMockStage(event.state === 'awaiting_clarification' ? 'clarifying' : 'planning')
+          // Keep the question card in the transcript while waiting for the
+          // user's answer; it is part of the conversation history.
+          setStatus('idle')
+        } else if (event.type === 'canvas_patch') {
+          setStreamingTurn((current) => current ? { ...current, canvasPatches: [...current.canvasPatches, event.patch] } : current)
+        } else if (event.type === 'turn_completed') {
+          if (turnMode === 'deep-research' && deepResearchLifecycleStarted.current) {
+            settleDeepResearchElapsed()
+            setDeepResearchMockStage('completed')
+          }
+          else if (turnMode === 'deep-research') resetDeepResearchMock()
+          turnController.complete()
+          persistPendingTurnAttempt(storageScope.current, null)
+          persistInterruptedTurn(storageScope.current, null)
+          persistDraft(storageScope.current, writingShortcut ? draft : '')
+          const localToolSteps = pendingToolSteps.current
+          const unsavedOutputs = (streamingTurnRef.current?.outputAttempts ?? []).filter(output => output.status === 'unsaved')
+          const deliveryConversation = event.delivery_state ? { ...event.conversation,
+            turns: event.conversation.turns.map((turn, index) => index === event.conversation.turns.length - 1
+              ? { ...turn, delivery_state: event.delivery_state } : turn),
+          } : event.conversation
+          const preservedConversation = unsavedOutputs.length ? { ...deliveryConversation,
+            turns: event.conversation.turns.map((turn, index) => index === event.conversation.turns.length - 1
+              ? { ...turn, output_attempts: [...(turn.output_attempts ?? []), ...unsavedOutputs] } : turn),
+          } : deliveryConversation
+          const completedConversation = [...locallyDeletedMaterialIds.current].reduce(
+            (conversation, materialId) => tombstoneConversationMaterial(conversation, materialId),
+            attachLocalToolSteps(preservedConversation, localToolSteps),
+          )
+          resultConversation = completedConversation
+          const completedTurn = completedConversation.turns.at(-1)
+          if (writingShortcut && completedTurn) completedTurn.tool_traces = [...(completedTurn.tool_traces ?? []), { tool: 'writing_ui_action', phase: 'finished', call_id: idempotencyKey, input: { origin: 'selection_toolbar' } }]
+          if (completedTurn) visualTurnKeys.current.set(completedTurn.turn_id, `live-${streamVisualKey.current}`)
+          const releaseId = event.knowledge_release_id.trim()
+          if (releaseId) rememberKnowledgeRelease(completedConversation.conversation_id, releaseId)
+          if (completedTurn && localToolSteps.length) {
+            setToolStepsByTurnId((current) => ({ ...current, [completedTurn.turn_id]: localToolSteps }))
+          }
+          pendingToolSteps.current = []
+          redactedStreamingMaterialIds.current.clear()
+          setActiveConversation(completedConversation)
+          onConversationChange?.(completedConversation)
+          loadedConversationId.current = completedConversation.conversation_id
+          pendingConversationId.current = completedConversation.conversation_id
+          setConversations((current) => [
+            {
+              task_id: completedConversation.task_id ?? null,
+              conversation_id: completedConversation.conversation_id,
+              title: completedConversation.title,
+              updated_at: completedConversation.updated_at,
+              turn_count: completedConversation.turn_count,
+            },
+            ...current.filter((item) => item.conversation_id !== completedConversation.conversation_id),
+          ])
+          setStreamingTurn(null)
+          setAttachedMaterials([])
+          setStatus('idle')
+          if (!embedded) {
+            setSearchParams((current) => {
+              const next = new URLSearchParams(current)
+              next.set('conversation_id', completedConversation.conversation_id)
+              if (releaseId) next.set('knowledge_release_id', releaseId)
+              else next.delete('knowledge_release_id')
+              return next
+            }, { replace: true })
+          }
+          void queryClient.invalidateQueries({ queryKey: conversationContextSummaryKey(userId), exact: true, refetchType: 'none' })
+          onTurnCompleted?.()
+        } else if (event.type === 'turn_interrupted') {
+          settleInterruptedTurn()
+        } else if (event.type === 'knowledge_index_choice_required') {
+          const pending = { ...(turnController.activeAttempt ?? attempt) }
+          turnController.fail(pending)
+          persistPendingTurnAttempt(storageScope.current, pending)
+          updateDraft(pendingAttemptDraft(pending))
+          setStreamingTurn((current) => {
+            if (!current) return current
+            const saved = { ...current, interrupted: true }
+            persistInterruptedTurn(storageScope.current, saved)
+            return saved
+          })
+          setStatus('idle')
+          setError(null)
+          knowledgeIndex.present(event.status, { ...request, conversation_id: pending.conversationId }, storageScope.current, idempotencyKey)
+        } else if (event.type === 'turn_failed') {
+          const failedAttempt = { ...(turnController.activeAttempt ?? attempt) }
+          turnController.fail(failedAttempt)
+          persistPendingTurnAttempt(storageScope.current, failedAttempt)
+          if (!writingShortcut) updateDraft(pendingAttemptDraft(failedAttempt))
+          const failureMessage = localizedTurnFailure(event.code, event.message, locale)
+          setStreamingTurn((current) => {
+            if (!current) return current
+            const failedTurn = { ...current, interrupted: true, failure: failureMessage }
+            persistInterruptedTurn(storageScope.current, failedTurn)
+            return failedTurn
+          })
+          setError(failureMessage)
+          setStatus('error')
+        }
+      }
+      if (subscription) await turnController.resumeSubscription(subscriptionTicket, { ...request, idempotencyKey }, subscription, receiveEvent)
+      else await turnController.startCommand(subscriptionTicket, { ...request, idempotencyKey }, receiveEvent)
     } catch (cause: unknown) {
-      if (!controller.signal.aborted && streamGeneration.current === runGeneration) {
+      if (turnController.isCurrent(subscriptionTicket)) {
         const causeMessage = cause instanceof Error ? cause.message : ''
         const message = locale === 'en-US'
           ? ((cause as { status?: number } | null)?.status === 409
@@ -2403,9 +1653,8 @@ export function ResearchAgentConversationPage({
             : causeMessage && causeMessage !== 'Agent 暂时无法连接'
               ? causeMessage
               : 'Agent 暂时无法连接。请检查模型服务后重试，这一轮不会伪造回答。'
-        const failedAttempt = { ...(activeTurnAttempt.current ?? attempt) }
-        failedTurnAttempt.current = failedAttempt
-        activeTurnAttempt.current = null
+        const failedAttempt = { ...(turnController.activeAttempt ?? attempt) }
+        turnController.fail(failedAttempt)
         persistPendingTurnAttempt(storageScope.current, failedAttempt)
         if (!writingShortcut) updateDraft(pendingAttemptDraft(failedAttempt))
         setStreamingTurn((current) => {
@@ -2418,19 +1667,16 @@ export function ResearchAgentConversationPage({
         setStatus('error')
       }
     } finally {
-      if (streamGeneration.current === runGeneration) writingCallbacks.current.onWritingPreviewEnded?.()
-      if (streamAbortController.current === controller) {
-        streamAbortController.current = null
-        setStreamInFlight(false)
-      }
+      if (turnController.isCurrent(subscriptionTicket) && turnController.takePreviewCompletion()) writingCallbacks.current.onWritingPreviewEnded?.()
+      if (turnController.finishSubscription(subscriptionTicket)) setStreamInFlight(false)
     }
-    return controller.signal.aborted || streamGeneration.current !== runGeneration ? null : resultConversation
+    return !turnController.isCurrent(subscriptionTicket) ? null : resultConversation
   }
 
   useEffect(() => {
     const run = activeConversation?.unfinished_runs?.find(item => item.status === 'running')
-    if (!run || streamAbortController.current || status === 'pausing' || status === 'pause-failed') return
-    failedTurnAttempt.current = recoveryAttempt(run)
+    if (!run || turnController.isSubscribed || status === 'pausing' || status === 'pause-failed') return
+    turnController.rememberFailure(recoveryAttempt(run))
     void submitQuestion(run.request.message, run.idempotency_key, undefined, false, undefined, false,
       run.request, { runId: run.run_id, after: run.last_event_sequence ?? 0 })
   }, [activeConversation?.conversation_id, activeConversation?.unfinished_runs])
@@ -2446,7 +1692,7 @@ export function ResearchAgentConversationPage({
   function submitDraft() {
     if (homeSubmission && modelSelection.status !== 'ready') return
     const normalized = composeContextCardMessage(selectedCard, draft)
-    const attempt = failedTurnAttempt.current
+    const attempt = turnController.failedAttempt
     // A matching draft is never authority to replay a card's hidden selection.
     // Only the explicit turn Retry/Resume action preserves that original request.
     const retryKey = !selectedCard && !attempt?.request?.context_suggestion && attempt?.question === normalized ? attempt.idempotencyKey : undefined
@@ -2544,7 +1790,7 @@ export function ResearchAgentConversationPage({
   }
 
   function continueDeepResearch(action: 'clarify' | 'confirm' | 'skip', selection?: string) {
-    const attempt = activeTurnAttempt.current
+    const attempt = turnController.activeAttempt
     if (!attempt?.runId) return
     if (action === 'confirm') {
       deepResearchLifecycleStarted.current = true
@@ -2557,21 +1803,17 @@ export function ResearchAgentConversationPage({
   }
 
   function retryFailedTurn(question: string) {
-    const attempt = failedTurnAttempt.current
+    const attempt = turnController.failedAttempt
     const automatic = Boolean(attempt?.idempotencyKey.startsWith('writing-ui:') && attempt.request?.writing_context)
     void submitQuestion(automatic && !question ? attempt!.question : question, automatic || attempt?.question === question ? attempt?.idempotencyKey : undefined, undefined, false, undefined, automatic)
   }
 
   function settleInterruptedTurn({ resumable = true }: { resumable?: boolean } = {}) {
-    const attempt = activeTurnAttempt.current
+    const attempt = turnController.interrupt(resumable)
     if (attempt && resumable) {
-      failedTurnAttempt.current = attempt
-      activeTurnAttempt.current = null
       persistPendingTurnAttempt(storageScope.current, attempt)
       if (quickWritingAttempt.current !== attempt.idempotencyKey) updateDraft(pendingAttemptDraft(attempt))
     } else if (attempt) {
-      failedTurnAttempt.current = null
-      activeTurnAttempt.current = null
       persistPendingTurnAttempt(storageScope.current, null)
       if (quickWritingAttempt.current !== attempt.idempotencyKey) updateDraft(pendingAttemptDraft(attempt))
     }
@@ -2587,41 +1829,28 @@ export function ResearchAgentConversationPage({
   }
 
   async function stopGeneration() {
-    const runId = activeRunId.current ?? activeTurnAttempt.current?.runId ?? failedTurnAttempt.current?.runId
     if (status === 'pausing') return
-    pausePending.current = true
     setStatus('pausing')
     setError(null)
-    const generation = streamGeneration.current
-    if (runId) {
-      try {
-        const result = await stopAgentRun(runId)
-        if (generation !== streamGeneration.current) return
-        if (result.status === 'completed') {
-          activeRunId.current = null
-          if (pendingConversationId.current) {
-            streamAbortController.current?.abort()
-            streamAbortController.current = null
-            setStreamInFlight(false)
-            activeTurnAttempt.current = null
-            loadedConversationId.current = null
-            await loadConversation(pendingConversationId.current)
-          }
-          return
+    try {
+      const result = await turnController.stop()
+      if (result === 'stale') return
+      if (turnController.takePreviewCompletion()) writingCallbacks.current.onWritingPreviewEnded?.()
+      if (result === 'completed') {
+        if (pendingConversationId.current) {
+          turnController.detach()
+          turnController.restore(null)
+          setStreamInFlight(false)
+          loadedConversationId.current = null
+          await loadConversation(pendingConversationId.current)
         }
-      } catch (cause) {
-        if (generation !== streamGeneration.current) return
-        setError(cause instanceof Error ? cause.message : text('暂停未被服务端确认，请重试暂停。', 'The server has not confirmed the pause. Try again.'))
-        pausePending.current = false
-        setStatus('pause-failed')
         return
       }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : text('暂停未被服务端确认，请重试暂停。', 'The server has not confirmed the pause. Try again.'))
+      setStatus('pause-failed')
+      return
     }
-    activeRunId.current = null
-    streamGeneration.current += 1
-    streamAbortController.current?.abort()
-    streamAbortController.current = null
-    pausePending.current = false
     setStreamInFlight(false)
     resetDeepResearchMock()
     settleInterruptedTurn()
@@ -2915,7 +2144,7 @@ export function ResearchAgentConversationPage({
                   />
                 )),
                 ...(activeConversation?.unfinished_runs ?? []).filter((run) => run.run_id !== streamingTurn?.runId).map((run) => {
-                  const saved = recoveryTurn(run)
+                  const saved = recoveryTurn(run, locale)
                   return <AssistantTurn
                     userId={userId}
                     key={run.run_id}
@@ -3069,7 +2298,7 @@ export function ResearchAgentConversationPage({
                 status: material.status === 'ready' ? text('已添加', 'Added') : attachmentStatusLabel(material, locale), removable: !isBusy }))}
               researchLayout={researchToolsVisible}
               modelSelector={<ModelSelectionSettings key={requestedScope} state={modelSelection} disabled={isBusy || materialUploading}
-                activeRequest={isBusy ? activeTurnAttempt.current?.request : null} />}
+                activeRequest={isBusy ? turnController.activeAttempt?.request : null} />}
               context={selectedCard ? <>{composerPrefix}<ConversationContextCard card={selectedCard} onRemove={() => setSelectedCard(null)} disabled={isBusy} /></> : composerPrefix}
               attachmentPicker={materialPickerOpen ? <AgentMaterialAttachmentPicker inline loading={materialPickerLoading}
                 materials={materialPickerLoading ? [] : availableMaterials} selectedIds={new Set(attachedMaterials.map(item => item.materialId))}
