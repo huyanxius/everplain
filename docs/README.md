@@ -3,6 +3,8 @@
 当前产品与运行说明：
 
 - [产品范围](product/README.md)
+- [当前工程架构与职责](ARCHITECTURE.md)
+- [架构记录有效性与专项入口](architecture/README.md)
 - [本地开发](onboarding.md)
 - [独立部署、备份和恢复](DISTRIBUTION.md)
 - [安全与隐私](SECURITY.md)
