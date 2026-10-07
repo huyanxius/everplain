@@ -197,7 +197,7 @@ class WritingApplication:
         return {
             "sample_count": len(samples),
             "genres": [style_profile(samples, genre) for genre in Genre],
-            "documents": self.repository.documents(user_id)[:12],
+            "documents": self.repository.documents(user_id, limit=12),
         }
 
     def agent_style_context(self, user_id, document, target):
