@@ -169,10 +169,20 @@ class SqliteChannelGatewayRepository:
         row = self.binding(binding_id)
         if row is None or row.user_id != str(user_id):
             raise GatewayDenied("绑定不存在。")
-        row.revoked_at = now
-        row.identity_key = None
-        # Revocation also closes outstanding grants for this owner/bot so a code
-        # copied before disconnect cannot silently recreate access afterward.
+        changed = self.session.execute(
+            update(ChannelBindingRow)
+            .where(
+                ChannelBindingRow.binding_id == binding_id,
+                ChannelBindingRow.user_id == str(user_id),
+                ChannelBindingRow.revoked_at.is_(None),
+            )
+            .values(revoked_at=now, identity_key=None)
+        ).rowcount
+        if changed != 1:
+            self.commit()
+            return
+        # Only the first revocation closes outstanding grants for this owner/bot.
+        # Replaying an old DELETE must not consume a later explicit relink grant.
         self.session.execute(
             update(ChannelLinkCodeRow)
             .where(
