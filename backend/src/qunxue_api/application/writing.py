@@ -189,6 +189,9 @@ class WritingApplication:
             ],
         }
 
+    def list_samples(self, user_id):
+        return {"items": self.repository.sample_summaries(user_id)}
+
     def summary(self, user_id):
         samples = self.repository.style_samples(user_id)
         return {

@@ -90,19 +90,7 @@ def summary(current: CurrentSessionDependency, app: Application):
 
 @router.get("/samples", response_model=WritingSampleList, operation_id="list_writing_samples")
 def samples(current: CurrentSessionDependency, app: Application):
-    rows = app.repository.samples(current.user.user_id)
-    return {
-        "items": [
-            {
-                "sample_id": r.sample_id,
-                "title": r.title,
-                "genre": r.genre,
-                "character_count": len(r.text),
-                "created_at": r.created_at,
-            }
-            for r in rows
-        ]
-    }
+    return app.list_samples(current.user.user_id)
 
 
 def save_sample(app, user_id, key, payload):

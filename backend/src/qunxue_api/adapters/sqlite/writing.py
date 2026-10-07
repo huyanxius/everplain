@@ -11,6 +11,8 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    case,
+    func,
     select,
     update,
 )
@@ -162,6 +164,32 @@ class SqliteWritingRepository:
                 .order_by(WritingSampleRow.created_at.desc())
             )
         )
+
+    def sample_summaries(self, user_id):
+        # Listing metadata must not hydrate every private sample body. SQLite
+        # length(TEXT) stops at NUL, while the existing Python len contract does
+        # not; retain a per-row fallback only for those valid stored strings.
+        rows = self.session.execute(select(
+            WritingSampleRow.sample_id,
+            WritingSampleRow.title,
+            WritingSampleRow.genre,
+            func.length(WritingSampleRow.text).label("character_count"),
+            WritingSampleRow.created_at,
+            case(
+                (func.instr(WritingSampleRow.text, "\x00") > 0, WritingSampleRow.text),
+                else_=None,
+            ).label("nul_text"),
+        ).where(
+            WritingSampleRow.user_id == str(user_id),
+        ).order_by(WritingSampleRow.created_at.desc())).mappings()
+        result = []
+        for row in rows:
+            summary = dict(row)
+            nul_text = summary.pop("nul_text")
+            if nul_text is not None:
+                summary["character_count"] = len(nul_text)
+            result.append(summary)
+        return result
 
     def style_samples(self, user_id):
         return [StyleSample(r.sample_id, r.title, r.genre, r.text) for r in self.samples(user_id)]
