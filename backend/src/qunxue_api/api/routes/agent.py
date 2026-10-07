@@ -807,6 +807,11 @@ async def _subscribe_run_events(request: Request, user_id: UUID, run_id: UUID, *
     unsaved_metadata_sent = 0
     next_heartbeat = time.monotonic() + _SSE_HEARTBEAT_SECONDS
     while True:
+        # The worker commits business status before journaling its terminal
+        # event. Only a read started after it finishes can prove that journal
+        # missing; checking the flag after read would race a stale snapshot.
+        worker_was_finished = worker_finished is None or worker_finished.is_set()
+
         def read(cursor=after):
             with request.app.state.disciplinary_agent_scope() as app:
                 run = app.find_run_by_id(user_id=user_id, run_id=run_id)
@@ -900,7 +905,8 @@ async def _subscribe_run_events(request: Request, user_id: UUID, run_id: UUID, *
                 "message": "执行状态暂未确认，已收到的正文已保存。请刷新后查看或明确重试本轮。",
             })
             return
-        if run.status != "running" and (not events or replay_completed or run.output_redacted):
+        if (worker_was_finished and run.status != "running"
+                and (not events or replay_completed or run.output_redacted)):
             for frame in unsaved_frames(run, after):
                 yield frame
             # A process may commit a canonical turn then die before its SSE
@@ -915,15 +921,22 @@ async def _subscribe_run_events(request: Request, user_id: UUID, run_id: UUID, *
                 pending = next((item for item in run.tool_summary
                                 if item.get("kind") == "deep_research_pending"), {})
                 yield _event("research_waiting", {"run_id": str(run_id), **pending})
+            elif worker_finished is not None and terminal_failure and not run.output_redacted:
+                yield _event(*terminal_failure[0])
             else:
                 name = "turn_interrupted" if run.status == "interrupted" else "turn_failed"
                 yield _event(name, {"code": run.status,
                                     "message": "本轮已结束，已收到的正文已保存。"})
             return
-        if worker_finished is not None and worker_finished.is_set() and terminal_failure:
+        if (worker_finished is not None and worker_was_finished and run.status == "running"
+                and terminal_failure):
             for frame in unsaved_frames(run, after):
                 yield frame
-            yield _event(*terminal_failure[0])
+            if run.output_redacted:
+                yield _event("turn_failed", {"code": "failed",
+                                            "message": "本轮已结束，部分输出已不可访问。"})
+            else:
+                yield _event(*terminal_failure[0])
             return
         if time.monotonic() >= next_heartbeat:
             yield ": keep-alive\n\n"
