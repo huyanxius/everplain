@@ -215,3 +215,24 @@ tests/billing/test_standalone_billing.py
 # Historical theory-matching billing only: synthetic internal calls, disabled default product.
 # This registration does not mount matching routes, a public catalog, or model-visible tools.
 tests/billing/test_legacy_research_billing.py
+
+# Shared retrieval primitives, default Empty isolation and retained adapter wiring.
+tests/test_knowledge_retrieval.py
+tests/test_retrieval_bootstrap.py
+
+# Historical release/catalog compatibility and offline metrics; not personal-library RAG E2E.
+tests/test_build_retrieval_index_cli.py
+tests/test_knowledge_markdown.py
+tests/test_knowledge_relations.py
+tests/test_release_retrieval_corpus.py
+tests/test_retrieval_corpus.py
+tests/test_retrieval_evaluation.py
+tests/test_retrieval_index_builder.py
+tests/test_sqlite_retrieval_index.py
+
+# Current Agent Soul, deep-research lifecycle and shared trace projection (synthetic only).
+tests/test_agent_soul.py
+tests/test_deep_research_agent.py
+tests/test_agent_trace_site_icons.py
+# Retained internal coding-plan compatibility; no model tool or HTTP entry is restored.
+tests/test_agent_coding_tools.py

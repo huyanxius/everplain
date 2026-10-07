@@ -139,6 +139,16 @@ def test_additive_migration_preserves_old_profile_and_memory(tmp_path, monkeypat
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     command.upgrade(config, "20261002_0510")
     with sqlite3.connect(db) as c:
+        c.execute("PRAGMA foreign_keys=ON")
+        # The profile must belong to a valid account before later FK-checking migrations.
+        c.execute(
+            "INSERT INTO users "
+            "(user_id, email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (
+                "owner", "soul-owner@example.test", "synthetic-unusable-hash",
+                "2026-10-02", "2026-10-02",
+            ),
+        )
         c.execute(
             "INSERT INTO agent_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
@@ -154,6 +164,7 @@ def test_additive_migration_preserves_old_profile_and_memory(tmp_path, monkeypat
                 8,
             ),
         )
+        assert c.execute("PRAGMA foreign_key_check").fetchall() == []
         # A migration must not rewrite unrelated memory tables.
         tables = c.execute("SELECT sql FROM sqlite_master WHERE name LIKE '%memor%'").fetchall()
     command.upgrade(config, "head")
@@ -162,7 +173,40 @@ def test_additive_migration_preserves_old_profile_and_memory(tmp_path, monkeypat
             "SELECT name, questionnaire, version, soul_text FROM agent_profiles"
         ).fetchone()
         assert row == ("原伙伴", '{"occupation":"研究者"}', 8, "")
+        assert c.execute("PRAGMA foreign_key_check").fetchall() == []
         assert (
             c.execute("SELECT sql FROM sqlite_master WHERE name LIKE '%memor%'").fetchall()
             == tables
         )
+
+
+def test_later_account_migration_rejects_an_orphaned_profile(tmp_path, monkeypatch):
+    import sqlite3
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+
+    db = tmp_path / "orphan.db"
+    monkeypatch.setenv("EVERPLAIN_DATABASE_URL", f"sqlite:///{db}")
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    command.upgrade(config, "20261002_0510")
+    with sqlite3.connect(db) as c:
+        # Deliberately emulate the original invalid fixture, with FK enforcement off.
+        c.execute("PRAGMA foreign_keys=OFF")
+        c.execute(
+            "INSERT INTO agent_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("orphan", "原伙伴", "nian", "#b8bfa6", "warm", 4, 1, "{}", "{}", 8),
+        )
+        violations = c.execute("PRAGMA foreign_key_check").fetchall()
+        assert len(violations) == 1 and violations[0][0] == "agent_profiles"
+    with pytest.raises(RuntimeError, match="Federated account migration found a foreign-key"):
+        command.upgrade(config, "head")
+    with sqlite3.connect(db) as c:
+        assert c.execute("SELECT version_num FROM alembic_version").fetchone() == (
+            "20261005_0620",
+        )
+        assert c.execute("SELECT user_id, name, version FROM agent_profiles").fetchone() == (
+            "orphan", "原伙伴", 8,
+        )
+        assert c.execute("PRAGMA foreign_key_check").fetchall() == violations

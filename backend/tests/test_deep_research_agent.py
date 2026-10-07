@@ -8,6 +8,7 @@ from qunxue_api.adapters.research_agent.pydantic_runner import (
 )
 from qunxue_api.application import DisciplinaryAgentApplication
 from qunxue_api.modules.agent_conversation import (
+    AgentEvidence,
     AgentResearchEvent,
     AgentRunResult,
     ConversationService,
@@ -231,22 +232,17 @@ def test_confirmed_deep_research_persists_a_completion_record_for_the_card() -> 
     class Release:
         knowledge_release_id = "release-test"
 
-    class Citation:
-        def __init__(self, kind, source_kind=None):
-            self.kind = kind
-            self.source_kind = source_kind
-            self.citation_id = f"c-{kind}-{source_kind}"
-            self.label = kind
-            self.excerpt = None
-            self.knowledge_id = None
-            self.source_id = None
-            self.material_id = None
-            self.parse_id = None
-            self.segment_id = None
-            self.locator = None
-            self.deleted = False
-
-    cited = (Citation("entry"), Citation("theory"), Citation("source", source_kind="web"))
+    cited = tuple(
+        AgentEvidence(
+            citation_id=f"c-{kind}-{source_kind}",
+            label=kind,
+            kind=kind,
+            excerpt="Synthetic evidence for the completion card.",
+            source_kind=source_kind,
+            knowledge_base_id=None,
+        )
+        for kind, source_kind in (("entry", None), ("theory", None), ("source", "web"))
+    )
 
     class Tools:
         release = Release()

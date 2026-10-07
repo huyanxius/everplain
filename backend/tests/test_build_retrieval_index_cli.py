@@ -1,3 +1,5 @@
+"""Internal legacy-release CLI compatibility with a synthetic local HTTP provider."""
+
 import json
 import os
 import subprocess
@@ -12,7 +14,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import update
 from test_pre_reviewed_theory_release import _write_bundle
 
+from qunxue_api.adapters.empty_catalog import EmptyKnowledgeCatalog
 from qunxue_api.adapters.retrieval import SqliteRetrievalIndex
+from qunxue_api.adapters.sqlite.knowledge_catalog import SqliteKnowledgeCatalog
 from qunxue_api.adapters.sqlite.knowledge_catalog_model import KnowledgeEntryRevisionRow
 from qunxue_api.modules.knowledge_catalog import KnowledgeUsePurpose
 
@@ -21,7 +25,12 @@ def test_cli_builds_the_explicit_release_with_the_real_embedding_http_adapter(
     client: TestClient,
     tmp_path: Path,
 ) -> None:
-    catalog = client.app.state.knowledge_catalog
+    # The personal app stays empty even when the fixture DB contains legacy releases.
+    assert isinstance(client.app.state.knowledge_catalog, EmptyKnowledgeCatalog)
+    catalog = SqliteKnowledgeCatalog(
+        client.app.state.database,
+        knowledge_root=Path(__file__).parent / "fixtures" / "legacy-catalog",
+    )
     preview = catalog.current_release(purpose=KnowledgeUsePurpose.BROWSE)
     first_bundle = _write_bundle(
         tmp_path / "first-pre-reviewed-theories.json",
