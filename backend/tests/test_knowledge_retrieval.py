@@ -1,7 +1,11 @@
+"""Shared retrieval primitives and explicit legacy-catalog compatibility boundaries."""
+
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import text
 
+from qunxue_api.adapters.empty_catalog import EmptyKnowledgeCatalog
 from qunxue_api.adapters.research_agent.catalog_tools import KnowledgeToolRegistry
 from qunxue_api.adapters.research_agent.retrieval import (
     RetrievalCandidate,
@@ -13,9 +17,12 @@ from qunxue_api.adapters.retrieval import RetrievalChunk
 from qunxue_api.adapters.retrieval.hybrid import (
     HybridRetrievalHit,
     HybridRetrievalResult,
-    RetrievalPipelineUnavailable,
 )
-from qunxue_api.adapters.theory_evidence import CatalogTheoryLexicalRetriever
+from qunxue_api.adapters.theory_evidence import (
+    CatalogTheoryEvidenceSource,
+    CatalogTheoryLexicalRetriever,
+)
+from qunxue_api.modules.knowledge_catalog import KnowledgeReleaseLevel, KnowledgeReleaseRef
 
 
 def test_normalize_query_collapses_punctuation_and_case_for_fuzzy_matching() -> None:
@@ -77,39 +84,142 @@ def test_lexical_fallback_returns_no_hits_when_query_has_no_relevance() -> None:
     assert result.hits == ()
 
 
-def test_knowledge_search_requires_the_release_bound_hybrid_retriever() -> None:
-    release = SimpleNamespace(
-        knowledge_release_id="release-reviewed-v1",
-        content_hash="sha256:release-reviewed-v1",
+class _ExplicitLegacyCatalog:
+    """A caller-supplied historical adapter, never the default personal catalog."""
+
+    def __init__(self, level: KnowledgeReleaseLevel) -> None:
+        self.release = KnowledgeReleaseRef(
+            knowledge_release_id=f"legacy-{level.value}-v1",
+            level=level,
+            content_hash=f"sha256:legacy-{level.value}-v1",
+        )
+        self.calls = []
+        self.detail = SimpleNamespace(
+            summary=SimpleNamespace(
+                knowledge_id="D2:P001", content_version=2, title="社区互助",
+            ),
+            aliases=("互助网络",),
+            content="社区互助通过持续联系与互惠规范支持行动。",
+            sources=(SimpleNamespace(
+                source_id="source:synthetic-community", title="合成互助记录",
+                use_boundary="仅用于测试来源追溯。",
+            ),),
+            theory_profile=None,
+        )
+
+    def current_release(self, *, purpose):
+        self.calls.append(purpose.value)
+        if purpose.value == "match" and self.release.level is not KnowledgeReleaseLevel.FINAL:
+            raise LookupError("no final MATCH release")
+        return self.release
+
+    def list_rag_entries(self, *, release_id):
+        assert release_id == self.release.knowledge_release_id
+        return (self.detail,)
+
+    def list_match_profiles(self, *, release_id):
+        assert release_id == self.release.knowledge_release_id
+        return ()
+
+    def get_entry(self, *, knowledge_id, release_id):
+        assert release_id == self.release.knowledge_release_id
+        assert knowledge_id == self.detail.summary.knowledge_id
+        return self.detail
+
+
+def _assert_traceable_lexical_result(registry):
+    results = registry.search_knowledge("社区互助")
+    assert len(results) == 1
+    hit = results[0]
+    assert hit["knowledge_id"] == "D2:P001"
+    assert hit["chunk_id"] == "knowledge-entry:D2:P001:v2:0"
+    assert "持续联系与互惠规范" in hit["excerpt"]
+    assert hit["retrieval_mode"] == "catalog_lexical"
+    assert hit["retrieval_sources"] == ["lexical"]
+    assert hit["embedding_model"] == "not_configured"
+    assert hit["reranker_model"] is None
+    assert hit["retrieval_index_id"].startswith(
+        f"catalog-lexical:{registry.release.knowledge_release_id}:"
     )
-
-    class Catalog:
-        def current_release(self, *, purpose):
-            del purpose
-            return release
-
-        def browse(self, **kwargs):
-            del kwargs
-            return SimpleNamespace(entries=(), next_cursor=None)
-
-    with pytest.raises(RetrievalPipelineUnavailable, match="hybrid retriever"):
-        KnowledgeToolRegistry(Catalog()).search_knowledge("青年孤独的结构成因")
+    assert hit["source_citation_ids"] == ["source:source:synthetic-community"]
+    assert registry.evidence[hit["citation_id"]].knowledge_id == "D2:P001"
+    assert registry.evidence[hit["source_citation_ids"][0]].label == "合成互助记录"
 
 
-def test_knowledge_registry_does_not_fall_back_to_a_preview_release() -> None:
+def test_explicit_legacy_catalog_uses_traceable_lexical_retrieval_without_hybrid() -> None:
+    catalog = _ExplicitLegacyCatalog(KnowledgeReleaseLevel.FINAL)
+    registry = KnowledgeToolRegistry(catalog)
+
+    _assert_traceable_lexical_result(registry)
+
+    assert catalog.calls == ["match"]
+    assert registry.release == catalog.release
+
+
+def test_explicit_legacy_preview_can_be_browsed_without_becoming_a_final_release() -> None:
+    catalog = _ExplicitLegacyCatalog(KnowledgeReleaseLevel.PREVIEW)
+    registry = KnowledgeToolRegistry(catalog)
+
+    _assert_traceable_lexical_result(registry)
+
+    assert catalog.calls == ["match", "browse"]
+    assert registry.release == catalog.release
+    assert registry.release.level is KnowledgeReleaseLevel.PREVIEW
+
+
+def test_default_empty_catalog_never_searches_inherited_legacy_rows(client) -> None:
+    catalog = client.app.state.knowledge_catalog
+    assert isinstance(catalog, EmptyKnowledgeCatalog)
+    with client.app.state.database.session() as session:
+        legacy_count = session.execute(
+            text("SELECT COUNT(*) FROM knowledge_entry_revisions")
+        ).scalar_one()
+        assert legacy_count > 0
+    calls = []
+
+    class Retriever:
+        def require_ready_manifest(self, **kwargs):
+            calls.append(("manifest", kwargs))
+            raise AssertionError("default empty catalog must not open a legacy index")
+
+        def search(self, **kwargs):
+            calls.append(("search", kwargs))
+            raise AssertionError("default empty catalog must not retrieve legacy content")
+
+    registry = KnowledgeToolRegistry(catalog, retriever=Retriever())
+
+    assert registry.catalog_available is False
+    assert registry.release.level is KnowledgeReleaseLevel.WORKING
+    assert registry.release.knowledge_release_id == "everplain-personal-v1"
+    assert registry.search_knowledge("历史唯物主义") == []
+    assert registry.read_knowledge_entry("D1:C001")["error"] == "knowledge_entry_not_found"
+    assert registry.evidence == {}
+    assert calls == []
+
+
+def test_match_evidence_rejects_preview_before_reading_catalog_or_retrieving() -> None:
     calls = []
 
     class Catalog:
-        def current_release(self, *, purpose):
-            calls.append(purpose.value)
-            if purpose.value == "match":
-                raise LookupError("no final MATCH release")
-            return SimpleNamespace(knowledge_release_id="preview-release")
+        def list_match_profiles(self, **kwargs):
+            calls.append(("catalog", kwargs))
+            raise AssertionError("MATCH must reject preview before reading profiles")
 
-    with pytest.raises(RetrievalPipelineUnavailable, match="final MATCH"):
-        KnowledgeToolRegistry(Catalog(), retriever=object())
+    class Retriever:
+        def search(self, **kwargs):
+            calls.append(("retriever", kwargs))
+            raise AssertionError("MATCH must reject preview before retrieval")
 
-    assert calls == ["match"]
+    preview = KnowledgeReleaseRef(
+        knowledge_release_id="explicit-legacy-preview",
+        level=KnowledgeReleaseLevel.PREVIEW,
+        content_hash="sha256:preview",
+    )
+    with pytest.raises(ValueError, match="final MATCH knowledge release"):
+        CatalogTheoryEvidenceSource(Catalog(), retriever=Retriever()).retrieve(
+            phenomenon=SimpleNamespace(), release=preview,
+        )
+    assert calls == []
 
 
 def test_knowledge_search_maps_hybrid_chunks_to_auditable_evidence() -> None:

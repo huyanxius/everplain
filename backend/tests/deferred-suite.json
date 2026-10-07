@@ -7,24 +7,12 @@
       "reason": "Existing file was not selected by the frozen 9ccab4c product suite. This is an unresolved review/execution backlog, NOT a historical-only classification or a passing result. Promote after current compatibility review and relevant execution; changing a file invalidates this baseline exclusion.",
       "files": [
         {
-          "path": "backend/tests/test_agent_coding_tools.py",
-          "sha256": "e64d1a77c98baf5843744250ce8b17cf0c83c77d2e3af919ff719f7b0550689f"
-        },
-        {
           "path": "backend/tests/test_agent_conversation.py",
           "sha256": "be77951324c9a605e5156eab95ab011dd118750ea44655c2ad971fedcc16e33e"
         },
         {
-          "path": "backend/tests/test_agent_soul.py",
-          "sha256": "9b571b521b8654d8b7152d735d21ecaf8ebb3e44f63cc9e65d2c05acdf286fda"
-        },
-        {
           "path": "backend/tests/test_agent_tool_trace.py",
           "sha256": "83357aa9938034a42f10d101904d45f04e2a1ca382fea71f661f5b220ab67e8d"
-        },
-        {
-          "path": "backend/tests/test_agent_trace_site_icons.py",
-          "sha256": "cbed570aa9b726c5e5967b64c32d63f16307e6e35ce7d4a7d74b4366045e96af"
         },
         {
           "path": "backend/tests/test_api_contract_freeze.py",
@@ -35,16 +23,8 @@
           "sha256": "dcab61ec5dad716603afc4ff3df938834611e2200c003f668582d937954e638f"
         },
         {
-          "path": "backend/tests/test_build_retrieval_index_cli.py",
-          "sha256": "b0881fd333bc6b66cdb2f4609ed3d8bdf33b39d60497abde21e022cc71764ee0"
-        },
-        {
           "path": "backend/tests/test_course_cost_limits.py",
           "sha256": "a06a37bc0e775f66de8b3ed194a0692e16133ad2b72fe63211bc54cd353bdc51"
-        },
-        {
-          "path": "backend/tests/test_deep_research_agent.py",
-          "sha256": "8e549a0bc7f4066d06e10fc985db2befcaaba58f056b45467f5d99fe8b50ae85"
         },
         {
           "path": "backend/tests/test_doi_metadata.py",
@@ -65,18 +45,6 @@
         {
           "path": "backend/tests/test_knowledge_catalog_api.py",
           "sha256": "0da77debf62bcf6030362326c2edc2b5c3dd953915550bc20f6d18b9da2a63d2"
-        },
-        {
-          "path": "backend/tests/test_knowledge_markdown.py",
-          "sha256": "c044016329fe7759c7909356395ea850ba4045c8a3b98416cd0cdcc35ef6ac08"
-        },
-        {
-          "path": "backend/tests/test_knowledge_relations.py",
-          "sha256": "629eb5de7119b5dc3768471602518095a5ce7990a9f0698f022383ce43a695fd"
-        },
-        {
-          "path": "backend/tests/test_knowledge_retrieval.py",
-          "sha256": "9cab09970fc12523922749dfe43c4280395495f8bdd0a7f8deb839a7edfc006c"
         },
         {
           "path": "backend/tests/test_literature_exchange.py",
@@ -137,10 +105,6 @@
         {
           "path": "backend/tests/test_qunxue_qdpx_mapping.py",
           "sha256": "5147b5228913f3d02d3c955ac815a0b0c2e4452ca9d5d60e98671602fb6ab8a2"
-        },
-        {
-          "path": "backend/tests/test_release_retrieval_corpus.py",
-          "sha256": "0d7e04efd5cc910d42829866dfd2d531ac5629c92f9df18b6a56b9fa585733c7"
         },
         {
           "path": "backend/tests/test_research_analysis_agent_tools.py",
@@ -261,26 +225,6 @@
         {
           "path": "backend/tests/test_research_tasks.py",
           "sha256": "4bb53da302c59b987b00c0fabc640d4b6d48c0bb1686f42a6547bf72b7eae9d2"
-        },
-        {
-          "path": "backend/tests/test_retrieval_bootstrap.py",
-          "sha256": "6a9fa0e1c862d8f944d8138889946db6994f115cadb36c09a1e83ce8af35721e"
-        },
-        {
-          "path": "backend/tests/test_retrieval_corpus.py",
-          "sha256": "51683be8a7699d3b310fc0223369ba3ecc8ef1e8260591f39793b8d204c23db0"
-        },
-        {
-          "path": "backend/tests/test_retrieval_evaluation.py",
-          "sha256": "a5e0e811208af9a9aab1790300921f69c4b315abf05e445530b53dd45773e5e6"
-        },
-        {
-          "path": "backend/tests/test_retrieval_index_builder.py",
-          "sha256": "2d69c0162754660a269112e5b1bc1392d333d56165a082e1e8e0b42c2e248b7a"
-        },
-        {
-          "path": "backend/tests/test_sqlite_retrieval_index.py",
-          "sha256": "f0e75e8929a06e1f3cd0982cfd415a7f71698b8e6fe316aa569185922d83200b"
         },
         {
           "path": "backend/tests/test_theory_confirmation_rules.py",
