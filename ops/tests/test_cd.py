@@ -140,9 +140,11 @@ class FilesystemSafetyTests(unittest.TestCase):
             hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted((ROOT / "backend/migrations").rglob("*.py"))
         }
-        storage["schema/sqlite_index.py"] = hashlib.sha256(
-            (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
-        ).hexdigest()
+        # These historical reviews used the pre-D02 adapter. Current bytes are
+        # separately bound by test_shipped_vector_storage_review_binds_current_bytes.
+        storage["schema/sqlite_index.py"] = (
+            "d45eafd7c931a47a9c8f6731d563c8030202abf0f135390a978b8c919b36dcc3"
+        )
         membership_hash = hashlib.sha256(json.dumps(storage, sort_keys=True).encode()).hexdigest()
         del storage["migrations/versions/20261005_0640_membership_vouchers.py"]
         accounts_hash = hashlib.sha256(json.dumps(storage, sort_keys=True).encode()).hexdigest()
@@ -238,6 +240,67 @@ class FilesystemSafetyTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "rollback compatibility"):
                 deploy.check_compatible({"migration_tree": previous}, {"migration_tree": candidate},
                                         policy)
+
+
+    def test_shipped_vector_storage_review_binds_current_bytes(self):
+        import review_vector_storage as vector_review
+
+        receipt = json.loads((ROOT / "ops/cd/VECTOR_D02_STORAGE_REVIEW.json").read_text())
+        policy = json.loads((ROOT / "ops/cd/policy.json").read_text())
+        storage = vector_review.storage(ROOT)
+        self.assertEqual(storage["schema/sqlite_index.py"], receipt["current_index_sha256"])
+        self.assertEqual(receipt["previous_index_sha256"],
+                         "d45eafd7c931a47a9c8f6731d563c8030202abf0f135390a978b8c919b36dcc3")
+        self.assertEqual(receipt["current_index_sha256"],
+                         "69163cb24b5f83cc550beebcaaf7516861a61c6d108b6a0965d03481364a5ec9")
+        self.assertEqual({k: v for k, v in storage.items() if k.startswith("migrations/")},
+                         receipt["migration_file_sha256"])
+        historical = {**storage, "schema/sqlite_index.py": receipt["previous_index_sha256"]}
+        previous = {"migration_tree": vector_review.json_hash(historical)}
+        current = {"migration_tree": vector_review.json_hash(storage)}
+        edge = {"from": previous["migration_tree"], "to": current["migration_tree"]}
+        self.assertEqual(edge, {"from": receipt["from"], "to": receipt["to"]})
+        self.assertEqual(receipt["from"],
+                         "2110b33f141d037084bf093bc663b0f228965cf9f25c91d668a8c8deba103e86")
+        self.assertEqual(receipt["to"],
+                         "28146d4e4db089ae8aeaf0cc59462bbf393cbb3ea19a07edfdbb8ea7b5af72d2")
+        self.assertEqual(policy["rollback_compatible_migration_trees"], [])
+        self.assertIn(edge, policy["reviewed_migration_transitions"])
+        self.assertNotIn(edge, policy["reviewed_forward_only_migration_transitions"])
+        deploy.check_compatible(previous, current, policy)
+        without_review = {**policy, "reviewed_migration_transitions": [
+            record for record in policy["reviewed_migration_transitions"] if record != edge
+        ]}
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            deploy.check_compatible(previous, current, without_review)
+        definitions = vector_review.definitions(ROOT / vector_review.INDEX_PATH)
+        for name, expected in receipt["unchanged_definition_sha256"].items():
+            self.assertEqual(hashlib.sha256(definitions[name].encode()).hexdigest(), expected)
+        # Neither a current-byte mutation nor an old/unknown source can borrow the
+        # review. This explicit current-tree guard prevents frozen historical
+        # fingerprints from hiding a later retrieval-adapter or migration change.
+        for filename in storage:
+            changed = {**storage, filename: "0" * 64}
+            with self.subTest(filename=filename), self.assertRaisesRegex(
+                ValueError, "rollback compatibility"
+            ):
+                deploy.check_compatible(
+                    previous, {"migration_tree": vector_review.json_hash(changed)}, policy
+                )
+        endpoints = {point for key in ("reviewed_migration_transitions",
+                                      "reviewed_forward_only_migration_transitions")
+                     for record in policy[key] for point in record.values()}
+        for value in endpoints - {previous["migration_tree"], current["migration_tree"]}:
+            with self.subTest(earlier=value), self.assertRaisesRegex(
+                ValueError, "rollback compatibility"
+            ):
+                deploy.check_compatible({"migration_tree": value}, current, policy)
+        for old, new in ((current, previous), (previous, {"migration_tree": "0" * 64}),
+                         ({"migration_tree": "0" * 64}, current)):
+            with self.subTest(old=old, new=new), self.assertRaisesRegex(
+                ValueError, "rollback compatibility"
+            ):
+                deploy.check_compatible(old, new, policy)
 
 
 class ArtifactTests(unittest.TestCase):

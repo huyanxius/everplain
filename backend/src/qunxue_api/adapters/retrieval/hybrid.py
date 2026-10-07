@@ -315,13 +315,18 @@ class HybridRetriever:
         lexical = self._lexical_candidates(query=query, chunks=chunks)
         try:
             query_vector = self._embedder.embed_query(query)
-            semantic_hits = self._index.search(
-                retrieval_index_id=manifest.retrieval_index_id,
-                knowledge_release_id=knowledge_release_id,
-                query_vector=query_vector,
-                document_kind=document_kind,
-                limit=self._recall_limit,
-            )
+            try:
+                semantic_hits = self._index.search(
+                    retrieval_index_id=manifest.retrieval_index_id,
+                    knowledge_release_id=knowledge_release_id,
+                    query_vector=query_vector,
+                    document_kind=document_kind,
+                    limit=self._recall_limit,
+                )
+            except (TypeError, ValueError) as error:
+                raise RetrievalPipelineUnavailable(
+                    "embedding service returned an invalid vector"
+                ) from error
             semantic = [
                 RetrievalCandidate(
                     citation_id=hit.chunk.chunk_id,

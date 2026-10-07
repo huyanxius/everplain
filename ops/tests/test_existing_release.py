@@ -56,9 +56,11 @@ class RegistryReleaseTests(unittest.TestCase):
             hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted((ROOT / "backend/migrations").rglob("*.py"))
         }
-        storage["schema/sqlite_index.py"] = hashlib.sha256(
-            (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
-        ).hexdigest()
+        # These historical reviews used the pre-D02 adapter. Current bytes are
+        # separately bound by test_shipped_vector_storage_review_binds_current_bytes.
+        storage["schema/sqlite_index.py"] = (
+            "d45eafd7c931a47a9c8f6731d563c8030202abf0f135390a978b8c919b36dcc3"
+        )
         # Reconstruct exact historical endpoints before later membership/account DDL.
         del storage["migrations/versions/20261005_0640_membership_vouchers.py"]
         del storage["migrations/versions/20261005_0630_federated_accounts.py"]
@@ -98,9 +100,11 @@ class RegistryReleaseTests(unittest.TestCase):
             hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted((ROOT / "backend/migrations").rglob("*.py"))
         }
-        storage["schema/sqlite_index.py"] = hashlib.sha256(
-            (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
-        ).hexdigest()
+        # These historical reviews used the pre-D02 adapter. Current bytes are
+        # separately bound by test_shipped_vector_storage_review_binds_current_bytes.
+        storage["schema/sqlite_index.py"] = (
+            "d45eafd7c931a47a9c8f6731d563c8030202abf0f135390a978b8c919b36dcc3"
+        )
         # Reconstruct exact historical endpoints before later membership/account DDL.
         del storage["migrations/versions/20261005_0640_membership_vouchers.py"]
         del storage["migrations/versions/20261005_0630_federated_accounts.py"]
@@ -148,9 +152,11 @@ class RegistryReleaseTests(unittest.TestCase):
             hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted((ROOT / "backend/migrations").rglob("*.py"))
         }
-        storage["schema/sqlite_index.py"] = hashlib.sha256(
-            (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
-        ).hexdigest()
+        # These historical reviews used the pre-D02 adapter. Current bytes are
+        # separately bound by test_shipped_vector_storage_review_binds_current_bytes.
+        storage["schema/sqlite_index.py"] = (
+            "d45eafd7c931a47a9c8f6731d563c8030202abf0f135390a978b8c919b36dcc3"
+        )
         del storage["migrations/versions/20261005_0640_membership_vouchers.py"]
         candidate_storage = dict(storage)
         candidate = {"migration_tree": hashlib.sha256(
@@ -193,9 +199,11 @@ class RegistryReleaseTests(unittest.TestCase):
             hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted((ROOT / "backend/migrations").rglob("*.py"))
         }
-        storage["schema/sqlite_index.py"] = hashlib.sha256(
-            (ROOT / "backend/src/qunxue_api/adapters/retrieval/sqlite_index.py").read_bytes()
-        ).hexdigest()
+        # These historical reviews used the pre-D02 adapter. Current bytes are
+        # separately bound by test_shipped_vector_storage_review_binds_current_bytes.
+        storage["schema/sqlite_index.py"] = (
+            "d45eafd7c931a47a9c8f6731d563c8030202abf0f135390a978b8c919b36dcc3"
+        )
         candidate_storage = dict(storage)
         candidate = {"migration_tree": hashlib.sha256(
             json.dumps(storage, sort_keys=True).encode()).hexdigest()}
@@ -240,6 +248,25 @@ class RegistryReleaseTests(unittest.TestCase):
                 ValueError, "rollback compatibility"
             ):
                 release.check_existing_migration_transition(previous, mutated, policy)
+
+    def test_vector_storage_review_uses_existing_rollback_compatible_path(self):
+        import review_vector_storage as vector_review
+
+        policy = json.loads((ROOT / "ops/cd/policy.json").read_text())
+        values = vector_review.storage(ROOT)
+        current = {"migration_tree": vector_review.json_hash(values)}
+        values["schema/sqlite_index.py"] = vector_review.PREVIOUS_INDEX_SHA256
+        previous = {"migration_tree": vector_review.json_hash(values)}
+        edge = {"from": previous["migration_tree"], "to": current["migration_tree"]}
+        self.assertNotIn(edge, policy["reviewed_forward_only_migration_transitions"])
+        self.assertFalse(release.check_existing_migration_transition(previous, current, policy))
+        without_review = {**policy, "reviewed_migration_transitions": [
+            record for record in policy["reviewed_migration_transitions"] if record != edge
+        ]}
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            release.check_existing_migration_transition(previous, current, without_review)
+        with self.assertRaisesRegex(ValueError, "rollback compatibility"):
+            release.check_existing_migration_transition(current, previous, policy)
 
     def test_live_compatibility_overlays_require_reviewed_bytes_and_read_only_mounts(self):
         with tempfile.TemporaryDirectory() as d:
