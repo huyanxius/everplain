@@ -230,3 +230,199 @@ def test_resolution_eligibility_is_checked_after_write_reservation_until_scope_c
             assert receipt.status == "completed" and receipt.result == result
         else:
             assert receipt is None
+
+
+@pytest.mark.parametrize("command", ["sample", "document"])
+@pytest.mark.parametrize("fail_at", ["insert", "complete"])
+def test_creation_sql_failures_roll_back_row_receipt_and_expired_claim(
+    plain_client, command, fail_at,
+):
+    from sqlalchemy.exc import IntegrityError
+
+    from qunxue_api.adapters.sqlite.writing import WritingDocumentRow, WritingSampleRow
+
+    c = plain_client
+    owner = _authenticate(c)["user"]["user_id"]
+    database, key, expired_key = c.app.state.database, str(uuid4()), str(uuid4())
+    target = command + ":create"
+    row_type = WritingSampleRow if command == "sample" else WritingDocumentRow
+    table = "writing_samples" if command == "sample" else "writing_documents"
+    data = {"title": "不能留下", "genre": "essay",
+            "text" if command == "sample" else "markdown": "正文" * 80}
+    with database.session() as session:
+        session.add(WritingOperationRow(
+            operation_id=str(uuid4()), user_id=owner, request_key=expired_key,
+            request_hash="0" * 64, target=target, status="running", result=None,
+            created_at="2020-01-01T00:00:00+00:00",
+        ))
+        if fail_at == "insert":
+            sql = (f"CREATE TRIGGER fail_creation BEFORE INSERT ON {table} "
+                   "BEGIN SELECT RAISE(ABORT, 'forced creation insert'); END")
+        else:
+            sql = ("CREATE TRIGGER fail_creation BEFORE UPDATE OF status ON writing_operations "
+                   "WHEN NEW.status = 'completed' BEGIN SELECT RAISE(IGNORE); END")
+        session.connection().exec_driver_sql(sql)
+    with pytest.raises(WritingConflict) as caught, c.app.state.writing_scope() as app:
+        getattr(app, "create_" + command)(owner, key, data)
+    if fail_at == "insert":
+        assert isinstance(caught.value.__cause__, IntegrityError)
+        assert "forced creation insert" in str(caught.value.__cause__)
+        assert str(caught.value) == "请求与另一操作冲突，请刷新后重试"
+    else:
+        assert str(caught.value) == "生成请求已过期，结果未覆盖原文，请重新生成"
+    with database.session() as session:
+        assert list(session.scalars(select(row_type))) == []
+        assert session.scalar(select(WritingOperationRow).where(
+            WritingOperationRow.request_key == key,
+        )) is None
+        expired = session.scalar(select(WritingOperationRow).where(
+            WritingOperationRow.request_key == expired_key,
+        ))
+        assert expired.status == "running" and expired.result is None
+        # Drop only our test trigger, then retry the same failed key. This proves
+        # failure did not leave a failed/running receipt or poison the scope.
+        session.connection().exec_driver_sql("DROP TRIGGER fail_creation")
+    with c.app.state.writing_scope() as app:
+        result = getattr(app, "create_" + command)(owner, key, data)
+    with database.session() as session:
+        assert len(list(session.scalars(select(row_type)))) == 1
+        receipt = session.scalar(select(WritingOperationRow).where(
+            WritingOperationRow.request_key == key,
+        ))
+        assert receipt.status == "completed" and receipt.result == result
+        expired = session.scalar(select(WritingOperationRow).where(
+            WritingOperationRow.request_key == expired_key,
+        ))
+        assert expired.status == "failed"
+
+
+@pytest.mark.parametrize("command", ["sample", "document"])
+def test_creation_reservation_and_row_receipt_visibility_share_scope(
+    plain_client, monkeypatch, command,
+):
+    import sqlite3
+
+    from qunxue_api.adapters.sqlite.writing import WritingDocumentRow, WritingSampleRow
+
+    c = plain_client
+    owner = _authenticate(c)["user"]["user_id"]
+    database, key = c.app.state.database, str(uuid4())
+    method = "add_sample" if command == "sample" else "create"
+    row_type = WritingSampleRow if command == "sample" else WritingDocumentRow
+    original = getattr(SqliteWritingRepository, method)
+    checked = []
+
+    def action(repository, *args, **kwargs):
+        connection = repository.session.connection().connection.driver_connection
+        assert connection.in_transaction
+        claim = repository.session.scalar(select(WritingOperationRow).where(
+            WritingOperationRow.request_key == key,
+        ))
+        assert claim.status == "running"
+        other = sqlite3.connect(database.engine.url.database, timeout=0)
+        try:
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                other.execute("UPDATE writing_operations SET status = status WHERE request_key = ?",
+                              (key,))
+        finally:
+            other.close()
+        checked.append("reserved-before-action")
+        return original(repository, *args, **kwargs)
+
+    monkeypatch.setattr(SqliteWritingRepository, method, action)
+    data = {"title": "原样", "genre": "essay",
+            "text" if command == "sample" else "markdown": "正文" * 80}
+    with c.app.state.writing_scope() as app:
+        result = getattr(app, "create_" + command)(owner, key, data)
+        with database.session() as observer:
+            assert list(observer.scalars(select(row_type))) == []
+            assert observer.scalar(select(WritingOperationRow).where(
+                WritingOperationRow.request_key == key,
+            )) is None
+    assert checked == ["reserved-before-action"]
+    with database.session() as observer:
+        rows = list(observer.scalars(select(row_type)))
+        assert len(rows) == 1
+        assert getattr(rows[0], command + "_id") == result[command + "_id"]
+        receipt = observer.scalar(select(WritingOperationRow).where(
+            WritingOperationRow.request_key == key,
+        ))
+        assert receipt.status == "completed" and receipt.result == result
+
+
+@pytest.mark.parametrize("contender", ["duplicate", "hundred_and_first"])
+def test_sample_creation_serializes_dedupe_and_99_limit_after_reservation(
+    plain_client, monkeypatch, contender,
+):
+    from sqlalchemy.exc import OperationalError
+
+    from qunxue_api.adapters.sqlite.writing import WritingSampleRow
+
+    c = plain_client
+    owner = _authenticate(c)["user"]["user_id"]
+    database = c.app.state.database
+    first_key, second_key = str(uuid4()), str(uuid4())
+    data = {"title": "第100篇原标题", "genre": "essay", "text": "第100篇\r\n" + "字" * 80}
+    second_data = {**data, "title": "后来标题", "text": (
+        data["text"].replace("\r\n", " \t") if contender == "duplicate" else "第101篇" + "字" * 80
+    )}
+    with c.app.state.writing_scope() as app:
+        for index in range(99):
+            app.create_sample(owner, str(uuid4()), {**data, "text": f"唯一{index}:" + "字" * 80})
+    original_samples, observations = SqliteWritingRepository.samples, []
+    with database.session() as second_session:
+        second_repo = SqliteWritingRepository(second_session)
+        second_app = WritingApplication(second_repo)
+        # Both requests can see 99 and no future row before either claims. A stale
+        # pre-read must not become permission to insert beyond the quota.
+        assert len(second_repo.samples(owner)) == 99
+        assert second_repo.operation(owner, second_key, "0" * 64) is None
+        second_session.connection().exec_driver_sql("PRAGMA busy_timeout = 0")
+
+        def samples(repository, user_id):
+            if repository.session is second_session:
+                observations.append("contender-read")
+                return original_samples(repository, user_id)
+            claim = repository.session.scalar(select(WritingOperationRow).where(
+                WritingOperationRow.request_key == first_key,
+            ))
+            assert claim.status == "running"
+            assert repository.session.connection().connection.driver_connection.in_transaction
+            # The contender cannot reach dedupe/count while the first command
+            # holds start's reservation. This is a real second SQLite command.
+            with pytest.raises(OperationalError, match="locked"):
+                second_app.create_sample(owner, second_key, second_data)
+            assert observations == []
+            second_session.rollback()
+            observations.append("blocked-before-contender-read")
+            return original_samples(repository, user_id)
+
+        monkeypatch.setattr(SqliteWritingRepository, "samples", samples)
+        with c.app.state.writing_scope() as app:
+            first = app.create_sample(owner, first_key, data)
+            with database.session() as observer:
+                assert len(list(observer.scalars(select(WritingSampleRow)))) == 99
+                assert observer.scalar(select(WritingOperationRow).where(
+                    WritingOperationRow.request_key == first_key,
+                )) is None
+        if contender == "duplicate":
+            second = second_app.create_sample(owner, second_key, second_data)
+            assert second == first
+            second_session.commit()
+        else:
+            with pytest.raises(ValueError, match="最多保留100篇样文"):
+                second_app.create_sample(owner, second_key, second_data)
+            second_session.rollback()
+    assert observations == ["blocked-before-contender-read", "contender-read"]
+    with database.session() as observer:
+        rows = list(observer.scalars(select(WritingSampleRow)))
+        assert len(rows) == 100
+        saved = observer.get(WritingSampleRow, first["sample_id"])
+        assert saved.title == data["title"] and saved.text == data["text"]
+        receipt = observer.scalar(select(WritingOperationRow).where(
+            WritingOperationRow.request_key == second_key,
+        ))
+        if contender == "duplicate":
+            assert receipt.status == "completed" and receipt.result == first
+        else:
+            assert receipt is None

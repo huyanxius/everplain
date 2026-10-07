@@ -1,4 +1,3 @@
-import re
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated
@@ -93,15 +92,6 @@ def samples(current: CurrentSessionDependency, app: Application):
     return app.list_samples(current.user.user_id)
 
 
-def save_sample(app, user_id, key, payload):
-    data = payload.model_dump(mode="json")
-    if len(re.sub(r"\s+", "", payload.text)) < 80 or not payload.title.strip():
-        raise ValueError("样文至少需要80个有效字符和一个标题")
-    return app.mutate(
-        user_id, key, "sample:create", data, lambda: app.repository.add_sample(user_id, **data)
-    )
-
-
 @router.post("/samples", response_model=WritingSampleResponse, operation_id="create_writing_sample")
 def create_sample(
     payload: WritingSampleCreate,
@@ -109,7 +99,7 @@ def create_sample(
     app: Application,
     key: IdempotencyKey,
 ):
-    return save_sample(app, current.user.user_id, key, payload)
+    return app.create_sample(current.user.user_id, key, payload.model_dump(mode="json"))
 
 
 def read_sample_file(file: UploadFile):
@@ -152,12 +142,8 @@ def upload_sample(
     text = app.parse_uploaded_sample(
         filename=filename, media_type=file.content_type, content=content
     )
-    return save_sample(
-        app,
-        current.user.user_id,
-        key,
-        WritingSampleCreate(title=filename[:200], genre=genre, text=text),
-    )
+    payload = WritingSampleCreate(title=filename[:200], genre=genre, text=text)
+    return app.create_sample(current.user.user_id, key, payload.model_dump(mode="json"))
 
 
 @router.delete("/samples/{sample_id}", status_code=204, operation_id="delete_writing_sample")
@@ -179,10 +165,7 @@ def create_document(
     app: Application,
     key: IdempotencyKey,
 ):
-    user_id, data = current.user.user_id, payload.model_dump(mode="json")
-    return app.mutate(
-        user_id, key, "document:create", data, lambda: app.repository.create(user_id, data)
-    )
+    return app.create_document(current.user.user_id, key, payload.model_dump(mode="json"))
 
 
 @router.get(

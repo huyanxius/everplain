@@ -439,3 +439,424 @@ def test_http_save_keeps_validation_precedence_nulls_and_exact_title(plain_clien
         assert response.json()["error"]["code"] == "validation_error"
         assert response.json()["error"]["message"] == message
     assert c.get(path).json() == saved.json()
+
+
+def test_creation_routes_require_only_public_commands_and_serialized_data():
+    from io import BytesIO
+    from types import SimpleNamespace
+
+    from fastapi import UploadFile
+
+    from qunxue_api.api.contracts.writing import WritingDocumentCreate, WritingSampleCreate
+    from qunxue_api.api.routes.writing import create_document, create_sample, upload_sample
+    from qunxue_api.modules.writing import Genre
+
+    owner, key = uuid4(), str(uuid4())
+    current = SimpleNamespace(user=SimpleNamespace(user_id=owner))
+    calls, result = [], object()
+    sample = {"title": "  原样样文  ", "genre": "essay", "text": "😀 原文\r\n" * 80}
+    filename = "长" * 205 + ".txt"
+
+    class UseCases:
+        # No repository, mutate, Session, DTO, or executable callback required.
+        def create_sample(self, user_id, request_key, data):
+            calls.append(("sample", user_id, request_key, data))
+            return result
+
+        def create_document(self, user_id, request_key, data):
+            calls.append(("document", user_id, request_key, data))
+            return result
+
+        def parse_uploaded_sample(self, **kwargs):
+            calls.append(("parse", kwargs))
+            return sample["text"]
+
+    app = UseCases()
+    assert create_sample(WritingSampleCreate(**sample), current, app, key) is result
+    assert create_document(WritingDocumentCreate(title="  文稿  "), current, app, key) is result
+    assert create_document(WritingDocumentCreate(), current, app, key) is result
+    assert upload_sample(current, app, key, UploadFile(
+        filename="/ignored/" + filename, file=BytesIO(b"raw contents"),
+    ), Genre.ESSAY) is result
+    assert calls == [
+        ("sample", owner, key, sample),
+        ("document", owner, key, {"title": "文稿", "genre": "essay", "markdown": ""}),
+        ("document", owner, key, {"title": "未命名文稿", "genre": "essay", "markdown": ""}),
+        ("parse", {"filename": filename, "media_type": None, "content": b"raw contents"}),
+        ("sample", owner, key, {**sample, "title": filename[:200]}),
+    ]
+
+
+@pytest.mark.parametrize("command", ["sample", "document"])
+@pytest.mark.parametrize("replay", [False, True])
+def test_creation_commands_own_legacy_identity_and_action_order(command, replay):
+    from types import SimpleNamespace
+
+    owner, key, claim = uuid4(), str(uuid4()), object()
+    data = {"title": "  原样  ", "genre": "essay",
+            "text" if command == "sample" else "markdown": "😀 原文\r\n" * 80}
+    original, result, calls = dict(data), {"id": "original"}, []
+    target = command + ":create"
+    digest = _legacy_command_digest(target, data)
+
+    class Repository:
+        def operation(self, *args):
+            calls.append(("operation", *args))
+            return SimpleNamespace(result=result) if replay else None
+
+        def start(self, *args):
+            calls.append(("start", *args))
+            return claim
+
+        def add_sample(self, user_id, **payload):
+            calls.append(("sample", user_id, payload))
+            return result
+
+        def create(self, user_id, payload):
+            calls.append(("document", user_id, payload))
+            return result
+
+        def complete(self, *args):
+            calls.append(("complete", *args))
+
+    actual = getattr(WritingApplication(Repository()), "create_" + command)(owner, key, data)
+    assert actual is result and data == original
+    expected = [("operation", owner, key, digest)]
+    if not replay:
+        expected += [("start", owner, key, digest, target), (command, owner, data),
+                     ("complete", claim, result)]
+    assert calls == expected
+
+
+@pytest.mark.parametrize("title,text", [
+    ("样文", "字" * 79 + " \t\n"), (" \t", "字" * 80), (" \t", "字" * 79 + " " * 20),
+])
+def test_sample_creation_validates_before_receipt_lookup(title, text):
+    class NoCalls:
+        def operation(self, *args):
+            pytest.fail("Sample rules must precede receipt lookup, including replay")
+
+    with pytest.raises(ValueError, match="样文至少需要80个有效字符和一个标题"):
+        WritingApplication(NoCalls()).create_sample(
+            uuid4(), str(uuid4()), {"title": title, "genre": "essay", "text": text},
+        )
+
+
+@pytest.mark.parametrize("command", ["sample", "document"])
+def test_creation_replays_persisted_legacy_receipts_and_preserves_http_identity(
+    plain_client, command,
+):
+    from qunxue_api.adapters.sqlite.writing import WritingDocumentRow, WritingSampleRow
+    from qunxue_api.api.contracts.writing import WritingDocumentResponse, WritingSampleResponse
+
+    c = plain_client
+    owner = _authenticate(c)["user"]["user_id"]
+    key, target = str(uuid4()), command + ":create"
+    data = ({"title": "  原样样文  ", "genre": "essay", "text": "😀 正文\r\n" * 80}
+            if command == "sample" else {"title": "文稿", "genre": "essay", "markdown": ""})
+    with c.app.state.database.session() as session:
+        repo = SqliteWritingRepository(session)
+        old = repo.add_sample(owner, **data) if command == "sample" else repo.create(owner, data)
+        session.add(WritingOperationRow(
+            operation_id=str(uuid4()), user_id=owner, request_key=key,
+            request_hash=_legacy_command_digest(target, data), target=target,
+            status="completed", result=old, created_at=old["created_at"],
+        ))
+    path = "/api/writing/" + ("samples" if command == "sample" else "documents")
+    # Document defaults and title trimming must enter the old digest before lookup.
+    body = data if command == "sample" else {"title": "  文稿  "}
+    headers, writes = {"Idempotency-Key": key}, []
+
+    def record(_connection, _cursor, statement, *_args):
+        if statement.lstrip().upper().startswith((
+            "UPDATE WRITING_", "INSERT INTO WRITING_", "DELETE FROM WRITING_",
+        )):
+            writes.append(statement)
+
+    event.listen(c.app.state.database.engine, "before_cursor_execute", record)
+    try:
+        with c.app.state.writing_scope() as app:
+            assert getattr(app, "create_" + command)(owner, key, data) == old
+        replay = c.post(path, json=body, headers=headers)
+        response = WritingSampleResponse if command == "sample" else WritingDocumentResponse
+        assert replay.status_code == 200, replay.text
+        assert replay.json() == response.model_validate(old).model_dump(mode="json")
+        changes = [("title", "别的标题"), ("genre", "fiction"),
+                   ("text" if command == "sample" else "markdown", "其他正文" * 80)]
+        if command == "sample":
+            changes.append(("text", data["text"].replace("\r\n", " ")))
+        for field, value in changes:
+            conflict = c.post(path, json={**data, field: value}, headers=headers)
+            assert conflict.status_code == 409
+            assert conflict.json()["error"]["message"] == "同一请求标识不能用于不同内容"
+        other_path = "/api/writing/" + ("documents" if command == "sample" else "samples")
+        other_data = ({"title": "文稿"} if command == "sample" else
+                      {"title": "样文", "genre": "essay", "text": "正文" * 80})
+        conflict = c.post(other_path, json=other_data, headers=headers)
+        assert conflict.status_code == 409
+        assert conflict.json()["error"]["message"] == "同一请求标识不能用于不同内容"
+        assert writes == []
+    finally:
+        event.remove(c.app.state.database.engine, "before_cursor_execute", record)
+    # A create has no existing target owned by someone else. The same key belongs
+    # independently to this second owner, rather than producing save's 404.
+    stranger = _authenticate(c)["user"]["user_id"]
+    created = c.post(path, json=body, headers=headers)
+    assert created.status_code == 200, created.text
+    id_field = command + "_id"
+    assert created.json()[id_field] != old[id_field]
+    row_type = WritingSampleRow if command == "sample" else WritingDocumentRow
+    with c.app.state.database.session() as session:
+        rows = list(session.scalars(select(row_type)))
+        assert {row.user_id for row in rows} == {owner, stranger}
+        assert len(rows) == 2
+        receipts = list(session.scalars(select(WritingOperationRow)))
+        assert {receipt.user_id for receipt in receipts} == {owner, stranger}
+        assert {receipt.request_hash for receipt in receipts} == {
+            _legacy_command_digest(target, data),
+        }
+        if command == "sample":
+            assert all(row.title == data["title"] and row.text == data["text"] for row in rows)
+        else:
+            assert all(row.title == "文稿" and row.markdown == "" and row.version == 1
+                       and row.created_at == row.updated_at for row in rows)
+
+
+def test_deleted_sample_creation_receipt_replays_without_resurrecting_row(plain_client):
+    from qunxue_api.adapters.sqlite.writing import WritingSampleRow
+
+    c = plain_client
+    owner = _authenticate(c)["user"]["user_id"]
+    headers = {"Idempotency-Key": str(uuid4())}
+    data = {"title": "  原样  ", "genre": "essay", "text": "正文\r\n" * 80}
+    first = c.post("/api/writing/samples", json=data, headers=headers)
+    assert first.status_code == 200
+    assert c.delete("/api/writing/samples/" + first.json()["sample_id"]).status_code == 204
+    replay = c.post("/api/writing/samples", json=data, headers=headers)
+    assert replay.status_code == 200 and replay.json() == first.json()
+    with c.app.state.database.session() as session:
+        assert list(session.scalars(select(WritingSampleRow))) == []
+        receipt = session.scalar(select(WritingOperationRow).where(
+            WritingOperationRow.user_id == owner,
+            WritingOperationRow.request_key == headers["Idempotency-Key"],
+        ))
+        assert receipt.status == "completed"
+        assert receipt.result["sample_id"] == first.json()["sample_id"]
+
+
+@pytest.mark.parametrize("outcome", [
+    "fresh", "replay", "parse_error", "parser_unavailable", "short", "long", "whitespace",
+])
+def test_upload_parse_dto_lookup_order_and_unreserved_parser(plain_client, monkeypatch, outcome):
+    import sqlite3
+    from types import SimpleNamespace
+
+    from qunxue_api.api.routes import writing as routes
+    from qunxue_api.api.writing_errors import WritingApiError
+    from qunxue_api.modules.research_materials import MaterialParseError
+    from qunxue_api.modules.writing import WritingUnavailable
+
+    c = plain_client
+    owner = _authenticate(c)["user"]["user_id"]
+    database, key = c.app.state.database, str(uuid4())
+    text = "合成正文\r\n" * 80
+    filename = "长" * 205 + ".txt"
+    data = {"title": filename[:200], "genre": "essay", "text": text}
+    events, writes, parse_inputs = [], [], []
+    with database.session() as session:
+        # Independent old receipt exists even for invalid inputs: parse and DTO
+        # failures must keep priority over a matching or mismatching old key.
+        old = SqliteWritingRepository(session).add_sample(owner, **data)
+        if outcome != "fresh":
+            session.add(WritingOperationRow(
+                operation_id=str(uuid4()), user_id=owner, request_key=key,
+                request_hash=_legacy_command_digest("sample:create", data), target="sample:create",
+                status="completed", result=old, created_at=old["created_at"],
+            ))
+    original_dto, original_lookup = routes.WritingSampleCreate, SqliteWritingRepository.operation
+
+    class ObservedDTO(original_dto):
+        def __init__(self, **kwargs):
+            events.append("DTO")
+            super().__init__(**kwargs)
+
+        def model_dump(self, **kwargs):
+            events.append("model_dump")
+            assert kwargs == {"mode": "json"}
+            return super().model_dump(**kwargs)
+
+    def lookup(repository, *args):
+        events.append("lookup")
+        assert args == (owner, key, _legacy_command_digest("sample:create", data))
+        return original_lookup(repository, *args)
+
+    def record(_connection, _cursor, statement, *_args):
+        if statement.lstrip().upper().startswith((
+            "UPDATE WRITING_", "INSERT INTO WRITING_", "DELETE FROM WRITING_",
+        )):
+            writes.append(statement)
+
+    monkeypatch.setattr(routes, "WritingSampleCreate", ObservedDTO)
+    monkeypatch.setattr(SqliteWritingRepository, "operation", lookup)
+    event.listen(database.engine, "before_cursor_execute", record)
+    try:
+        with c.app.state.writing_scope() as app:
+            def parser(**kwargs):
+                events.append("parse")
+                parse_inputs.append(kwargs)
+                connection = app.repository.session.connection().connection.driver_connection
+                assert not connection.in_transaction
+                claims = list(app.repository.session.scalars(select(WritingOperationRow).where(
+                    WritingOperationRow.request_key == key,
+                    WritingOperationRow.status == "running",
+                )))
+                assert claims == []
+                # Session existence and a read must not be mistaken for a SQLite
+                # write reservation: a second DBAPI connection can still write.
+                other = sqlite3.connect(database.engine.url.database, timeout=0)
+                try:
+                    other.execute("UPDATE writing_samples SET title = title WHERE user_id = ?",
+                                  (owner,))
+                    assert other.in_transaction
+                    other.rollback()
+                finally:
+                    other.close()
+                if outcome == "parse_error":
+                    raise MaterialParseError("private parser failure")
+                if outcome == "parser_unavailable":
+                    raise WritingUnavailable("样文解析器尚未配置")
+                content = {"short": "字" * 79, "long": "字" * 100001,
+                           "whitespace": "字" * 79 + " \t\n"}.get(outcome, text)
+                return SimpleNamespace(full_text=content)
+
+            app.sample_parser = parser
+            from io import BytesIO
+
+            from fastapi import UploadFile
+            from starlette.datastructures import Headers
+
+            current = SimpleNamespace(user=SimpleNamespace(user_id=owner))
+
+            def upload(raw=b"first raw", mime="text/plain", directory="first"):
+                return routes.upload_sample(current, app, key, UploadFile(
+                    filename=f"/{directory}/{filename}", file=BytesIO(raw),
+                    headers=Headers({"content-type": mime}),
+                ), "essay")
+
+            if outcome in {"fresh", "replay"}:
+                assert upload() == old
+                assert events == ["parse", "DTO", "model_dump", "lookup"]
+                if outcome == "replay":
+                    events.clear()
+                    assert upload(
+                        b"different raw bytes", "application/octet-stream", "elsewhere",
+                    ) == old
+                    assert events == ["parse", "DTO", "model_dump", "lookup"]
+                    assert parse_inputs == [
+                        {"filename": filename, "media_type": "text/plain", "content": b"first raw"},
+                        {"filename": filename, "media_type": "application/octet-stream",
+                         "content": b"different raw bytes"},
+                    ]
+            else:
+                with pytest.raises(WritingApiError) as caught, routes.errors():
+                    upload()
+                expected_status = 503 if outcome == "parser_unavailable" else 422
+                assert caught.value.status_code == expected_status
+                if outcome in {"short", "long"}:
+                    from pydantic import ValidationError
+
+                    assert isinstance(caught.value.__cause__, ValidationError)
+                    assert caught.value.message == "输入不符合写作要求，请检查文件格式、长度或选区"
+                elif outcome == "whitespace":
+                    assert caught.value.message == "样文至少需要80个有效字符和一个标题"
+                assert events == (["parse"] if outcome in {"parse_error", "parser_unavailable"}
+                                  else ["parse", "DTO"] if outcome in {"short", "long"}
+                                  else ["parse", "DTO", "model_dump"])
+            if outcome != "fresh":
+                assert writes == []
+    finally:
+        event.remove(database.engine, "before_cursor_execute", record)
+
+
+def test_creation_http_retains_json_validation_and_upload_dto_error_channels(plain_client):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    c = plain_client
+    _authenticate(c)
+    headers = {"Idempotency-Key": str(uuid4())}
+    valid = {"title": "样文", "genre": "essay", "text": "字" * 80}
+    assert c.post("/api/writing/samples", json=valid, headers=headers).status_code == 200
+    for data in [dict(valid, text="字" * 79 + " \t"), dict(valid, title=" \t")]:
+        invalid = c.post("/api/writing/samples", json=data, headers=headers)
+        assert invalid.status_code == 422
+        assert invalid.json()["error"]["message"] == "样文至少需要80个有效字符和一个标题"
+    invalid_json = c.post("/api/writing/samples", json=dict(valid, text="字" * 79), headers=headers)
+    assert invalid_json.status_code == 422
+    original_scope = c.app.state.writing_scope
+
+    @contextmanager
+    def scope():
+        with original_scope() as app:
+            app.sample_parser = lambda **kwargs: SimpleNamespace(full_text="字" * 79)
+            yield app
+
+    c.app.state.writing_scope = scope
+    try:
+        invalid_upload = c.post("/api/writing/samples/upload", data={"genre": "essay"},
+                                files={"file": ("sample.txt", b"raw", "text/plain")},
+                                headers=headers)
+    finally:
+        c.app.state.writing_scope = original_scope
+    assert invalid_upload.status_code == 422
+    assert invalid_upload.json()["error"]["message"] == (
+        "输入不符合写作要求，请检查文件格式、长度或选区"
+    )
+    assert invalid_json.json()["error"]["code"] == invalid_upload.json()["error"]["code"]
+    assert invalid_json.json()["error"]["message"] != invalid_upload.json()["error"]["message"]
+    for body in [{"title": " \t"}, {"genre": "invalid"}, {"markdown": "字" * 200001}]:
+        response = c.post("/api/writing/documents", json=body,
+                          headers={"Idempotency-Key": str(uuid4())})
+        assert response.status_code == 422
+
+
+def test_sample_creation_real_quota_dedupe_precedence_and_owner_isolation(plain_client):
+    from qunxue_api.adapters.sqlite.writing import WritingSampleRow
+
+    c = plain_client
+    owner = _authenticate(c)["user"]["user_id"]
+    data = {"title": "  最早标题  ", "genre": "essay", "text": "原样正文\r\n" * 80}
+    with c.app.state.writing_scope() as app:
+        first = app.create_sample(owner, str(uuid4()), data)
+        for index in range(98):
+            app.create_sample(owner, str(uuid4()), {**data, "text": f"唯一{index}:" + "字" * 80})
+    hundredth = c.post("/api/writing/samples", json={**data, "text": "第100篇" + "字" * 80},
+                       headers={"Idempotency-Key": str(uuid4())})
+    assert hundredth.status_code == 200, hundredth.text
+    duplicate = {**data, "title": "后来标题", "text": data["text"].replace("\r\n", " \t")}
+    replay = c.post("/api/writing/samples", json=duplicate,
+                    headers={"Idempotency-Key": str(uuid4())})
+    assert replay.status_code == 200 and replay.json()["sample_id"] == first["sample_id"]
+    assert replay.json()["title"] == data["title"]
+    for body, code, message in [
+        ({**duplicate, "genre": "fiction"}, 409,
+         "这篇样文已属于另一文体，请先移除旧样文再重新添加"),
+        ({**data, "text": "第101篇" + "字" * 80}, 422, "最多保留100篇样文，请先移除不再使用的文章"),
+    ]:
+        key = str(uuid4())
+        rejected = c.post("/api/writing/samples", json=body, headers={"Idempotency-Key": key})
+        assert rejected.status_code == code and rejected.json()["error"]["message"] == message
+        with c.app.state.database.session() as session:
+            assert session.scalar(select(WritingOperationRow).where(
+                WritingOperationRow.request_key == key,
+            )) is None
+    stranger = _authenticate(c)["user"]["user_id"]
+    independent = c.post("/api/writing/samples", json=data,
+                         headers={"Idempotency-Key": str(uuid4())})
+    assert independent.status_code == 200 and independent.json()["sample_id"] != first["sample_id"]
+    with c.app.state.database.session() as session:
+        rows = list(session.scalars(select(WritingSampleRow)))
+        assert sum(row.user_id == owner for row in rows) == 100
+        assert sum(row.user_id == stranger for row in rows) == 1
+        original = session.get(WritingSampleRow, first["sample_id"])
+        assert original.title == data["title"] and original.text == data["text"]
