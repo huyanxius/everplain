@@ -229,14 +229,14 @@ class SqliteWritingRepository:
         self.session.delete(row)
         self.session.flush()
 
-    def documents(self, user_id):
+    def documents(self, user_id, *, limit=100):
         return [
             document_dict(r)
             for r in self.session.scalars(
                 select(WritingDocumentRow)
                 .where(WritingDocumentRow.user_id == str(user_id))
                 .order_by(WritingDocumentRow.updated_at.desc())
-                .limit(100)
+                .limit(limit)
             )
         ]
 

@@ -55,6 +55,7 @@ from qunxue_api.modules.agent_conversation import (
     AgentModelRouteFailure,
     AgentModelSelectionUnavailable,
     AgentOutputStorageFailure,
+    AgentTerminalEventBatch,
     AgentToolEvent,
     AgentWritingPreviewEvent,
     CanvasEditConflict,
@@ -638,8 +639,16 @@ def stream_agent_turn(
                     on_tool_event=on_tool_event, on_writing_preview=on_writing_preview,
                     on_research_event=lambda event: publish(
                         f"research_{event.kind}", dict(event.payload)),
+                    terminal_events=_terminal_events,
                     is_cancelled=cancel_event.is_set,
                 )
+            if getattr(execution, "terminal_journaled", False):
+                return
+            if getattr(execution, "terminal_journal_failed", False):
+                delivery_state = getattr(execution, "delivery_state", {})
+                if delivery_state:
+                    unsaved_delivery_state.append(delivery_state)
+                return
             delivery_state = getattr(execution, "delivery_state", {})
             if delivery_state:
                 try:
@@ -678,7 +687,20 @@ def stream_agent_turn(
             else:
                 identity["run_id"] = run.run_id
         except Exception as error:
+            if identity.get("run_id") is None and (
+                getattr(error, "agent_terminal_journaled", False)
+                or getattr(error, "agent_terminal_journal_failed", False)
+            ):
+                identity.update(getattr(error, "agent_terminal_identity", {}))
+            if getattr(error, "agent_terminal_journaled", False):
+                return
             failure = _agent_failure(error)
+            if getattr(error, "agent_terminal_journal_failed", False):
+                delivery_state = getattr(error, "agent_delivery_state", {})
+                if delivery_state:
+                    unsaved_delivery_state.append(delivery_state)
+                terminal_failure.append(failure)
+                return
             delivery_state = getattr(error, "agent_delivery_state", {})
             if identity.get("run_id") is None:
                 startup_failure.append(failure)
@@ -723,8 +745,38 @@ def stream_agent_turn(
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-_TERMINAL_EVENT_NAMES = frozenset({"turn_completed", "turn_failed", "turn_interrupted",
-                                   "research_waiting", "knowledge_index_choice_required"})
+_TERMINAL_EVENT_NAMES = AgentTerminalEventBatch.terminal_names
+
+
+def _terminal_events(execution, error):
+    """Project wire payloads only; the application owns the atomic journal write."""
+    delivery_state = (getattr(error, "agent_delivery_state", {}) if error is not None
+                      else getattr(execution, "delivery_state", {}))
+    events = [("agent_delivery_state", delivery_state)] if delivery_state else []
+    if error is not None:
+        return AgentTerminalEventBatch((*events, _agent_failure(error)))
+    if execution.incomplete_reason == "length":
+        terminal = ("turn_interrupted", {
+            "code": "output_truncated",
+            "message": "模型本次输出达到上游长度限制，已收到的正文已保存，可以继续本轮。",
+        })
+    elif execution.pending_research is not None:
+        terminal = ("research_waiting", {"run_id": str(execution.run_id),
+                                         **execution.pending_research})
+    else:
+        events.extend(("citation_added", _citation(item)) for item in execution.result.citations)
+        terminal = ("turn_completed", {
+            "conversation": _conversation(
+                execution.conversation,
+                tool_summaries={execution.turn.turn_id: execution.tool_summary}
+                if execution.turn is not None else {},
+                release_ids={execution.turn.turn_id: execution.result.release_id}
+                if execution.turn is not None else {},
+            ).model_dump(mode="json"),
+            "knowledge_release_id": execution.result.release_id,
+            "delivery_state": delivery_state,
+        })
+    return AgentTerminalEventBatch((*events, terminal))
 
 
 def _agent_failure(error: Exception) -> tuple[str, dict[str, object]]:
@@ -830,6 +882,11 @@ async def _subscribe_run_events(request: Request, user_id: UUID, run_id: UUID, *
         except Exception as error:
             read_error = error
             run, events, conversation, releases = None, (), None, {}
+        if (run is not None and worker_finished is not None and fallback_identity
+                and fallback_identity.get("attempt_id") not in {None, run.lease_token}):
+            # A replaced live worker owns neither the new attempt's terminal
+            # nor its volatile fallback payload. Read-only GETs remain run-scoped.
+            return
         def unsaved_frames(observed_run, cursor):
             nonlocal unsaved_sent
             if not unsaved_body or (observed_run is not None and observed_run.output_redacted):

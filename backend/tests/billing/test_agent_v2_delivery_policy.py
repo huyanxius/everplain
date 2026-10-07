@@ -1,8 +1,16 @@
 """Current default Agent scopes, real 0600 Free30 and isolated application state."""
 
+import asyncio
 import json
+import os
+import subprocess
+import sys
+import threading
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -14,7 +22,10 @@ from test_agent_memory import register
 from qunxue_api.adapters.model.billing_operations import SqliteBillingOperations
 from qunxue_api.adapters.model.metering import current_operation
 from qunxue_api.adapters.sqlite.agent_conversation_repository import SqliteConversationRepository
+from qunxue_api.adapters.sqlite.database import Database
 from qunxue_api.adapters.sqlite.quota_periods import ensure_quota_period
+from qunxue_api.api.contracts.agent import AgentTurnRequest
+from qunxue_api.api.routes import agent
 from qunxue_api.application.disciplinary_agent import DisciplinaryAgentApplication
 from qunxue_api.modules.agent_conversation import (
     AgentInterrupted,
@@ -385,3 +396,331 @@ def test_default_factory_real_sdk_tool_then_length_keeps_body_and_receipts(
         assert conn.scalar(text("SELECT count(*) FROM credit_ledger WHERE kind='usage'")) == (
             1 if first_usage_missing else 2
         )
+
+
+_TERMINAL_CRASH_KEY = "terminal-finance-closed-crash"
+
+
+def _terminal_crash_application(database, session, runner):
+    runtime = synthetic_billing_runtime(database.engine)
+    runtime.book = replace(runtime.book, credits_per_usd=100)
+    runtime.clock = lambda: datetime(2026, 10, 5, 9, tzinfo=UTC)
+    repo = SqliteConversationRepository(session)
+    ops = SqliteBillingOperations(database, runtime).bound_to(session)
+    app = DisciplinaryAgentApplication(
+        conversations=ConversationService(repo),
+        runner=runner,
+        tools_factory=_FakeAgentTools,
+        billing=ops,
+        atomic=ops.atomic,
+        rollback=session.rollback,
+    )
+    return app, runtime, repo
+
+
+def _terminal_crash_child(url, user, outcome):
+    database = Database(url)
+    uid = UUID(user)
+
+    class Runner(CurrentRunner):
+        def run(self, **kwargs):
+            result = super().run(**kwargs)
+            if outcome == "failed":
+                raise RuntimeError("synthetic failure after real fixture receipt")
+            return result
+
+        run_stream = run
+
+    runner = Runner(
+        "cancel" if outcome == "cancel" else "length" if outcome == "length" else "complete"
+    )
+
+    @contextmanager
+    def scope():
+        with database.session() as session:
+            app, runtime, _ = _terminal_crash_application(database, session, runner)
+            original = runtime.finish
+
+            def finish(**kwargs):
+                result = original(**kwargs)
+                if kwargs["outcome"] in {"error", "cancelled"}:
+                    os._exit(73)
+                return result
+
+            runtime.finish = finish
+            yield app
+
+    request = SimpleNamespace(
+        headers={},
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                disciplinary_agent_scope=scope,
+                settings=SimpleNamespace(runtime_mode="mock", has_model_api_key=False),
+            )
+        ),
+    )
+    agent.stream_agent_turn(
+        AgentTurnRequest(message="synthetic crash"),
+        request,
+        SimpleNamespace(user=SimpleNamespace(user_id=uid)),
+        _TERMINAL_CRASH_KEY,
+    )
+    threading.Event().wait(12)
+    raise AssertionError("Crash point was not reached")
+
+
+def _terminal_crash_ledger(database):
+    with database.engine.connect() as conn:
+        return {
+            table: [dict(row) for row in conn.execute(text(f"SELECT * FROM {table}")).mappings()]
+            for table in (
+                "billing_operations",
+                "billing_attempts",
+                "credit_ledger",
+                "credit_accounts",
+                "credit_quota_periods",
+            )
+        }
+
+
+@pytest.mark.parametrize("outcome", ["cancel", "failed", "length"])
+def test_closed_finance_crash_is_read_only_until_explicit_retry(plain_client, outcome):
+    uid = UUID(register(plain_client))
+    db = plain_client.app.state.database
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    child = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import runpy, sys\nfrom pathlib import Path\n"
+            "path = Path(sys.argv[1])\n"
+            "sys.path[:0] = [str(path.parents[2] / 'src'), "
+            "str(path.parent), str(path.parent.parent)]\n"
+            "runpy.run_path(str(path))['_terminal_crash_child'](*sys.argv[2:])",
+            str(Path(__file__).resolve()),
+            db.engine.url.render_as_string(),
+            str(uid),
+            outcome,
+        ],
+        env=env,
+        capture_output=True,
+        timeout=18,
+    )
+    assert child.returncode == 73, child.stderr.decode()
+    before = _terminal_crash_ledger(db)
+    assert len(before["billing_operations"]) == len(before["billing_attempts"]) == 1
+    assert before["billing_operations"][0]["status"] in {"error", "cancelled"}
+    assert len([row for row in before["credit_ledger"] if row["kind"] == "usage"]) == 1
+    runner = CurrentRunner("complete")
+
+    @contextmanager
+    def scope():
+        with db.session() as session:
+            app, _, _ = _terminal_crash_application(db, session, runner)
+            yield app
+
+    plain_client.app.state.disciplinary_agent_scope = scope
+    request = SimpleNamespace(app=plain_client.app, headers={})
+    current = SimpleNamespace(user=SimpleNamespace(user_id=uid))
+    with db.session() as session:
+        repo = SqliteConversationRepository(session)
+        old = repo.find_run(user_id=uid, idempotency_key=_TERMINAL_CRASH_KEY)
+        assert old.status == "running"
+        assert old.output_attempts[0].answer == "已保存正文1。"
+        original_events = repo.read_output_events(user_id=uid, run_id=old.run_id)
+        old_token = old.lease_token
+
+    # A restarted HTTP process has no active worker registry. A repeated POST
+    # subscribes to the existing live lease and may not admit another execution.
+    async def observe():
+        response = agent.stream_agent_turn(
+            AgentTurnRequest(message="synthetic crash"), request, current, _TERMINAL_CRASH_KEY
+        )
+        first = await asyncio.wait_for(anext(response.body_iterator), 1)
+        assert "turn_snapshot" in first and "已保存正文1。" in first
+        await response.body_iterator.aclose()
+        get = agent.subscribe_agent_run_events(
+            old.run_id, request, current, after=old.last_event_sequence
+        )
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(anext(get.body_iterator), 0.15)
+        await get.body_iterator.aclose()
+
+    asyncio.run(observe())
+    assert runner.calls == 0
+    assert _terminal_crash_ledger(db) == before
+    with db.engine.begin() as conn:
+        conn.execute(
+            text("UPDATE agent_runs SET lease_expires_at=:expired WHERE run_id=:rid"),
+            {
+                "expired": (datetime.now(UTC) - timedelta(minutes=1)).strftime(
+                    "%Y-%m-%d %H:%M:%S.%f"
+                ),
+                "rid": str(old.run_id),
+            },
+        )
+    with db.session() as session:
+        app, runtime, repo = _terminal_crash_application(db, session, runner)
+        app.get_conversation(user_id=uid, conversation_id=old.conversation_id)
+        recovered = repo.find_run(user_id=uid, idempotency_key=_TERMINAL_CRASH_KEY)
+        assert recovered.status == "interrupted"
+        assert recovered.output_attempts[0].answer == old.output_attempts[0].answer
+        assert repo.read_output_events(user_id=uid, run_id=old.run_id) == original_events
+    assert runner.calls == 0
+    assert _terminal_crash_ledger(db) == before, (
+        "Recovery must not settle or charge the old operation twice."
+    )
+
+    async def retry():
+        response = agent.stream_agent_turn(
+            AgentTurnRequest(message="synthetic crash"), request, current, _TERMINAL_CRASH_KEY
+        )
+        return [frame async for frame in response.body_iterator]
+
+    frames = asyncio.run(asyncio.wait_for(retry(), 5))
+    assert any("turn_completed" in frame for frame in frames)
+    assert runner.calls == 1
+    after = _terminal_crash_ledger(db)
+    assert len(after["billing_operations"]) == len(after["billing_attempts"]) == 2
+    assert [
+        row
+        for row in after["billing_operations"]
+        if row["run_id"] == before["billing_operations"][0]["run_id"]
+    ] == before["billing_operations"]
+    assert [
+        row
+        for row in after["billing_attempts"]
+        if row["run_id"] == before["billing_operations"][0]["run_id"]
+    ] == before["billing_attempts"]
+    assert len([row for row in after["credit_ledger"] if row["kind"] == "usage"]) == 2
+    with db.session() as session:
+        app, runtime, repo = _terminal_crash_application(db, session, runner)
+        final = repo.find_run(user_id=uid, idempotency_key=_TERMINAL_CRASH_KEY)
+        assert final.status == "completed" and len(final.output_attempts) == 2
+        assert final.output_attempts[0].answer == "已保存正文1。"
+        assert final.lease_token != old_token
+        cursor = final.last_event_sequence
+        assert (
+            repo.append_output_event(
+                user_id=uid,
+                run_id=old.run_id,
+                attempt_id=old_token,
+                name="turn_failed",
+                payload={"code": "stale-worker"},
+            )
+            is None
+        )
+        repo.finish_run(run_id=old.run_id, lease_token=old_token, status="failed")
+        repo.commit()
+        unchanged = repo.find_run(user_id=uid, idempotency_key=_TERMINAL_CRASH_KEY)
+        assert unchanged.status == "completed" and unchanged.last_event_sequence == cursor
+    assert _terminal_crash_ledger(db) == after
+
+
+def _completed_commit_crash_child(url, user):
+    from sqlalchemy import event
+    from sqlalchemy.orm import Session
+
+    database = Database(url)
+    uid = UUID(user)
+    runner = CurrentRunner("complete")
+
+    def stop_after_first_visible_completion(session):
+        if session.get_bind() is not database.engine:
+            return
+        with database.engine.connect() as conn:
+            status = conn.scalar(
+                text("SELECT status FROM agent_runs WHERE idempotency_key=:key"),
+                {"key": _TERMINAL_CRASH_KEY},
+            )
+        if status == "completed":
+            os._exit(74)
+
+    event.listen(Session, "after_commit", stop_after_first_visible_completion)
+
+    @contextmanager
+    def scope():
+        with database.session() as session:
+            app, _, _ = _terminal_crash_application(database, session, runner)
+            yield app
+
+    request = SimpleNamespace(
+        headers={},
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                disciplinary_agent_scope=scope,
+                settings=SimpleNamespace(runtime_mode="mock", has_model_api_key=False),
+            )
+        ),
+    )
+    agent.stream_agent_turn(
+        AgentTurnRequest(message="synthetic completed crash"),
+        request,
+        SimpleNamespace(user=SimpleNamespace(user_id=uid)),
+        _TERMINAL_CRASH_KEY,
+    )
+    threading.Event().wait(12)
+    raise AssertionError("First committed completion was not reached")
+
+
+def test_crash_at_first_completed_commit_replays_original_durable_terminal(plain_client):
+    from test_agent_event_reconnect import event_parts
+
+    uid = UUID(register(plain_client))
+    db = plain_client.app.state.database
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    child = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import runpy, sys\nfrom pathlib import Path\n"
+            "path = Path(sys.argv[1])\n"
+            "sys.path[:0] = [str(path.parents[2] / 'src'), "
+            "str(path.parent), str(path.parent.parent)]\n"
+            "runpy.run_path(str(path))['_completed_commit_crash_child'](*sys.argv[2:])",
+            str(Path(__file__).resolve()),
+            db.engine.url.render_as_string(),
+            str(uid),
+        ],
+        env=env,
+        capture_output=True,
+        timeout=18,
+    )
+    assert child.returncode == 74, child.stderr.decode()
+    before = _terminal_crash_ledger(db)
+    runner = CurrentRunner("complete")
+
+    @contextmanager
+    def scope():
+        with db.session() as session:
+            app, _, _ = _terminal_crash_application(db, session, runner)
+            yield app
+
+    plain_client.app.state.disciplinary_agent_scope = scope
+    request = SimpleNamespace(app=plain_client.app, headers={})
+    current = SimpleNamespace(user=SimpleNamespace(user_id=uid))
+    with db.session() as session:
+        repo = SqliteConversationRepository(session)
+        run = repo.find_run(user_id=uid, idempotency_key=_TERMINAL_CRASH_KEY)
+        journal = repo.read_output_events(user_id=uid, run_id=run.run_id)
+        assert run.status == "completed"
+        terminal = [item for item in journal if item.name == "turn_completed"]
+        assert len(terminal) == 1, (
+            "Crash after first canonical commit must retain its actual terminal."
+        )
+        terminal = terminal[0]
+
+    async def collect():
+        response = agent.subscribe_agent_run_events(
+            run.run_id, request, current, after=terminal.sequence - 1
+        )
+        return [event_parts(frame) async for frame in response.body_iterator]
+
+    first = asyncio.run(asyncio.wait_for(collect(), 3))
+    second = asyncio.run(asyncio.wait_for(collect(), 3))
+    assert first == second
+    assert [(ident, name) for ident, name, _ in first] == [
+        (f"{run.run_id}:{terminal.sequence}", "turn_completed")
+    ]
+    assert first[0][2] == {**terminal.payload, "attempt_id": terminal.attempt_id}
+    assert runner.calls == 0 and _terminal_crash_ledger(db) == before

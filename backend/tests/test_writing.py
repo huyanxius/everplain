@@ -5,6 +5,7 @@ from test_research_material_api import _authenticate
 
 from qunxue_api.application.writing import WRITING_INSTRUCTIONS, WritingPipeline
 from qunxue_api.modules.writing import (
+    Genre,
     StyleSample,
     cliché_findings,
     output_issues,
@@ -499,3 +500,164 @@ def test_bootstrap_scopes_writing_runner_per_request(plain_client, monkeypatch):
         )
     assert len(instances) == 2
     assert all(r.stages == ["content_plan", "draft"] for r in instances)
+
+
+@pytest.fixture
+def writing_summary_store(tmp_path):
+    """Count actual document rows returned by SQLite, independent of ORM SQL text."""
+    import sqlite3
+
+    from sqlalchemy import create_engine
+
+    returned = []
+
+    class CountingCursor(sqlite3.Cursor):
+        def execute(self, statement, *args, **kwargs):
+            self.measured = statement.lstrip().startswith("SELECT writing_documents.")
+            return super().execute(statement, *args, **kwargs)
+
+        def record(self, rows):
+            if getattr(self, "measured", False):
+                returned.extend(rows)
+            return rows
+
+        def fetchall(self):
+            return self.record(super().fetchall())
+
+        def fetchmany(self, *args):
+            return self.record(super().fetchmany(*args))
+
+        def fetchone(self):
+            row = super().fetchone()
+            if row is not None:
+                self.record([row])
+            return row
+
+    class CountingConnection(sqlite3.Connection):
+        def cursor(self, *args, **kwargs):
+            return super().cursor(*args, factory=CountingCursor, **kwargs)
+
+    engine = create_engine("sqlite://", creator=lambda: sqlite3.connect(
+        tmp_path / "summary.db", factory=CountingConnection,
+    ))
+    with engine.begin() as connection:
+        connection.exec_driver_sql("""CREATE TABLE writing_documents (
+            document_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL,
+            genre TEXT NOT NULL, markdown TEXT NOT NULL, version INTEGER NOT NULL,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""")
+        connection.exec_driver_sql(
+            "CREATE INDEX ix_writing_documents_user_id ON writing_documents(user_id)"
+        )
+        connection.exec_driver_sql("""CREATE TABLE writing_samples (
+            sample_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL,
+            genre TEXT NOT NULL, text TEXT NOT NULL, content_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL)""")
+    try:
+        yield engine, returned
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("count,body_characters", [
+    (0, 100), (1, 100), (12, 100), (13, 100), (100, 100), (105, 100), (100, 200000),
+])
+def test_summary_fetches_only_returned_documents(writing_summary_store, count, body_characters):
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    from sqlalchemy.orm import Session
+
+    from qunxue_api.adapters.sqlite.writing import SqliteWritingRepository, WritingDocumentRow
+    from qunxue_api.api.routes.writing import documents, summary
+    from qunxue_api.application.writing import WritingApplication
+
+    engine, returned = writing_summary_store
+    owner, other = uuid4(), uuid4()
+    body = ("文🙂e\u0301\x00\r\n" * body_characters)[:body_characters]
+    with Session(engine) as session:
+        for index in range(count + 1):
+            # Equal timestamps retain the existing ordering; do not add a tie-breaker.
+            timestamp = (datetime(2026, 10, 1, tzinfo=UTC)
+                         + timedelta(seconds=index // 3)).isoformat()
+            session.add(WritingDocumentRow(
+                document_id=str(uuid4()), user_id=str(owner if index < count else other),
+                title=f"文稿 {index}", genre="essay", markdown=body, version=index + 1,
+                created_at=timestamp, updated_at=timestamp,
+            ))
+        session.commit()
+        app = WritingApplication(SqliteWritingRepository(session))
+        current = SimpleNamespace(user=SimpleNamespace(user_id=owner))
+        returned.clear()
+        default_list = documents(current, app)["items"]
+        assert len(default_list) == min(count, 100)
+        timestamps = [item["updated_at"] for item in default_list]
+        assert timestamps == sorted(timestamps, reverse=True)
+        assert len(returned) == min(count, 100)
+        returned.clear()
+        result = summary(current, app)
+        assert result == {
+            "sample_count": 0,
+            "genres": [style_profile([], genre) for genre in Genre],
+            "documents": default_list[:12],
+        }
+        expected_count = min(count, 12)
+        assert len(returned) == expected_count
+        expected_bytes = sum(len(item.encode()) for row in returned for item in row
+                             if isinstance(item, str))
+        # Keep complete valid bodies (including Unicode/NUL) for precisely these rows.
+        assert expected_bytes >= expected_count * len(body.encode())
+        assert expected_bytes < expected_count * (len(body.encode()) + 300) + 1
+        assert all(item["markdown"] == body for item in result["documents"])
+
+
+def test_summary_requests_its_bound_through_public_query():
+    from qunxue_api.application.writing import WritingApplication
+
+    owner, seen = uuid4(), []
+    expected = [{"document_id": "synthetic"}]
+
+    class Repository:
+        def style_samples(self, user_id):
+            assert user_id == owner
+            return []
+
+        def documents(self, user_id, *, limit):
+            seen.append((user_id, limit))
+            return expected
+
+    assert WritingApplication(Repository()).summary(owner)["documents"] == expected
+    assert seen == [(owner, 12)]
+
+
+def test_http_summary_preserves_document_payload_order_and_current_owner(plain_client):
+    client = plain_client
+    assert client.get("/api/writing/summary").status_code == 401
+    _authenticate(client)
+    created = []
+    for index in range(14):
+        response = post(client, "/documents", {
+            "title": f"首页文稿 {index}", "genre": "essay",
+            "markdown": f"正文 {index}\x00🙂\r\n" * 30,
+        })
+        assert response.status_code == 200, response.text
+        created.append(response.json())
+
+    def check_summary():
+        listed = client.get("/api/writing/documents")
+        response = client.get("/api/writing/summary")
+        assert listed.status_code == response.status_code == 200
+        assert response.json()["documents"] == listed.json()["items"][:12]
+        return response.json()["documents"]
+
+    assert len(check_summary()) == 12
+    changed = client.patch(
+        f"/api/writing/documents/{created[0]['document_id']}",
+        json={"expected_version": 1, "title": "新标题", "markdown": "最新完整正文\x00🙂"},
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert changed.status_code == 200, changed.text
+    assert check_summary()[0] == changed.json()
+    _authenticate(client)
+    assert check_summary() == []
+    own = doc(client, "第二个账号的正文")
+    assert check_summary() == [own]
