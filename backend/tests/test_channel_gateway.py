@@ -770,3 +770,107 @@ def test_cached_private_reply_rechecks_runtime_redaction_and_missing_run(channel
     binding_key = ChannelEvent(**bound).event_key
     assert channels.client.get(f"/api/channel-gateway/events/{binding_key}/delivery",
                                headers=HEADERS).json() == {"allowed": True}
+
+
+def test_replayed_revoke_preserves_newer_explicit_relink_grant(channels):
+    binding, _ = bind(channels)
+    path = f"/api/channels/bindings/{binding['binding_id']}"
+    assert channels.client.delete(path).status_code == 204
+    fresh = code(channels)
+    assert channels.client.delete(path).status_code == 204
+    assert dispatch(channels, event(text="/bind " + fresh)).status_code == 200
+    replacement = channels.client.get("/api/channels/bindings").json()
+    assert len(replacement) == 1
+    assert replacement[0]["binding_id"] != binding["binding_id"]
+    pending = code(channels)
+    assert channels.client.delete(path).status_code == 204
+    assert channels.client.get("/api/channels/bindings").json() == replacement
+    assert dispatch(
+        channels, event(subject_id="88", chat_id="88", text="/bind " + pending)
+    ).status_code == 200
+    assert channels.calls == []
+
+
+def test_stale_concurrent_revoke_cannot_consume_a_later_grant(channels, monkeypatch):
+    import threading
+
+    from qunxue_api.adapters.sqlite.channel_gateway import (
+        ChannelBindingRow,
+        SqliteChannelGatewayRepository,
+    )
+
+    binding, _ = bind(channels)
+    binding_id = binding["binding_id"]
+    loaded = threading.Event()
+    resume = threading.Event()
+    original = SqliteChannelGatewayRepository.binding
+
+    def pause_stale_read(repository, target):
+        row = original(repository, target)
+        if threading.current_thread().name.startswith("stale-revoke"):
+            assert row.revoked_at is None
+            loaded.set()
+            assert resume.wait(10)
+        return row
+
+    monkeypatch.setattr(SqliteChannelGatewayRepository, "binding", pause_stale_read)
+
+    def delayed_revoke():
+        with channels.db.session() as session:
+            SqliteChannelGatewayRepository(session).revoke(
+                channels.owner, binding_id, int(time.time()) + 20
+            )
+
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="stale-revoke") as pool:
+        delayed = pool.submit(delayed_revoke)
+        try:
+            assert loaded.wait(10)
+            assert channels.client.delete(
+                f"/api/channels/bindings/{binding_id}"
+            ).status_code == 204
+            with channels.db.session() as session:
+                first_revoked_at = session.get(ChannelBindingRow, binding_id).revoked_at
+            fresh = code(channels)
+        finally:
+            resume.set()
+        delayed.result(timeout=10)
+    with channels.db.session() as session:
+        assert session.get(ChannelBindingRow, binding_id).revoked_at == first_revoked_at
+    assert dispatch(channels, event(text="/bind " + fresh)).status_code == 200
+    assert channels.calls == []
+
+
+def test_revoke_code_invalidation_is_owner_and_gateway_scoped(channels):
+    client = channels.client
+    binding, _ = bind(channels)
+    path = f"/api/channels/bindings/{binding['binding_id']}"
+    old_grant = code(channels)
+    other_gateway = code(channels, "telegram:456")
+    owner_cookies = dict(client.cookies)
+    client.cookies.clear()
+    registered = client.post(
+        "/api/session/register",
+        headers={"Idempotency-Key": str(uuid4())},
+        json={"email": "other-channel-owner@example.test", "password": "a-valid-pass123"},
+    )
+    assert registered.status_code == 201
+    other_owner = code(channels)
+    assert client.delete(path).status_code == 404
+    assert client.delete(f"/api/channels/bindings/{uuid4()}").status_code == 404
+    with channels.db.session() as session:
+        for grant in (old_grant, other_gateway, other_owner):
+            assert session.get(
+                ChannelLinkCodeRow, hashlib.sha256(grant.encode()).hexdigest()
+            ).consumed_at is None
+    client.cookies.clear()
+    client.cookies.update(owner_cookies)
+    assert client.delete(path).status_code == 204
+    with channels.db.session() as session:
+        assert session.get(
+            ChannelLinkCodeRow, hashlib.sha256(old_grant.encode()).hexdigest()
+        ).consumed_at is not None
+        for grant in (other_gateway, other_owner):
+            assert session.get(
+                ChannelLinkCodeRow, hashlib.sha256(grant.encode()).hexdigest()
+            ).consumed_at is None
+    assert channels.calls == []
