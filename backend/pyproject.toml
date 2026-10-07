@@ -18,7 +18,7 @@ dependencies = [
     "anthropic==1.11.0",
     "google-genai==2.28.0",
     "pydantic-settings>=2.14.2",
-    "pypdf>=6.0,<7.0",
+    "pypdf>=6.19.0,<7.0",
     "python-multipart>=0.0.20,<1.0",
     "resend>=2.0",
     "rispy>=0.10.0,<1.0",
