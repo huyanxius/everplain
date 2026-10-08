@@ -223,10 +223,6 @@
           "sha256": "1db358737ea72776938e0ed556cbe5987be9d69ca13742723d59325b5baa8def"
         },
         {
-          "path": "backend/tests/test_research_tasks.py",
-          "sha256": "4bb53da302c59b987b00c0fabc640d4b6d48c0bb1686f42a6547bf72b7eae9d2"
-        },
-        {
           "path": "backend/tests/test_theory_confirmation_rules.py",
           "sha256": "d9a6cc67c002d4bd9637e90d8713e3605ea517e31e4af3e0414555df302b64d1"
         },

@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 
 from qunxue_api.api.contracts.common import ErrorResponse
@@ -28,12 +28,14 @@ from qunxue_api.api.dependencies import (
     ResearchTaskServiceDependency,
 )
 from qunxue_api.api.routes.stubs import IdempotencyKey, not_implemented_response
-from qunxue_api.modules.knowledge_catalog import KnowledgeUsePurpose
+from qunxue_api.application.research_task_creation import (
+    ResearchTaskCreationCommand,
+    SeedTheoryNotInCurrentRelease,
+)
 from qunxue_api.modules.research_intake import (
     PhenomenonProgress,
     ProjectLifecycleStatus,
     ResearchCentralTool,
-    ResearchEntryMode,
     ResearchTask,
     ResearchTaskStatus,
 )
@@ -45,6 +47,19 @@ router = APIRouter(
 )
 
 
+def get_research_task_creation_command(
+    request: Request,
+    service: ResearchTaskServiceDependency,
+) -> ResearchTaskCreationCommand:
+    return ResearchTaskCreationCommand(service, lambda: request.app.state.knowledge_catalog)
+
+
+ResearchTaskCreationCommandDependency = Annotated[
+    ResearchTaskCreationCommand,
+    Depends(get_research_task_creation_command),
+]
+
+
 @router.post(
     "",
     operation_id="create_research_task",
@@ -54,49 +69,29 @@ router = APIRouter(
 )
 def create_research_task(
     payload: CreateResearchTaskRequest,
-    request: Request,
-    service: ResearchTaskServiceDependency,
+    command: ResearchTaskCreationCommandDependency,
     current: CurrentSessionDependency,
     idempotency_key: Annotated[
         str,
         Header(alias="Idempotency-Key", min_length=8, max_length=128),
     ],
 ) -> ResearchTaskResponse:
-    seed_theory_name = None
-    if payload.seed_theory_id is not None:
-        catalog = request.app.state.knowledge_catalog
-        release = catalog.current_release(purpose=KnowledgeUsePurpose.BROWSE)
-        try:
-            seed_theory_name = catalog.get_theory_profile(
-                theory_id=payload.seed_theory_id,
-                release_id=release.knowledge_release_id,
-            ).title
-        except LookupError as error:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Seed theory is not in the current knowledge release.",
-            ) from error
-    task = service.create(
-        user_id=current.user.user_id,
-        entry_type=payload.entry_type,
-        idempotency_key=idempotency_key,
-        entry_mode=payload.entry_mode,
-        lifecycle_status=(
-            ProjectLifecycleStatus.IN_PROGRESS
-            if payload.entry_mode is ResearchEntryMode.EXISTING_RESEARCH
-            else ProjectLifecycleStatus.DRAFT
-        ),
-        project_title=payload.project_title or seed_theory_name or "未命名研究",
-        project_stage=payload.project_stage,
-        method_orientation=payload.method_orientation,
-        last_central_tool=(
-            ResearchCentralTool.MATERIALS
-            if payload.entry_mode is ResearchEntryMode.EXISTING_RESEARCH
-            else ResearchCentralTool.PHENOMENON
-        ),
-        seed_theory_id=payload.seed_theory_id,
-        seed_theory_name=seed_theory_name,
-    )
+    try:
+        task = command.create(
+            user_id=current.user.user_id,
+            entry_type=payload.entry_type,
+            idempotency_key=idempotency_key,
+            entry_mode=payload.entry_mode,
+            project_title=payload.project_title,
+            project_stage=payload.project_stage,
+            method_orientation=payload.method_orientation,
+            seed_theory_id=payload.seed_theory_id,
+        )
+    except SeedTheoryNotInCurrentRelease as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Seed theory is not in the current knowledge release.",
+        ) from error
     return ResearchTaskResponse.from_domain(task)
 
 

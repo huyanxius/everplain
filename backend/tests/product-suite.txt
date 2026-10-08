@@ -238,3 +238,5 @@ tests/test_deep_research_agent.py
 tests/test_agent_trace_site_icons.py
 # Retained internal coding-plan compatibility; no model tool or HTTP entry is restored.
 tests/test_agent_coding_tools.py
+tests/test_research_tasks.py
+tests/test_research_task_creation.py
