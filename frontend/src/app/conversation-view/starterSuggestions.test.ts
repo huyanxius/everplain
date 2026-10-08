@@ -9,6 +9,8 @@ describe('generic starter suggestions', () => {
     expect(new Set(pool.map(card => card.title)).size).toBe(20)
     for (const card of pool) {
       expect(card.title.trim()).toBeTruthy()
+      expect(card.description.trim()).toBeTruthy()
+      expect(card.description).not.toBe(card.title)
       expect(card.title).not.toMatch(/什么东西|placeholder/i)
       expect(card).not.toHaveProperty('prompt')
       expect(card).not.toHaveProperty('card_id')

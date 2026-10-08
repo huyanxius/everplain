@@ -377,7 +377,7 @@ it('shows exactly three generic starters for a confirmed empty result, with only
   expect(buttons).toHaveLength(3)
   expect(cards.textContent).toBe(buttons.map(button => button.textContent).join(''))
   fireEvent.click(buttons[0])
-  expect(onStart).toHaveBeenCalledExactlyOnceWith(buttons[0].textContent)
+  expect(onStart).toHaveBeenCalledExactlyOnceWith(buttons[0].getAttribute('aria-label'))
   expect(onSelect).not.toHaveBeenCalled()
   expect(onSubmit).not.toHaveBeenCalled()
   expect(getConversationContextSummary).toHaveBeenCalledTimes(1)
@@ -588,7 +588,7 @@ it('does not show fillers or prior-account cards during an unread account switch
   expect(secondSignal?.aborted).toBe(true)
   await screen.findByRole('region', { name: '起步建议' })
   await act(async () => { resolveSecond(ready) })
-  expect([...document.querySelectorAll('.cv-suggestions__card')].map(button => button.textContent)).toEqual(getStarterSuggestions('zh-CN', 'third-reader').map(card => card.title))
+  expect([...document.querySelectorAll('.cv-suggestions__card strong')].map(title => title.textContent)).toEqual(getStarterSuggestions('zh-CN', 'third-reader').map(card => card.title))
   view.rerender(starterSurface(queryClient, vi.fn(), false, vi.fn(), null))
   expect(screen.queryByRole('region')).not.toBeInTheDocument()
   expect(getConversationContextSummary).toHaveBeenCalledTimes(3)
@@ -629,4 +629,27 @@ it('labels a mixed English set neutrally and namespaces generic keys apart from 
     expect(within(region).getAllByRole('button', { name: 'View source quotes' })).toHaveLength(1)
     expect(error).not.toHaveBeenCalled()
   } finally { error.mockRestore() }
+})
+
+
+it('gives every card a visible hierarchy without replacing real copy or sending presentation text', async () => {
+  vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards: [ready.cards[0]] })
+  const onStart = vi.fn()
+  render(starterSurface(client(), onStart))
+  const region = await screen.findByRole('region', { name: '建议' })
+  const cards = [...region.querySelectorAll<HTMLButtonElement>('.cv-suggestions__card')]
+  for (const card of cards) {
+    expect(card.querySelector('.cv-suggestions__eyebrow')).toHaveTextContent(/.+/)
+    expect(card.querySelector('.cv-suggestions__icon svg')).toHaveAttribute('aria-hidden', 'true')
+    expect(card.querySelector('strong')).toHaveTextContent(card.getAttribute('aria-label')!)
+    expect(card.querySelector('.cv-suggestions__description')).toHaveTextContent(/.+/)
+    expect(card.querySelector('.cv-suggestions__action')).toHaveAttribute('aria-hidden', 'true')
+    expect(card).toHaveAttribute('aria-description', card.querySelector('.cv-suggestions__description')!.textContent)
+  }
+  expect(cards[0].querySelector('.cv-suggestions__description')!.textContent).toBe(ready.cards[0].description)
+  expect(cards[0].querySelector('.cv-suggestions__eyebrow')).toHaveTextContent('最近对话')
+  expect(cards[1].querySelector('.cv-suggestions__eyebrow')).toHaveTextContent('一起想想')
+  expect(cards[2].querySelector('.cv-suggestions__eyebrow')).toHaveTextContent('知识库')
+  fireEvent.click(cards[1])
+  expect(onStart).toHaveBeenCalledExactlyOnceWith(cards[1].getAttribute('aria-label'))
 })

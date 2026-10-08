@@ -1,8 +1,9 @@
 import { useId, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
+import { ArrowRight, ChatCircle, BookOpen, MagnifyingGlass, PenNib, type Icon } from '@phosphor-icons/react'
 import type { ConversationContextSource } from '../../modules/research-agent'
 import { selectContextCard, type SelectedContextCard } from './contextCard'
-import { getStarterSuggestions } from './starterSuggestions'
+import { getStarterSuggestions, type StarterSuggestion } from './starterSuggestions'
 import { useAppLocale } from '../i18n/AppLocaleProvider'
 import { useConversationContextSummary } from './useConversationContextSummary'
 
@@ -54,16 +55,21 @@ export function ConversationContextSuggestions({ userId, onSelect, onStart, hasD
   return <section className="cv-suggestions cv-context-suggestions" aria-label={label}>
     {Boolean(cards.length || starters.length) && <div className="cv-suggestions__cards">
       {cards.map((card, index) => <article className="cv-context-suggestions__item" data-has-sources={Boolean(card.sources.length)} key={`${userId}:context:${card.card_id ?? index}:${card.version ?? card.title}`}>
-        <button className="qx-btn qx-btn--ghost cv-suggestions__card" type="button" disabled={!selectContextCard(card)} onClick={() => { const selection = selectContextCard(card); if (selection) onSelect(selection) }}><strong>{card.title}</strong><span>{card.description}</span></button>
+        <button className="qx-btn qx-btn--ghost cv-suggestions__card" type="button" aria-label={card.title} aria-description={card.description || undefined} disabled={!selectContextCard(card)} onClick={() => { const selection = selectContextCard(card); if (selection) onSelect(selection) }}>
+          <SuggestionCardContent icon={ChatCircle} category={text('最近对话', 'Recent conversation')} title={card.title} description={card.description} action={text('继续聊', 'Continue')} />
+        </button>
         <CardSources sources={card.sources} />
       </article>)}
-      {starters.map(card => <article className="cv-context-suggestions__item" key={`${userId}:starter:${card.id}`}>
-        <button className="qx-btn qx-btn--ghost cv-suggestions__card" type="button" disabled={hasDraft}
-          title={hasDraft ? text('发送或清空当前草稿后再选择建议', 'Send or clear your current draft before choosing a suggestion') : undefined}
-          onClick={() => { if (hasDraft) return; if (card.kind === 'navigate') navigate(card.to); else onStart?.(card.title) }}>
-          <strong>{card.title}</strong>
-        </button>
-      </article>)}
+      {starters.map(card => {
+        const presentation = starterPresentation(card, text)
+        return <article className="cv-context-suggestions__item" key={`${userId}:starter:${card.id}`}>
+          <button className="qx-btn qx-btn--ghost cv-suggestions__card" type="button" aria-label={card.title} aria-description={card.description || undefined} disabled={hasDraft}
+            title={hasDraft ? text('发送或清空当前草稿后再选择建议', 'Send or clear your current draft before choosing a suggestion') : undefined}
+            onClick={() => { if (hasDraft) return; if (card.kind === 'navigate') navigate(card.to); else onStart?.(card.title) }}>
+            <SuggestionCardContent {...presentation} title={card.title} description={card.description} />
+          </button>
+        </article>
+      })}
     </div>}
     {needsRefresh && <div role="status" className="cv-context-suggestions__state"><p className="qx-meta">{text('这些建议需要刷新后才能发送。', 'Reload these suggestions before sending.')}</p><button type="button" className="qx-btn qx-btn--ghost" disabled={query.isFetching} onClick={() => void query.refetch()}>{text('刷新建议', 'Reload suggestions')}</button></div>}
     {(stale || message) && <div className="cv-context-suggestions__status">
@@ -74,6 +80,25 @@ export function ConversationContextSuggestions({ userId, onSelect, onStart, hasD
       </div>}
     </div>}
   </section>
+}
+
+
+function SuggestionCardContent({ icon: CardIcon, category, title, description, action }: {
+  icon: Icon; category: string; title: string; description: string; action: string
+}) {
+  return <>
+    <span className="cv-suggestions__eyebrow"><span className="cv-suggestions__icon"><CardIcon aria-hidden="true" weight="regular" /></span>{category}</span>
+    <strong>{title}</strong>
+    {description && <span className="cv-suggestions__description">{description}</span>}
+    <span className="cv-suggestions__action" aria-hidden="true">{action}<ArrowRight /></span>
+  </>
+}
+
+function starterPresentation(card: StarterSuggestion, text: (zh: string, en: string) => string) {
+  if (card.kind === 'draft') return { icon: ChatCircle, category: text('一起想想', 'Think together'), action: text('开始聊', 'Start a conversation') }
+  if (card.to === '/research/new') return { icon: MagnifyingGlass, category: text('研究', 'Research'), action: text('打开研究', 'Open research') }
+  if (card.to === '/writing') return { icon: PenNib, category: text('写作', 'Writing'), action: text('打开文稿', 'Open writing') }
+  return { icon: BookOpen, category: text('知识库', 'Knowledge library'), action: card.id === 'webpage' ? text('查看设置', 'View setup') : text('打开知识库', 'Open library') }
 }
 
 
