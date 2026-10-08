@@ -36,7 +36,7 @@ class PackagingTests(unittest.TestCase):
             packages["yt-dlp"]["source"], {"registry": "https://pypi.org/simple"}
         )
         dockerfile = (ROOT / "ops/api.Dockerfile").read_text()
-        self.assertIn("uv sync --frozen --no-dev --no-editable", dockerfile)
+        self.assertIn("uv sync --locked --no-dev --no-editable", dockerfile)
         self.assertIn("PATH=/app/backend/.venv/bin:$PATH", dockerfile)
 
 

@@ -41,7 +41,10 @@ docker compose run --rm --no-deps --entrypoint python api /app/ops/preflight.py
 PYTHONPATH=backend/src backend/.venv/bin/python ops/preflight.py --env-file /secure/everplain.env
 ```
 
-镜像使用 `uv sync --frozen --no-dev --no-editable` 和 `npm ci --ignore-scripts` 安装锁定的应用依赖。默认基础镜像使用受维护的版本系列标签；正式发布时应记录并固定基础镜像 digest，以及输出镜像 digest，避免后续同名标签改变。Dockerfile 支持 `PYTHON_IMAGE`、`NODE_IMAGE`、`NGINX_IMAGE` 构建参数以传入核对过的 `image@sha256:...`。未提供 digest 时只保证应用依赖锁定，不声称逐字节可重现。
+镜像使用 `uv sync --locked --no-dev --no-editable` 和 `npm ci --ignore-scripts` 安装锁定的应用依赖。默认基础镜像使用受维护的版本系列标签；正式发布时应记录并固定基础镜像 digest，以及输出镜像 digest，避免后续同名标签改变。Dockerfile 支持 `PYTHON_IMAGE`、`NODE_IMAGE`、`NGINX_IMAGE` 构建参数以传入核对过的 `image@sha256:...`。未提供 digest 时只保证应用依赖锁定，不声称逐字节可重现。
+
+Python 安装入口使用 `--locked` 校验声明与锁文件一致；`--frozen` 只读取已有锁，不检查新鲜度。CI 的后端 bootstrap、网关环境和生产镜像在安装前拒绝缺失或过期的锁，直接运行 Make 的 contract/check/dev 目标也不隐式改锁。维护依赖时显式运行 `uv lock` 并连同声明提交；本检查不升级已锁定版本，也不承诺比特级可复现。
+
 
 ## 2. 运行与入口
 
