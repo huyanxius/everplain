@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from qunxue_api.api.contracts.common import ErrorResponse
 from qunxue_api.api.dependencies import CurrentSessionDependency
 from qunxue_api.api.routes.stubs import IdempotencyKey
+from qunxue_api.application.memory_commands import MemoryCommandError
 from qunxue_api.application.memory_overview import (
     MemoryOverviewBusy,
     MemoryOverviewReadError,
@@ -113,6 +114,20 @@ def service(request: Request) -> Iterator[MemoryService]:
         raise MemoryValidationError(str(error)) from error
 
 
+@contextmanager
+def command_errors() -> Iterator[None]:
+    try:
+        yield
+    except MemoryCommandError as error:
+        if isinstance(error.reason, MemoryNotFound):
+            raise HTTPException(404, str(error)) from error.reason
+        if isinstance(error.reason, MemoryConflict):
+            raise HTTPException(409, str(error)) from error.reason
+        if isinstance(error.reason, ValueError):
+            raise MemoryValidationError(str(error)) from error.reason
+        raise error.reason from None
+
+
 @router.get("", response_model=MemoryCollection, operation_id="list_memories")
 def list_memories(request: Request, current: CurrentSessionDependency, task_id: UUID | None = None):
     with service(request) as memory:
@@ -213,19 +228,13 @@ def update_memory(
     current: CurrentSessionDependency,
     idempotency_key: IdempotencyKey,
 ):
-    with service(request) as memory:
-        existing = memory.repository.get(current.user.user_id, memory_id)
-        updated = memory.save(
-            user_id=current.user.user_id,
-            task_id=existing.task_id,
-            key=existing.key,
-            memory_id=memory_id,
+    with command_errors():
+        updated = request.app.state.memory_commands.update(
+            current.user.user_id,
+            memory_id,
             **payload.model_dump(),
-            origin="manual",
             idempotency_key=idempotency_key,
         )
-    if (updated.content, updated.origin) != (existing.content, existing.origin):
-        request.app.state.memory_overview.invalidate(current.user.user_id, existing.task_id)
     return MemoryResponse(**asdict(updated))
 
 
@@ -237,10 +246,10 @@ def delete_memory(
     _idempotency_key: IdempotencyKey,
     expected_version: int = Query(ge=1),
 ):
-    with service(request) as memory:
-        existing = memory.repository.get(current.user.user_id, memory_id)
-        memory.repository.delete(current.user.user_id, memory_id, expected_version)
-    request.app.state.memory_overview.invalidate(current.user.user_id, existing.task_id)
+    with command_errors():
+        request.app.state.memory_commands.delete(
+            current.user.user_id, memory_id, expected_version
+        )
     return Response(status_code=204)
 
 
