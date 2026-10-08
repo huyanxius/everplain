@@ -160,7 +160,12 @@ describe('writing document route loading', () => {
     const { chunk, load } = await mount()
     expect(screen.getByText('正在打开文稿…')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: '离开文稿' }))
-    await act(async () => chunk.resolve())
+    await act(async () => {
+      chunk.resolve()
+      // The unmounted page has no UI to await. Drain its import before the next
+      // test resets modules, or this factory can repopulate the new mock cache.
+      await vi.dynamicImportSettled()
+    })
     expect(screen.getByRole('heading', { name: '写作首页' })).toBeVisible()
     expect(screen.queryByRole('textbox', { name: '文稿标题' })).not.toBeInTheDocument()
     expect(mocks.document).not.toHaveBeenCalled()
@@ -169,6 +174,9 @@ describe('writing document route loading', () => {
 
   it('uses the latest document parameter when navigation changes during chunk loading', async () => {
     const { chunk, load } = await mount()
+    expect(screen.getByText('正在打开文稿…')).toBeVisible()
+    await waitFor(() => expect(load).toHaveBeenCalledOnce())
+    expect(mocks.document).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '另一篇文稿' }))
     await act(async () => chunk.resolve())
     expect(await screen.findByRole('textbox', { name: '文稿标题' })).toHaveValue('标题 doc-2')
