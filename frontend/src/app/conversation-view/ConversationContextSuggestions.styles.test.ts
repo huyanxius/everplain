@@ -12,8 +12,8 @@ describe('suggestion layout CSS contracts (not browser layout verification)', ()
     expect(declarations('.cv-context-suggestions__item .cv-suggestions__card')).toContain('width: 100%')
   })
   it('uses a single column in narrow containers without a more specific override', () => {
-    expect(css).toContain('@container conversation-suggestions (max-width: 560px) { .cv-suggestions__cards { grid-template-columns: minmax(0, 1fr); } }')
-    expect(css).not.toContain('.cv-context-suggestions .cv-suggestions__cards')
+    expect(css).toContain('@container conversation-suggestions (max-width: 560px) { .cv-suggestions__cards { grid-template-columns: minmax(0, 1fr); }')
+    expect(declarations('.cv-context-suggestions .cv-suggestions__cards')).not.toContain('grid-template-columns')
     expect(declarations('.cv-suggestions__card')).toContain('min-width: 0')
     expect(declarations('.cv-suggestions__card')).toContain('overflow-wrap: anywhere')
   })
@@ -25,7 +25,25 @@ describe('suggestion layout CSS contracts (not browser layout verification)', ()
     expect(declarations('.cv-context-suggestions__sources li')).toContain('overflow-wrap: anywhere')
   })
   it('keeps card summaries compact without truncating the accessible text', () => {
-    expect(declarations('.cv-context-suggestions__item .cv-suggestions__card > span')).toContain('-webkit-line-clamp: 2')
-    expect(declarations('.cv-context-suggestions__item .cv-suggestions__card > span')).toContain('overflow: hidden')
+    expect(declarations('.cv-context-suggestions__item .cv-suggestions__description')).toContain('-webkit-line-clamp: 3')
+    expect(declarations('.cv-context-suggestions__item .cv-suggestions__description')).toContain('overflow: hidden')
   })
+})
+
+
+it('defines a distinct card surface and aligns an explicit action below real content', () => {
+  const card = declarations('.cv-context-suggestions__item .cv-suggestions__card')
+  expect(card).toContain('border: 1px solid var(--qx-color-rule)')
+  expect(card).toContain('background: var(--qx-color-surface)')
+  expect(card).toContain('box-shadow: var(--qx-shadow-card)')
+  expect(card).toContain('min-height: 0')
+  expect(declarations('.cv-context-suggestions__item .cv-suggestions__action')).toContain('margin-top: auto')
+  expect(declarations('.cv-context-suggestions__item .cv-suggestions__card:focus-visible')).toContain('outline: 2px solid var(--qx-color-accent)')
+})
+
+it('reserves source-toggle space only in the header, keeping the title and description full width', () => {
+  expect(declarations('.cv-context-suggestions__item[data-has-sources="true"] .cv-suggestions__eyebrow')).toContain('padding-inline-end: var(--qx-icon-control-size)')
+  expect(css).not.toContain('.cv-context-suggestions__item[data-has-sources="true"] .cv-suggestions__card {')
+  expect(declarations('.cv-context-suggestions__item .cv-suggestions__eyebrow')).not.toContain('line-clamp')
+  expect(declarations('.cv-context-suggestions__item .cv-suggestions__action')).not.toContain('line-clamp')
 })
