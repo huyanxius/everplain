@@ -13,9 +13,9 @@ from qunxue_api.api.dependencies import CurrentSessionDependency
 from qunxue_api.api.routes.stubs import IdempotencyKey
 from qunxue_api.application.memory_overview import (
     MemoryOverviewBusy,
+    MemoryOverviewReadError,
     MemoryOverviewStale,
     MemoryOverviewUnavailable,
-    memory_overview_fingerprint,
 )
 from qunxue_api.modules.agent_memory import (
     CONTENT_BUDGET,
@@ -178,42 +178,25 @@ def summarize_memory(
     current: CurrentSessionDependency,
     _idempotency_key: IdempotencyKey,
 ):
-    user_id = current.user.user_id
-    with service(request) as memory:
-        scope = memory.repository.scope(user_id, payload.task_id)
-        if scope.version != payload.expected_version:
-            raise HTTPException(409, "记忆已更新，请刷新后重新整理概览。")
-        items = memory.repository.list(user_id, payload.task_id)
-    # Validate the final snapshot before the paid operation settles. Cache hits
-    # have no paid operation and perform the same check after returning.
-    latest, validation_done = scope, False
-
-    def verify_snapshot():
-        nonlocal latest, validation_done
-        with service(request) as memory:
-            latest = memory.repository.scope(user_id, payload.task_id)
-            if latest.version != scope.version and memory_overview_fingerprint(
-                memory.repository.list(user_id, payload.task_id)
-            ) != memory_overview_fingerprint(items):
-                request.app.state.memory_overview.invalidate(user_id, payload.task_id)
-                raise MemoryOverviewStale()
-        validation_done = True
-
     try:
-        summary = request.app.state.memory_overview.summarize(
-            user_id, payload.task_id, scope.version, items, before_delivery=verify_snapshot
+        result = request.app.state.memory_overview_query.summarize(
+            current.user.user_id, payload.task_id, payload.expected_version
         )
-        if not validation_done:
-            verify_snapshot()
+    except MemoryOverviewReadError as error:
+        if isinstance(error.reason, MemoryNotFound):
+            raise HTTPException(404, str(error)) from error.reason
+        if isinstance(error.reason, MemoryConflict):
+            raise HTTPException(409, str(error)) from error.reason
+        if isinstance(error.reason, ValueError):
+            raise MemoryValidationError(str(error)) from error.reason
+        raise error.reason from None
     except MemoryOverviewBusy as error:
         raise HTTPException(429, str(error)) from error
     except MemoryOverviewUnavailable as error:
         raise HTTPException(503, str(error)) from error
     except MemoryOverviewStale as error:
         raise HTTPException(409, "记忆已更新，请刷新后重新整理概览。") from error
-    return MemoryOverviewResponse(
-        summary=summary, scope_version=latest.version, memory_count=len(items)
-    )
+    return MemoryOverviewResponse(**asdict(result))
 
 
 @router.get("/{memory_id}", response_model=MemoryResponse, operation_id="get_memory")

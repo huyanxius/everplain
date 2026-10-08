@@ -155,3 +155,110 @@ def test_overview_rejects_deletion_while_generating(plain_client):
     client.app.state.memory_overview.generate = generate
     assert overview(client).status_code == 409
     assert overview(client).json()["summary"] == ""
+
+
+def test_overview_route_accepts_only_the_public_query_contract():
+    from types import SimpleNamespace
+
+    from qunxue_api.api.routes.memories import MemoryOverviewRequest, summarize_memory
+    from qunxue_api.application.memory_overview import MemoryOverviewResult
+
+    user_id, task_id = uuid4(), uuid4()
+    calls = []
+
+    class Query:
+        def summarize(self, *args):
+            calls.append(args)
+            return MemoryOverviewResult("公开用例概览", 8, 3)
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(memory_overview_query=Query()))
+    )
+    current = SimpleNamespace(user=SimpleNamespace(user_id=user_id))
+    result = summarize_memory(
+        MemoryOverviewRequest(task_id=task_id, expected_version=7), request, current, "request-key"
+    )
+    assert result.model_dump() == {"summary": "公开用例概览", "scope_version": 8, "memory_count": 3}
+    assert calls == [(user_id, task_id, 7)]
+
+
+def test_overview_query_sqlite_scope_release_reauthorization_and_latest_version(plain_client):
+    from contextlib import contextmanager
+
+    from sqlalchemy import text
+
+    client = plain_client
+    register(client)
+    task_id = project(client)
+    save(client, task_id=task_id)
+    original_scope = client.app.state.memory_service_scope
+    sessions, events = [], []
+
+    @contextmanager
+    def observed_scope():
+        with original_scope() as memory:
+            sessions.append(memory.repository.session)
+            events.append("open")
+            yield memory
+        events.append("closed")
+
+    client.app.state.memory_service_scope = observed_scope
+
+    def generate(_items):
+        assert events == ["open", "closed"]
+        assert not sessions[0].in_transaction()
+        # Another real session can change settings while generation has no read scope.
+        with original_scope() as memory:
+            owner = _items[0].user_id
+            scope = memory.repository.scope(owner, _items[0].task_id)
+            memory.repository.configure(
+                owner, _items[0].task_id, expected_version=scope.version,
+                use_memory=False, learn_memory=False,
+            )
+        return "仍有效的概览"
+
+    client.app.state.memory_overview.generate = generate
+    response = client.post(
+        "/api/memories/overview", headers={"Idempotency-Key": str(uuid4())},
+        json={"task_id": task_id, "expected_version": 1},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"summary": "仍有效的概览", "scope_version": 2, "memory_count": 1}
+    assert events == ["open", "closed", "open", "closed"]
+    assert sessions[0] is not sessions[1]
+    assert all(not session.in_transaction() for session in sessions)
+    with original_scope() as memory:
+        assert memory.repository.session.scalar(text("SELECT count(*) FROM agent_memories")) == 1
+
+
+def test_overview_http_boundary_keeps_auth_dto_header_and_controlled_validation(plain_client):
+    from qunxue_api.application.memory_overview import MemoryOverviewReadError, MemoryOverviewResult
+
+    client = plain_client
+    calls = []
+
+    class Query:
+        def summarize(self, *args):
+            calls.append(args)
+            if args[-1] == 1:
+                raise MemoryOverviewReadError(ValueError("受控读取校验"))
+            return MemoryOverviewResult("", 0, 0)
+
+    client.app.state.memory_overview_query = Query()
+    url = "/api/memories/overview"
+    headers = {"Idempotency-Key": str(uuid4())}
+    assert client.post(url, headers=headers, json={"expected_version": 0}).status_code == 401
+    assert not calls
+    user_id = register(client)
+    for payload in ({"expected_version": -1}, {"expected_version": 0, "extra": True}):
+        assert client.post(url, headers=headers, json=payload).status_code == 422
+    assert client.post(url, json={"expected_version": 0}).status_code == 422
+    assert not calls
+    response = client.post(url, headers=headers, json={"expected_version": 0})
+    assert response.status_code == 200
+    assert response.json() == {"summary": "", "scope_version": 0, "memory_count": 0}
+    assert len(calls) == 1 and str(calls[0][0]) == user_id and calls[0][1:] == (None, 0)
+    response = client.post(url, headers=headers, json={"expected_version": 1})
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+    assert response.json()["error"]["message"] == "受控读取校验"

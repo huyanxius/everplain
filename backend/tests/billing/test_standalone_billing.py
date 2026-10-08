@@ -236,3 +236,106 @@ def test_overview_final_snapshot_failure_refunds_before_delivery(wallet):
         assert c.scalar(text("SELECT balance FROM credit_accounts")) == 10000
         assert c.scalar(text("SELECT status FROM billing_operations")) == "error"
         assert c.scalar(text("SELECT reference_cost_pico FROM billing_attempts")) == 1000000
+
+
+@pytest.mark.parametrize(
+    "delivery", ["success", "stale", "read-error", "exit-error", "model-error"]
+)
+def test_overview_query_validates_before_real_billing_settlement_and_cache_is_free(
+    wallet, delivery
+):
+    from dataclasses import replace
+
+    from test_memory_overview_cache import _overview_reader_scope, memory
+
+    from qunxue_api.adapters.model.metering import current_operation
+    from qunxue_api.application.memory_overview import (
+        MemoryOverview,
+        MemoryOverviewQuery,
+        MemoryOverviewReadError,
+        MemoryOverviewStale,
+        MemoryOverviewUnavailable,
+    )
+    from qunxue_api.modules.agent_memory import MemoryNotFound
+
+    runtime, engine = wallet
+    item = memory()
+    events = []
+    latest = (replace(item, content="changed"),) if delivery == "stale" else (item,)
+    failure = None
+    if delivery in {"read-error", "exit-error"}:
+        failure = (2, "version" if delivery == "read-error" else "exit", MemoryNotFound("gone"))
+    read_scope = _overview_reader_scope(events, [(1, (item,)), (2, latest)], failure=failure)
+
+    class Billing:
+        def open(self, **kwargs):
+            assert kwargs["phase"] == "memory_overview"
+            assert events[-1] == (1, "closed")
+            return OperationScope(
+                runtime, user_id="user", run_id=kwargs["run_id"], fingerprint="synthetic"
+            )
+
+    def generate(_items):
+        scope = current_operation(required=True)
+        attempt = scope.before_attempt_payload(
+            {
+                "model": "gpt-6-luna",
+                "messages": [{"role": "user", "content": "x" * 1000}],
+                "max_tokens": 1000,
+            },
+            provider_host="synthetic.test",
+        )
+        scope.complete(
+            attempt,
+            {
+                "model": "gpt-6-luna", "id": "overview-query-synthetic",
+                "usage": {
+                    "prompt_tokens": 5000, "completion_tokens": 1000,
+                    "prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
+                },
+                "choices": [],
+            },
+            outcome="success",
+        )
+        if delivery == "model-error":
+            raise RuntimeError("synthetic model failure after metering")
+        return "synthetic summary"
+
+    overview = MemoryOverview(generate, billing=Billing())
+    query = MemoryOverviewQuery(read_scope, overview)
+    if delivery == "success":
+        assert query.summarize(item.user_id, None, 1).scope_version == 2
+        # Both an actual cache hit and empty request validate without a new paid operation.
+        for items in ((item,), ()):
+            scope = _overview_reader_scope([], [(2, items), (2, items)])
+            result = MemoryOverviewQuery(scope, overview).summarize(item.user_id, None, 2)
+            assert result.memory_count == len(items)
+    else:
+        expected = MemoryOverviewStale if delivery == "stale" else MemoryOverviewUnavailable
+        with pytest.raises(expected) as raised:
+            query.summarize(item.user_id, None, 1)
+        if delivery in {"read-error", "exit-error"}:
+            assert isinstance(raised.value.__cause__, MemoryOverviewReadError)
+            assert isinstance(raised.value.__cause__.reason, MemoryNotFound)
+            assert str(raised.value.__cause__.reason) == "gone"
+        elif delivery == "model-error":
+            assert type(raised.value.__cause__) is RuntimeError
+            assert str(raised.value.__cause__) == "synthetic model failure after metering"
+        assert events[-1] == (1 if delivery == "model-error" else 2, "closed")
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM billing_operations")) == 1
+        assert connection.scalar(text("SELECT count(*) FROM billing_attempts")) == 1
+        assert connection.scalar(
+            text("SELECT reference_cost_pico FROM billing_attempts")
+        ) == 1000000000
+        assert connection.scalar(text("SELECT status FROM billing_operations")) == (
+            "success" if delivery == "success" else "error"
+        )
+        assert connection.scalar(text("SELECT balance FROM credit_accounts")) == (
+            9990 if delivery == "success" else 10000
+        )
+        assert runtime.available_balance("user") == (9990 if delivery == "success" else 10000)
+        assert connection.scalar(text("SELECT charged_points FROM billing_operations")) == (
+            10 if delivery == "success" else 0
+        )
+        assert connection.scalar(text("SELECT hold_points FROM billing_operations")) == 0

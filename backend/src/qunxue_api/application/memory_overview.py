@@ -2,14 +2,14 @@
 
 import json
 from collections import OrderedDict
-from collections.abc import Callable
-from contextlib import nullcontext
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from hashlib import sha256
 from threading import Lock
 from uuid import UUID, uuid4
 
-from qunxue_api.modules.agent_memory import Memory
+from qunxue_api.modules.agent_memory import Memory, MemoryConflict, MemoryNotFound
 
 
 class MemoryOverviewUnavailable(Exception):
@@ -129,3 +129,82 @@ class MemoryOverview:
         finally:
             with self._lock:
                 self._active.discard(user_id)
+
+
+@dataclass(frozen=True)
+class MemoryOverviewReader:
+    """Identity-bound reads usable only within one short-lived read scope."""
+
+    version: Callable[[], int]
+    items: Callable[[], tuple[Memory, ...]]
+
+
+@dataclass(frozen=True)
+class MemoryOverviewResult:
+    summary: str
+    scope_version: int
+    memory_count: int
+
+
+class MemoryOverviewReadError(Exception):
+    """Keep scoped read failures distinct from unscoped engine failures."""
+
+    def __init__(self, reason: Exception):
+        super().__init__(str(reason))
+        self.reason = reason
+
+
+class MemoryOverviewQuery:
+    """Read and revalidate one owned snapshot before delivering its overview."""
+
+    def __init__(
+        self,
+        read_scope: Callable[[UUID, UUID | None], AbstractContextManager[MemoryOverviewReader]],
+        overview: MemoryOverview,
+    ):
+        self._read_scope = read_scope
+        self._overview = overview
+
+    @contextmanager
+    def _read(self, user_id: UUID, task_id: UUID | None) -> Iterator[MemoryOverviewReader]:
+        try:
+            with self._read_scope(user_id, task_id) as reader:
+                yield reader
+        except (MemoryNotFound, MemoryConflict, ValueError) as error:
+            raise MemoryOverviewReadError(error) from error
+
+    def summarize(
+        self, user_id: UUID, task_id: UUID | None, expected_version: int
+    ) -> MemoryOverviewResult:
+        try:
+            with self._read(user_id, task_id) as reader:
+                version = reader.version()
+                if version != expected_version:
+                    raise MemoryConflict("记忆已更新，请刷新后重新整理概览。")
+                items = reader.items()
+        except (MemoryOverviewBusy, MemoryOverviewUnavailable, MemoryOverviewStale) as error:
+            # Initial read failures historically occur outside the engine's
+            # delivery-error mapping. Keep that phase distinguishable to callers.
+            raise MemoryOverviewReadError(error) from error
+
+        # The first read scope is closed before model work. Paid results verify
+        # before settlement; cache hits and empty scopes verify after returning.
+        latest_version, validation_done = version, False
+
+        def verify_snapshot():
+            nonlocal latest_version, validation_done
+            with self._read(user_id, task_id) as reader:
+                latest_version = reader.version()
+                if latest_version != version and memory_overview_fingerprint(
+                    reader.items()
+                ) != memory_overview_fingerprint(items):
+                    self._overview.invalidate(user_id, task_id)
+                    raise MemoryOverviewStale()
+            validation_done = True
+
+        summary = self._overview.summarize(
+            user_id, task_id, version, items, before_delivery=verify_snapshot
+        )
+        if not validation_done:
+            verify_snapshot()
+        return MemoryOverviewResult(summary, latest_version, len(items))

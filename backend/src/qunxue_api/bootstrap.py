@@ -190,7 +190,11 @@ from qunxue_api.application.conversation_summary import ConversationSummaryWorke
 from qunxue_api.application.external_agents import ExternalAgentApplication
 from qunxue_api.application.knowledge_import import KnowledgeImportApplication
 from qunxue_api.application.memory_learning import MemoryLearningWorker
-from qunxue_api.application.memory_overview import MemoryOverview
+from qunxue_api.application.memory_overview import (
+    MemoryOverview,
+    MemoryOverviewQuery,
+    MemoryOverviewReader,
+)
 from qunxue_api.application.oauth_login import OAuthLoginApplication
 from qunxue_api.application.personal_document_evidence import PersonalDocumentEvidenceValidator
 from qunxue_api.application.personal_graph import PersonalGraphApplication
@@ -1415,6 +1419,18 @@ def create_app(
             extra_headers=endpoint.extra_headers,
             timeout_seconds=min(resolved_settings.model_timeout_seconds, 45),
         )
+
+    @contextmanager
+    def memory_overview_read_scope(user_id, task_id):
+        with app.state.memory_service_scope() as memory:
+            yield MemoryOverviewReader(
+                version=lambda: memory.repository.scope(user_id, task_id).version,
+                items=lambda: memory.repository.list(user_id, task_id),
+            )
+
+    app.state.memory_overview_query = MemoryOverviewQuery(
+        memory_overview_read_scope, app.state.memory_overview
+    )
 
     @contextmanager
     def memory_learning_scope():
