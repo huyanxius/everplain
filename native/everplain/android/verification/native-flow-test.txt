@@ -1,0 +1,8 @@
+
+app.everplain.android.NativeFlowTest:.
+
+Time: 24.977
+
+OK (1 test)
+
+

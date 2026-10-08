@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:label="Everplain" android:icon="@drawable/everplain_mark" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:usesCleartextTraffic="false" android:supportsRtl="true" android:theme="@style/Theme.Everplain">
+        <!-- On older APIs, AndroidX BackHandler provides the compatible fallback. -->
+        <activity tools:ignore="UnusedAttribute" android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize" android:enableOnBackInvokedCallback="true">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity>
+    </application>
+</manifest>
