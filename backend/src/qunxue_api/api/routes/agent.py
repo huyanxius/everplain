@@ -50,6 +50,7 @@ from qunxue_api.api.dependencies import (
 from qunxue_api.api.routes.research_materials import _material_response
 from qunxue_api.api.routes.research_tasks import _match_status, _navigation_response
 from qunxue_api.api.routes.stubs import IdempotencyKey
+from qunxue_api.application.agent_diagnostics import log_agent_failure
 from qunxue_api.modules.agent_conversation import (
     AgentInterrupted,
     AgentModelRouteFailure,
@@ -687,6 +688,12 @@ def stream_agent_turn(
             else:
                 identity["run_id"] = run.run_id
         except Exception as error:
+            # Diagnostics are independent of business classification and use
+            # only identity established by the started callback before fallback.
+            diagnostic_identity = {
+                key: identity.get(key) for key in ("run_id", "conversation_id", "attempt_id")
+            }
+            log_agent_failure(logger, "turn", error, **diagnostic_identity)
             if identity.get("run_id") is None and (
                 getattr(error, "agent_terminal_journaled", False)
                 or getattr(error, "agent_terminal_journal_failed", False)
@@ -712,9 +719,11 @@ def stream_agent_turn(
                         except Exception:
                             unsaved_delivery_state.append(delivery_state)
                     publish(*failure)
-                except Exception:
+                except Exception as journal_error:
                     terminal_failure.append(failure)
-                    logger.exception("Agent terminal event could not be journaled")
+                    log_agent_failure(
+                        logger, "terminal_fallback", journal_error, **diagnostic_identity,
+                    )
         finally:
             finished.set()
             ready.set()
@@ -828,7 +837,6 @@ def _agent_failure(error: Exception) -> tuple[str, dict[str, object]]:
     if isinstance(error, RetrievalPipelineUnavailable):
         return "turn_failed", {"code": "retrieval_unavailable",
                                "message": "发布绑定的知识检索暂时不可用，本轮未生成研究回答。"}
-    logger.error("Agent turn failed", exc_info=(type(error), error, error.__traceback__))
     return "turn_failed", {"code": "agent_unavailable",
                            "message": "Agent 暂时无法完成回答，请稍后重试。"}
 

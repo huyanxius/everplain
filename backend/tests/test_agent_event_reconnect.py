@@ -743,3 +743,179 @@ def test_failure_before_run_started_keeps_its_original_terminal_identity(
         replay = subscribe_agent_run_events(run.run_id, request, current, after=0)
         assert asyncio.run(asyncio.wait_for(collect(replay), timeout=3)) == frames
     assert runner.calls == 0
+
+
+@pytest.mark.parametrize(
+    "fault", ["none", "canonical", "terminal_citation", "fallback", "runner", "projection"],
+)
+@pytest.mark.parametrize("broken_logger", [False, True])
+def test_output_storage_diagnostics_preserve_body_and_settlement(
+    client, monkeypatch, caplog, fault, broken_logger,
+):
+    """Actual SQLite faults exercise formatted diagnostics, not invented exceptions."""
+    import logging
+
+    from sqlalchemy import text
+    from test_agent_delivery_output_state import Billing, ReceiptScope
+
+    from qunxue_api.api.routes import agent
+    from qunxue_api.application import disciplinary_agent
+    from qunxue_api.modules.agent_conversation import AgentEvidence
+
+    body = "synthetic-private-body Authorization=synthetic-token Cookie=synthetic-cookie"
+    prompt = "synthetic-private-input code=synthetic-code"
+    uid = registered_user(client)
+    database = client.app.state.database
+    receipt = ReceiptScope({"output_finish_reason": "complete", "usage_status": "known",
+                            "settlement_status": "settled", "receipt_persistence": "saved"})
+    if fault == "projection":
+        receipt.delivery_state.update(usage_status="unknown", settlement_status="pending")
+    calls = []
+    log_calls = []
+    unhandled = []
+    monkeypatch.setattr(threading, "excepthook", unhandled.append)
+
+    class StatefulError(RuntimeError):
+        reads = 0
+
+        @property
+        def exceptions(self):
+            self.reads += 1
+            if fault == "projection" and self.reads == 2:
+                raise RuntimeError("synthetic projection failure")
+            if fault != "projection" and self.reads > 2:
+                raise RuntimeError("unexpected repeat classification")
+            return ()
+
+    original_error = StatefulError(body)
+
+    class OutputTools(Tools):
+        evidence = {"citation-a": True}
+
+    class OutputRunner:
+        def run_stream(self, *, on_delta, **kwargs):
+            calls.append("model")
+            on_delta(body)
+            if fault in {"runner", "projection"}:
+                raise original_error
+            return AgentRunResult(
+                answer=body, citations=(AgentEvidence(
+                    citation_id="citation-a", label="source", kind="source", excerpt=body,
+                    source_kind="web",
+                ),), release_id="release-a", provider="test", model="test",
+            )
+
+    @contextmanager
+    def scope():
+        with database.session() as session:
+            yield DisciplinaryAgentApplication(
+                conversations=ConversationService(SqliteConversationRepository(session)),
+                runner=OutputRunner(), tools_factory=OutputTools, billing=Billing(receipt),
+                rollback=session.rollback, atomic=session.begin_nested,
+            )
+
+    client.app.state.disciplinary_agent_scope = scope
+    request = SimpleNamespace(app=client.app, headers={})
+    current = SimpleNamespace(user=SimpleNamespace(user_id=uid))
+    for logger in (agent.logger, disciplinary_agent.logger):
+        monkeypatch.setattr(logger, "disabled", False)
+        caplog.set_level(logging.ERROR, logger=logger.name)
+    logger = (agent.logger if fault in {"canonical", "fallback", "runner"}
+              else disciplinary_agent.logger)
+    if broken_logger:
+        def fail_sink(*args, **kwargs):
+            log_calls.append("sink")
+            raise RuntimeError("synthetic sink unavailable")
+        monkeypatch.setattr(logger, "error", fail_sink)
+    if fault not in {"none", "runner", "projection"}:
+        table, condition = (
+            ("agent_messages", "NEW.role='assistant'") if fault in {"canonical", "fallback"} else
+            ("agent_output_events", "NEW.name='citation_added'")
+        )
+        with database.engine.begin() as connection:
+            connection.execute(text(
+                f"CREATE TRIGGER output_fault BEFORE INSERT ON {table} WHEN {condition} "
+                "BEGIN SELECT RAISE(ABORT, 'synthetic storage failure'); END"
+            ))
+
+    if fault == "fallback":
+        with database.engine.begin() as connection:
+            connection.execute(text(
+                "CREATE TRIGGER status_fault BEFORE UPDATE ON agent_runs "
+                "WHEN NEW.status='failed' BEGIN "
+                "SELECT RAISE(ABORT, 'synthetic status failure'); END"
+            ))
+            connection.execute(text(
+                "CREATE TRIGGER fallback_fault BEFORE INSERT ON agent_output_events "
+                "WHEN NEW.name='turn_failed' BEGIN "
+                "SELECT RAISE(ABORT, 'synthetic fallback failure'); END"
+            ))
+
+    async def exercise():
+        response = stream_agent_turn(AgentTurnRequest(message=prompt), request, current,
+                                     "safe-output-diagnostic")
+        return [event_parts(frame) async for frame in response.body_iterator]
+
+    frames = asyncio.run(asyncio.wait_for(exercise(), timeout=5))
+    with database.session() as session:
+        repository = SqliteConversationRepository(session)
+        run = repository.find_run(user_id=uid, idempotency_key="safe-output-diagnostic")
+        conversation = ConversationService(repository).get_conversation(
+            user_id=uid, conversation_id=run.conversation_id,
+        )
+        events = repository.read_output_events(user_id=uid, run_id=run.run_id)
+    assert calls == ["model"]
+    assert not unhandled
+    if fault in {"runner", "projection"}:
+        assert original_error.reads == (3 if fault == "projection" else 2)
+        assert original_error.args == (body,)
+        assert original_error.__context__ is None
+    assert run.output_attempts[0].answer == body
+    failure = fault in {"canonical", "fallback", "runner", "projection"}
+    assert receipt.outcomes == (["error"] if failure else ["success"])
+    expected_status = {
+        "canonical": "failed", "fallback": "running", "runner": "failed", "projection": "failed",
+    }
+    assert run.status == expected_status.get(fault, "completed")
+    assert len(conversation.turns) == (0 if failure else 1)
+    if not failure:
+        assert conversation.turns[0].assistant_message.content == body
+        assert frames[-1][1] == "turn_completed"
+        assert frames[-1][2]["conversation"]["turns"][0]["assistant"]["content"] == body
+    else:
+        assert frames[-1][1] == "turn_failed"
+        assert frames[-1][2]["code"] == "agent_unavailable"
+        assert frames[-1][2]["message"] == "Agent 暂时无法完成回答，请稍后重试。"
+    assert not any(name == "output_persistence_failed" for _, name, _ in frames)
+    if fault in {"terminal_citation", "fallback", "projection"}:
+        assert frames[-1][0] is None
+        assert not any(event.name in agent._TERMINAL_EVENT_NAMES for event in events)
+    else:
+        assert frames[-1][0] is not None
+    if fault == "projection":
+        metadata = [payload for _, name, payload in frames if name == "agent_delivery_state"]
+        assert metadata and metadata[-1]["usage_status"] == "unknown"
+        assert "output_tokens" not in metadata[-1]
+    if fault == "none":
+        assert not log_calls
+        return
+    if broken_logger:
+        assert log_calls == (["sink", "sink"] if fault == "fallback" else ["sink"])
+        return
+    records = [record for record in caplog.records if record.name == logger.name]
+    assert len(records) == (2 if fault == "fallback" else 1)
+    record = records[-1]
+    assert not record.exc_info and record.exc_text is None and not record.stack_info
+    formatted = "\n".join(logging.Formatter().format(item) for item in caplog.records
+                          if item.name in {agent.logger.name, disciplinary_agent.logger.name})
+    assert all(secret not in formatted for secret in (
+        body, prompt, "synthetic-private", "synthetic-token", "synthetic-cookie", "synthetic-code",
+        "parameters:", "INSERT INTO", "Traceback", "synthetic storage failure",
+    ))
+    payload = json.loads(record.args[1])
+    expected_category = "unknown" if fault in {"runner", "projection"} else "storage_error"
+    assert payload["category"] == expected_category
+    assert payload["run_id"] == str(run.run_id)
+    assert payload["conversation_id"] == str(run.conversation_id)
+    assert payload["attempt_id"] == run.lease_token
+    assert payload["frames"]

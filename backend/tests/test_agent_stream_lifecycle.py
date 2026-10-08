@@ -411,3 +411,92 @@ def test_replaced_live_worker_cannot_emit_its_old_terminal_or_unsaved_body():
 
     asyncio.run(asyncio.wait_for(exercise(), timeout=2))
     assert service.find_run_by_id(user_id=user_id, run_id=current.run_id) == current
+
+
+def test_failure_projection_is_pure_and_safe_diagnostics_never_read_exception_text(monkeypatch):
+    import logging
+    import sqlite3
+
+    from qunxue_api.api.routes import agent
+    from qunxue_api.application.agent_diagnostics import log_agent_failure
+
+    secret = "synthetic-private-body-token"
+    touched = []
+
+    def poison(self, *args):
+        touched.append(True)
+        raise AssertionError(secret)
+
+    error_type = type("synthetic_private_error", (Exception,), {
+        "__getattribute__": poison, "__str__": poison, "__repr__": poison,
+    })
+    error = error_type.__new__(error_type)
+    BaseException.__init__(error, secret)
+    BaseException.__dict__["__cause__"].__set__(error, sqlite3.IntegrityError(secret))
+    records = []
+
+    class Logger:
+        def error(self, message, *args, **kwargs):
+            assert kwargs == {"exc_info": False, "stack_info": False, "stacklevel": 2}
+            records.append((message % args, args))
+
+    log_agent_failure(Logger(), "turn", error, run_id=UUID(int=1), conversation_id=secret,
+                      attempt_id=str(UUID(int=2)))
+    assert len(records) == 1
+    formatted, args = records[0]
+    assert secret not in formatted and "synthetic_private_error" not in formatted
+    payload = json.loads(args[1])
+    assert payload["category"] == "storage_error"
+    assert payload["run_id"] == str(UUID(int=1)) and payload["conversation_id"] is None
+    assert payload["attempt_id"] == str(UUID(int=2))
+    assert touched == []
+
+    def fail_logger(*args, **kwargs):
+        raise AssertionError("pure projection must not log")
+
+    monkeypatch.setattr(agent.logger, "error", fail_logger)
+    # DTO projection must not emit raw or safe diagnostics; the worker has context.
+    batch = agent._terminal_events(None, RuntimeError(secret))
+    assert batch.events[-1][1]["code"] == "agent_unavailable"
+    assert all(not isinstance(arg, BaseException) for arg in args)
+    assert logging.Formatter().format(logging.LogRecord(
+        "probe", logging.ERROR, "probe", 1, "%s %s", args, None,
+    )) == formatted
+
+
+def test_agent_diagnostics_bound_causes_reject_untrusted_ids_and_ignore_sink_failure():
+    import sqlite3
+
+    from qunxue_api.application.agent_diagnostics import log_agent_failure
+
+    errors = [RuntimeError("synthetic-secret") for _ in range(6)]
+    for first, second in zip(errors, errors[1:], strict=False):
+        first.__cause__ = second
+    errors[-1].__cause__ = sqlite3.IntegrityError("synthetic-secret")
+    payloads = []
+
+    class Logger:
+        def error(self, message, *args, **kwargs):
+            payloads.append(json.loads(args[1]))
+
+    class UntrustedUUID(UUID):
+        def __str__(self):
+            raise AssertionError("must not format UUID subclasses")
+
+    corrupted = UUID(int=4)
+    object.__setattr__(corrupted, "int", "synthetic-secret")
+    log_agent_failure(Logger(), "turn", errors[0], run_id=UntrustedUUID(int=3),
+                      conversation_id=corrupted)
+    assert payloads[0]["category"] == "unknown"
+    assert payloads[0]["run_id"] is None and payloads[0]["conversation_id"] is None
+    errors[0].__cause__ = errors[0]
+    log_agent_failure(Logger(), "synthetic-secret", errors[0], run_id=str(UUID(int=1)),
+                      attempt_id="synthetic-secret")
+    assert payloads[-1]["phase"] == "unknown" and payloads[-1]["run_id"] is None
+    assert payloads[-1]["attempt_id"] is None
+
+    class BrokenLogger:
+        def error(self, *args, **kwargs):
+            raise RuntimeError("synthetic-secret")
+
+    log_agent_failure(BrokenLogger(), "turn", errors[0])

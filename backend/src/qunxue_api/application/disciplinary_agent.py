@@ -9,6 +9,7 @@ from io import StringIO
 from typing import Literal
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
+from qunxue_api.application.agent_diagnostics import log_agent_failure
 from qunxue_api.modules.agent_conversation import (
     AgentCitation,
     AgentEvidence,
@@ -652,18 +653,26 @@ class DisciplinaryAgentApplication:
                 }
             try:
                 batch = terminal_events(execution, error)
-            except Exception:
-                logger.exception("Agent terminal event projection failed")
+            except Exception as projection_error:
+                log_agent_failure(
+                    logger, "terminal_projection", projection_error,
+                    run_id=run.run_id, conversation_id=run.conversation_id,
+                    attempt_id=run.lease_token,
+                )
             else:
                 try:
                     recorded = self._conversations.append_terminal_events(
                         user_id=user_id, run_id=run.run_id, attempt_id=run.lease_token,
                         batch=batch,
                     )
-                except AgentTerminalJournalFailure:
+                except AgentTerminalJournalFailure as journal_error:
                     # Only the journal savepoint failed. A canonical business
                     # flush/commit failure is deliberately not caught here.
-                    logger.exception("Agent terminal journal transaction failed")
+                    log_agent_failure(
+                        logger, "terminal_journal", journal_error,
+                        run_id=run.run_id, conversation_id=run.conversation_id,
+                        attempt_id=run.lease_token,
+                    )
                 else:
                     if recorded is None:
                         raise AgentInterrupted("Agent execution lease was replaced")
