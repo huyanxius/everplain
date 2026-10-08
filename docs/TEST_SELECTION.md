@@ -4,11 +4,11 @@
 
 ## 当前合并汇总
 
-B10 样文轻列表纵切新增登记 `test_writing_sample_queries.py` 后，当前产品清单为 197 个；原 `baseline_review_pending` 63 个及 3 个特殊排除保持不变。新增登记不是全产品执行通过证明。
+2026-10-08 按固定源码 [`800ef6b199134edc5c95603993c862a9e122f355`](https://github.com/huyanxius/everplain/tree/800ef6b199134edc5c95603993c862a9e122f355)（tree `fb7f1c0a8950fe52b06787888c42bb7c0486a6d4`）核对：产品清单为 200 个 selected 文件，`baseline_review_pending` 为 62 个，加上 3 个特殊排除，共 65 个 deferred。以上来自 `product-suite.txt` 非空非注释路径及 `deferred-suite.json` 条目的静态计数，不是 pytest 收集数、执行用例数或通过数。此前 B10 样文轻列表新增 `test_writing_sample_queries.py` 后的 197/63 是历史阶段计数。
 
-检索 10 文件与 Agent/API 4 文件均从同一剩余账务后继基线独立审查，本次只取精确、不重叠的 14 文件登记并集：计入 #248 新增的工具生命周期测试后，产品清单由 182 增至 196 个，`baseline_review_pending` 由 77 减至 63 个；加上 3 个特殊排除，共余 66 条记录，所有剩余分组 metadata、条目及 SHA-256 逐项不变。四个已审测试文件逐 byte 保持各自候选，其他生产源码和六个未晋升 Core 文件均不变，planner 异步修补候选不在本次合并中。
+历史检索/Agent 合并：检索 10 文件与 Agent/API 4 文件均从同一剩余账务后继基线独立审查，该次只取精确、不重叠的 14 文件登记并集：计入 #248 新增的工具生命周期测试后，产品清单由 182 增至 196 个，`baseline_review_pending` 由 77 减至 63 个；加上 3 个特殊排除，共余 66 条记录，所有剩余分组 metadata、条目及 SHA-256 逐项不变。四个已审测试文件逐 byte 保持各自候选，其他生产源码和六个未晋升 Core 文件均不变，planner 异步修补候选不在该次合并中。
 
-本次合成只执行测试登记检查及其既有 5 项自测，并验证七文件补丁正反向往返、完整 tree 和范围外文件不变；不重复已通过的检索/Agent 测试或构建。以下各组的执行数是各自局部证据，不能叠加宣称 196 个文件或全产品全部通过。
+上述历史合成只执行测试登记检查及其既有 5 项自测，并验证七文件补丁正反向往返、完整 tree 和范围外文件不变；不重复已通过的检索/Agent 测试或构建。以下各组的执行数是各自局部证据，不能叠加宣称 196 个文件或全产品全部通过。
 
 ## 已接入的自动路径
 
@@ -82,9 +82,9 @@ CI frontend 的安装步骤执行 `make bootstrap`，其既有依赖包含 `boot
 
 基线有 250 个后端测试文件，产品清单仅选择 141 个；不能将其余 109 个一概称为历史学科测试。Guard 补回 8 个、O02/G05 后续晋升、剩余账务 10 文件、检索 10 文件及 Agent/API 4 文件登记后，剩余排除记录见 `backend/tests/deferred-suite.json`：
 
-- `baseline_review_pending`：初始 100 个，移除已晋升的 billing API 错误测试后为 99 个；O02/G05 的 12 个后为 87 个，账务再晋升 10 个后为 77 个，本次检索/Agent 并集再晋升 14 个后为 63 个，仍缺当前分类/执行证明，按原精确 SHA-256 登记待核验。它们可能混有当前产品、兼容研究与陈旧期望；这不是批准永久不测。
+- `baseline_review_pending`：初始 100 个，移除已晋升的 billing API 错误测试后为 99 个；O02/G05 的 12 个后为 87 个，账务再晋升 10 个后为 77 个，历史检索/Agent 并集再晋升 14 个后为 63 个。后继 [PR #289](https://github.com/huyanxius/everplain/pull/289) 在基线确认后原样晋升 `test_research_tasks.py`，降为当前 62 个；同时新增 `test_research_task_creation.py` 登记，已计入上述 200 个 selected。余下 62 个仍缺当前分类/执行证明，按原精确 SHA-256 登记待核验。它们可能混有当前产品、兼容研究与陈旧期望；这不是批准永久不测。
 - `explicit_live_provider`：1 个真实模型验收依赖显式配置，不放进无凭据 CI。
-- `platform_manual`：扩展 PowerShell 准备测试需单独执行；不假装 Linux Bash 测试就是 Windows 安装验收。
-- `synthetic_browser_manual`：网关 Playwright 场景需要本地后端、网关和浏览器 fixture；当前合成 HTTP job 不代表浏览器场景跑过。
+- `platform_manual`：1 个扩展 PowerShell 准备测试需单独执行；不假装 Linux Bash 测试就是 Windows 安装验收。
+- `synthetic_browser_manual`：1 个网关 Playwright 场景需要本地后端、网关和浏览器 fixture；当前合成 HTTP job 不代表浏览器场景跑过。
 
 排除记录绑定文件内容，修改或删除后必须重新分类。晋升到产品清单时删除对应排除记录；不应通过批量更新哈希掩盖测试失败。存量 review_pending 没有清零前，不能宣称“所有测试已分类验收并全部执行”。
