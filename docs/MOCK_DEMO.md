@@ -35,7 +35,7 @@ test "$REV" = '<交接的完整 commit SHA>'
 docker build -f ops/api.Dockerfile -t everplain-api:$REV .
 ```
 
-现有 Dockerfile 固定 uv 版本，以 `uv sync --frozen --no-dev --no-editable` 安装仓库锁定依赖。
+现有 Dockerfile 固定 uv 版本，以 `uv sync --locked --no-dev --no-editable` 安装仓库锁定依赖。
 沿用已有服务器账户、Docker 与 `everplain-web` 静态目录，不使用半成品 CD 或新建宿主服务账户。
 `ops/api.Dockerfile` 既有容器内用户是 10001:10001；这是容器用户，不是宿主账户。
 现有空的 Everplain 数据卷可挂 `/data`，Docker 初始化卷时沿用镜像目录属主；如数据卷已存在，先核验内容及容器可写性，不能 chown 其它目录或复制其它产品数据。数据库已存在则先用 `ops/database.py backup` 做一致性备份，不覆盖备份/原库。

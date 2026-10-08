@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN pip install --no-cache-dir uv==0.12.19 && useradd --uid 10001 --create-home gateway
 COPY pyproject.toml uv.lock ./
 COPY src ./src
-RUN uv sync --frozen --no-dev --no-editable && mkdir /app/var /data \
+RUN uv sync --locked --no-dev --no-editable && mkdir /app/var /data \
     && chown gateway:gateway /app/var /data
 USER gateway
 EXPOSE 8298

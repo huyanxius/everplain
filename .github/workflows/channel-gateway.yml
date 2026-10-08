@@ -30,8 +30,8 @@ jobs:
             gateway/uv.lock
       - name: Install independent locked environments
         run: |
-          uv sync --project backend --frozen
-          uv sync --project gateway --frozen
+          uv sync --project backend --locked
+          uv sync --project gateway --locked
       - name: Run synthetic backend and platform contracts
         # No environment secrets, platform credentials, or live service are used.
         # Fixtures create their own accounts/databases and only bind loopback ports.
