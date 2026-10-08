@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import cytoscape, { type Core, type CytoscapeOptions } from 'cytoscape'
 import { useState, type PropsWithChildren } from 'react'
 import { MemoryRouter } from 'react-router'
@@ -195,7 +195,13 @@ it('keeps the real library canvas when selecting a topic or document and closing
   vi.mocked(listCourses).mockResolvedValue([{ ...course, documents: [] }])
   vi.mocked(getCourse).mockResolvedValue(course)
   const { unmount } = render(<MemoryRouter initialEntries={['/my/graph?kb_id=kb-lifecycle']}><CourseKnowledgePage libraryChrome /></MemoryRouter>)
-  await screen.findByRole('img', { name: 'Obsidian 式节点知识图谱' })
+  const canvas = await screen.findByRole('img', { name: 'Obsidian 式节点知识图谱' })
+  // The canvas DOM can appear before React runs the graph initialization effect.
+  await waitFor(() => {
+    expect(cytoscape).toHaveBeenCalledTimes(1)
+    expect(engine().container()).toBe(canvas)
+    expect(engine().destroyed()).toBe(false)
+  })
   const graph = engine()
   const layoutCalls = vi.mocked(graph.layout).mock.calls.length
   for (const id of ['topic:Topic', 'document:d1']) {
