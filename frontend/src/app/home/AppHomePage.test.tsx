@@ -246,14 +246,24 @@ it('does not retain an unsent Home card across a refresh-like remount or page hi
   expect(screen.getByRole('button', { name: '发送给 Everplain' })).toBeDisabled()
 })
 
-it('offers three new-user starters and prefills only the visible sentence without sending', async () => {
+it('offers three new-user starters and prefills only the title without sending card presentation text', async () => {
   show()
   const region = await screen.findByRole('region', { name: '起步建议' })
   const starters = within(region).getAllByRole('button')
   expect(starters).toHaveLength(3)
-  fireEvent.click(starters[0])
-  expect(screen.getByRole('textbox', { name: '问小叶' })).toHaveValue(starters[0].textContent)
+  const title = '帮我提炼一段笔记的重点'
+  const first = within(region).getByRole('button', { name: title })
+  expect(first).toBe(starters[0])
+  expect(within(first).getByText(title, { selector: 'strong', exact: true })).toBeVisible()
+  const presentation = ['一起想想', '贴上笔记，整理重点与值得继续追问的地方。', '开始聊']
+  for (const copy of presentation) expect(within(first).getByText(copy, { exact: true })).toBeVisible()
+  fireEvent.click(first)
+  const input = screen.getByRole('textbox', { name: '问小叶' })
+  expect(input).toHaveValue(title)
+  expect(input).not.toHaveValue(first.textContent)
+  for (const copy of presentation) expect((input as HTMLTextAreaElement).value).not.toContain(copy)
   expect(seedAgentDraft).not.toHaveBeenCalled()
+  expect(screen.queryByTestId('submit-intent')).not.toBeInTheDocument()
   expect(screen.queryByRole('region', { name: '已选对话卡片' })).not.toBeInTheDocument()
   expect(screen.getByTestId('location')).toHaveTextContent('/app')
   starters.forEach(button => expect(button).toBeDisabled())
