@@ -189,6 +189,7 @@ from qunxue_api.application.channel_gateway import ChannelGatewayApplication
 from qunxue_api.application.conversation_summary import ConversationSummaryWorker
 from qunxue_api.application.external_agents import ExternalAgentApplication
 from qunxue_api.application.knowledge_import import KnowledgeImportApplication
+from qunxue_api.application.memory_commands import MemoryCommands
 from qunxue_api.application.memory_learning import MemoryLearningWorker
 from qunxue_api.application.memory_overview import (
     MemoryOverview,
@@ -1419,6 +1420,11 @@ def create_app(
             extra_headers=endpoint.extra_headers,
             timeout_seconds=min(resolved_settings.model_timeout_seconds, 45),
         )
+
+    app.state.memory_commands = MemoryCommands(
+        lambda: app.state.memory_service_scope(),
+        lambda user_id, task_id: app.state.memory_overview.invalidate(user_id, task_id),
+    )
 
     @contextmanager
     def memory_overview_read_scope(user_id, task_id):

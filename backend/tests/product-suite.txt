@@ -45,6 +45,7 @@ tests/test_agent_memory_budgets.py
 tests/test_agent_memory_concurrency.py
 tests/test_agent_memory_runtime.py
 tests/test_memory_capacity_api.py
+tests/test_memory_commands.py
 tests/test_memory_overview.py
 tests/test_memory_overview_cache.py
 tests/test_conversation_titles.py
