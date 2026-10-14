@@ -1,6 +1,9 @@
 import { useId, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { ArrowRight, ChatCircle, BookOpen, MagnifyingGlass, PenNib, type Icon } from '@phosphor-icons/react'
+import conversationNote from '../../assets/suggestions/conversation-note.png'
+import thinkingPencil from '../../assets/suggestions/thinking-pencil.png'
+import knowledgeBook from '../../assets/suggestions/knowledge-book.png'
+import researchLens from '../../assets/suggestions/research-lens.png'
 import type { ConversationContextSource } from '../../modules/research-agent'
 import { selectContextCard, type SelectedContextCard } from './contextCard'
 import { getStarterSuggestions, type StarterSuggestion } from './starterSuggestions'
@@ -55,15 +58,15 @@ export function ConversationContextSuggestions({ userId, onSelect, onStart, hasD
   return <section className="cv-suggestions cv-context-suggestions" aria-label={label}>
     {Boolean(cards.length || starters.length) && <div className="cv-suggestions__cards">
       {cards.map((card, index) => <article className="cv-context-suggestions__item" data-has-sources={Boolean(card.sources.length)} key={`${userId}:context:${card.card_id ?? index}:${card.version ?? card.title}`}>
-        <button className="qx-btn qx-btn--ghost cv-suggestions__card" type="button" aria-label={card.title} aria-description={card.description || undefined} disabled={!selectContextCard(card)} onClick={() => { const selection = selectContextCard(card); if (selection) onSelect(selection) }}>
-          <SuggestionCardContent icon={ChatCircle} category={text('最近对话', 'Recent conversation')} title={card.title} description={card.description} action={text('继续聊', 'Continue')} />
+        <button className="qx-item cv-suggestions__card" type="button" aria-label={card.title} aria-description={card.description || undefined} disabled={!selectContextCard(card)} onClick={() => { const selection = selectContextCard(card); if (selection) onSelect(selection) }}>
+          <SuggestionCardContent icon={conversationNote} category={text('最近对话', 'Recent conversation')} title={card.title} description={card.description} />
         </button>
         <CardSources sources={card.sources} />
       </article>)}
       {starters.map(card => {
         const presentation = starterPresentation(card, text)
         return <article className="cv-context-suggestions__item" key={`${userId}:starter:${card.id}`}>
-          <button className="qx-btn qx-btn--ghost cv-suggestions__card" type="button" aria-label={card.title} aria-description={card.description || undefined} disabled={hasDraft}
+          <button className="qx-item cv-suggestions__card" type="button" aria-label={card.title} aria-description={card.description || undefined} disabled={hasDraft}
             title={hasDraft ? text('发送或清空当前草稿后再选择建议', 'Send or clear your current draft before choosing a suggestion') : undefined}
             onClick={() => { if (hasDraft) return; if (card.kind === 'navigate') navigate(card.to); else onStart?.(card.title) }}>
             <SuggestionCardContent {...presentation} title={card.title} description={card.description} />
@@ -83,22 +86,22 @@ export function ConversationContextSuggestions({ userId, onSelect, onStart, hasD
 }
 
 
-function SuggestionCardContent({ icon: CardIcon, category, title, description, action }: {
-  icon: Icon; category: string; title: string; description: string; action: string
+function SuggestionCardContent({ icon, category, title, description }: {
+  icon: string; category: string; title: string; description: string
 }) {
   return <>
-    <span className="cv-suggestions__eyebrow"><span className="cv-suggestions__icon"><CardIcon aria-hidden="true" weight="regular" /></span>{category}</span>
-    <strong>{title}</strong>
-    {description && <span className="cv-suggestions__description">{description}</span>}
-    <span className="cv-suggestions__action" aria-hidden="true">{action}<ArrowRight /></span>
+    <img src={icon} width={20} height={20} alt="" className="cv-suggestions__icon" aria-hidden="true" draggable={false} />
+    <strong className="cv-suggestions__title">{title}</strong>
+    <span className="cv-suggestions__category" hidden>{category}</span>
+    <span className="cv-suggestions__description" hidden>{description}</span>
   </>
 }
 
-function starterPresentation(card: StarterSuggestion, text: (zh: string, en: string) => string) {
-  if (card.kind === 'draft') return { icon: ChatCircle, category: text('一起想想', 'Think together'), action: text('开始聊', 'Start a conversation') }
-  if (card.to === '/research/new') return { icon: MagnifyingGlass, category: text('研究', 'Research'), action: text('打开研究', 'Open research') }
-  if (card.to === '/writing') return { icon: PenNib, category: text('写作', 'Writing'), action: text('打开文稿', 'Open writing') }
-  return { icon: BookOpen, category: text('知识库', 'Knowledge library'), action: card.id === 'webpage' ? text('查看设置', 'View setup') : text('打开知识库', 'Open library') }
+function starterPresentation(card: StarterSuggestion, text: (zh: string, en: string) => string): { icon: string; category: string } {
+  if (card.kind === 'draft') return { icon: thinkingPencil, category: text('一起想想', 'Think together') }
+  if (card.to === '/research/new') return { icon: researchLens, category: text('研究', 'Research') }
+  if (card.to === '/writing') return { icon: thinkingPencil, category: text('写作', 'Writing') }
+  return { icon: knowledgeBook, category: text('知识库', 'Knowledge library') }
 }
 
 
@@ -116,10 +119,10 @@ function CardSources({ sources }: { sources: ConversationContextSource[] }) {
     setOpen(false)
     trigger.current?.focus()
   }}>
-    <button ref={trigger} type="button" className="qx-btn qx-btn--ghost qx-btn--icon cv-context-suggestions__source-toggle"
-      aria-label={text('查看依据原文', 'View source quotes')} title={text('查看依据原文', 'View source quotes')}
+    <button ref={trigger} type="button" className="qx-btn qx-btn--ghost cv-context-suggestions__source-toggle"
+      aria-label={text('查看依据原文', 'View sources')} title={text('查看依据原文', 'View sources')}
       aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(value => !value)}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true" focusable="false"><path d="M14 3H5v18h14V8l-5-5Z M14 3v5h5 M8 12h8 M8 16h6" /></svg>
+      {text('依据', 'Sources')}
     </button>
     {open && <ul id={panelId} className="cv-context-suggestions__sources" aria-label={text('对话依据', 'Conversation sources')}>
       {evidence.map(source => <li key={JSON.stringify([source.conversation_id, source.message_id, source.role, source.quote])} data-source-role={source.role}>

@@ -33,20 +33,11 @@ function deskColumnWidth(viewport: number, availableWidth: number) {
   const inlinePadding = px(`var(${inlineToken})`)
   return (Math.min(availableWidth, px(last('max-width'))) - 2 * inlinePadding - (columns - 1) * px(last('column-gap'))) / columns
 }
-function containerGrid(containerWidth: number) {
-  let grid = property(declarations(composer, '.cv-suggestions__cards'), 'grid-template-columns')
-  const fallback = composer.match(/@container conversation-suggestions \(max-width:\s*(\d+)px\) \{ ([^}]+)\}/)
-  if (fallback && containerWidth <= Number(fallback[1])) grid = property(declarations(fallback[2], '.cv-suggestions__cards'), 'grid-template-columns')
-  return grid
+function containerGrid(_containerWidth: number) {
+  return property(declarations(composer, '.cv-context-suggestions .cv-suggestions__cards'), 'grid-template-columns')
 }
-function homeSuggestionColumns(viewport: number, containerWidth: number) {
-  let grid = containerGrid(containerWidth)
-  // A two-class Home selector outranks the one-class generic container rule,
-  // independent of which stylesheet was imported first.
-  for (const block of viewportBlocks(home, viewport)) {
-    grid = property(declarations(block, '.hm-me .cv-suggestions__cards'), 'grid-template-columns') || grid
-  }
-  return grid.match(/repeat\((\d+),/) ? Number(grid.match(/repeat\((\d+),/)![1]) : (grid.match(/minmax\(/g) ?? []).length
+function homeSuggestionColumns(_viewport: number, containerWidth: number) {
+  return containerGrid(containerWidth) === 'minmax(0, 1fr)' ? 1 : 0
 }
 
 function agentWidth(viewport: number, rail: 'classic' | 'collapsed' | 'split') {
@@ -59,21 +50,21 @@ function agentWidth(viewport: number, rail: 'classic' | 'collapsed' | 'split') {
   const padding = [...compose.matchAll(/(?:^|;)\s*padding:\s*([^;]+)/g)].at(-1)?.[1] ?? ''
   const inline = [...padding.matchAll(/var\((--qx-space-[\w-]+)\)/g)][1]?.[1]
   const margin = property(declarations(composer, '.cv-research-suggestions'), 'margin')
-  const marginInline = [...margin.matchAll(/var\((--qx-space-[\w-]+)\)/g)][1]?.[1]
-  return Math.min(viewport - railWidth, maximum) - 2 * px(`var(${inline})`) - 2 * px(`var(${marginInline})`)
+  expect(margin).toBe('var(--qx-space-3) var(--qx-space-3) 0')
+  return Math.min(viewport - railWidth, maximum) - 2 * px(`var(${inline})`) - 2 * px('var(--qx-space-3)')
 }
 
 describe('Home parent-width and suggestion breakpoint contracts (not browser geometry)', () => {
-  it.each([[1440, 1200, 488], [1280, 1040, 448], [1101, 861, 358.5]])('keeps desktop Home in three columns at viewport %i and page width %i', (viewport, available, expected) => {
+  it.each([[1440, 1200, 488], [1280, 1040, 448], [1101, 861, 358.5]])('uses full-width suggestion rows in desktop Home half-columns at viewport %i and page width %i', (viewport, available, expected) => {
     expect(available).toBe(viewport - px(property(declarations(frame, '.application-frame'), '--application-sidebar-width')))
     const width = deskColumnWidth(viewport, available)
     expect(width).toBe(expected)
     expect(width).toBeLessThan(560)
-    expect(homeSuggestionColumns(viewport, width)).toBe(3)
+    expect(homeSuggestionColumns(viewport, width)).toBe(1)
   })
-  it.each([[1100, 844], [900, 644], [768, 512], [641, 641]])('keeps the single-desk tablet layout horizontally grouped at viewport %i', (viewport, available) => {
+  it.each([[1100, 844], [900, 644], [768, 512], [641, 641]])('uses full-width suggestion rows in the single-desk tablet layout at viewport %i', (viewport, available) => {
     const width = deskColumnWidth(viewport, available)
-    expect(homeSuggestionColumns(viewport, width)).toBe(3)
+    expect(homeSuggestionColumns(viewport, width)).toBe(1)
   })
   it.each([640, 560, 390, 320])('uses one safe full-width card column at narrow viewport %i', viewport => {
     const width = deskColumnWidth(viewport, viewport)
@@ -94,11 +85,11 @@ describe('Agent empty-state widths through the real sidebar and composer constra
   it.each([
     [1440, 'classic', 696], [1280, 'split', 696], [1024, 'classic', 696],
     [1024, 'split', 688], [900, 'classic', 588], [900, 'split', 564], [900, 'collapsed', 696],
-  ] as const)('keeps Agent desktop three-column at %i with %s rail', (viewport, rail, expected) => {
+  ] as const)('keeps Agent suggestions as wide rows at %i with %s rail', (viewport, rail, expected) => {
     const width = agentWidth(viewport, rail)
     expect(width).toBe(expected)
     expect(width).toBeGreaterThan(560)
-    expect(containerGrid(width)).toBe('repeat(3, minmax(0, 1fr))')
+    expect(containerGrid(width)).toBe('minmax(0, 1fr)')
   })
   it.each([[390, 342], [320, 272]] as const)('stacks cards safely at actual narrow Agent viewport %i', (viewport, expected) => {
     const width = agentWidth(viewport, 'classic')
@@ -108,4 +99,34 @@ describe('Agent empty-state widths through the real sidebar and composer constra
   it('preserves one column in a genuinely constrained desktop side panel', () => {
     expect(containerGrid(360)).toBe('minmax(0, 1fr)')
   })
+})
+
+// CSS-derived dimensions only, not real browser measurements.
+describe('consistent suggestion rows at every width', () => {
+  it.each([840, 960, 1120])('keeps the same quiet full-width row even in a %ipx container', width => {
+    const columns = homeSuggestionColumns(width, width)
+    expect(columns).toBe(1)
+  })
+  it('does not let the Home viewport override its actual container width', () => {
+    expect(declarations(home, '.hm-me .cv-context-suggestions .cv-suggestions__cards')).toContain('grid-template-columns: minmax(0, 1fr)')
+    expect(containerGrid(839)).toBe('minmax(0, 1fr)')
+  })
+})
+
+it('keeps all Home and composer layout outside the recommendation rows at the exact baseline', () => {
+  expect(declarations(home, '.hm-me .conversation-composer').trim()).toBe('width: 100%;')
+  expect(declarations(home, ".hm-me .conversation-composer[data-layout='chat'] .conversation-composer__row")).toBe('')
+  expect(declarations(home, ".hm-me .conversation-composer[data-layout='chat'] .conversation-composer__model")).toBe('')
+  expect(home).not.toContain('.hm-me > .cv-context-suggestions')
+  expect(declarations(composer, '.cv-research-suggestions')).toContain('margin: var(--qx-space-3) var(--qx-space-3) 0')
+})
+
+it('keeps only the empty Home chat placeholder on one line without affecting real drafts', () => {
+  const hint = declarations(home, ".hm-me .conversation-composer[data-layout='chat'] .conversation-composer__row > textarea:placeholder-shown")
+  expect(hint).toContain('white-space: nowrap')
+  expect(hint).toContain('overflow: hidden')
+  expect(hint).toContain('text-overflow: ellipsis')
+  expect(hint).not.toContain('height:')
+  expect(declarations(home, ".hm-me .conversation-composer[data-layout='chat'] .conversation-composer__row > textarea")).toBe('')
+  expect(declarations(composer, '.conversation-composer__row > textarea')).not.toContain('white-space: nowrap')
 })

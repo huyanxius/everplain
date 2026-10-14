@@ -396,7 +396,7 @@ it.each([0, 1, 2, 3])('composes exactly three cards from %i genuine cards withou
   const buttons = [...document.querySelectorAll<HTMLButtonElement>('.cv-suggestions__card')]
   expect(buttons).toHaveLength(3)
   const region = screen.getByRole('region', { name: count === 3 ? '根据你最近的对话' : count ? '建议' : '起步建议' })
-  expect(region.textContent).toBe(buttons.map(button => button.textContent).join(''))
+  expect(region.textContent).toBe(buttons.map((button, index) => `${button.textContent}${index < count ? '依据' : ''}`).join(''))
   expect(within(region).queryAllByRole('button', { name: '查看依据原文' })).toHaveLength(count)
   cards.forEach((card, index) => {
     expect(buttons[index]).toHaveTextContent(card.title)
@@ -468,7 +468,7 @@ it.each([1, 2])('opens the real entry for generic navigation card %i without sel
 })
 
 
-it('keeps card sources behind an icon and exposes original links and speaker labels only when opened', async () => {
+it('keeps card sources behind a quiet text action and exposes original links and speaker labels only when opened', async () => {
   const user = ready.cards[0].sources[0]
   const assistant = { ...ready.cards[0].sources[1], role: 'assistant' as const, quote: '可以先保留旧入口。' }
   vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards: [{ ...ready.cards[0], sources: [user, assistant, user] }] })
@@ -478,8 +478,8 @@ it('keeps card sources behind an icon and exposes original links and speaker lab
   const toggle = await screen.findByRole('button', { name: '查看依据原文' })
   expect(toggle).toHaveAttribute('type', 'button')
   expect(toggle).toHaveAttribute('aria-expanded', 'false')
-  expect(toggle.textContent).toBe('')
-  expect(toggle.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+  expect(toggle).toHaveTextContent('依据')
+  expect(toggle.querySelector('svg')).toBeNull()
   expect(toggle.closest('.cv-suggestions__card')).toBeNull()
   expect(document.querySelector('button button, button a')).toBeNull()
   expect(screen.queryByText(user.quote)).not.toBeInTheDocument()
@@ -626,30 +626,41 @@ it('labels a mixed English set neutrally and namespaces generic keys apart from 
     const region = await screen.findByRole('region', { name: 'Suggestions' })
     expect(region.querySelectorAll('.cv-suggestions__card')).toHaveLength(3)
     expect(within(region).getByRole('button', { name: generic.title })).toBeVisible()
-    expect(within(region).getAllByRole('button', { name: 'View source quotes' })).toHaveLength(1)
+    expect(within(region).getAllByRole('button', { name: 'View sources' })).toHaveLength(1)
     expect(error).not.toHaveBeenCalled()
   } finally { error.mockRestore() }
 })
 
 
-it('gives every card a visible hierarchy without replacing real copy or sending presentation text', async () => {
+it('uses one quiet row and keeps complete accessible copy without sending presentation text', async () => {
   vi.mocked(getConversationContextSummary).mockResolvedValue({ ...ready, cards: [ready.cards[0]] })
   const onStart = vi.fn()
   render(starterSurface(client(), onStart))
   const region = await screen.findByRole('region', { name: '建议' })
   const cards = [...region.querySelectorAll<HTMLButtonElement>('.cv-suggestions__card')]
   for (const card of cards) {
-    expect(card.querySelector('.cv-suggestions__eyebrow')).toHaveTextContent(/.+/)
-    expect(card.querySelector('.cv-suggestions__icon svg')).toHaveAttribute('aria-hidden', 'true')
+    expect(card).toHaveClass('qx-item')
+    expect(card).not.toHaveClass('qx-btn', 'qx-btn--ghost')
+    expect(card.querySelector('strong')).toHaveClass('cv-suggestions__title')
+    expect(card.querySelector('.cv-suggestions__category')).toHaveTextContent(/.+/)
+    expect(card.querySelector('.cv-suggestions__icon')).toHaveAttribute('aria-hidden', 'true')
+    expect(card.querySelector('.cv-suggestions__icon')?.tagName).toBe('IMG')
+    expect(card.querySelector('.cv-suggestions__icon')).toHaveAttribute('width', '20')
+    expect(card.querySelector('.cv-suggestions__icon')).toHaveAttribute('height', '20')
+    expect(card.querySelector('.cv-suggestions__icon')).toHaveAttribute('alt', '')
+    expect(card.querySelector('.cv-suggestions__icon')?.getAttribute('src')).toMatch(/assets\/suggestions\/.+\.png$/)
+    expect(card.querySelector('svg')).toBeNull()
     expect(card.querySelector('strong')).toHaveTextContent(card.getAttribute('aria-label')!)
     expect(card.querySelector('.cv-suggestions__description')).toHaveTextContent(/.+/)
-    expect(card.querySelector('.cv-suggestions__action')).toHaveAttribute('aria-hidden', 'true')
+    expect(card.querySelector('.cv-suggestions__action')).toBeNull()
+    expect(card.querySelector('.cv-suggestions__category')).toHaveAttribute('hidden')
+    expect(card.querySelector('.cv-suggestions__description')).toHaveAttribute('hidden')
     expect(card).toHaveAttribute('aria-description', card.querySelector('.cv-suggestions__description')!.textContent)
   }
   expect(cards[0].querySelector('.cv-suggestions__description')!.textContent).toBe(ready.cards[0].description)
-  expect(cards[0].querySelector('.cv-suggestions__eyebrow')).toHaveTextContent('最近对话')
-  expect(cards[1].querySelector('.cv-suggestions__eyebrow')).toHaveTextContent('一起想想')
-  expect(cards[2].querySelector('.cv-suggestions__eyebrow')).toHaveTextContent('知识库')
+  expect(cards[0].querySelector('.cv-suggestions__category')).toHaveTextContent('最近对话')
+  expect(cards[1].querySelector('.cv-suggestions__category')).toHaveTextContent('一起想想')
+  expect(cards[2].querySelector('.cv-suggestions__category')).toHaveTextContent('知识库')
   fireEvent.click(cards[1])
   expect(onStart).toHaveBeenCalledExactlyOnceWith(cards[1].getAttribute('aria-label'))
 })

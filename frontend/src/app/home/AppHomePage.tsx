@@ -75,7 +75,7 @@ function HomeComposer({ home }: { home: Home }) {
   const toolsButtonRef = useRef<HTMLButtonElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [toolsOpen, setToolsOpen] = useState(false)
-  return <ConversationComposer mode="standard" value={home.question} label={`问${home.profile.data?.name ?? 'Agent'}`} placeholder={`问${home.profile.data?.name ?? 'Agent'}，或者丢一个链接进来`}
+  return <ConversationComposer mode="standard" value={home.question} label={`问${home.profile.data?.name ?? 'Agent'}`} placeholder={`问${home.profile.data?.name ?? 'Agent'}，或粘贴链接`}
     maxLength={12000} busy={false} canSend={Boolean(home.question.trim() || home.selectedCard) && home.modelSelection.status === 'ready'} canStop={false} uploading={false} toolsOpen={toolsOpen}
     context={home.selectedCard ? <ConversationContextCard card={home.selectedCard} onRemove={home.removeCard} /> : null}
     inputRef={inputRef} toolsRef={toolsRef} toolsButtonRef={toolsButtonRef} fileRef={fileRef} accept="" attachments={[]}

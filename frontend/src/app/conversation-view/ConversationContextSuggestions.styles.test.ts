@@ -5,45 +5,47 @@ import { describe, expect, it } from 'vitest'
 const css = readFileSync(resolve('src/app/conversation-view/conversation-composer.css'), 'utf8')
 const declarations = (selector: string) => css.split(`${selector} {`)[1]?.split('}')[0] ?? ''
 
-describe('suggestion layout CSS contracts (not browser layout verification)', () => {
-  it('keeps three equal desktop columns even when only one or two real cards exist', () => {
-    expect(declarations('.cv-suggestions__cards')).toContain('repeat(3, minmax(0, 1fr))')
+describe('suggestion row CSS contracts (not browser layout verification)', () => {
+  it('uses the same full-width rows at every container size', () => {
+    expect(declarations('.cv-context-suggestions .cv-suggestions__cards')).toContain('grid-template-columns: minmax(0, 1fr)')
+    expect(css).not.toContain('max-width: 839px')
     expect(css).not.toContain('repeat(auto-fit')
-    expect(declarations('.cv-context-suggestions__item .cv-suggestions__card')).toContain('width: 100%')
-  })
-  it('uses a single column in narrow containers without a more specific override', () => {
-    expect(css).toContain('@container conversation-suggestions (max-width: 560px) { .cv-suggestions__cards { grid-template-columns: minmax(0, 1fr); }')
-    expect(declarations('.cv-context-suggestions .cv-suggestions__cards')).not.toContain('grid-template-columns')
     expect(declarations('.cv-suggestions__card')).toContain('min-width: 0')
     expect(declarations('.cv-suggestions__card')).toContain('overflow-wrap: anywhere')
   })
-  it('keeps source controls compact, focusable and panels within the card width', () => {
+  it('uses a shared item surface and one constrained title', () => {
+    const row = declarations('.cv-context-suggestions__item .cv-suggestions__card')
+    expect(row).toContain('grid-template-columns: var(--qx-space-4) minmax(0, 1fr)')
+    expect(row).toContain('height: auto')
+    expect(row).toContain('background: transparent')
+    expect(row).toContain('box-shadow: none')
+    expect(declarations('.cv-context-suggestions__item .cv-suggestions__title')).toContain('-webkit-line-clamp: 2')
+  })
+  it('changes only the image within the existing icon track, leaving the row height unchanged', () => {
+    const icon = declarations('.cv-context-suggestions__item .cv-suggestions__icon')
+    expect(icon).toContain('width: var(--qx-space-5)')
+    expect(icon).toContain('height: var(--qx-space-5)')
+    expect(icon).toContain('object-fit: contain')
+    const row = declarations('.cv-context-suggestions__item .cv-suggestions__card')
+    expect(row).toContain('grid-template-columns: var(--qx-space-4) minmax(0, 1fr)')
+    expect(row).toContain('min-height: var(--qx-action-height)')
+    expect(row).toContain('padding: var(--qx-space-3)')
+  })
+  it('reserves room for an independent textual source action in both locales', () => {
     expect(declarations('.cv-context-suggestions__source-toggle')).toContain('position: absolute')
     expect(declarations('.cv-context-suggestions__source-toggle:focus-visible')).toContain('outline: 2px solid var(--qx-color-accent)')
     expect(declarations('.cv-context-suggestions__sources')).toContain('inset-inline: 0')
     expect(declarations('.cv-context-suggestions__sources')).toContain('overflow-y: auto')
-    expect(declarations('.cv-context-suggestions__sources li')).toContain('overflow-wrap: anywhere')
+    expect(declarations('.cv-context-suggestions__item[data-has-sources="true"] .cv-suggestions__card')).toContain('padding-inline-end: calc(4em + var(--qx-space-3))')
   })
-  it('keeps card summaries compact without truncating the accessible text', () => {
-    expect(declarations('.cv-context-suggestions__item .cv-suggestions__description')).toContain('-webkit-line-clamp: 3')
-    expect(declarations('.cv-context-suggestions__item .cv-suggestions__description')).toContain('overflow: hidden')
+  it('preserves focus and disabled affordances without decorative elevation', () => {
+    expect(declarations('.cv-context-suggestions__item .cv-suggestions__card:focus-visible')).toContain('outline: 2px solid var(--qx-color-accent)')
+    expect(declarations('.cv-context-suggestions__item .cv-suggestions__card:disabled')).toContain('cursor: not-allowed')
+    expect(declarations('.cv-context-suggestions__item .cv-suggestions__card:hover:not(:disabled)')).not.toContain('box-shadow')
   })
-})
-
-
-it('defines a distinct card surface and aligns an explicit action below real content', () => {
-  const card = declarations('.cv-context-suggestions__item .cv-suggestions__card')
-  expect(card).toContain('border: 1px solid var(--qx-color-rule)')
-  expect(card).toContain('background: var(--qx-color-surface)')
-  expect(card).toContain('box-shadow: var(--qx-shadow-card)')
-  expect(card).toContain('min-height: 0')
-  expect(declarations('.cv-context-suggestions__item .cv-suggestions__action')).toContain('margin-top: auto')
-  expect(declarations('.cv-context-suggestions__item .cv-suggestions__card:focus-visible')).toContain('outline: 2px solid var(--qx-color-accent)')
-})
-
-it('reserves source-toggle space only in the header, keeping the title and description full width', () => {
-  expect(declarations('.cv-context-suggestions__item[data-has-sources="true"] .cv-suggestions__eyebrow')).toContain('padding-inline-end: var(--qx-icon-control-size)')
-  expect(css).not.toContain('.cv-context-suggestions__item[data-has-sources="true"] .cv-suggestions__card {')
-  expect(declarations('.cv-context-suggestions__item .cv-suggestions__eyebrow')).not.toContain('line-clamp')
-  expect(declarations('.cv-context-suggestions__item .cv-suggestions__action')).not.toContain('line-clamp')
+  it('leaves the separate generic research suggestions layout intact', () => {
+    expect(declarations('.cv-suggestions__cards')).toContain('repeat(3, minmax(0, 1fr))')
+    expect(css).toContain('@container conversation-suggestions (max-width: 560px) { .cv-suggestions__cards { grid-template-columns: minmax(0, 1fr); } }')
+    expect(declarations('.cv-suggestions__card.qx-btn')).toContain('background: var(--qx-color-surface-muted)')
+  })
 })
