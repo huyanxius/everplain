@@ -135,11 +135,8 @@
 .hm-pile[data-open='true'] .hm-pc[data-depth='3'] { opacity: 1; }
 @media (max-width: 1100px) { .hm-desk { min-height: auto; } }
 
-/* Home's desktop half-column is about 488px wide: it must not inherit the
-   generic 560px container fallback used by narrow research side panels. */
-@media (min-width: 641px) {
-  .hm-me .cv-suggestions__cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-@media (max-width: 640px) {
-  .hm-me .cv-suggestions__cards { grid-template-columns: minmax(0, 1fr); }
-}
+/* Only recommendation items change shape; the Home grid and composer stay unchanged. */
+.hm-me .cv-context-suggestions .cv-suggestions__cards { grid-template-columns: minmax(0, 1fr); }
+
+/* Keep only the empty Home prompt on one line; real drafts retain native wrapping and auto-growth. */
+.hm-me .conversation-composer[data-layout='chat'] .conversation-composer__row > textarea:placeholder-shown { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

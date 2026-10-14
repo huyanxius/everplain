@@ -255,8 +255,9 @@ it('offers three new-user starters and prefills only the title without sending c
   const first = within(region).getByRole('button', { name: title })
   expect(first).toBe(starters[0])
   expect(within(first).getByText(title, { selector: 'strong', exact: true })).toBeVisible()
-  const presentation = ['一起想想', '贴上笔记，整理重点与值得继续追问的地方。', '开始聊']
-  for (const copy of presentation) expect(within(first).getByText(copy, { exact: true })).toBeVisible()
+  const presentation = ['一起想想', '贴上笔记，整理重点与值得继续追问的地方。']
+  for (const copy of presentation) expect(within(first).getByText(copy, { exact: true })).not.toBeVisible()
+  expect(first).toHaveAttribute('aria-description', presentation[1])
   fireEvent.click(first)
   const input = screen.getByRole('textbox', { name: '问小叶' })
   expect(input).toHaveValue(title)
@@ -283,4 +284,20 @@ it('protects a home draft from both generic text and feature-navigation cards', 
   expect(seedAgentDraft).not.toHaveBeenCalled()
   fireEvent.change(input, { target: { value: '' } })
   within(region).getAllByRole('button').forEach(button => expect(button).toBeEnabled())
+})
+
+it('uses a short Home placeholder but still preserves and grows a real multiline draft', async () => {
+  show()
+  const input = await screen.findByRole('textbox', { name: '问小叶' }) as HTMLTextAreaElement
+  expect(input).toHaveAttribute('placeholder', '问小叶，或粘贴链接')
+  // jsdom has no layout; supply the measured scroll height to test the existing resize behavior.
+  Object.defineProperty(input, 'scrollHeight', { configurable: true, get: () => input.value ? 112 : 36 })
+  const draft = '我想整理这个具体问题，而不是改动主界面的布局。\n第二行需要保留。'
+  fireEvent.change(input, { target: { value: draft } })
+  expect(input).toHaveValue(draft)
+  expect(input.style.height).toBe('112px')
+  expect(input.closest('form')).toHaveAttribute('data-multiline', 'true')
+  fireEvent.change(input, { target: { value: '' } })
+  expect(input.style.height).toBe('36px')
+  expect(input.closest('form')).toHaveAttribute('data-multiline', 'false')
 })
