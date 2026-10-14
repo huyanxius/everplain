@@ -1,0 +1,57 @@
+{
+  "frontend_archive_sha256": "f48e0ee1fb6e05639b9c4f4fe1d879578498cfa564f3e7335decab7ff2132df3",
+  "files": [
+    {
+      "source": "modules/agent-avatar/AgentLiquid.tsx",
+      "sha256": "717028e78aad8c52dda36a98ce31200b402fa341dd61d70951ba6fe7e2ac259e"
+    },
+    {
+      "source": "modules/agent-avatar/avatars.tsx",
+      "sha256": "6b85379f05d7107deae132379805e4358dcc081f0d24eb935e5fb3f63e7e7e77"
+    },
+    {
+      "source": "modules/agent-avatar/agent-avatar.css",
+      "sha256": "3e9c51f5061409d30dd9151cd8f95ea7346d7406cec9abe4fea7f2ed867a7985"
+    },
+    {
+      "source": "app/conversation-view/sendFlight.ts",
+      "sha256": "42efffcbebc7c3d537aa48397e19d4199a001d103387ee404f951f99336cd8a7"
+    },
+    {
+      "source": "app/conversation-view/useComposerDock.ts",
+      "sha256": "03dc3a66469e828c25d33132af29d2507e6f4e5ffae0420e3314ee6ca40c8eac"
+    },
+    {
+      "source": "app/conversation-view/ConversationComposer.tsx",
+      "sha256": "4f0d1158f2dede9aad905260b6beaa6b66b746403796501d28ae6071d8933eeb"
+    },
+    {
+      "source": "app/conversation-view/conversation-composer.css",
+      "sha256": "fab361a235e357e29a9d215782c7025ea05f9129d5a43643424163beda5d91c3"
+    },
+    {
+      "source": "app/conversation-view/conversation-view.css",
+      "sha256": "af90cb515141198adfea049622b19cb69d836cde2df599a61e37282ca125dbe1"
+    },
+    {
+      "source": "app/agent/useStreamPacer.ts",
+      "sha256": "d42e2dbc346d23df30157c5915058b45c3a09eed4b07966c9104b24da088e15e"
+    },
+    {
+      "source": "app/route-motion.tsx",
+      "sha256": "8d816cc25fa7f3caae666a664f8ed3f3e3a431d0882a2a2ba44e84c21f6b2094"
+    },
+    {
+      "source": "app/route-motion-model.ts",
+      "sha256": "ac02e31d398b4990086b1de62a7d4ce7fe6beb10d297734c3c522809f4814b9d"
+    },
+    {
+      "source": "ui/usePresence.ts",
+      "sha256": "a52e5cf847a9325ca1ab2cfcabde4fe5672a702e96627c95c326438ae8770d25"
+    },
+    {
+      "source": "ui/useReducedMotion.ts",
+      "sha256": "95ed5ec193eba0648067ca46fe45010b4d5eca09083bcb8240b92794b2ff665c"
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "observed_at": "2026-10-04T14:32:14Z",
+  "browser": "dot cloud Chrome",
+  "page": "https://e.qunxue.xyz/app",
+  "actions": [
+    "Click 展开资料",
+    "Press Escape; returned to collapsed"
+  ],
+  "closed": {
+    "width": 398,
+    "height": 152,
+    "card_width": 354,
+    "card_height": 138,
+    "cover": {
+      "x": 0,
+      "y": 0,
+      "opacity": 1
+    },
+    "cards": [
+      {
+        "x": 6,
+        "y": 6,
+        "opacity": 1
+      },
+      {
+        "x": 12,
+        "y": 12,
+        "opacity": 1
+      },
+      {
+        "x": 12,
+        "y": 12,
+        "opacity": 0
+      }
+    ]
+  },
+  "expanded": {
+    "width": 390.5,
+    "height": 360,
+    "card_width": 390.5,
+    "card_height": 112,
+    "card_y": [
+      0,
+      124,
+      248
+    ],
+    "cover": {
+      "scale": 0.97,
+      "y": -8,
+      "opacity": 0,
+      "pointer_events": "none"
+    }
+  },
+  "transition": {
+    "transform_seconds": 0.62,
+    "size_seconds": 0.5,
+    "stagger_seconds": [
+      0,
+      0.055,
+      0.11
+    ],
+    "transform_curve": [
+      0.22,
+      1.28,
+      0.36,
+      1
+    ],
+    "size_curve": [
+      0.22,
+      1,
+      0.36,
+      1
+    ]
+  },
+  "notes": [
+    "Expanded Web scrollbar reduces the column width; native overlay-scroller behavior is platform dependent.",
+    "Only layout and motion metadata retained; no user document text, IDs or account values stored.",
+    "Native implementation and tests pending Apple SDK run for this batch."
+  ],
+  "source_sha256": {
+    "Pile.tsx": "2401f25f9ffc80a0c91e82bf993cf895e749a9d579ae1742797edbd7deae337a",
+    "components.css": "d81fc151d958c54a9486a7b480773b7c835eb7c1e5fa8144ffa03fcbcc237244",
+    "personal-home.css": "a893c0dda0bea7b7606270d283cb66142b939a7219825acf76818d492e718fbd"
+  },
+  "source_findings": [
+    "Both home section headers retain qx-btn min-height qx-control-height (36) in their real links; heading ink and medium weight override parent muted style.",
+    "Home pile styles retain 3 source cards; cover is hidden on expansion, not unmounted."
+  ]
+}

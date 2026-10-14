@@ -1,0 +1,354 @@
+{
+  "synthetic": true,
+  "schemas": {
+    "ResearchTaskNavigationResponse": {
+      "adopted_theory_count": 1,
+      "allowed_actions": [
+        "start_matching"
+      ],
+      "blocker": {
+        "code": "合成验收",
+        "message": "合成验收",
+        "recoverable": false
+      },
+      "conversation_id": "00000000-0000-0000-0000-000000000001",
+      "created_at": "2026-10-04T00:00:00Z",
+      "current_framework_id": "00000000-0000-0000-0000-000000000001",
+      "current_match_run_id": "run",
+      "current_material_intake_run_id": "00000000-0000-0000-0000-000000000001",
+      "current_phenomenon_candidate_id": "00000000-0000-0000-0000-000000000001",
+      "current_stage": "theory_matching",
+      "current_theory_plan_id": "00000000-0000-0000-0000-000000000001",
+      "entry_mode": "from_scratch",
+      "entry_type": "direct_input",
+      "knowledge_release_id": "release",
+      "last_central_tool": "agent",
+      "method_orientation": "合成验收",
+      "next_action_label": "合成验收",
+      "phenomenon_summary": {
+        "phenomenon": "合成验收",
+        "phenomenon_query_id": "00000000-0000-0000-0000-000000000001",
+        "research_intent": "合成验收",
+        "version": 1
+      },
+      "project_stage": "合成验收",
+      "project_title": "合成研究项目",
+      "resume_path": "合成验收",
+      "retry": {
+        "action": "submit_phenomenon",
+        "href": "合成验收",
+        "label": "合成验收",
+        "method": "GET"
+      },
+      "seed_theory_id": "合成验收",
+      "seed_theory_name": "合成验收",
+      "source_run_id": "00000000-0000-0000-0000-000000000001",
+      "source_turn_id": "00000000-0000-0000-0000-000000000001",
+      "stage_label": "合成验收",
+      "status": "draft",
+      "task_id": "task",
+      "updated_at": "2026-10-04T00:00:00Z",
+      "version": 1
+    },
+    "MatchRunResponse": {
+      "allowed_actions": [
+        "create_theory_decisions"
+      ],
+      "candidate_page": {
+        "allowed_actions": [],
+        "candidates": [
+          {
+            "adoption_blockers": [],
+            "allowed_actions": [
+              "adopt",
+              "combine",
+              "retain",
+              "exclude"
+            ],
+            "analysis_levels": [],
+            "applicability_judgement": "applicable",
+            "applicability_rationale": "用于原生理论判断验收，不代表模型分析。",
+            "candidate_id": "c1",
+            "competing_theories": [],
+            "complementary_theories": [],
+            "conflicting_evidence": [],
+            "content_status": "pre_review_completed",
+            "core_claims": [],
+            "formal_adoption_eligible": true,
+            "judgement_run_status": "queued",
+            "knowledge_id": "合成验收",
+            "knowledge_release_id": "合成验收",
+            "limitations": [],
+            "missing_evidence": [],
+            "misuse_boundaries": [],
+            "model": {
+              "capability": "mock",
+              "degraded": false,
+              "knowledge_release_id": "合成验收",
+              "model_version": "合成验收",
+              "provider": "合成验收",
+              "trace": {
+                "contract_version": "合成验收",
+                "request_id": "00000000-0000-0000-0000-000000000001",
+                "trace_id": "00000000-0000-0000-0000-000000000001"
+              }
+            },
+            "origin": "pre_reviewed_knowledge",
+            "prerequisites": [],
+            "problem_focus": "合成验收",
+            "requested_material": [],
+            "seed_theory_id": "合成验收",
+            "source_ids": [],
+            "supporting_evidence": [],
+            "theory_id": "合成验收",
+            "title": "合成理论一",
+            "version": 1
+          },
+          {
+            "adoption_blockers": [],
+            "allowed_actions": [
+              "adopt",
+              "combine",
+              "retain",
+              "exclude"
+            ],
+            "analysis_levels": [],
+            "applicability_judgement": "applicable",
+            "applicability_rationale": "用于原生理论判断验收，不代表模型分析。",
+            "candidate_id": "c2",
+            "competing_theories": [],
+            "complementary_theories": [],
+            "conflicting_evidence": [],
+            "content_status": "pre_review_completed",
+            "core_claims": [],
+            "formal_adoption_eligible": true,
+            "judgement_run_status": "queued",
+            "knowledge_id": "合成验收",
+            "knowledge_release_id": "合成验收",
+            "limitations": [],
+            "missing_evidence": [],
+            "misuse_boundaries": [],
+            "model": {
+              "capability": "mock",
+              "degraded": false,
+              "knowledge_release_id": "合成验收",
+              "model_version": "合成验收",
+              "provider": "合成验收",
+              "trace": {
+                "contract_version": "合成验收",
+                "request_id": "00000000-0000-0000-0000-000000000001",
+                "trace_id": "00000000-0000-0000-0000-000000000001"
+              }
+            },
+            "origin": "pre_reviewed_knowledge",
+            "prerequisites": [],
+            "problem_focus": "合成验收",
+            "requested_material": [],
+            "seed_theory_id": "合成验收",
+            "source_ids": [],
+            "supporting_evidence": [],
+            "theory_id": "合成验收",
+            "title": "合成理论二",
+            "version": 1
+          }
+        ],
+        "knowledge_release_id": "release",
+        "match_run_id": "run",
+        "next_cursor": null,
+        "stable_order": [
+          "c1",
+          "c2"
+        ],
+        "version": 1
+      },
+      "completed_candidate_count": 2,
+      "completion_basis": "complete",
+      "failed_candidate_count": 0,
+      "failed_candidate_ids": [],
+      "failed_candidates": [],
+      "knowledge_release_id": "release",
+      "match_run_id": "run",
+      "model": {
+        "capability": "mock",
+        "degraded": false,
+        "knowledge_release_id": "合成验收",
+        "model_version": "合成验收",
+        "provider": "合成验收",
+        "trace": {
+          "contract_version": "合成验收",
+          "request_id": "00000000-0000-0000-0000-000000000001",
+          "trace_id": "00000000-0000-0000-0000-000000000001"
+        }
+      },
+      "partial_completion_acknowledged": true,
+      "phenomenon_query_id": "00000000-0000-0000-0000-000000000001",
+      "phenomenon_version": 1,
+      "retrieval": {
+        "degraded_reason": "合成验收",
+        "embedding_model": "合成验收",
+        "mode": "合成验收",
+        "reranker_model": "合成验收",
+        "retrieval_index_id": "合成验收",
+        "retrieved_chunk_ids": []
+      },
+      "status": "completed",
+      "task_id": "task",
+      "total_candidate_count": 2,
+      "version": 1
+    },
+    "TheoryCandidateResponse": {
+      "adoption_blockers": [],
+      "allowed_actions": [
+        "adopt",
+        "combine",
+        "retain",
+        "exclude"
+      ],
+      "analysis_levels": [],
+      "applicability_judgement": "applicable",
+      "applicability_rationale": "用于原生理论判断验收，不代表模型分析。",
+      "candidate_id": "c1",
+      "competing_theories": [],
+      "complementary_theories": [],
+      "conflicting_evidence": [],
+      "content_status": "pre_review_completed",
+      "core_claims": [],
+      "formal_adoption_eligible": true,
+      "judgement_run_status": "queued",
+      "knowledge_id": "合成验收",
+      "knowledge_release_id": "合成验收",
+      "limitations": [],
+      "missing_evidence": [],
+      "misuse_boundaries": [],
+      "model": {
+        "capability": "mock",
+        "degraded": false,
+        "knowledge_release_id": "合成验收",
+        "model_version": "合成验收",
+        "provider": "合成验收",
+        "trace": {
+          "contract_version": "合成验收",
+          "request_id": "00000000-0000-0000-0000-000000000001",
+          "trace_id": "00000000-0000-0000-0000-000000000001"
+        }
+      },
+      "origin": "pre_reviewed_knowledge",
+      "prerequisites": [],
+      "problem_focus": "合成验收",
+      "requested_material": [],
+      "seed_theory_id": "合成验收",
+      "source_ids": [],
+      "supporting_evidence": [],
+      "theory_id": "合成验收",
+      "title": "合成理论一",
+      "version": 1
+    },
+    "TheoryDecisionSetResponse": {
+      "allowed_actions": [],
+      "completion_basis": "complete",
+      "decision_set_id": "00000000-0000-0000-0000-000000000001",
+      "decisions": [],
+      "draft_version": 1,
+      "knowledge_release_id": "合成验收",
+      "match_run_id": "00000000-0000-0000-0000-000000000001",
+      "relations": [],
+      "use_assignments": [],
+      "version": 1
+    },
+    "MethodPlanResponse": {
+      "actor": "合成验收",
+      "change_summary": "合成验收",
+      "confirmed_at": "2026-10-04T00:00:00Z",
+      "created_at": "2026-10-04T00:00:00Z",
+      "decision_source": "合成验收",
+      "ethical_constraints": [],
+      "evidence_ref_ids": [],
+      "framework_id": "00000000-0000-0000-0000-000000000001",
+      "framework_version": 1,
+      "knowledge_release_id": "合成验收",
+      "material_constraints": [],
+      "method_kind": "qualitative",
+      "plan_id": "00000000-0000-0000-0000-000000000001",
+      "rationale": "合成验收",
+      "research_question": "合成验收",
+      "restored_from_version": 1,
+      "reviews": [],
+      "revision_id": "00000000-0000-0000-0000-000000000001",
+      "sections": [],
+      "shared_context": [],
+      "stale_reason": "合成验收",
+      "status": "draft",
+      "task_id": "00000000-0000-0000-0000-000000000001",
+      "theory_concepts": [],
+      "theory_plan_id": "00000000-0000-0000-0000-000000000001",
+      "theory_plan_version": 1,
+      "theory_summary": "合成验收",
+      "version": 1
+    },
+    "ResearchDocumentResponse": {
+      "actor": "合成验收",
+      "change_summary": "合成验收",
+      "confirmed_at": "2026-10-04T00:00:00Z",
+      "created_at": "2026-10-04T00:00:00Z",
+      "document_id": "00000000-0000-0000-0000-000000000001",
+      "formatting": {
+        "csl_style_id": "合成验收",
+        "locale": "合成验收",
+        "template_id": "合成验收"
+      },
+      "knowledge_release_id": "合成验收",
+      "research_analysis": {
+        "annotations": [],
+        "codes": [],
+        "comparisons": [],
+        "content_hash": "合成验收",
+        "memos": [],
+        "schema_version": "合成验收",
+        "task_id": "00000000-0000-0000-0000-000000000001",
+        "unavailable_annotation_ids": []
+      },
+      "restored_from_version": 1,
+      "revision_id": "00000000-0000-0000-0000-000000000001",
+      "sections": [],
+      "status": "draft",
+      "task_id": "00000000-0000-0000-0000-000000000001",
+      "theory_plan_id": "00000000-0000-0000-0000-000000000001",
+      "title": "合成验收",
+      "version": 1
+    },
+    "ResearchAnalysisSnapshotResponse": {
+      "annotations": [],
+      "comparisons": [],
+      "memos": [],
+      "task_id": "00000000-0000-0000-0000-000000000001"
+    },
+    "ResearchAuditEventListResponse": {
+      "items": [],
+      "task_id": "00000000-0000-0000-0000-000000000001"
+    },
+    "ResearchCycleResponse": {
+      "analysis_content_hash": "合成验收",
+      "content_hash": "合成验收",
+      "evidence": [],
+      "gaps": [],
+      "project_facts": {
+        "analysis_counts": [],
+        "case_count": 1,
+        "case_material_coverage": [],
+        "consent_scopes": [],
+        "material_count": 1,
+        "material_kinds": [],
+        "pending_deidentification_count": 1,
+        "sampling_batches": [],
+        "sensitivity_levels": []
+      },
+      "reporting_hints": [],
+      "research_map_patch": {},
+      "schema_version": "research-cycle-v1",
+      "task_id": "task",
+      "theory_plan_id": "00000000-0000-0000-0000-000000000001",
+      "theory_plan_version": 1,
+      "version": 1
+    }
+  }
+}

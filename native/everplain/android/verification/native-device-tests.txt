@@ -1,0 +1,10 @@
+
+app.everplain.android.NativeKeyboardTest:.
+app.everplain.android.NativeFlowTest:.
+app.everplain.android.ScreenshotFixtureTest:.
+
+Time: 161.177
+
+OK (3 tests)
+
+

@@ -1,0 +1,8 @@
+
+app.everplain.android.ScreenshotFixtureTest:.
+
+Time: 97.268
+
+OK (1 test)
+
+

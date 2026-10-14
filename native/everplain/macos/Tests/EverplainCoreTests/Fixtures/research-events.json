@@ -1,0 +1,141 @@
+{
+  "synthetic": true,
+  "source": "Live researchAgentApi.ts parseAgentEventStream and backend api/routes/agent.py",
+  "transport": "POST /api/agent/turns; event names separate from JSON payload",
+  "events": [
+    {
+      "event": "research_ask",
+      "payload": {
+        "question": "Synthetic research scope?",
+        "options": [
+          "narrow",
+          "broad"
+        ]
+      }
+    },
+    {
+      "event": "research_plan",
+      "payload": {
+        "title": "Synthetic plan",
+        "steps": [
+          "Inspect sources",
+          "Compare evidence"
+        ]
+      }
+    },
+    {
+      "event": "research_step",
+      "payload": {
+        "step": "Inspect sources",
+        "status": "running"
+      }
+    },
+    {
+      "event": "research_result",
+      "payload": {
+        "summary": "Synthetic summary",
+        "knowledge_count": 2,
+        "web_count": 1
+      }
+    },
+    {
+      "event": "research_waiting",
+      "payload": {
+        "run_id": "00000000-0000-4000-8000-000000000031",
+        "state": "awaiting_clarification",
+        "question": "Synthetic research scope?",
+        "options": [
+          "narrow",
+          "broad"
+        ],
+        "prompt": "Synthetic only",
+        "selected_intent": "research"
+      }
+    },
+    {
+      "event": "research_waiting",
+      "payload": {
+        "run_id": "00000000-0000-4000-8000-000000000031",
+        "state": "awaiting_plan_confirmation",
+        "title": "Synthetic plan",
+        "steps": [
+          "Inspect sources",
+          "Compare evidence"
+        ]
+      }
+    },
+    {
+      "event": "tool_started",
+      "payload": {
+        "tool": "search_knowledge",
+        "call_id": "synthetic-call",
+        "input": {
+          "query": "synthetic"
+        },
+        "detail": "Searching synthetic fixtures"
+      }
+    },
+    {
+      "event": "tool_finished",
+      "payload": {
+        "tool": "search_knowledge",
+        "call_id": "synthetic-call",
+        "output": {
+          "count": 2,
+          "opaque_integer": 9007199254740993
+        },
+        "detail": "Two synthetic matches"
+      }
+    },
+    {
+      "event": "tool_failed",
+      "payload": {
+        "tool": "search_knowledge",
+        "call_id": "synthetic-failure",
+        "input": {
+          "query": "synthetic"
+        },
+        "error_code": "synthetic_unavailable",
+        "message": "Synthetic tool failure"
+      }
+    },
+    {
+      "event": "citation_added",
+      "payload": {
+        "citation_id": "synthetic-citation",
+        "label": "Synthetic source",
+        "kind": "knowledge",
+        "excerpt": "Synthetic excerpt",
+        "locator": {
+          "page": 1
+        }
+      }
+    },
+    {
+      "event": "canvas_patch",
+      "payload": {
+        "schema_version": 1,
+        "nodes": [
+          {
+            "id": "synthetic-node",
+            "kind": "question",
+            "title": "Synthetic question",
+            "status": "developing",
+            "citation_ids": []
+          }
+        ],
+        "relations": [],
+        "remove_node_ids": [],
+        "remove_relation_ids": []
+      }
+    }
+  ],
+  "assertions": [
+    "research_waiting terminates the current response stream but is not completed/interrupted; preserve resumable run state",
+    "citation_added and canvas_patch payloads are direct objects, not nested citation/patch objects",
+    "tool input/output values and call_id must survive roundtrip including null and exact integers",
+    "clarify/confirm/skip are explicit new authorized continuation requests linked by deep_research_run_id, not automatic resume on view appearance",
+    "EOF without a terminal event remains interruption; do not turn it into completion",
+    "Do not clear unfinished recovery on a generic turn_failed without checking durable status"
+  ]
+}

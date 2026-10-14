@@ -1,0 +1,16 @@
+[
+  {
+    "project": "swift-markdown",
+    "version": "0.5.0",
+    "source": "https://codeload.github.com/swiftlang/swift-markdown/tar.gz/refs/tags/0.5.0",
+    "archiveSha256": "63a4b87403bfc581df296bb681c987426a95d1ccfa3a7ba777cc7239bd8de516",
+    "retained": "Library source and licenses only; local manifest removes doc plugins, tools and tests."
+  },
+  {
+    "project": "swift-cmark",
+    "version": "0.5.0",
+    "source": "https://codeload.github.com/swiftlang/swift-cmark/tar.gz/refs/tags/0.5.0",
+    "archiveSha256": "77c9182bcba771dfd58aa0fba0d85263419a5a596332f7ad99f2a65aae9a96d9",
+    "retained": "Library source and licenses only; local manifest removes doc plugins, tools and tests."
+  }
+]

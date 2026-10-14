@@ -1,0 +1,264 @@
+{
+  "purpose": "Unmodified Web ProseMirror/TipTap document difference computation. No Editor, HTML surface or WebView is created.",
+  "source": "src/modules/research-document/model/documentDiff.ts",
+  "sourceSha256": "357fff8bfa32a9edddb1475d8209a16747f67aedfac5b2d5f043adffd0af2bab",
+  "testSha256": "298e9d2fac59518664e2ebdd390c482311338300d8fe4dbf95355dee9625bc66",
+  "webPackageLockSha256": "6fd09f87fe5b817513f29e40f8176d6da54d10709880764fa115311aedbfe303",
+  "bundleSha256": "9175f54275c3a4fca6f3dddd2d3ed403cb60e8fc64f9b3884e14494a4ea5e261",
+  "runtimeEnvelopeSha256": "77c48bfa5a672e76a02e7d0df1210bd85ef0eaf56865d6358f9500bc201ed24a",
+  "bundler": "1.1.5",
+  "packages": [
+    {
+      "name": "@tiptap/core",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__core.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-blockquote",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-blockquote.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-bold",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-bold.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-code",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-code.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-code-block",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-code-block.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-document",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-document.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-hard-break",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-hard-break.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-heading",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-heading.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-horizontal-rule",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-horizontal-rule.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-italic",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-italic.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-link",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-link.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-list",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-list.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-paragraph",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-paragraph.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-strike",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-strike.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-text",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-text.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extension-underline",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extension-underline.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/extensions",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__extensions.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/markdown",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__markdown.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/pm",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__pm.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "@tiptap/starter-kit",
+      "version": "3.31.3",
+      "license": "MIT",
+      "licenseFile": "@tiptap__starter-kit.LICENSE.txt",
+      "licenseSha256": "c96e5ecb55ac593157ad1d21d1f44a611187f494a0f04c235a1ae692c88d6ba9"
+    },
+    {
+      "name": "linkifyjs",
+      "version": "4.3.3",
+      "license": "MIT",
+      "licenseFile": "linkifyjs.LICENSE.txt",
+      "licenseSha256": "58e6f3677452cca096ce5328ebf7de37a1406bbeeb2f263c1b2ededc8c7d0228"
+    },
+    {
+      "name": "marked",
+      "version": "17.0.4",
+      "license": "MIT",
+      "licenseFile": "marked.LICENSE.txt",
+      "licenseSha256": "8e3a3f82f59a60958f56ca08f445647c32a4733dc7ca6c2c46f6eb898471ab9c"
+    },
+    {
+      "name": "orderedmap",
+      "version": "2.1.1",
+      "license": "MIT",
+      "licenseFile": "orderedmap.LICENSE.txt",
+      "licenseSha256": "869c30f368eb08735e779027b9f4bc9fea2f39624351856aebe42741f0bc0884"
+    },
+    {
+      "name": "prosemirror-changeset",
+      "version": "2.4.2",
+      "license": "MIT",
+      "licenseFile": "prosemirror-changeset.LICENSE.txt",
+      "licenseSha256": "7543dfe82fa61d5bb2478c78cbd9dfb2cbd500b6ac2893b24ed925773b67fb70"
+    },
+    {
+      "name": "prosemirror-commands",
+      "version": "1.7.2",
+      "license": "MIT",
+      "licenseFile": "prosemirror-commands.LICENSE.txt",
+      "licenseSha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+    },
+    {
+      "name": "prosemirror-dropcursor",
+      "version": "1.8.3",
+      "license": "MIT",
+      "licenseFile": "prosemirror-dropcursor.LICENSE.txt",
+      "licenseSha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+    },
+    {
+      "name": "prosemirror-gapcursor",
+      "version": "1.4.1",
+      "license": "MIT",
+      "licenseFile": "prosemirror-gapcursor.LICENSE.txt",
+      "licenseSha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+    },
+    {
+      "name": "prosemirror-history",
+      "version": "1.5.0",
+      "license": "MIT",
+      "licenseFile": "prosemirror-history.LICENSE.txt",
+      "licenseSha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+    },
+    {
+      "name": "prosemirror-keymap",
+      "version": "1.2.3",
+      "license": "MIT",
+      "licenseFile": "prosemirror-keymap.LICENSE.txt",
+      "licenseSha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+    },
+    {
+      "name": "prosemirror-model",
+      "version": "1.25.11",
+      "license": "MIT",
+      "licenseFile": "prosemirror-model.LICENSE.txt",
+      "licenseSha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+    },
+    {
+      "name": "prosemirror-schema-list",
+      "version": "1.5.1",
+      "license": "MIT",
+      "licenseFile": "prosemirror-schema-list.LICENSE.txt",
+      "licenseSha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+    },
+    {
+      "name": "prosemirror-state",
+      "version": "1.4.4",
+      "license": "MIT",
+      "licenseFile": "prosemirror-state.LICENSE.txt",
+      "licenseSha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+    },
+    {
+      "name": "prosemirror-transform",
+      "version": "1.12.0",
+      "license": "MIT",
+      "licenseFile": "prosemirror-transform.LICENSE.txt",
+      "licenseSha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+    },
+    {
+      "name": "prosemirror-view",
+      "version": "1.42.3",
+      "license": "MIT",
+      "licenseFile": "prosemirror-view.LICENSE.txt",
+      "licenseSha256": "ef0b452ced6304db2ce78ca66de1fc7b97bab05bc1750c95df359ed3fe1d65c8"
+    },
+    {
+      "name": "rope-sequence",
+      "version": "1.3.4",
+      "license": "MIT",
+      "licenseFile": "rope-sequence.LICENSE.txt",
+      "licenseSha256": "530424aebdd0e73f53238d1f89df250057bc8d8ce090cf5954197fadce5bf226"
+    },
+    {
+      "name": "w3c-keyname",
+      "version": "2.2.8",
+      "license": "MIT",
+      "licenseFile": "w3c-keyname.LICENSE.txt",
+      "licenseSha256": "869c30f368eb08735e779027b9f4bc9fea2f39624351856aebe42741f0bc0884"
+    }
+  ]
+}
