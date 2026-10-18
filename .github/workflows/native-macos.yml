@@ -1,0 +1,33 @@
+name: Native macOS Acceptance
+on:
+  pull_request:
+    paths: ['native/everplain/macos/**', 'native/everplain/contracts/generated/*.swift', 'native/everplain/tokens/generated/*.swift', 'native/everplain/shared-tests/fixtures/**', '.github/workflows/native-macos.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-macos-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with: {persist-credentials: false}
+      - name: Build and test with the Apple SDK
+        working-directory: native/everplain/macos
+        run: |
+          set -euo pipefail
+          mkdir -p verification/ci-results
+          swift --version | tee verification/ci-results/swift-version.txt
+          xcodebuild -version | tee verification/ci-results/xcode-version.txt
+          bash scripts/build-app.sh release 2>&1 | tee verification/ci-results/build.log
+          ditto -c -k --sequesterRsrc --keepParent .build/Everplain.app verification/ci-results/Everplain-macOS-test.zip
+          shasum -a 256 verification/ci-results/Everplain-macOS-test.zip > verification/ci-results/SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: everplain-macos-acceptance-${{ github.sha }}
+          path: native/everplain/macos/verification/ci-results/
+          retention-days: 14

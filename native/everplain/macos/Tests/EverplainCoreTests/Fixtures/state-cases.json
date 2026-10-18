@@ -1,0 +1,296 @@
+{
+  "synthetic": true,
+  "purpose": "Acceptance scenarios for both native state owners; no fixture is a runtime data source.",
+  "cases": [
+    {
+      "name": "duplicate_send",
+      "given": "ready composer",
+      "events": [
+        "send",
+        "send before acknowledgement"
+      ],
+      "expect": "One POST; one intent key; second tap disabled or coalesced."
+    },
+    {
+      "name": "late_delta_after_new_chat",
+      "given": "run A streaming",
+      "events": [
+        "new conversation B",
+        "late A delta"
+      ],
+      "expect": "A callback cannot mutate B; preserve A pending state and reconcile stop separately."
+    },
+    {
+      "name": "late_delta_after_logout",
+      "given": "user A streaming",
+      "events": [
+        "logout A",
+        "login B",
+        "late A delta"
+      ],
+      "expect": "No A text, draft, cookie, profile or response appears for B."
+    },
+    {
+      "name": "unknown_send_outcome",
+      "given": "POST accepted but response lost",
+      "events": [
+        "network interruption",
+        "retry"
+      ],
+      "expect": "Reconcile server conversation/run; retain original idempotency key and model/body; never generate a fresh billable intent."
+    },
+    {
+      "name": "completed_replay",
+      "given": "partial provisional text",
+      "events": [
+        "turn_started replayed=true",
+        "replayed full deltas",
+        "turn_completed"
+      ],
+      "expect": "Do not concatenate previous partial with replay. Final view is the canonical conversation exactly once."
+    },
+    {
+      "name": "stop_accepted_running",
+      "given": "run active",
+      "events": [
+        "stop tap",
+        "HTTP202 status running cancel_requested=true"
+      ],
+      "expect": "UI says stopping, not stopped; confirm terminal or remain recoverably pending."
+    },
+    {
+      "name": "restart_after_explicit_stop",
+      "given": "interrupted run with stored request",
+      "events": [
+        "resume app"
+      ],
+      "expect": "Show partial and Resume action; no automatic new turn."
+    },
+    {
+      "name": "stream_eof",
+      "given": "deltas shown",
+      "events": [
+        "EOF without terminal"
+      ],
+      "expect": "Mark interrupted, preserve partial/key; never display success."
+    },
+    {
+      "name": "account_401",
+      "given": "authenticated",
+      "events": [
+        "GET or SSE HTTP401"
+      ],
+      "expect": "Invalidate session and isolate private UI/cache; preserve no data visible to a later different account."
+    },
+    {
+      "name": "server_unavailable",
+      "given": "last verified usage",
+      "events": [
+        "credits HTTP503"
+      ],
+      "expect": "Show unavailable or stale with error; never replace with invented zero/grant/balance."
+    },
+    {
+      "name": "credits_terminal_failure",
+      "given": "stream HTTP200",
+      "events": [
+        "turn_failed credits_depleted"
+      ],
+      "expect": "Failure state with Account destination, no implicit retry or payment."
+    },
+    {
+      "name": "model_catalog_failure",
+      "given": "no verified catalog",
+      "events": [
+        "catalog HTTP503"
+      ],
+      "expect": "No hardcoded model fallback. Match Web explicit server-default state: omit model_id/reasoning_effort, permit a user send with that disclosed state; retry catalog remains available."
+    },
+    {
+      "name": "model_changed_during_retry",
+      "given": "attempt A uses catalog choice X",
+      "events": [
+        "change next-turn choice to Y",
+        "resume A"
+      ],
+      "expect": "A retries its original request X; Y applies only to a new semantic turn."
+    },
+    {
+      "name": "profile_version_conflict",
+      "given": "dirty Agent draft based on version3",
+      "events": [
+        "PATCH409",
+        "GET profile version4"
+      ],
+      "expect": "Keep draft and show conflict; do not overwrite version4 until explicit review/reapply."
+    },
+    {
+      "name": "agent_settings_cancel",
+      "given": "dirty Soul editor based on version3",
+      "events": [
+        "Close panel",
+        "Open panel again"
+      ],
+      "expect": "Preserve local draft and its version3 expected_version; no PATCH on close. Explicit Cancel edits restores canonical saved value."
+    },
+    {
+      "name": "offline_logout",
+      "given": "authenticated",
+      "events": [
+        "logout POST fails"
+      ],
+      "expect": "Do not claim server session revoked; explicit local sign-out is separately labeled."
+    },
+    {
+      "name": "untrusted_external_url",
+      "given": "model citation URL",
+      "events": [
+        "open file: or javascript: URL"
+      ],
+      "expect": "Reject; only validated http/https open in system browser."
+    },
+    {
+      "name": "chinese_ime_enter",
+      "given": "active marked/composing Chinese text",
+      "events": [
+        "Enter commits marked text"
+      ],
+      "expect": "Commit text, do not send. Send shortcut only after composition ended."
+    },
+    {
+      "name": "appearance_and_accessibility",
+      "given": "same source tokens",
+      "events": [
+        "light",
+        "dark",
+        "system",
+        "large text"
+      ],
+      "expect": "Same semantic colors/sizes baseline; readable reflow; no platform accent replacement or clipped composer."
+    },
+    {
+      "name": "background_stream",
+      "given": "stream active",
+      "events": [
+        "app background/process death",
+        "app launch"
+      ],
+      "expect": "Do not promise uninterrupted generation; restore exact pending intent, confirm server state, offer resume."
+    },
+    {
+      "name": "stop_before_identity",
+      "given": "POST stream open; no turn_started/run_id received",
+      "events": [
+        "Stop or Back confirmation",
+        "transport cancelled",
+        "late identity/delta arrives"
+      ],
+      "expect": "Cancel promptly; guard late callbacks; persist original request/key and unconfirmed outcome. No automatic replay and no server-stop claim; allow navigation only while preserving unresolved intent."
+    },
+    {
+      "name": "research_waiting_is_quiescent",
+      "given": "deep research stream active",
+      "events": [
+        "research_waiting awaiting_clarification",
+        "HTTP EOF"
+      ],
+      "expect": "Retain run_id/question/options and show explicit choices. No completion, no automatic retry, no indefinite stopping spinner."
+    },
+    {
+      "name": "research_continuation_once",
+      "given": "awaiting_plan_confirmation with original run",
+      "events": [
+        "Confirm tap",
+        "duplicate Confirm tap"
+      ],
+      "expect": "One fresh semantic action/key with deep_research_run_id and action=confirm; preserve mode/workspace/bindings. Dedupe pending tap."
+    },
+    {
+      "name": "memory_scope_switch",
+      "given": "personal memory list request running",
+      "events": [
+        "navigate to project memory",
+        "late personal result"
+      ],
+      "expect": "Cache and response guard include owner plus task_id. No personal/project record mix."
+    },
+    {
+      "name": "memory_cas_conflict",
+      "given": "dirty memory based on version2",
+      "events": [
+        "PATCH409",
+        "refresh version3"
+      ],
+      "expect": "Retain user draft/version basis and ask for explicit reconciliation; no silent overwrite."
+    },
+    {
+      "name": "library_create_cancel",
+      "given": "empty New library modal",
+      "events": [
+        "Cancel"
+      ],
+      "expect": "Close without POST and restore picker focus and canonical library URL."
+    },
+    {
+      "name": "document_cas_conflict",
+      "given": "document editor version4 with unsaved text",
+      "events": [
+        "server has version5",
+        "PATCH409"
+      ],
+      "expect": "Keep draft; do not overwrite server or quietly rebase accepted proposal/section IDs."
+    },
+    {
+      "name": "upload_network_unknown",
+      "given": "file upload intent accepted but response lost",
+      "events": [
+        "Retry"
+      ],
+      "expect": "Retain original intent key and identical bytes/metadata; do not create duplicate files with a fresh key."
+    },
+    {
+      "name": "file_deleted_reference",
+      "given": "citation resolves to deleted or forbidden source",
+      "events": [
+        "open preview"
+      ],
+      "expect": "Truthful unavailable state. Do not show cached foreign-owner/deleted content or invent excerpt."
+    },
+    {
+      "name": "graph_refresh_explicit",
+      "given": "graph screen opened",
+      "events": [
+        "GET graph",
+        "render"
+      ],
+      "expect": "No implicit POST refresh or model work merely on view appearance."
+    },
+    {
+      "name": "late_settings_response",
+      "given": "account A settings read pending",
+      "events": [
+        "logout",
+        "login account B",
+        "A response completes"
+      ],
+      "expect": "Discard A response, including usage, subscription, memory and profile data."
+    },
+    {
+      "name": "reduced_motion_stream",
+      "given": "streaming render with queued visible text",
+      "events": [
+        "enable reduced motion"
+      ],
+      "expect": "Show full authoritative current answer immediately, remove character glow and cancel decorative flight without losing actual message/focus."
+    },
+    {
+      "name": "source_vs_native_icons",
+      "given": "sidebar and composer on same screen",
+      "events": [
+        "render navigation",
+        "render model button"
+      ],
+      "expect": "Use Web NavIcon custom 24px strokes for navigation and exact Phosphor regular for its source call sites; same icon name is not interchangeability."
+    }
+  ]
+}

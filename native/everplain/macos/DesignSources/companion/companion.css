@@ -1,0 +1,101 @@
+/*
+ * 小平的配色是插画本身的颜色，和 agent-avatar 一样不走界面 token（样式守卫对本目录豁免）：
+ * 奶白脸、米色长发、赭色花与缎带、灰蓝开衫。深浅色模式下人物都不变色——换了就不是同一个人了。
+ */
+.companion {
+  --cp-sleeve: #66728a;
+  --cp-sleeve-light: #8592a8;
+  --cp-sleeve-front: #707d94;
+  --cp-sleeve-front-light: #909db2;
+  --cp-fold: #56617a;
+  --cp-cuff: #efe8dd;
+  --cp-rib: #d9cfc1;
+  --cp-hand-shade: #f0dccb;
+  --cp-finger: #dcbfa9;
+  --cp-face: #f6ece2;
+  --cp-face-light: #fffaf5;
+  --cp-hair: #e6d8c5;
+  --cp-hair-back: #d9c7b0;
+  --cp-hair-shade: #d6c3aa;
+  --cp-eye: #2b221e;
+  --cp-blush: #f5c3ba;
+  --cp-petal: #c98a63;
+  --cp-flower-heart: #f0c9a6;
+  --cp-ribbon: #b97f5d;
+  --cp-star: #fff4e6;
+  display: block;
+  overflow: visible;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.cp-hair { fill: var(--cp-hair); }
+.cp-hair-back { fill: var(--cp-hair-back); }
+.cp-hair-shade { fill: var(--cp-hair-shade); }
+.cp-face-shade { fill: var(--cp-hand-shade); opacity: .3; filter: url(#companion-soft-edge); }
+.cp-blush { fill: var(--cp-blush); opacity: .85; filter: url(#companion-soft-edge); transition: opacity .3s; }
+.cp-eye { fill: var(--cp-eye); }
+.cp-happy path { fill: none; stroke: var(--cp-eye); stroke-width: 4; stroke-linecap: round; opacity: 0; }
+.cp-petal { fill: var(--cp-petal); }
+.cp-flower-heart { fill: var(--cp-flower-heart); }
+.cp-ribbon-tail { fill: var(--cp-ribbon); }
+.cp-star { fill: var(--cp-star); }
+.cp-sleeve { fill: url(#companion-sleeve); }
+.cp-sleeve--front { fill: url(#companion-sleeve-front); }
+.cp-fold { fill: none; stroke: var(--cp-fold); stroke-width: 1.4; stroke-linecap: round; opacity: .45; }
+.cp-cuff { fill: var(--cp-cuff); }
+.cp-rib { fill: none; stroke: var(--cp-rib); stroke-width: 1; stroke-linecap: round; }
+.cp-hand { fill: url(#companion-hand); }
+.cp-finger { fill: none; stroke: var(--cp-finger); stroke-width: 1.2; stroke-linecap: round; }
+.cp-chin-shadow { fill: var(--cp-fold); opacity: .3; filter: url(#companion-soft); }
+/* 头整体歪向一侧，像把脸枕在手臂上；转头时在这个基础上再偏 */
+.cp-rest { transform-box: fill-box; transform-origin: 60% 100%; }
+.companion .cp-bob { transform-origin: 50% 95%; }
+.cp-face, .cp-hair, .cp-hair-back { filter: none; }
+
+/* 2.5D：每层按自己的深度跟着 --turn / --nod 平移，再整体轻微偏头 */
+.cp-layer {
+  translate: calc(var(--turn) * var(--dx) * 1px) calc(var(--nod) * var(--dy) * 1px);
+}
+/* 偏头用独立的 rotate 属性，呼吸和蹦跳用 animation 改 translate/scale，三者叠加互不覆盖 */
+.cp-bob {
+  transform-box: fill-box;
+  transform-origin: 50% 85%;
+  animation: cp-breathe 3.8s ease-in-out infinite;
+}
+
+/* 循环动画都放在里层 g，转动原点取各自的根部 */
+:is(.cp-sway-slow, .cp-strand, .cp-lock, .cp-ahoge, .cp-ribbon, .cp-eyes) { transform-box: fill-box; }
+.cp-sway-slow { transform-origin: 50% 10%; animation: cp-sway 6s ease-in-out infinite; }
+.cp-strand { transform-origin: 50% 0%; animation: cp-sway 4.2s ease-in-out infinite; }
+.cp-strand--b { animation-duration: 4.8s; animation-delay: -1.2s; }
+.cp-strand--c { animation-duration: 5.1s; animation-delay: -2.4s; }
+.cp-lock { transform-origin: 50% 0%; animation: cp-sway-wide 5.4s ease-in-out infinite; }
+.cp-lock--right { animation-delay: -2.7s; }
+.cp-ahoge { transform-origin: 30% 100%; animation: cp-boing 2.6s cubic-bezier(.3,1.6,.5,1) infinite; }
+.cp-ribbon { transform-origin: 20% 0%; animation: cp-sway-wide 3.8s ease-in-out infinite; animation-delay: -.8s; }
+.cp-eyes { transform-origin: 50% 50%; animation: cp-blink 5.2s infinite; }
+
+@keyframes cp-sway { 0%, 100% { transform: rotate(-1.6deg); } 50% { transform: rotate(1.8deg); } }
+@keyframes cp-sway-wide { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3.4deg); } }
+@keyframes cp-boing { 0%, 100% { transform: rotate(-6deg); } 40% { transform: rotate(9deg); } 70% { transform: rotate(-2deg); } }
+@keyframes cp-blink { 0%, 91%, 97%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.08); } }
+@keyframes cp-breathe { 0%, 100% { translate: 0 0; scale: 1; } 50% { translate: 0 -1.5px; scale: 1.006; } }
+
+/* 开心：眼睛换成弯眼，腮红加深，蹦一下 */
+.companion[data-mood='happy'] .cp-eyes { opacity: 0; animation: none; }
+.companion[data-mood='happy'] .cp-happy path { opacity: 1; }
+.companion[data-mood='happy'] .cp-blush { opacity: .95; }
+/* 点一下：先轻轻一沉、略压扁，再抬起、略拉长，落回时留一点余韵。只做一次，不连蹦。 */
+.companion[data-mood='happy'] .cp-bob { animation: cp-hop .9s cubic-bezier(.33, 0, .2, 1) 1; }
+@keyframes cp-hop {
+  0% { translate: 0 0; scale: 1 1; }
+  18% { translate: 0 1.5px; scale: 1.03 .97; }
+  46% { translate: 0 -6px; scale: .985 1.02; }
+  72% { translate: 0 0; scale: 1.012 .988; }
+  88% { translate: 0 -.8px; scale: 1 1; }
+  100% { translate: 0 0; scale: 1 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .companion * { animation: none !important; }
+}

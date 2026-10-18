@@ -1,0 +1,10 @@
+# Third-party code and artwork
+
+- Swift Markdown and cmark 0.5.0: exact official Swift project parser sources, upstream licenses and original package manifests in `Vendor/`; local manifests only remove build-time tools/plugins and use relative dependencies. License copies are also bundled with the application.
+- Phosphor Icons 2.1.10: original locked regular paths plus source-used bold/fill variants. `PHOSPHOR-LICENSE.txt` retains the MIT notice; `DesignSources/web-icons.json` records per-glyph provenance and geometry.
+- Cytoscape.js 3.34.0: unchanged official distribution matching the Web package-lock integrity. The algorithm runs offline in JavaScriptCore; `Resources/GraphLayout` contains the MIT license and source/provenance files. The interface is rendered natively.
+- citeproc / citeproc-js 2.4.63, © Frank Bennett: unchanged processor matching the Web package-lock integrity. The upstream CPAL/AGPL dual-license notice and complete license texts are retained in `Resources/ResearchExport`; the processor source is delivered in the same bundle. Native About and citation-export controls include the upstream attribution phrase and URL. The new adapter passes data as JSON arguments rather than modifying the processor.
+- CSL styles and locale XML: exact Web resources retain embedded authorship, provenance and license notices, including CC BY-SA 3.0 for the three styles.
+- Everplain avatars, navigation icons, motion geometry and import brand assets: exact product-source artwork. The illustrative Apple Notes logo is deliberately omitted, as the source directs. Brand SVGs are converted to native vector PDF, and flomo’s PNG is copied unchanged; hashes are in `DesignSources/brand/manifest.json`.
+
+The original source licenses remain authoritative. The native candidate does not designate a new choice between citeproc’s two upstream license options; a public installer must follow the product owner’s existing distribution/license decision. This notice does not relicense the Everplain product or imply that third-party authors endorse it. The expanded native candidate has not been published as a signed installer.

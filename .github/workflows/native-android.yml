@@ -1,0 +1,46 @@
+name: Native Android Acceptance
+on:
+  pull_request:
+    paths: ['native/everplain/**', '.github/workflows/native-android.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-android-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with: {persist-credentials: false}
+      - uses: actions/setup-java@v6
+        with: {distribution: temurin, java-version: '21', cache: gradle, cache-dependency-path: 'native/everplain/android/**/*.gradle.kts'}
+      - name: Build and unit test the frozen native source
+        working-directory: native/everplain/android
+        run: bash gradlew --no-daemon --max-workers=2 :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Enable ephemeral runner emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Real Android UI and motion acceptance
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash native/everplain/android/verification/run_ci_device.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: everplain-android-acceptance-${{ github.sha }}
+          retention-days: 14
+          path: |
+            native/everplain/android/verification/ci-results/
+            native/everplain/android/app/build/outputs/apk/
+            native/everplain/android/app/build/test-results/
+            native/everplain/android/core/build/test-results/

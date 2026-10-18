@@ -1,0 +1,157 @@
+{
+  "synthetic": true,
+  "purpose": "Unit tests only, never runtime fallback data",
+  "schemas": {
+    "SessionResponse": {
+      "allowed_actions": [],
+      "expires_at": "2026-10-04T00:00:00Z",
+      "session_id": "00000000-0000-4000-8000-000000000001",
+      "status": "active",
+      "user": {
+        "display_name": "fixture",
+        "email": "fixture",
+        "user_id": "00000000-0000-4000-8000-000000000001"
+      },
+      "version": 1
+    },
+    "AgentModelCatalogResponse": {
+      "items": [
+        {
+          "model_id": "fixture-model",
+          "label": "Synthetic fixture model",
+          "reasoning_efforts": [
+            "low",
+            "high"
+          ],
+          "default_reasoning_effort": "low"
+        }
+      ],
+      "runtime_mode": "mock"
+    },
+    "AgentConversationResponse": {
+      "conversation_id": "00000000-0000-4000-8000-000000000001",
+      "created_at": "2026-10-04T00:00:00Z",
+      "research_map": {
+        "nodes": [],
+        "relations": [],
+        "schema_version": 1
+      },
+      "title": "fixture",
+      "turn_count": 1,
+      "turns": [
+        {
+          "assistant": {
+            "content": "你好🙂",
+            "created_at": "2026-10-04T00:00:00Z",
+            "message_id": "00000000-0000-4000-8000-000000000001",
+            "role": "assistant",
+            "sequence": 1
+          },
+          "turn_id": "00000000-0000-4000-8000-000000000001",
+          "user": {
+            "content": "你好",
+            "created_at": "2026-10-04T00:00:00Z",
+            "message_id": "00000000-0000-4000-8000-000000000001",
+            "role": "user",
+            "sequence": 1
+          }
+        }
+      ],
+      "updated_at": "2026-10-04T00:00:00Z"
+    },
+    "AgentProfileResponse": {
+      "avatar_id": "cheng",
+      "color": "#111111",
+      "greeting": "fixture",
+      "name": "Fixture Agent",
+      "questionnaire": {},
+      "setup_completed": false,
+      "setup_step": 1,
+      "speaking_style": "clear",
+      "version": 1
+    },
+    "AgentProfileUpdate": {
+      "expected_version": 1
+    },
+    "AccountResponse": {
+      "created_at": "2026-10-04T00:00:00Z",
+      "display_name": "fixture",
+      "email": "fixture",
+      "is_protected_admin": false,
+      "last_login_at": "2026-10-04T00:00:00Z",
+      "preferences": {
+        "consent_policy_version": "fixture",
+        "consent_updated_at": "2026-10-04T00:00:00Z",
+        "locale": "fixture",
+        "model_improvement_allowed": false,
+        "research_updates_enabled": false,
+        "timezone": "fixture",
+        "version": 1
+      },
+      "role": "member",
+      "status": "active",
+      "updated_at": "2026-10-04T00:00:00Z",
+      "user_id": "00000000-0000-4000-8000-000000000001",
+      "version": 1
+    },
+    "CreditSummaryResponse": {
+      "balance": 97,
+      "credit_limit": 1,
+      "entries": [],
+      "grant_amount": 1,
+      "is_unlimited": false,
+      "next_cursor": "fixture",
+      "pricing": {
+        "input_tokens_per_credit": 1,
+        "output_tokens_per_credit": 1
+      },
+      "total_entries": 1,
+      "available_balance": 97,
+      "quota_status": "known",
+      "frozen_points": 1,
+      "operations": [
+        {
+          "operation_id": "synthetic-test-only",
+          "reference_cost_pico": 9007199254740993,
+          "api_type": "synthetic",
+          "attempts": []
+        }
+      ],
+      "active_usage_buckets": [
+        {
+          "bucket_id": "synthetic-test-bucket",
+          "kind": "welcome",
+          "available_points": 97,
+          "settled_remaining_points": 98.125,
+          "limit_points": 100,
+          "expires_at": null
+        }
+      ]
+    },
+    "AgentRunStopResponse": {
+      "cancel_requested": false,
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "status": "running"
+    },
+    "LoginSessionRequest": {
+      "email": "fixture@example.invalid",
+      "password": "test-only-not-a-real-password"
+    },
+    "AgentTurnRequest": {
+      "message": "fixture"
+    },
+    "AgentRunLookupResponse": {
+      "run_id": "00000000-0000-4000-8000-000000000002",
+      "conversation_id": "00000000-0000-4000-8000-000000000001",
+      "idempotency_key": "synthetic-original-intent-key",
+      "status": "interrupted",
+      "cancel_requested": true,
+      "partial_answer": "Synthetic partial answer",
+      "request": {
+        "message": "fixture"
+      },
+      "updated_at": "2026-10-04T00:00:00Z",
+      "turn_id": null
+    }
+  }
+}

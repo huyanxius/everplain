@@ -1,0 +1,19 @@
+{
+  "processor": "citeproc 2.4.63 (unmodified NPM source)",
+  "npmIntegrity": "sha512-68F95Bp4UbgZU/DBUGQn0qV3HDZLCdI9+Bb2ByrTaNJDL5VEm9LqaiNaxljsvoaExSLEXe1/r6n2Z06SCzW3/Q==",
+  "webSourceArchiveSHA256": "f48e0ee1fb6e05639b9c4f4fe1d879578498cfa564f3e7335decab7ff2132df3",
+  "sha256": {
+    "AGPLv3.citeproc.txt": "57c8ff33c9c0cfc3ef00e650a1cc910d7ee479a8bc509f6c9209a7c2a11399d6",
+    "CPAL.citeproc.txt": "a953615139d8c767eb5e95f14215bf5c356ea23397a15137f6e119babf3fe69b",
+    "LICENSE.citeproc.txt": "b96ca8e1716f93449b480083c7510c18d129fa9afa4644d62c6347c06177ce30",
+    "NOTICE.txt": "c47973c4d3b171dd3980155150cec65f952aec6254ca0431965270ebfbcb5040",
+    "american-sociological-association.csl": "8d8a73ffe10a36e2ca5384b56a3c928becd60f891c188c09d2665fb3d4ddf7b9",
+    "bibliography.js": "2c0564d515f64118571539bf3855a16ad2bbaeb81325f2a1b74388ee95c39c17",
+    "chicago-author-date.csl": "53fddaa27b1dc0b972e441f55aed6f462d7d55b6e957728fd5758c93d3e8806c",
+    "china-national-standard-gb-t-7714-2015-author-date.csl": "c1188f86ce948a812c03d8c873952feddf9b6579d141fd85dec7a20dcea8a13a",
+    "citeproc.js": "55abba1a8b8b48c14323fd053f9646013b4b7a0c977938064ecf5195a502b9f1",
+    "license-provenance.json": "ea2e07c284f15072745bb39a12d15e59c840882f1baf38cfa7512a8a08e351e7",
+    "locales-en-US.xml": "98417560b264df3fd1b86eb0a409eb881601b1494bcac3674261e896f6b3802c",
+    "locales-zh-CN.xml": "ceceff263b32c054b48c5265c727377d06f2a3c4c5ea7f67caeba198424409a2"
+  }
+}

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="app.everplain.core.ProtocolTest" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-10-04T06:40:41" hostname="710e61d7b11e" time="2.828">
+  <properties/>
+  <testcase name="authorization and CAS errors preserve status and message" classname="app.everplain.core.ProtocolTest" time="0.476"/>
+  <testcase name="all shared codec samples decode using generated DTOs" classname="app.everplain.core.ProtocolTest" time="0.075"/>
+  <testcase name="cancellation closes an idle SSE socket promptly" classname="app.everplain.core.ProtocolTest" time="1.025"/>
+  <testcase name="stop retains stable intent and distinguishes requested from confirmed" classname="app.everplain.core.ProtocolTest" time="0.02"/>
+  <testcase name="production endpoint rejects http embedded credentials path query fragment" classname="app.everplain.core.ProtocolTest" time="0.002"/>
+  <testcase name="shared SSE cases survive every wire chunk boundary" classname="app.everplain.core.ProtocolTest" time="0.01"/>
+  <testcase name="redirects are rejected instead of forwarding login credentials" classname="app.everplain.core.ProtocolTest" time="0.008"/>
+  <testcase name="login cookie authenticates subsequent stream and retry keeps intent key" classname="app.everplain.core.ProtocolTest" time="0.112"/>
+  <testcase name="EOF without terminal is interruption and wrong MIME is rejected" classname="app.everplain.core.ProtocolTest" time="0.06"/>
+  <testcase name="cancellation closes a JSON body after headers arrived" classname="app.everplain.core.ProtocolTest" time="1.011"/>
+  <testcase name="run key lookup is read only uses original header and keeps 404 uncertain" classname="app.everplain.core.ProtocolTest" time="0.016"/>
+  <testcase name="cookies persist in supplied private store and never cross origins" classname="app.everplain.core.ProtocolTest" time="0.009"/>
+  <testcase name="oversized SSE cannot exhaust memory" classname="app.everplain.core.ProtocolTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
